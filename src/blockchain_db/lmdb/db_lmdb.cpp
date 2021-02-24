@@ -41,6 +41,8 @@
 #include "crypto/crypto.h"
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
+#include "offshore/asset_types.h"
+#include "offshore/pricing_record.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain.db.lmdb"
@@ -54,7 +56,7 @@ using epee::string_tools::pod_to_hex;
 using namespace crypto;
 
 // Increase when the DB structure changes
-#define VERSION 5
+#define VERSION 6
 
 namespace
 {
@@ -238,6 +240,9 @@ const char* const LMDB_HF_VERSIONS = "hf_versions";
 
 const char* const LMDB_PROPERTIES = "properties";
 
+const char* const LMDB_CIRC_SUPPLY = "circ_supply";
+const char* const LMDB_CIRC_SUPPLY_TALLY = "circ_supply_tally";
+
 const char zerokey[8] = {0};
 const MDB_val zerokval = { sizeof(zerokey), (void *)zerokey };
 
@@ -260,14 +265,14 @@ inline void lmdb_db_open(MDB_txn* txn, const char* name, int flags, MDB_dbi& dbi
 	if (!m_cur_ ## name) { \
 	  int result = mdb_cursor_open(*m_write_txn, m_ ## name, &m_cur_ ## name); \
 	  if (result) \
-        throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); \
+	    throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); \
 	}
 
 #define RCURSOR(name) \
 	if (!m_cur_ ## name) { \
 	  int result = mdb_cursor_open(m_txn, m_ ## name, (MDB_cursor **)&m_cur_ ## name); \
 	  if (result) \
-        throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); \
+        throw0(DB_ERROR(lmdb_error("Failed to open rcursor: ", result).c_str())); \
 	  if (m_cursors != &m_wcursors) \
 	    m_tinfo->m_ti_rflags.m_rf_ ## name = true; \
 	} else if (m_cursors != &m_wcursors && !m_tinfo->m_ti_rflags.m_rf_ ## name) { \
@@ -324,9 +329,24 @@ typedef struct mdb_block_info_4
   crypto::hash bi_hash;
   uint64_t bi_cum_rct;
   uint64_t bi_long_term_block_weight;
+  offshore::pricing_record_old bi_pricing_record;
 } mdb_block_info_4;
 
-typedef mdb_block_info_4 mdb_block_info;
+typedef struct mdb_block_info_5
+{
+  uint64_t bi_height;
+  uint64_t bi_timestamp;
+  uint64_t bi_coins;
+  uint64_t bi_weight; // a size_t really but we need 32-bit compat
+  uint64_t bi_diff_lo;
+  uint64_t bi_diff_hi;
+  crypto::hash bi_hash;
+  uint64_t bi_cum_rct;
+  uint64_t bi_long_term_block_weight;
+  offshore::pricing_record bi_pricing_record;
+} mdb_block_info_5;
+
+typedef mdb_block_info_5 mdb_block_info;
 
 typedef struct blk_height {
     crypto::hash bh_hash;
@@ -350,6 +370,20 @@ typedef struct outtx {
     crypto::hash tx_hash;
     uint64_t local_index;
 } outtx;
+
+typedef struct circ_supply {
+  crypto::hash tx_hash;
+  uint64_t pricing_record_height;
+  uint64_t source_currency_type;
+  uint64_t dest_currency_type;
+  uint64_t amount_burnt;
+  uint64_t amount_minted;
+} circ_supply;
+
+typedef struct circ_supply_tally {
+  int64_t currency_type;
+  int64_t amount;
+} circ_supply_tally;
 
 std::atomic<uint64_t> mdb_txn_safe::num_active_txns{0};
 std::atomic_flag mdb_txn_safe::creation_gate = ATOMIC_FLAG_INIT;
@@ -786,7 +820,8 @@ void BlockchainLMDB::add_block(const block& blk, size_t block_weight, uint64_t l
   bi.bi_diff_lo = (cumulative_difficulty & 0xffffffffffffffff).convert_to<uint64_t>();
   bi.bi_hash = blk_hash;
   bi.bi_cum_rct = num_rct_outs;
-  if (blk.major_version >= 4)
+  bi.bi_pricing_record = blk.pricing_record;
+  if (m_height > 0)
   {
     uint64_t last_height = m_height-1;
     MDB_val_set(h, last_height);
@@ -864,6 +899,8 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
   CURSOR(txs_prunable_hash)
   CURSOR(txs_prunable_tip)
   CURSOR(tx_indices)
+  CURSOR(circ_supply)
+  CURSOR(circ_supply_tally)
 
   MDB_val_set(val_tx_id, tx_id);
   MDB_val_set(val_h, tx_hash);
@@ -932,6 +969,93 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
       throw0(DB_ERROR(lmdb_error("Failed to add prunable tx prunable hash to db transaction: ", result).c_str()));
   }
 
+  // NEAC : check for presence of offshore TX to see if we need to update circulating supply information
+  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0)) {
+
+    LOG_PRINT_L1("tx ID " << tx_id << " is an OFFSHORE TX:\nPR height =" << tx.pricing_record_height << "\nSource currency =" << tx.offshore_data.at(0) <<
+		 "\nDest currency =" << tx.offshore_data.at(1) << "\nBurnt =" << tx.amount_burnt << "\nMinted =" << tx.amount_minted);
+    
+    // Offshore TX - update our records
+    circ_supply cs;
+    cs.tx_hash = tx_hash;
+    cs.pricing_record_height = tx.pricing_record_height;
+    if (tx.offshore_data.size() == 2) {
+
+      // old-style of offshore data
+      cs.source_currency_type = (tx.offshore_data.at(0) == 'A') ? 0 : 13;
+      cs.dest_currency_type = (tx.offshore_data.at(1) == 'A') ? 0 : 13;
+    } else {
+
+      // New-style of offshore data
+      std::string offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
+      int pos = offshore_data.find("-");
+      std::string strSource = offshore_data.substr(0,pos);
+      std::string strDest = offshore_data.substr(pos+1);
+      cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
+      cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
+    }
+    cs.amount_burnt = tx.amount_burnt;
+    cs.amount_minted = tx.amount_minted;
+    MDB_val_set(val_circ_supply, cs);
+    result = mdb_cursor_put(m_cur_circ_supply, &val_tx_id, &val_circ_supply, MDB_APPEND);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to add tx circulating supply to db transaction: ", result).c_str()));
+
+    // update the tally table as well
+
+    // Get the current tally value for the source currency type
+    MDB_val_copy<uint64_t> source_idx(cs.source_currency_type);
+    MDB_val vsource;
+    int64_t tally = 0;
+    result = mdb_cursor_get(m_cur_circ_supply_tally, &source_idx, &vsource, MDB_SET);
+    if (result == MDB_NOTFOUND) {
+
+      // This is a bit hacky, but works by looking for the XHV currency tally
+      if (cs.source_currency_type != 0)
+	throw0(DB_ERROR(lmdb_error("Failed to find tx circulating supply tally for source currency", result).c_str()));
+
+      // This should have been done for XHV in migrate_4_5() function, so that we have an accurate tally at the point we start offering offshore txs
+      // All other currencies should only be created in the tally table once someone offshores XHV into that currency
+      LOG_PRINT_L1("Failed to obtain circulating supply for XHV - must be first offshore TX");
+
+    } else if (!result) {
+    
+      // Update the tally by reducing the amount by how much we've burnt
+      tally = *(int64_t*)vsource.mv_data;
+
+    } else {
+      throw0(DB_ERROR(lmdb_error("Failed to obtain tally for source circulating supply: ", result).c_str()));      
+    }
+
+    int64_t amount = tally - cs.amount_burnt;
+    MDB_val_copy<int64_t> val_amount_source(amount);
+    result = mdb_cursor_put(m_cur_circ_supply_tally, &source_idx, &val_amount_source, 0);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to update tally for source circulating supply: ", result).c_str()));
+
+    // Get the current tally value for the dest currency type
+    MDB_val_copy<uint64_t> dest_idx(cs.dest_currency_type);
+    MDB_val vdest;
+    result = mdb_cursor_get(m_cur_circ_supply_tally, &dest_idx, &vdest, MDB_SET);
+    if (!result) {
+      
+      // Update the tally by increasing the amount by how much we've minted
+      tally = *(int64_t*)vdest.mv_data;
+
+    } else {
+      tally = 0;
+    }
+    amount = tally + cs.amount_minted;
+    MDB_val_copy<int64_t> val_amount_dest(amount);
+    result = mdb_cursor_put(m_cur_circ_supply_tally, &dest_idx, &val_amount_dest, 0);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to update tally for dest circulating supply: ", result).c_str()));
+
+    LOG_PRINT_L1("BlockchainLMDB::" << __func__ << "\n\tOffshore data =" << tx.offshore_data.at(0) << tx.offshore_data.at(1) <<
+		 "\n\tSource circulating supply =" << *(int64_t*)val_amount_source.mv_data <<
+		 "\n\tDest circulating supply =" << *(int64_t*)val_amount_dest.mv_data);
+  }
+  
   return tx_id;
 }
 
@@ -950,6 +1074,8 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
   CURSOR(txs_prunable)
   CURSOR(txs_prunable_hash)
   CURSOR(txs_prunable_tip)
+  CURSOR(circ_supply)
+  CURSOR(circ_supply_tally)
   CURSOR(tx_outputs)
 
   MDB_val_set(val_h, tx_hash);
@@ -994,6 +1120,65 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
         throw1(DB_ERROR(lmdb_error("Failed to add removal of prunable hash tx to db transaction: ", result).c_str()));
   }
 
+  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0))
+  {
+    LOG_PRINT_L1("tx ID " << tip->data.tx_id << " is an OFFSHORE TX:\nPR height =" << tx.pricing_record_height << "\nSource currency =" << tx.offshore_data.at(0) <<
+		 "\nDest currency =" << tx.offshore_data.at(1) << "\nBurnt =" << tx.amount_burnt << "\nMinted =" << tx.amount_minted);
+    
+    // Update the tally table
+    // Get the current tally value for the source currency type
+    circ_supply cs;
+    cs.tx_hash = tx_hash;
+    cs.pricing_record_height = tx.pricing_record_height;
+    cs.amount_burnt = tx.amount_burnt;
+    cs.amount_minted = tx.amount_minted;
+    cs.source_currency_type = (tx.offshore_data.at(0) == 'A') ? 0 : 13;
+    cs.dest_currency_type = (tx.offshore_data.at(1) == 'A') ? 0 : 13;
+    MDB_val_copy<uint64_t> source_idx(cs.source_currency_type);
+    MDB_val vsource;
+    result = mdb_cursor_get(m_cur_circ_supply_tally, &source_idx, &vsource, MDB_SET);
+    if (result == MDB_NOTFOUND) {
+      throw0(DB_ERROR(lmdb_error("Failed to find tx circulating supply tally for source currency (remove)", result).c_str()));
+    }
+    
+    // Update the tally by increasing the amount by how much we've burnt
+    int64_t *tally = (int64_t *)vsource.mv_data;
+    int64_t amount = *tally + cs.amount_burnt;
+    MDB_val_copy<int64_t> val_amount_source(amount);
+    result = mdb_cursor_put(m_cur_circ_supply_tally, &source_idx, &val_amount_source, 0);
+    if (result) {
+      throw0(DB_ERROR(lmdb_error("Failed to update tally for source circulating supply (remove): ", result).c_str()));
+    }
+    
+    // Get the current tally value for the dest currency type
+    MDB_val_copy<uint64_t> dest_idx(cs.dest_currency_type);
+    MDB_val vdest;
+    result = mdb_cursor_get(m_cur_circ_supply_tally, &dest_idx, &vdest, MDB_SET);
+    if (result == MDB_NOTFOUND) {
+      throw0(DB_ERROR(lmdb_error("Failed to find tx circulating supply tally for dest currency (remove)", result).c_str()));
+    }
+    
+    // Update the tally by decreasing the amount by how much we've minted
+    tally = (int64_t *)vdest.mv_data;
+    amount = *tally - cs.amount_minted;
+    MDB_val_copy<int64_t> val_amount_dest(amount);
+    result = mdb_cursor_put(m_cur_circ_supply_tally, &dest_idx, &val_amount_dest, 0);
+    if (result) {
+      throw0(DB_ERROR(lmdb_error("Failed to update tally for dest circulating supply (remove): ", result).c_str()));
+    }
+    
+    // Update the circ_supply table
+    if ((result = mdb_cursor_get(m_cur_circ_supply, &val_tx_id, NULL, MDB_SET)))
+        throw1(DB_ERROR(lmdb_error("Failed to locate circulating supply for removal: ", result).c_str()));
+    result = mdb_cursor_del(m_cur_circ_supply, 0);
+    if (result)
+        throw1(DB_ERROR(lmdb_error("Failed to add removal of circulating supply to db transaction: ", result).c_str()));
+
+    LOG_PRINT_L1("BlockchainLMDB::" << __func__ << "\n\tOffshore data =" << tx.offshore_data.at(0) << tx.offshore_data.at(1) <<
+		 "\n\tSource circulating supply =" << *(uint64_t*)val_amount_source.mv_data <<
+		 "\n\tDest circulating supply =" << *(uint64_t*)val_amount_dest.mv_data);
+  }
+
   remove_tx_outputs(tip->data.tx_id, tx);
 
   result = mdb_cursor_get(m_cur_tx_outputs, &val_tx_id, NULL, MDB_SET);
@@ -1030,8 +1215,10 @@ uint64_t BlockchainLMDB::add_output(const crypto::hash& tx_hash,
   CURSOR(output_txs)
   CURSOR(output_amounts)
 
-  if (tx_output.target.type() != typeid(txout_to_key))
-    throw0(DB_ERROR("Wrong output type: expected txout_to_key"));
+  if (tx_output.target.type() != typeid(txout_to_key) &&
+      tx_output.target.type() != typeid(txout_offshore) &&
+      tx_output.target.type() != typeid(txout_xasset))
+    throw0(DB_ERROR("Wrong output type: expected txout_to_key or txout_offshore or txout_xasset"));
   if (tx_output.amount == 0 && !commitment)
     throw0(DB_ERROR("RCT output without commitment"));
 
@@ -1059,7 +1246,10 @@ uint64_t BlockchainLMDB::add_output(const crypto::hash& tx_hash,
   else
     ok.amount_index = 0;
   ok.output_id = m_num_outputs;
-  ok.data.pubkey = boost::get < txout_to_key > (tx_output.target).key;
+  ok.data.pubkey
+    = tx_output.target.type() == typeid(txout_to_key) ? boost::get < txout_to_key > (tx_output.target).key
+    : tx_output.target.type() == typeid(txout_offshore) ? boost::get < txout_offshore > (tx_output.target).key
+    : boost::get < txout_xasset > (tx_output.target).key;
   ok.data.unlock_time = unlock_time;
   ok.data.height = m_height;
   if (tx_output.amount == 0)
@@ -1424,6 +1614,9 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   lmdb_db_open(txn, LMDB_PROPERTIES, MDB_CREATE, m_properties, "Failed to open db handle for m_properties");
 
+  lmdb_db_open(txn, LMDB_CIRC_SUPPLY, MDB_INTEGERKEY | MDB_CREATE, m_circ_supply, "Failed to open db handle for m_circ_supply");
+  lmdb_db_open(txn, LMDB_CIRC_SUPPLY_TALLY, MDB_CREATE, m_circ_supply_tally, "Failed to open db handle for m_circ_supply_tally");
+
   mdb_set_dupsort(txn, m_spent_keys, compare_hash32);
   mdb_set_dupsort(txn, m_block_heights, compare_hash32);
   mdb_set_dupsort(txn, m_tx_indices, compare_hash32);
@@ -1439,6 +1632,9 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   mdb_set_compare(txn, m_txpool_blob, compare_hash32);
   mdb_set_compare(txn, m_alt_blocks, compare_hash32);
   mdb_set_compare(txn, m_properties, compare_string);
+
+  mdb_set_compare(txn, m_circ_supply, compare_uint64);
+  mdb_set_compare(txn, m_circ_supply_tally, compare_uint64);
 
   if (!(mdb_flags & MDB_RDONLY))
   {
@@ -1476,7 +1672,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
         mdb_env_close(m_env);
         m_open = false;
         MFATAL("Existing lmdb database needs to be converted, which cannot be done on a read-only database.");
-        MFATAL("Please run monerod once to convert the database.");
+        MFATAL("Please run havend once to convert the database.");
         return;
       }
       // Note that there was a schema change within version 0 as well.
@@ -1599,6 +1795,10 @@ void BlockchainLMDB::reset()
     throw0(DB_ERROR(lmdb_error("Failed to drop m_tx_indices: ", result).c_str()));
   if (auto result = mdb_drop(txn, m_tx_outputs, 0))
     throw0(DB_ERROR(lmdb_error("Failed to drop m_tx_outputs: ", result).c_str()));
+  if (auto result = mdb_drop(txn, m_circ_supply, 0))
+    throw0(DB_ERROR(lmdb_error("Failed to drop m_circ_supply: ", result).c_str()));
+  if (auto result = mdb_drop(txn, m_circ_supply_tally, 0))
+    throw0(DB_ERROR(lmdb_error("Failed to drop m_circ_supply_tally: ", result).c_str()));
   if (auto result = mdb_drop(txn, m_output_txs, 0))
     throw0(DB_ERROR(lmdb_error("Failed to drop m_output_txs: ", result).c_str()));
   if (auto result = mdb_drop(txn, m_output_amounts, 0))
@@ -2889,6 +3089,52 @@ uint64_t BlockchainLMDB::height() const
   if ((result = mdb_stat(m_txn, m_blocks, &db_stats)))
     throw0(DB_ERROR(lmdb_error("Failed to query m_blocks: ", result).c_str()));
   return db_stats.ms_entries;
+}
+
+std::vector<std::pair<std::string, int64_t>> BlockchainLMDB::get_circulating_supply() const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  uint64_t m_height = height();
+  uint64_t m_coinbase = get_block_already_generated_coins(m_height-1);
+  LOG_PRINT_L0("BlockchainLMDB::" << __func__ << " - mined supply for XHV = " << m_coinbase);
+  check_open();
+
+  const std::array<const char* const, 14> allowed_currencies = {{"XHV", "xAG", "xAU", "xAUD", "xBTC", "xCAD", "xCHF", "xCNY", "xEUR", "xGBP", "xJPY", "xNOK", "xNZD", "xUSD"}};
+  
+  TXN_PREFIX_RDONLY();
+  RCURSOR(circ_supply_tally);
+
+  MDB_val k;
+  MDB_val v;
+  std::vector<std::pair<std::string, int64_t>> circulating_supply;
+  int result = 0;
+
+  MDB_cursor_op op = MDB_FIRST;
+  while (1)
+  {
+    int result = mdb_cursor_get(m_cur_circ_supply_tally, &k, &v, op);
+    op = MDB_NEXT;
+    if (result == MDB_NOTFOUND)
+      break;
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to enumerate txpool tx metadata: ", result).c_str()));
+
+    // Push the data into the circulating supply return struct
+    const uint64_t currency_type = *(const uint64_t*)k.mv_data;
+    int64_t amount = *(int64_t*)v.mv_data;
+    const std::string currency_label = allowed_currencies.at(currency_type);
+
+    // Check for XHV - we need to adjust the total for them
+    if (currency_type == 0) {
+      // Get the current circulating supply for XHV
+      amount += m_coinbase;
+    }
+    std::pair<std::string, int64_t> foo(currency_label, amount);
+    circulating_supply.push_back(foo);
+  }
+
+  TXN_POSTFIX_RDONLY();
+  return circulating_supply;
 }
 
 uint64_t BlockchainLMDB::num_outputs() const
@@ -5555,6 +5801,7 @@ void BlockchainLMDB::migrate_4_5()
       bi.bi_hash = bi_old->bi_hash;
       bi.bi_cum_rct = bi_old->bi_cum_rct;
       bi.bi_long_term_block_weight = bi_old->bi_long_term_block_weight;
+      memset(&bi.bi_pricing_record, 0, sizeof(offshore::pricing_record_old));
 
       MDB_val_set(nv, bi);
       result = mdb_cursor_put(c_cur, (MDB_val *)&zerokval, &nv, MDB_APPENDDUP);
@@ -5600,6 +5847,134 @@ void BlockchainLMDB::migrate_4_5()
   txn.commit();
 }
 
+void BlockchainLMDB::migrate_5_6()
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  uint64_t i;
+  int result;
+  mdb_txn_safe txn(false);
+  MDB_val k, v;
+  char *ptr;
+
+  MGINFO_YELLOW("Migrating blockchain from DB version 5 to 6 - this may take a while:");
+
+  do {
+    LOG_PRINT_L1("migrating block info:");
+
+    result = mdb_txn_begin(m_env, NULL, 0, txn);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+
+    MDB_stat db_stats;
+    if ((result = mdb_stat(txn, m_blocks, &db_stats)))
+      throw0(DB_ERROR(lmdb_error("Failed to query m_blocks: ", result).c_str()));
+    const uint64_t blockchain_height = db_stats.ms_entries;
+
+    /* the block_info table name is the same but the old version and new version
+     * have incompatible data. Create a new table. We want the name to be similar
+     * to the old name so that it will occupy the same location in the DB.
+     */
+    MDB_dbi o_block_info = m_block_info;
+    lmdb_db_open(txn, "block_infn", MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_info, "Failed to open db handle for block_infn");
+    mdb_set_dupsort(txn, m_block_info, compare_uint64);
+
+
+    MDB_cursor *c_blocks;
+    result = mdb_cursor_open(txn, m_blocks, &c_blocks);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to open a cursor for blocks: ", result).c_str()));
+
+    MDB_cursor *c_old, *c_cur;
+    i = 0;
+    while(1) {
+      if (!(i % 1000)) {
+        if (i) {
+          LOGIF(el::Level::Info) {
+            std::cout << i << " / " << blockchain_height << "  \r" << std::flush;
+          }
+          txn.commit();
+          result = mdb_txn_begin(m_env, NULL, 0, txn);
+          if (result)
+            throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+        }
+        result = mdb_cursor_open(txn, m_block_info, &c_cur);
+        if (result)
+          throw0(DB_ERROR(lmdb_error("Failed to open a cursor for block_infn: ", result).c_str()));
+        result = mdb_cursor_open(txn, o_block_info, &c_old);
+        if (result)
+          throw0(DB_ERROR(lmdb_error("Failed to open a cursor for block_info: ", result).c_str()));
+        if (!i) {
+          MDB_stat db_stat;
+          result = mdb_stat(txn, m_block_info, &db_stats);
+          if (result)
+            throw0(DB_ERROR(lmdb_error("Failed to query m_block_info: ", result).c_str()));
+          i = db_stats.ms_entries;
+        }
+      }
+      result = mdb_cursor_get(c_old, &k, &v, MDB_NEXT);
+      if (result == MDB_NOTFOUND) {
+        txn.commit();
+        break;
+      }
+      else if (result)
+        throw0(DB_ERROR(lmdb_error("Failed to get a record from block_info: ", result).c_str()));
+      const mdb_block_info_4 *bi_old = (const mdb_block_info_4*)v.mv_data;
+      mdb_block_info_5 bi;
+      bi.bi_height = bi_old->bi_height;
+      bi.bi_timestamp = bi_old->bi_timestamp;
+      bi.bi_coins = bi_old->bi_coins;
+      bi.bi_weight = bi_old->bi_weight;
+      bi.bi_diff_lo = bi_old->bi_diff_lo;
+      bi.bi_diff_hi = bi_old->bi_diff_hi;
+      bi.bi_hash = bi_old->bi_hash;
+      bi.bi_cum_rct = bi_old->bi_cum_rct;
+      bi.bi_long_term_block_weight = bi_old->bi_long_term_block_weight;
+      bi.bi_pricing_record = offshore::pricing_record();
+
+      MDB_val_set(nv, bi);
+      result = mdb_cursor_put(c_cur, (MDB_val *)&zerokval, &nv, MDB_APPENDDUP);
+      if (result)
+        throw0(DB_ERROR(lmdb_error("Failed to put a record into block_infn: ", result).c_str()));
+      /* we delete the old records immediately, so the overall DB and mapsize should not grow.
+       * This is a little slower than just letting mdb_drop() delete it all at the end, but
+       * it saves a significant amount of disk space.
+       */
+      result = mdb_cursor_del(c_old, 0);
+      if (result)
+        throw0(DB_ERROR(lmdb_error("Failed to delete a record from block_info: ", result).c_str()));
+      i++;
+    }
+
+    result = mdb_txn_begin(m_env, NULL, 0, txn);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+    /* Delete the old table */
+    result = mdb_drop(txn, o_block_info, 1);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to delete old block_info table: ", result).c_str()));
+
+    RENAME_DB("block_infn");
+    mdb_dbi_close(m_env, m_block_info);
+
+    lmdb_db_open(txn, "block_info", MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_info, "Failed to open db handle for block_infn");
+    mdb_set_dupsort(txn, m_block_info, compare_uint64);
+
+    txn.commit();
+  } while(0);
+
+  uint32_t version = 6;
+  v.mv_data = (void *)&version;
+  v.mv_size = sizeof(version);
+  MDB_val_str(vk, "version");
+  result = mdb_txn_begin(m_env, NULL, 0, txn);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+  result = mdb_put(txn, m_properties, &vk, &v, 0);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
+  txn.commit();
+}
+
 void BlockchainLMDB::migrate(const uint32_t oldversion)
 {
   if (oldversion < 1)
@@ -5612,6 +5987,8 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
     migrate_3_4();
   if (oldversion < 5)
     migrate_4_5();
+  if (oldversion < 6)
+    migrate_5_6();
 }
 
 }  // namespace cryptonote

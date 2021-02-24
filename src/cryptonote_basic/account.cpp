@@ -68,7 +68,7 @@ DISABLE_VS_WARNINGS(4244 4345)
     epee::mlocked<tools::scrubbed_arr<char, sizeof(base_key)+1>> data;
     memcpy(data.data(), &base_key, sizeof(base_key));
     data[sizeof(base_key)] = config::HASH_KEY_MEMORY;
-    crypto::generate_chacha_key(data.data(), sizeof(data), key, 1);
+    crypto::generate_chacha_key(data.data(), sizeof(data), key, HAVEN_CHACHA_ROUNDS);
   }
   //-----------------------------------------------------------------
   static epee::wipeable_string get_key_stream(const crypto::chacha_key &base_key, const crypto::chacha_iv &iv, size_t bytes)

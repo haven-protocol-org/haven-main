@@ -61,5 +61,6 @@ target_link_libraries(simplewallet
     ${EXTRA_LIBRARIES})
 set_property(TARGET simplewallet
   PROPERTY
-    OUTPUT_NAME "monero-wallet-cli")
+    OUTPUT_NAME "haven-wallet-cli")
 install(TARGETS simplewallet DESTINATION bin)
+add_definitions(-D__STDC_FORMAT_MACROS)

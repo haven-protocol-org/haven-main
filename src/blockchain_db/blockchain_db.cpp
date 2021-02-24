@@ -188,6 +188,18 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     {
       add_spent_key(boost::get<txin_to_key>(tx_input).k_image);
     }
+    else if (tx_input.type() == typeid(txin_onshore))
+    {
+      add_spent_key(boost::get<txin_onshore>(tx_input).k_image);
+    }
+    else if (tx_input.type() == typeid(txin_offshore))
+    {
+      add_spent_key(boost::get<txin_offshore>(tx_input).k_image);
+    }
+    else if (tx_input.type() == typeid(txin_xasset))
+    {
+      add_spent_key(boost::get<txin_xasset>(tx_input).k_image);
+    }
     else if (tx_input.type() == typeid(txin_gen))
     {
       /* nothing to do here */
@@ -202,6 +214,18 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
         {
           remove_spent_key(boost::get<txin_to_key>(tx_input).k_image);
         }
+        else if (tx_input.type() == typeid(txin_onshore))
+	{
+	  remove_spent_key(boost::get<txin_onshore>(tx_input).k_image);
+	}
+	else if (tx_input.type() == typeid(txin_offshore))
+	{
+	  remove_spent_key(boost::get<txin_offshore>(tx_input).k_image);
+	}
+	else if (tx_input.type() == typeid(txin_xasset))
+	{
+	  remove_spent_key(boost::get<txin_xasset>(tx_input).k_image);
+	}
       }
       return;
     }
@@ -217,7 +241,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
   {
     // miner v2 txes have their coinbase output in one single out to save space,
     // and we store them as rct outputs with an identity mask
-    if (miner_tx && tx.version == 2)
+    if (miner_tx && tx.version >= 2)
     {
       cryptonote::tx_out vout = tx.vout[i];
       rct::key commitment = rct::zeroCommit(vout.amount);
@@ -228,7 +252,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     else
     {
       amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time,
-        tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
+					    tx.version > 1 ? ((tx.vout[i].target.type() == typeid(txout_xasset)) ? &tx.rct_signatures.outPk_xasset[i].mask : (tx.vout[i].target.type() == typeid(txout_offshore)) ? &tx.rct_signatures.outPk_usd[i].mask : &tx.rct_signatures.outPk[i].mask) : NULL);
     }
   }
   add_tx_amount_output_indices(tx_id, amount_output_indices);
@@ -261,7 +285,7 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
 
   uint64_t num_rct_outs = 0;
   add_transaction(blk_hash, std::make_pair(blk.miner_tx, tx_to_blob(blk.miner_tx)));
-  if (blk.miner_tx.version == 2)
+  if (blk.miner_tx.version >= 2)
     num_rct_outs += blk.miner_tx.vout.size();
   int tx_i = 0;
   crypto::hash tx_hash = crypto::null_hash;
@@ -328,6 +352,18 @@ void BlockchainDB::remove_transaction(const crypto::hash& tx_hash)
     if (tx_input.type() == typeid(txin_to_key))
     {
       remove_spent_key(boost::get<txin_to_key>(tx_input).k_image);
+    }
+    else if (tx_input.type() == typeid(txin_onshore))
+    {
+      remove_spent_key(boost::get<txin_onshore>(tx_input).k_image);
+    }
+    else if (tx_input.type() == typeid(txin_offshore))
+    {
+      remove_spent_key(boost::get<txin_offshore>(tx_input).k_image);
+    }
+    else if (tx_input.type() == typeid(txin_xasset))
+    {
+      remove_spent_key(boost::get<txin_xasset>(tx_input).k_image);
     }
   }
 

@@ -244,8 +244,10 @@ namespace cryptonote
     }
     else
     {
-      const int cn_variant = hashing_blob[0] >= 7 ? hashing_blob[0] - 6 : 0;
-      crypto::cn_slow_hash(hashing_blob.data(), hashing_blob.size(), hash, cn_variant, cryptonote::get_block_height(block));
+      //const int cn_variant = hashing_blob[0] >= 7 ? hashing_blob[0] - 6 : 0;
+      //crypto::cn_slow_hash(hashing_blob.data(), hashing_blob.size(), hash, cn_variant, cryptonote::get_block_height(block));
+      cn_pow_hash_v3 cph;
+      cph.hash(hashing_blob.data(), hashing_blob.size(), hash.data);
     }
     if (!check_hash(hash, m_diff))
     {

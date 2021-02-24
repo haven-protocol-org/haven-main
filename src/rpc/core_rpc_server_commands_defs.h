@@ -834,6 +834,50 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  struct COMMAND_RPC_GET_PRICING_RECORD
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+
+    struct response_t
+    {
+      offshore::pricing_record pr;
+      
+      BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(pr)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  //-----------------------------------------------
+  struct COMMAND_RPC_GET_PUBLIC_KEY
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+
+    struct response_t
+    {
+      std::string str_ec_public_key;
+      
+      BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(str_ec_public_key)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  //-----------------------------------------------
   struct COMMAND_RPC_SAVE_BC
   {
     struct request_t: public rpc_request_base
@@ -985,6 +1029,7 @@ namespace cryptonote
       uint64_t timestamp;
       std::string prev_hash;
       uint32_t nonce;
+      offshore::pricing_record pricing_record;
       bool orphan_status;
       uint64_t height;
       uint64_t depth;
@@ -1009,6 +1054,7 @@ namespace cryptonote
         KV_SERIALIZE(timestamp)
         KV_SERIALIZE(prev_hash)
         KV_SERIALIZE(nonce)
+        KV_SERIALIZE(pricing_record)
         KV_SERIALIZE(orphan_status)
         KV_SERIALIZE(height)
         KV_SERIALIZE(depth)
@@ -1927,6 +1973,42 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  struct COMMAND_RPC_GET_CIRCULATING_SUPPLY
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+    struct supply_entry
+    {
+      std::string currency_label;
+      int64_t amount;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(currency_label);
+        KV_SERIALIZE(amount);
+      END_KV_SERIALIZE_MAP()
+
+      supply_entry(std::string currency_label, int64_t amount): currency_label(currency_label), amount(amount) {}
+      supply_entry() {}
+    };
+    
+    struct response_t
+    {
+      std::string status;
+      std::vector<supply_entry> supply_tally;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(supply_tally)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  
   struct COMMAND_RPC_GET_OUTPUT_HISTOGRAM
   {
     struct request_t: public rpc_access_request_base

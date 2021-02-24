@@ -603,38 +603,24 @@ namespace nodetool
     std::set<std::string> full_addrs;
     if (nettype == cryptonote::TESTNET)
     {
-      full_addrs.insert("212.83.175.67:28080");
-      full_addrs.insert("5.9.100.248:28080");
-      full_addrs.insert("163.172.182.165:28080");
-      full_addrs.insert("195.154.123.123:28080");
-      full_addrs.insert("212.83.172.165:28080");
-      full_addrs.insert("192.110.160.146:28080");
+      full_addrs.insert("seed01.testnet.havenprotocol.org:27749");
+      full_addrs.insert("seed02.testnet.havenprotocol.org:27749");
+      full_addrs.insert("seed03.testnet.havenprotocol.org:27749");
     }
     else if (nettype == cryptonote::STAGENET)
     {
-      full_addrs.insert("162.210.173.150:38080");
-      full_addrs.insert("162.210.173.151:38080");
-      full_addrs.insert("192.110.160.146:38080");
+      full_addrs.insert("seed01.stagenet.havenprotocol.org:37749");
+      full_addrs.insert("seed02.stagenet.havenprotocol.org:37749");
+      full_addrs.insert("seed03.stagenet.havenprotocol.org:37749");
     }
     else if (nettype == cryptonote::FAKECHAIN)
     {
     }
     else
     {
-      full_addrs.insert("107.152.130.98:18080");
-      full_addrs.insert("212.83.175.67:18080");
-      full_addrs.insert("5.9.100.248:18080");
-      full_addrs.insert("163.172.182.165:18080");
-      full_addrs.insert("161.67.132.39:18080");
-      full_addrs.insert("198.74.231.92:18080");
-      full_addrs.insert("195.154.123.123:18080");
-      full_addrs.insert("212.83.172.165:18080");
-      full_addrs.insert("192.110.160.146:18080");
-      full_addrs.insert("88.198.163.90:18080");
-      full_addrs.insert("95.217.25.101:18080");
-      full_addrs.insert("209.250.243.248:18080");
-      full_addrs.insert("104.238.221.81:18080");
-      full_addrs.insert("66.85.74.134:18080");
+      full_addrs.insert("seed01.mainnet.havenprotocol.org:17749");
+      full_addrs.insert("seed02.mainnet.havenprotocol.org:17749");
+      full_addrs.insert("seed03.mainnet.havenprotocol.org:17749");
     }
     return full_addrs;
   }
@@ -2631,7 +2617,7 @@ namespace nodetool
     if (address.get_zone() != epee::net_utils::zone::public_)
       return false; // Unable to determine how many connections from host
 
-    const size_t max_connections = 1;
+    const size_t max_connections = 2;
     size_t count = 0;
 
     m_network_zones.at(epee::net_utils::zone::public_).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)

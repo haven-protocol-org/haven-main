@@ -1134,7 +1134,7 @@ namespace cryptonote
       return true;
     }
 
-    if (req.do_sanity_checks && !cryptonote::tx_sanity_check(tx_blob, m_core.get_blockchain_storage().get_num_mature_outputs(0)))
+    if (req.do_sanity_checks && !cryptonote::tx_sanity_check(tx_blob, m_core.get_blockchain_storage().get_num_mature_outputs(0), m_core.get_current_blockchain_height()))
     {
       res.status = "Failed";
       res.reason = "Sanity check failed";
@@ -1293,6 +1293,7 @@ namespace cryptonote
       case 2: case 3: res.pow_algorithm = "CNv2 (Cryptonight variant 2)"; break;
       case 4: case 5: res.pow_algorithm = "CNv4 (Cryptonight variant 4)"; break;
       case 6: res.pow_algorithm = "RandomX"; break;
+      case 10: res.pow_algorithm = "CN-HAVEN (Cryptonight Haven variant 1)"; break;
       default: res.pow_algorithm = "I'm not sure actually"; break;
     }
     if (res.is_background_mining_enabled)
@@ -1919,6 +1920,8 @@ namespace cryptonote
     response.timestamp = blk.timestamp;
     response.prev_hash = string_tools::pod_to_hex(blk.prev_id);
     response.nonce = blk.nonce;
+    if (blk.major_version >= HF_VERSION_OFFSHORE_PRICING)
+      response.pricing_record = blk.pricing_record;
     response.orphan_status = orphan_status;
     response.height = height;
     response.depth = m_core.get_current_blockchain_height() - height - 1;
@@ -2560,6 +2563,19 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_circulating_supply(const COMMAND_RPC_GET_CIRCULATING_SUPPLY::request& req, COMMAND_RPC_GET_CIRCULATING_SUPPLY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    PERF_TIMER(on_get_circulating_supply);
+    std::vector<std::pair<std::string, int64_t>> amounts = m_core.get_blockchain_storage().get_db().get_circulating_supply();
+    for (const auto i: amounts)
+    {
+      COMMAND_RPC_GET_CIRCULATING_SUPPLY::supply_entry se(i.first, i.second);
+      res.supply_tally.push_back(se);
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;    
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_base_fee_estimate(const COMMAND_RPC_GET_BASE_FEE_ESTIMATE::request& req, COMMAND_RPC_GET_BASE_FEE_ESTIMATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_base_fee_estimate);
@@ -2691,6 +2707,12 @@ namespace cryptonote
       return true;
     }
 
+    // HERE BE DRAGONS!!!
+    // Haven does not support the update mechanism as yet
+    res.status = "Haven Daemon does not support update method yet";
+    return true;
+    // LAND AHOY!!!
+    
     static const char software[] = "monero";
 #ifdef BUILD_TAG
     static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
@@ -3120,7 +3142,7 @@ namespace cryptonote
         block_verification_context bvc;
         if(m_core.handle_block_found(block, bvc))
           MGINFO_GREEN("Block found by RPC user at height " << get_block_height(block) << ": " <<
-              print_money(cryptonote::get_outs_money_amount(block.miner_tx)));
+              print_money(cryptonote::get_outs_money_amount(block.miner_tx)["XHV"]));
         else
           MERROR("Seemingly valid block was not accepted");
       }

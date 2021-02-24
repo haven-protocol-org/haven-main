@@ -753,7 +753,7 @@ void message_store::write_to_file(const multisig_wallet_state &state, const std:
   std::string buf = oss.str();
 
   crypto::chacha_key key;
-  crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, 1);
+  crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, HAVEN_CHACHA_ROUNDS);
 
   file_data write_file_data = {};
   write_file_data.magic_string = "MMS";
@@ -803,7 +803,7 @@ void message_store::read_from_file(const multisig_wallet_state &state, const std
   }
 
   crypto::chacha_key key;
-  crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, 1);
+  crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, HAVEN_CHACHA_ROUNDS);
   std::string decrypted_data;
   decrypted_data.resize(read_file_data.encrypted_data.size());
   crypto::chacha20(read_file_data.encrypted_data.data(), read_file_data.encrypted_data.size(), key, read_file_data.iv, &decrypted_data[0]);
@@ -1229,7 +1229,7 @@ void message_store::encrypt(crypto::public_key public_key, const std::string &pl
   THROW_WALLET_EXCEPTION_IF(!success, tools::error::wallet_internal_error, "Failed to generate key derivation for message encryption");
 
   crypto::chacha_key chacha_key;
-  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, 1);
+  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, HAVEN_CHACHA_ROUNDS);
   iv = crypto::rand<crypto::chacha_iv>();
   ciphertext.resize(plaintext.size());
   crypto::chacha20(plaintext.data(), plaintext.size(), chacha_key, iv, &ciphertext[0]);
@@ -1242,7 +1242,7 @@ void message_store::decrypt(const std::string &ciphertext, const crypto::public_
   bool success = crypto::generate_key_derivation(encryption_public_key, view_secret_key, derivation);
   THROW_WALLET_EXCEPTION_IF(!success, tools::error::wallet_internal_error, "Failed to generate key derivation for message decryption");
   crypto::chacha_key chacha_key;
-  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, 1);
+  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, HAVEN_CHACHA_ROUNDS);
   plaintext.resize(ciphertext.size());
   crypto::chacha20(ciphertext.data(), ciphertext.size(), chacha_key, iv, &plaintext[0]);
 }
