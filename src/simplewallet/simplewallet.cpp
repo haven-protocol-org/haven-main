@@ -180,7 +180,7 @@ namespace
   const char* USAGE_INCOMING_TRANSFERS("incoming_transfers [available|unavailable] [verbose] [uses] [index=<N1>[,<N2>[,...]]]");
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
-  const char* USAGE_TRANSFER("transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount>) [<payment_id>]");
+  const char* USAGE_TRANSFER("transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount>) [<payment_id>] [memo=<memo data>]");
   const char* USAGE_LOCKED_TRANSFER("locked_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <addr> <amount>) <lockblocks> [<payment_id (obsolete)>]");
   const char* USAGE_LOCKED_SWEEP_ALL("locked_sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] <address> <lockblocks> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
@@ -275,17 +275,17 @@ namespace
   const char* USAGE_STOP_MINING_FOR_RPC("stop_mining_for_rpc");
   const char* USAGE_VERSION("version");
   const char* USAGE_HELP("help [<command>]");
-  const char* USAGE_OFFSHORE("offshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount>)");
-  const char* USAGE_OFFSHORE_TRANSFER("offshore_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>)");
-  const char* USAGE_ONSHORE("onshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount>)");
+  const char* USAGE_OFFSHORE("offshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
+  const char* USAGE_OFFSHORE_TRANSFER("offshore_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> [memo=<memo data>])");
+  const char* USAGE_ONSHORE("onshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
   const char* USAGE_GET_PRICE("get_price <ASSET_TYPE> <xUSD amount>");
   const char* USAGE_GET_PRICES("get_prices <xUSD amount>");
 
   const char* USAGE_XASSET_SWEEP_ALL("xasset_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_XASSET_SWEEP_SINGLE("xasset_sweep_single [<priority>] [<ring_size>] [outputs=<N>] <key_image> <address> [<payment_id (obsolete)>]");
-  const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>)");
-  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type>)");
-  const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type>)");
+  const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount> [memo=<memo data>])");
+  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type> [memo=<memo data>])");
+  const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type> [memo=<memo data>])");
 
   
   std::string input_line(const std::string& prompt, bool yesno = false)
@@ -2431,13 +2431,27 @@ bool simple_wallet::xasset_to_xusd(const std::vector<std::string> &args)
     PRINT_USAGE(USAGE_XASSET_TO_XUSD);
     return true;
   }
+
+  // copy args
   std::vector<std::string> local_args = args;
-  std::string strCurrency = boost::algorithm::to_upper_copy(local_args.back());
+
+  // get the asset type argument (Either the last one or the second last one)
+  std::vector<std::string>::iterator it;
+  if (boost::algorithm::starts_with(local_args.back(), "memo=")) {
+    // memo data is provided
+    it = local_args.end() - 2;
+  } else {
+    // memo data is NOT provided
+    it = local_args.end() - 1;
+  }
+
+  // check and remove the asset type
+  std::string strCurrency = boost::algorithm::to_upper_copy(*it);
   if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strCurrency) == offshore::ASSET_TYPES.end()) {
     fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
     return false;
   }
-  local_args.pop_back();
+  local_args.erase(it);
 
   // Add in the offshore extra signature
   local_args.push_back(strCurrency);
@@ -2468,13 +2482,27 @@ bool simple_wallet::xasset_transfer(const std::vector<std::string> &args)
     PRINT_USAGE(USAGE_XASSET_TRANSFER);
     return true;
   }
+  
+  // copy args
   std::vector<std::string> local_args = args;
-  std::string strCurrency = boost::algorithm::to_upper_copy(local_args.back());
+
+  // get the asset type argument (Either the last one or the second last one)
+  std::vector<std::string>::iterator it;
+  if (boost::algorithm::starts_with(local_args.back(), "memo=")) {
+    // memo data is provided
+    it = local_args.end() - 2;
+  } else {
+    // memo data is NOT provided
+    it = local_args.end() - 1;
+  }
+
+  // check and remove the asset type
+  std::string strCurrency = boost::algorithm::to_upper_copy(*it);
   if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strCurrency) == offshore::ASSET_TYPES.end()) {
     fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
     return false;
   }
-  local_args.pop_back();
+  local_args.erase(it);
 
   // Add in the offshore extra signature
   local_args.push_back(strCurrency);
@@ -2493,13 +2521,27 @@ bool simple_wallet::xusd_to_xasset(const std::vector<std::string> &args)
     PRINT_USAGE(USAGE_XUSD_TO_XASSET);
     return true;
   }
+
+  // copy args
   std::vector<std::string> local_args = args;
-  std::string strCurrency = boost::algorithm::to_upper_copy(local_args.back());
+
+  // get the asset type argument (Either the last one or the second last one)
+  std::vector<std::string>::iterator it;
+  if (boost::algorithm::starts_with(local_args.back(), "memo=")) {
+    // memo data is provided
+    it = local_args.end() - 2;
+  } else {
+    // memo data is NOT provided
+    it = local_args.end() - 1;
+  }
+
+  // check and remove the asset type
+  std::string strCurrency = boost::algorithm::to_upper_copy(*it);
   if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strCurrency) == offshore::ASSET_TYPES.end()) {
     fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
     return false;
   }
-  local_args.pop_back();
+  local_args.erase(it);
 
   // Add in the offshore extra signature
   local_args.push_back(std::string("XUSD"));
@@ -6763,6 +6805,25 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       xasset_to_xusd = true;
     } else {
       xusd_to_xasset = true;
+    }
+  }
+
+  // add the memo data to tx extra if it exist
+  if (boost::algorithm::starts_with(local_args.back(), "memo=")) {
+    // get memo
+    std::string strMemo = local_args.back();
+    local_args.pop_back();
+    // remove the "memo=" tag from front
+    strMemo = strMemo.substr(5);
+    // add to tx extra
+    size_t memo_size = strMemo.size();
+    if (memo_size > 0 && memo_size <= TX_EXTRA_MEMO_MAX_COUNT) {
+      cryptonote::tx_extra_memo memo;
+      memo.data = strMemo;
+      cryptonote::add_memo_to_tx_extra(extra, memo);
+    } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
+      fail_msg_writer() << tr("Transaction memo can't be more than 255 charecters long!");
+      return false;
     }
   }
   
