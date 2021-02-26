@@ -1,4 +1,4 @@
-name: cli-macos
+name: macos-cli
 
 on: [push, pull_request]
 

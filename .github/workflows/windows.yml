@@ -1,4 +1,4 @@
-name: winx64-macos
+name: winx64-cli
 
 on: [push, pull_request]
 
