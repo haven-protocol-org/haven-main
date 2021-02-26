@@ -167,8 +167,10 @@ struct txpool_tx_meta_t
   uint8_t do_not_relay;
   uint8_t double_spend_seen: 1;
   uint64_t fee_usd;
+  uint64_t fee_xasset;
   uint64_t offshore_fee;
   uint64_t offshore_fee_usd;
+  uint64_t offshore_fee_xasset;
   uint8_t pruned: 1;
   uint8_t is_local: 1;
   uint8_t dandelionpp_stem : 1;

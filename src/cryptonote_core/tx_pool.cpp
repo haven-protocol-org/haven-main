@@ -326,8 +326,10 @@ namespace cryptonote
         meta.weight = tx_weight;
         meta.fee = fee;
         meta.fee_usd = fee_usd;
+        meta.fee_xasset = fee_xasset;
         meta.offshore_fee = offshore_fee;
         meta.offshore_fee_usd = offshore_fee_usd;
+        meta.offshore_fee_xasset = offshore_fee_xasset;
         meta.max_used_block_id = null_hash;
         meta.max_used_block_height = 0;
         meta.last_failed_height = 0;
@@ -397,9 +399,11 @@ namespace cryptonote
           meta.receive_time = receive_time;
           meta.weight = tx_weight;
           meta.fee = fee;
-	  meta.fee_usd = fee_usd;
-	  meta.offshore_fee = offshore_fee;
-	  meta.offshore_fee_usd = offshore_fee_usd;
+          meta.fee_usd = fee_usd;
+          meta.fee_xasset = fee_xasset;
+          meta.offshore_fee = offshore_fee;
+          meta.offshore_fee_usd = offshore_fee_usd;
+          meta.offshore_fee_xasset = offshore_fee_xasset;
           meta.max_used_block_id = max_used_block_id;
           meta.max_used_block_height = max_used_block_height;
           meta.last_failed_height = 0;
@@ -427,13 +431,9 @@ namespace cryptonote
       tvc.m_added_to_pool = true;
 
       static_assert(unsigned(relay_method::none) == 0, "expected relay_method::none value to be zero");
-      if(meta.fee > 0){
+      if(meta.fee > 0 || meta.fee_usd > 0 || meta.fee_xasset > 0){
         tvc.m_relay = tx_relay;
-      }
-      else if(meta.fee_usd > 0){
-        tvc.m_relay = tx_relay;
-      }
-      else if (tx_relay != relay_method::none && ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0))) {
+      } else if (tx_relay != relay_method::none && ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0))) {
 	      LOG_PRINT_L1("tx meta.fee is 0, but this is an offshore TX, so relaying enabled");
         tvc.m_relay = tx_relay;
       }
