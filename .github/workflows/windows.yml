@@ -1,4 +1,4 @@
-name: continuous-integration/gh-actions/cli
+name: winx64-macos
 
 on: [push, pull_request]
 

@@ -1,4 +1,4 @@
-name: continuous-integration/gh-actions/cli
+name: cli-macos
 
 on: [push, pull_request]
 
