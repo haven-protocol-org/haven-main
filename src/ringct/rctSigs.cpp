@@ -2141,37 +2141,50 @@ try
             return signMultisigMLSAG(rv, indices, k, msout, secret_key);
     }
 
-  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, bool offshore, bool onshore) {
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, bool offshore, bool onshore, bool xusd_to_xasset, bool xasset_to_xusd, std::string xasset_type) {
 
     if (offshore) {
-
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
       boost::multiprecision::uint128_t exchange_128 = pr.unused1;
       boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
       xusd_128 /= 1000000000000;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
       if (xusd_128 != minted_128) {
-
-	LOG_PRINT_L1("Sum check failed (offshore)");
-	return false;
+        LOG_PRINT_L1("Minted/burnt verification failed (offshore)");
+        return false;
       }
-      
     } else if (onshore) {
-
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
       boost::multiprecision::uint128_t exchange_128 = pr.unused1;
       boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
       xhv_128 /= exchange_128;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
       if ((uint64_t)xhv_128 != minted_128) {
-
-	LOG_PRINT_L1("Sum check failed (onshore)");
-	return false;
+        LOG_PRINT_L1("Minted/burnt verification failed (onshore)");
+        return false;
       }
-
+    } else if (xusd_to_xasset) {
+      boost::multiprecision::uint128_t xusd_128 = amount_burnt;
+      boost::multiprecision::uint128_t exchange_128 = pr[xasset_type];
+      boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
+      xasset_128 /= 1000000000000;
+      boost::multiprecision::uint128_t minted_128 = amount_minted;
+      if (xasset_128 != minted_128) {
+        LOG_PRINT_L1("Minted/burnt verification failed (xusd_to_xasset)");
+        return false;
+      }
+    } else if (xasset_to_xusd) {
+      boost::multiprecision::uint128_t xasset_128 = amount_burnt;
+      boost::multiprecision::uint128_t exchange_128 = pr[xasset_type];
+      boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
+      xusd_128 /= exchange_128;
+      boost::multiprecision::uint128_t minted_128 = amount_minted;
+      if ((uint64_t)xusd_128 != minted_128) {
+        LOG_PRINT_L1("Minted/burnt verification failed (xasset_to_xusd)");
+        return false;
+      }
     } else {
-
-      LOG_PRINT_L1("Invalid request - minted/burnt values only valid for offshore/onshore TXs");
+      LOG_PRINT_L1("Invalid request - minted/burnt values only valid for offshore/onshore/xusd_to_xasset/xasset_to_xusd TXs");
       return false;
     }
 

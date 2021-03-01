@@ -10562,53 +10562,52 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       // New xAsset-style of offshore_data
       int pos = offshore_data.data.find("-");
       if (pos != std::string::npos) {
-	strSource = offshore_data.data.substr(0,pos);
-	strDest = offshore_data.data.substr(pos+1);
-	if (strSource == "XHV") {
-	  offshore = true;
-	} else if (strDest == "XHV") {
-	  onshore = true;
-	} else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-	  offshore_transfer = true;
-	  if (priority > 1) {
-	    // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-	    LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-	    priority = 1;
-	  }
-	} else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-	  xasset_transfer = true;
-	  if (priority > 1) {
-	    // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-	    LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xAsset transfers locked to low priority");
-	    priority = 1;
-	  }
-	} else if (strSource == "XUSD") {
-	  xusd_to_xasset = true;
-	} else {
-	  xasset_to_xusd = true;
-	}
+        strSource = offshore_data.data.substr(0,pos);
+        strDest = offshore_data.data.substr(pos+1);
+        if (strSource == "XHV") {
+          offshore = true;
+        } else if (strDest == "XHV") {
+          onshore = true;
+        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+          offshore_transfer = true;
+          if (priority > 1) {
+            // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+            LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
+            priority = 1;
+          }
+        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+          xasset_transfer = true;
+          if (priority > 1) {
+            // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+            LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xAsset transfers locked to low priority");
+            priority = 1;
+          }
+        } else if (strSource == "XUSD") {
+          xusd_to_xasset = true;
+        } else {
+          xasset_to_xusd = true;
+        }
       }
-      
     } else {
       // Pre-xAsset format of offshore_data
       // Set the bool flags
       if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-	offshore_transfer = true;
-	if (priority > 1) {
-	  // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-	  LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-	  priority = 1;
-	}
-	strSource = "XUSD";
-	strDest = "XUSD";
+        offshore_transfer = true;
+        if (priority > 1) {
+          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
+          priority = 1;
+        }
+        strSource = "XUSD";
+        strDest = "XUSD";
       } else if (offshore_data.data.at(0) > 'A') {
-	onshore = true;
-	strSource = "XUSD";
-	strDest = "XHV";
+        onshore = true;
+        strSource = "XUSD";
+        strDest = "XHV";
       } else {
-	offshore = true;
-	strSource = "XHV";
-	strDest = "XUSD";
+        offshore = true;
+        strSource = "XHV";
+        strDest = "XUSD";
       }
     }
   }

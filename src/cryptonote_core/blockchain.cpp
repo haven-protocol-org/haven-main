@@ -1678,16 +1678,18 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
 }
 //------------------------------------------------------------------
 // This function validates the miner transaction reward
-bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t fee_usd, uint64_t offshore_fee, uint64_t offshore_fee_usd, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
+bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   //validate reward
-  uint64_t money_in_use = 0, money_in_use_usd = 0;
+  std::map<std::string, uint64_t> money_in_use_map;
   for (auto& o: b.miner_tx.vout) {
     if (o.target.type() == typeid(txout_offshore)) {
-      money_in_use_usd += o.amount;
+      money_in_use_map["XUSD"] += o.amount;
+    } else if (o.target.type() == typeid(txout_xasset)) {
+      money_in_use_map[boost::get<cryptonote::txout_xasset>(o.target).asset_type] += o.amount;
     } else {
-      money_in_use += o.amount;
+      money_in_use_map["XHV"] += o.amount;
     }
   }
   partial_block_reward = false;
@@ -1723,7 +1725,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     {
       // Check that the governance reward for XHV is correct
       uint64_t governance_reward = get_governance_reward(m_db->height(), base_reward);
-      governance_reward += offshore_fee;
+      governance_reward += offshore_fee_map["XHV"];
       if (b.miner_tx.vout[1].amount != governance_reward)
       {
         MERROR("Governance reward amount incorrect.  Should be: " << print_money(governance_reward) << ", is: " << print_money(b.miner_tx.vout[1].amount));
@@ -1737,9 +1739,9 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
           governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
         } else if (m_nettype == STAGENET) {
           governance_wallet_address_str = ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
-	} else {
+        } else {
           governance_wallet_address_str = ::config::GOVERNANCE_WALLET_ADDRESS_MULTI;
-	}
+        }
       } else {
         if (m_nettype == TESTNET) {
           governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS;
@@ -1756,22 +1758,22 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
         return false;
       }
 
-      // Check for presence of xUSD fees
+      // Check for presence of xUSD or xAsset fees
       if (b.miner_tx.vout.size() > 2) {
-
-	uint64_t governance_reward_usd = get_governance_reward(m_db->height(), fee_usd);
-	governance_reward_usd += offshore_fee_usd;
-	if (b.miner_tx.vout[3].amount != governance_reward_usd)
-	  {
-	    MERROR("Governance xUSD reward amount incorrect.  Should be: " << print_money(governance_reward) << ", is: " << print_money(b.miner_tx.vout[1].amount));
-	    return false;
-	  }
-	
-	if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, 3, boost::get<txout_offshore>(b.miner_tx.vout[3].target).key, m_nettype))
-	  {
-	    MERROR("Governance reward public key incorrect for offshore (vout[3]).");
-	    return false;
-	  }
+        uint64_t governance_reward_usd = get_governance_reward(m_db->height(), fee_map["XUSD"]);
+        governance_reward_usd += offshore_fee_usd;
+        // the third(vout[2]) output is xUSD fee that goes to miner
+        // the fourth output is xUSD fee that goes to governance wallet
+        if (b.miner_tx.vout[3].amount != governance_reward_usd)
+        {
+          MERROR("Governance xUSD reward amount incorrect.  Should be: " << print_money(governance_reward) << ", is: " << print_money(b.miner_tx.vout[1].amount));
+          return false;
+        }
+        if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, 3, boost::get<txout_offshore>(b.miner_tx.vout[3].target).key, m_nettype))
+        {
+          MERROR("Governance reward public key incorrect for offshore (vout[3]).");
+          return false;
+        }
       }
     }
   }
@@ -5012,12 +5014,11 @@ bool Blockchain::flush_txes_from_pool(const std::vector<crypto::hash> &txids)
     cryptonote::blobdata txblob;
     size_t tx_weight;
     uint64_t fee = 0;
-    uint64_t fee_usd = 0;
     uint64_t offshore_fee = 0;
-    uint64_t offshore_fee_usd = 0;
+    std::string fee_asset_type;
     bool relayed, do_not_relay, double_spend_seen, pruned;
     MINFO("Removing txid " << txid << " from the pool");
-    if(m_tx_pool.have_tx(txid, relay_category::all) && !m_tx_pool.take_tx(txid, tx, txblob, tx_weight, fee, fee_usd, offshore_fee, offshore_fee_usd, relayed, do_not_relay, double_spend_seen, pruned))
+    if(m_tx_pool.have_tx(txid, relay_category::all) && !m_tx_pool.take_tx(txid, tx, txblob, tx_weight, fee, offshore_fee, fee_asset_type, relayed, do_not_relay, double_spend_seen, pruned))
     {
       MERROR("Failed to remove txid " << txid << " from the pool");
       res = false;
@@ -5228,10 +5229,8 @@ leave:
   std::vector<std::pair<transaction, blobdata>> txs;
   key_images_container keys;
 
-  uint64_t tx_fee_summary = 0;
-  uint64_t tx_fee_summary_usd = 0;
-  uint64_t offshore_fee_summary = 0;
-  uint64_t offshore_fee_summary_usd = 0;
+  std::map<std::string, uint64_t> fee_map;
+  std::map<std::string, uint64_t> offshore_fee_map;
   uint64_t t_checktx = 0;
   uint64_t t_exists = 0;
   uint64_t t_pool = 0;
@@ -5252,13 +5251,12 @@ leave:
     blobdata txblob;
     size_t tx_weight = 0;
     uint64_t fee = 0;
-    uint64_t fee_usd = 0;
     uint64_t offshore_fee = 0;
-    uint64_t offshore_fee_usd = 0;
+    std::string fee_asset_type;
     bool relayed = false, do_not_relay = false, double_spend_seen = false, pruned = false;
     TIME_MEASURE_START(aa);
 
-// XXX old code does not check whether tx exists
+    // XXX old code does not check whether tx exists
     if (m_db->tx_exists(tx_id))
     {
       MERROR("Block with id: " << id << " attempting to add transaction already in blockchain with id: " << tx_id);
@@ -5272,7 +5270,7 @@ leave:
     TIME_MEASURE_START(bb);
 
     // get transaction with hash <tx_id> from tx_pool
-    if(!m_tx_pool.take_tx(tx_id, tx_tmp, txblob, tx_weight, fee, fee_usd, offshore_fee, offshore_fee_usd, relayed, do_not_relay, double_spend_seen, pruned))
+    if(!m_tx_pool.take_tx(tx_id, tx_tmp, txblob, tx_weight, fee, offshore_fee, fee_asset_type, relayed, do_not_relay, double_spend_seen, pruned))
     {
       MERROR_VER("Block with id: " << id  << " has at least one unknown transaction with id: " << tx_id);
       bvc.m_verifivation_failed = true;
@@ -5347,10 +5345,8 @@ leave:
 #endif
     TIME_MEASURE_FINISH(cc);
     t_checktx += cc;
-    tx_fee_summary += fee;
-    offshore_fee_summary += offshore_fee;
-    tx_fee_summary_usd += fee_usd;
-    offshore_fee_summary_usd += offshore_fee_usd;
+    fee_map[fee_asset_type] += fee; 
+    offshore_fee_map[fee_asset_type] += offshore_fee; 
     cumulative_block_weight += tx_weight;
   }
 
@@ -5370,7 +5366,7 @@ leave:
   TIME_MEASURE_START(vmt);
   uint64_t base_reward = 0;
   uint64_t already_generated_coins = blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;
-  if(!validate_miner_transaction(bl, cumulative_block_weight, tx_fee_summary, tx_fee_summary_usd, offshore_fee_summary, offshore_fee_summary_usd, base_reward, already_generated_coins, bvc.m_partial_block_reward, m_hardfork->get_current_version()))
+  if(!validate_miner_transaction(bl, cumulative_block_weight, fee_map, offshore_fee_map, base_reward, already_generated_coins, bvc.m_partial_block_reward, m_hardfork->get_current_version()))
   {
     MERROR_VER("Block with id: " << id << " has incorrect miner transaction");
     bvc.m_verifivation_failed = true;
@@ -6633,14 +6629,14 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
         m_tx_pool.get_transactions(txs, true);
 
         size_t tx_weight;
-        uint64_t fee, fee_usd, offshore_fee, offshore_fee_usd;
+        uint64_t fee, fee_usd, fee_xasset, offshore_fee, offshore_fee_usd, offshore_fee_xasset;
         bool relayed, do_not_relay, double_spend_seen, pruned;
         transaction pool_tx;
         blobdata txblob;
         for(const transaction &tx : txs)
         {
           crypto::hash tx_hash = get_transaction_hash(tx);
-          m_tx_pool.take_tx(tx_hash, pool_tx, txblob, tx_weight, fee, fee_usd, offshore_fee, offshore_fee_usd, relayed, do_not_relay, double_spend_seen, pruned);
+          m_tx_pool.take_tx(tx_hash, pool_tx, txblob, tx_weight, fee, fee_usd, fee_xasset, offshore_fee, offshore_fee_usd, offshore_fee_xasset, relayed, do_not_relay, double_spend_seen, pruned);
         }
       }
     }

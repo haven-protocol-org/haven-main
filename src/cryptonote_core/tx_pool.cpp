@@ -216,63 +216,86 @@ namespace cryptonote
     bool offshore = false;
     bool onshore = false;
     bool offshore_to_offshore = false;
+    bool xasset_transfer = false;
+    bool xasset_to_xusd = false;
+    bool xusd_to_xasset = false;
+    std::string xasset_type;
+    std::string fee_asset_type;
     if (bOffshoreTx) {
-
-      // HERE BE DRAGONS!!!
-      // NEAC: Add support for new offshore_data format here
-      // LAND AHOY!!!
-      
-      // Set the bool flags
-      if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-	offshore_to_offshore = true;
-      } else if (offshore_data.data.at(0) > 'A') {
-	onshore = true;
+      if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
+        int pos = offshore_data.data.find("-");
+        if (pos != std::string::npos) {
+          std::string strSource = offshore_data.data.substr(0,pos);
+          std::string strDest = offshore_data.data.substr(pos+1);
+          if (strSource == "XHV") {
+            offshore = true;
+          } else if (strDest == "XHV") {
+            onshore = true;
+          } else if (strSource == "XUSD" && strDest == "XUSD") {
+            offshore_transfer = true;
+          } else if (strSource != "XUSD" && strDest != "XUSD") {
+            xasset_transfer = true;
+            xasset_type = strSource;
+          } else if (strSource == "XUSD") {
+            xusd_to_xasset = true;
+            xasset_type = strDest;
+          } else {
+            xasset_to_xusd = true;
+            xasset_type = strSource;
+          }
+          fee_asset_type = strSource;
+        }
       } else {
-	offshore = true;
+        // Set the bool flags
+        if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
+          offshore_to_offshore = true;
+          fee_asset_type = "XUSD";
+        } else if (offshore_data.data.at(0) > 'A') {
+          onshore = true;
+          fee_asset_type = "XUSD";
+        } else {
+          offshore = true;
+          fee_asset_type = "XHV";
+        }
       }
-
-      // HERE BE DRAGONS!!!
-      // NEAC: Add support for verification of conversion fees for xAssets here
-      // LAND AHOY!!!
       
       if (tx.pricing_record_height > 658500) {
+        // Get the pricing record that was used for conversion
+        block bl;
+        bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
+        if (!r) {
+          LOG_ERROR("error: failed to get block containing pricing record");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+            
+        // Check the amount burnt and minted
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, bl.pricing_record, offshore, onshore, xusd_to_xasset, xasset_to_xusd, xasset_type)) {
+          LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
 
-	// Get the pricing record that was used for conversion
-	block bl;
-	bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
-	if (!r) {
-	  LOG_ERROR("error: failed to get block containing pricing record");
-	  tvc.m_verifivation_failed = true;
-	  return false;
-	}
-      
-	// Check the amount burnt and minted
-	if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, bl.pricing_record, offshore, onshore)) {
-	  LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
-	  tvc.m_verifivation_failed = true;
-	  return false;
-	}
-      
-	// Verify the offshore conversion fee is present and correct here
-	uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
-	if (unlock_time < 180) {
-	  LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
-	  tvc.m_verifivation_failed = true;
-	  return false;
-	}
-	uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
-	uint64_t conversion_fee_check =
-	  (priority == 1) ? tx.amount_burnt / 500 :
-	  (priority == 2) ? tx.amount_burnt / 20 :
-	  (priority == 3) ? tx.amount_burnt / 10 :
-	  tx.amount_burnt / 5;
-	if ((offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
-	     (onshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd))) {
-	  LOG_PRINT_L1("conversion fee is incorrect - rejecting");
-	  tvc.m_verifivation_failed = true;
-	  tvc.m_fee_too_low = true;
-	  return false;
-	}
+        // Verify the offshore conversion fee is present and correct here
+        uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+        if (unlock_time < 180) {
+          LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+        uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
+        uint64_t conversion_fee_check =
+          (priority == 1) ? tx.amount_burnt / 500 :
+          (priority == 2) ? tx.amount_burnt / 20 :
+          (priority == 3) ? tx.amount_burnt / 10 :
+          tx.amount_burnt / 5;
+        if ((offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
+            (onshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd))) {
+          LOG_PRINT_L1("conversion fee is incorrect - rejecting");
+          tvc.m_verifivation_failed = true;
+          tvc.m_fee_too_low = true;
+          return false;
+        }
       }
     }
     
@@ -316,6 +339,7 @@ namespace cryptonote
     crypto::hash max_used_block_id = null_hash;
     uint64_t max_used_block_height = 0;
     cryptonote::txpool_tx_meta_t meta{};
+    meta.fee_asset_type = fee_asset_type;
     bool ch_inp_res = check_tx_inputs([&tx]()->cryptonote::transaction&{ return tx; }, id, max_used_block_height, max_used_block_id, tvc, kept_by_block);
     if(!ch_inp_res)
     {
@@ -324,12 +348,16 @@ namespace cryptonote
       if(kept_by_block)
       {
         meta.weight = tx_weight;
-        meta.fee = fee;
-        meta.fee_usd = fee_usd;
-        meta.fee_xasset = fee_xasset;
-        meta.offshore_fee = offshore_fee;
-        meta.offshore_fee_usd = offshore_fee_usd;
-        meta.offshore_fee_xasset = offshore_fee_xasset;
+        if (meta.fee_asset_type == "XHV") {
+          meta.fee = fee;
+          meta.offshore_fee = offshore_fee;
+        } else if (meta.fee_asset_type == "XUSD") {
+          meta.fee = fee_usd;
+          meta.offshore_fee = offshore_fee_usd;
+        } else {
+          meta.fee = fee_xasset;
+          meta.offshore_fee = offshore_fee_xasset;
+        }
         meta.max_used_block_id = null_hash;
         meta.max_used_block_height = 0;
         meta.last_failed_height = 0;
@@ -398,12 +426,16 @@ namespace cryptonote
           meta.last_relayed_time = std::numeric_limits<decltype(meta.last_relayed_time)>::max();
           meta.receive_time = receive_time;
           meta.weight = tx_weight;
-          meta.fee = fee;
-          meta.fee_usd = fee_usd;
-          meta.fee_xasset = fee_xasset;
-          meta.offshore_fee = offshore_fee;
-          meta.offshore_fee_usd = offshore_fee_usd;
-          meta.offshore_fee_xasset = offshore_fee_xasset;
+          if (meta.fee_asset_type == "XHV") {
+            meta.fee = fee;
+            meta.offshore_fee = offshore_fee;
+          } else if (meta.fee_asset_type == "XUSD") {
+            meta.fee = fee_usd;
+            meta.offshore_fee = offshore_fee_usd;
+          } else {
+            meta.fee = fee_xasset;
+            meta.offshore_fee = offshore_fee_xasset;
+          }
           meta.max_used_block_id = max_used_block_id;
           meta.max_used_block_height = max_used_block_height;
           meta.last_failed_height = 0;
@@ -431,7 +463,7 @@ namespace cryptonote
       tvc.m_added_to_pool = true;
 
       static_assert(unsigned(relay_method::none) == 0, "expected relay_method::none value to be zero");
-      if(meta.fee > 0 || meta.fee_usd > 0 || meta.fee_xasset > 0){
+      if(meta.fee > 0){
         tvc.m_relay = tx_relay;
       } else if (tx_relay != relay_method::none && ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0))) {
 	      LOG_PRINT_L1("tx meta.fee is 0, but this is an offshore TX, so relaying enabled");
@@ -721,7 +753,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::take_tx(const crypto::hash &id, transaction &tx, cryptonote::blobdata &txblob, size_t& tx_weight, uint64_t& fee, uint64_t& fee_usd, uint64_t& offshore_fee, uint64_t& offshore_fee_usd, bool &relayed, bool &do_not_relay, bool &double_spend_seen, bool &pruned)
+  bool tx_memory_pool::take_tx(const crypto::hash &id, transaction &tx, cryptonote::blobdata &txblob, size_t& tx_weight, uint64_t& fee, uint64_t& offshore_fee, std::string& fee_asset_type, bool &relayed, bool &do_not_relay, bool &double_spend_seen, bool &pruned)
   {
     CRITICAL_REGION_LOCAL(m_transactions_lock);
     CRITICAL_REGION_LOCAL1(m_blockchain);
@@ -754,9 +786,8 @@ namespace cryptonote
       }
       tx_weight = meta.weight;
       fee = meta.fee;
-      fee_usd = meta.fee_usd;
       offshore_fee = meta.offshore_fee;
-      offshore_fee_usd = meta.offshore_fee_usd;
+      fee_asset_type = meta.fee_asset_type;
       relayed = meta.relayed;
       do_not_relay = meta.do_not_relay;
       double_spend_seen = meta.double_spend_seen;
