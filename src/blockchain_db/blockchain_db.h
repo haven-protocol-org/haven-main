@@ -157,8 +157,6 @@ struct txpool_tx_meta_t
   crypto::hash last_failed_id;
   uint64_t weight;
   uint64_t fee;
-  uint64_t offshore_fee;
-  std::string fee_asset_type;
   uint64_t max_used_block_height;
   uint64_t last_failed_height;
   uint64_t receive_time;
@@ -172,8 +170,11 @@ struct txpool_tx_meta_t
   uint8_t is_local: 1;
   uint8_t dandelionpp_stem : 1;
   uint8_t bf_padding: 4;
+  uint8_t padding1[4];
+  uint64_t offshore_fee;
+  char fee_asset_type[4];
 
-  uint8_t padding[52]; // till 192 bytes
+  uint8_t padding[60]; // till 192 bytes
 
   void set_relay_method(relay_method method) noexcept;
   relay_method get_relay_method() const noexcept;

@@ -143,7 +143,7 @@ namespace cryptonote
   }
   
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, uint64_t fee_usd, uint64_t offshore_fee, uint64_t offshore_fee_usd, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, cryptonote::network_type nettype) {
+  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, std::map<std::string, uint64_t> fee_map,  std::map<std::string, uint64_t> offshore_fee_map, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, cryptonote::network_type nettype) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -169,8 +169,11 @@ namespace cryptonote
     }
 
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-    LOG_PRINT_L1("Creating block template: reward " << block_reward <<
-      ", fee " << fee);
+    // HERE BE DRAGONS!!!
+    // NEAC: need to iterate over the currency maps to output all fees
+    //LOG_PRINT_L1("Creating block template: reward " << block_reward <<
+    //  ", fee " << fee);
+    // LAND AHOY!!!
 #endif
 
     uint64_t governance_reward = 0;
@@ -182,7 +185,7 @@ namespace cryptonote
       }
     }
 
-    block_reward += fee;
+    block_reward += fee_map["XHV"];
 
     uint64_t summary_amounts = 0;
 
@@ -243,7 +246,7 @@ namespace cryptonote
         summary_amounts += out.amount = governance_reward;
 
         if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
-          out.amount += offshore_fee;
+          out.amount += offshore_fee_map["XHV"];
         }
 
         out.target = tk;
@@ -254,47 +257,83 @@ namespace cryptonote
       }
     }
     if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+
+      // Add all of the outputs for all of the currencies in the contained TXs
+      uint64_t idx = 2;
+      for (auto &fee_map_entry: fee_map) {
+
+	// Skip XHV - we have already handled that above
+	if (fee_map_entry.first == "XHV")
+	  continue;
+	
+	if (fee_map_entry.second != 0) {
+
+	  uint64_t block_reward_xasset = fee_map_entry.second;
+	  uint64_t governance_reward_xasset = 0;
+	  governance_reward_xasset = get_governance_reward(height, fee_map_entry.second);
+	  block_reward_xasset -= governance_reward_xasset;
+
+	  // Add the conversion fee to the governance payment (if provided)
+	  if (offshore_fee_map[fee_map_entry.first] != 0) {
+	    governance_reward_xasset += offshore_fee_map[fee_map_entry.first];
+	  }
+
+	  // Miner component of the xAsset TX fee
+	  r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
+	  CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
+	  idx++;
+
+	  if (fee_map_entry.first == "XUSD") {
+	    // Offshore TX
+	    txout_offshore tk_off;
+	    tk_off.key = out_eph_public_key;
       
-      // Add outputs for the xUSD amounts
-      if (fee_usd != 0) {
-        uint64_t block_reward_usd = fee_usd;
-        uint64_t governance_reward_usd = 0;
-        governance_reward_usd = get_governance_reward(height, fee_usd);
-        block_reward_usd -= governance_reward_usd;
+	    tx_out out_off;
+	    out_off.amount = block_reward_xasset;
+	    out_off.target = tk_off;
+	    tx.vout.push_back(out_off);
+	  } else {
+	    // xAsset TX
+	    txout_xasset tk_off;
+	    tk_off.key = out_eph_public_key;
+	    tk_off.asset_type = fee_map_entry.first;
       
-        // Add in the offshore conversion fees to the governance payment
-        if (offshore_fee_usd != 0) {
-          governance_reward_usd += offshore_fee_usd;
-        }
+	    tx_out out_off;
+	    out_off.amount = block_reward_xasset;
+	    out_off.target = tk_off;
+	    tx.vout.push_back(out_off);
+	  }
 
-        // Miner component of the offshore fee
-        r = crypto::derive_public_key(derivation, 2, miner_address.m_spend_public_key, out_eph_public_key);
-        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << "2" << ", "<< miner_address.m_spend_public_key << ")");
+	  crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
 
-        txout_offshore tk_off;
-        tk_off.key = out_eph_public_key;
-      
+	  if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
+	  {
+	    MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
+	    return false;
+	  }
+	  idx++;
 
-      tx_out out_off;
-      out_off.amount = block_reward_usd;
-      out_off.target = tk_off;
-      tx.vout.push_back(out_off);
-
-      crypto::public_key out_eph_public_key_usd = AUTO_VAL_INIT(out_eph_public_key_usd);
-
-      if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, 3 /* fourth output in miner tx */, out_eph_public_key_usd))
-      {
-        MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
-        return false;
-      }
-
-      txout_offshore tk_gov;
-      tk_gov.key = out_eph_public_key_usd;
-
-      tx_out out_gov;
-      out_gov.amount = governance_reward_usd;
-      out_gov.target = tk_gov;
-      tx.vout.push_back(out_gov);
+	  if (fee_map_entry.first == "XUSD") {
+	    // Offshore TX
+	    txout_offshore tk_gov;
+	    tk_gov.key = out_eph_public_key_xasset;
+	    
+	    tx_out out_gov;
+	    out_gov.amount = governance_reward_xasset;
+	    out_gov.target = tk_gov;
+	    tx.vout.push_back(out_gov);
+	  } else {
+	    // xAsset TX
+	    txout_xasset tk_gov;
+	    tk_gov.key = out_eph_public_key_xasset;
+	    tk_gov.asset_type = fee_map_entry.first;
+	    
+	    tx_out out_gov;
+	    out_gov.amount = governance_reward_xasset;
+	    out_gov.target = tk_gov;
+	    tx.vout.push_back(out_gov);
+	  }
+	}
       }
     }
     
@@ -1522,7 +1561,8 @@ namespace cryptonote
     bl = {};
     account_public_address ac = boost::value_initialized<account_public_address>();
     std::vector<size_t> sz;
-    construct_miner_tx(0, 0, 0, 0, 0, 0, 0, 0, ac, bl.miner_tx, blobdata(), 999, 1, nettype); // zero fee in genesis
+    std::map<std::string, uint64_t> fee_map, offshore_fee_map;
+    construct_miner_tx(0, 0, 0, 0, fee_map, offshore_fee_map, ac, bl.miner_tx, blobdata(), 999, 1, nettype); // zero fee in genesis
     blobdata txb = tx_to_blob(bl.miner_tx);
     std::string hex_tx_represent = string_tools::buff_to_hex_nodelimer(txb);
 

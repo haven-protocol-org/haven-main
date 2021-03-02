@@ -234,16 +234,14 @@ namespace cryptonote
      * @param median_weight the current median block weight
      * @param already_generated_coins the current total number of coins "minted"
      * @param total_weight return-by-reference the total weight of the new block
-     * @param fee return-by-reference the total of fees from the included transactions
-     * @param fee_usd return-by-reference the total of offshore TX fees from the included transactions
-     * @param offshore_fee return-by-reference the total of XHV offshore conversion fees from the included transactions
-     * @param offshore_fee_usd return-by-reference the total of xUSD offshore conversion fees from the included transactions
+     * @param fee_map return-by-reference the map of total fees against currency from the included transactions
+     * @param offshore_fee_map return-by-reference the map of total TX conversion fees from the included transactions
      * @param expected_reward return-by-reference the total reward awarded to the miner finding this block, including transaction fees
      * @param version hard fork version to use for consensus rules
      *
      * @return true
      */
-    bool fill_block_template(block &bl, size_t median_weight, uint64_t already_generated_coins, size_t &total_weight, uint64_t &fee, uint64_t &fee_usd, uint64_t &offshore_fee, uint64_t &offshore_fee_usd, uint64_t &expected_reward, uint8_t version);
+    bool fill_block_template(block &bl, size_t median_weight, uint64_t already_generated_coins, size_t &total_weight, std::map<std::string, uint64_t> &fee_map, std::map<std::string, uint64_t> &offshore_fee_map, uint64_t &expected_reward, uint8_t version);
 
     /**
      * @brief get a list of all transactions in the pool
