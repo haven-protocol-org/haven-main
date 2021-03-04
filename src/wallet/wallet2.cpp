@@ -2747,10 +2747,11 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   
   // set the fee
   uint64_t fee = miner_tx ? 0 :
-                // if the tx version is 1, the asset_type must be XHV
-                tx.version == 1 ? tx_money_spent_in_ins - get_outs_money_amount(tx)["XHV"] :
-                strSource == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
-                tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd;
+    // if the tx version is 1, the asset_type must be XHV
+    tx.version == 1 ? tx_money_spent_in_ins - get_outs_money_amount(tx)["XHV"] :
+    strSource == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
+    strSource == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd :
+    tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset;
 
   if (tx_money_spent_in_ins > 0 && !pool)
   {
@@ -15903,6 +15904,17 @@ uint64_t wallet2::get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destin
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
 {
+  // Calculate the amount being sent
+  uint64_t amount_xasset = 0;
+  for (auto dt: dsts) {
+    THROW_WALLET_EXCEPTION_IF(0 == dt.amount_xasset, error::zero_destination);
+    amount_xasset += dt.amount_xasset;
+  }
+
+  if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)) {
+    return amount_xasset / 500;
+  }
+
   return 0;
 }
 //----------------------------------------------------------------------------------------------------
@@ -15913,6 +15925,17 @@ uint64_t wallet2::get_xasset_transfer_fee(std::vector<cryptonote::tx_destination
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
 {
+  // Calculate the amount being sent
+  uint64_t amount_usd = 0;
+  for (auto dt: dsts) {
+    THROW_WALLET_EXCEPTION_IF(0 == dt.amount_usd, error::zero_destination);
+    amount_usd += dt.amount_usd;
+  }
+
+  if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)) {
+    return amount_usd / 500;
+  }
+
   return 0;
 }
 //----------------------------------------------------------------------------------------------------

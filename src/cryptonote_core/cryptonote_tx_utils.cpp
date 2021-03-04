@@ -816,6 +816,50 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
+  bool get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
+
+    // Calculate the amount being sent
+    auto dsts_copy = dsts;
+    // Exclude the change
+    dsts_copy.pop_back();
+    uint64_t amount_xasset = 0;
+    for (auto dt: dsts_copy) {
+      if (0 == dt.amount_xasset) {
+	MERROR("No xAsset amount specified for destination");
+	return false;
+      }
+      amount_xasset += dt.amount_xasset;
+    }
+
+    // Calculate 0.2% of the total being sent
+    fee_estimate = amount_xasset / 500;
+
+    // Return success
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
+
+    // Calculate the amount being sent
+    auto dsts_copy = dsts;
+    // Exclude the change
+    dsts_copy.pop_back();
+    uint64_t amount_usd = 0;
+    for (auto dt: dsts_copy) {
+      if (0 == dt.amount_usd) {
+	MERROR("No USD amount specified for destination");
+	return false;
+      }
+      amount_usd += dt.amount_usd;
+    }
+
+    // Calculate 0.2% of the total being sent
+    fee_estimate = amount_usd / 500;
+
+    // Return success
+    return true;
+  }
+  //---------------------------------------------------------------
   bool construct_tx_with_tx_key(
     const account_keys& sender_account_keys, 
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, 
@@ -1401,10 +1445,14 @@ namespace cryptonote
       uint64_t offshore_fee = 0;
       uint64_t offshore_fee_usd = 0;
       uint64_t offshore_fee_xasset = 0;
-      bool r = (offshore) ? get_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee, sources, current_height) :
-        (onshore) ? get_onshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) : true;
-        
-      (offshore_transfer) ? get_offshore_to_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) : true;
+      bool r =
+	(offshore) ? get_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee, sources, current_height) :
+        (onshore) ? get_onshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+	(offshore_transfer) ? get_offshore_to_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+	(xusd_to_xasset) ? get_xusd_to_xasset_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+	(xasset_to_xusd) ? get_xasset_to_xusd_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_xasset, sources, current_height) :
+	(xasset_transfer) ? true :
+	true;
       if (!r) {
         LOG_ERROR("failed to get offshore fee - aborting");
         return false;
