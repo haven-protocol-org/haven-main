@@ -391,7 +391,7 @@ namespace cryptonote
       }
     }
 
-    if (0/*fees_version == 3*/) {
+    if (0/*fees_version >= 3*/) {
 
       // Get the delta
       // abs() implementation for uint64_t's
@@ -484,7 +484,7 @@ namespace cryptonote
       MINFO("Conversion fee = " << print_money((uint64_t)conversion_fee) << ", speed fee = " << print_money(speed_fee));
       fee_estimate = (uint64_t)conversion_fee + speed_fee + speculation_fee;
       
-    } else if (fees_version == 2) {
+    } else if (fees_version >= 2) {
 
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
@@ -522,7 +522,7 @@ namespace cryptonote
       }
     }
 
-    if (0/*fees_version == 3*/) {
+    if (0/*fees_version >= 3*/) {
 
       // Get the delta
       // abs() implementation for uint64_t's
@@ -661,7 +661,7 @@ namespace cryptonote
       MINFO("Conversion fee = " << print_money((uint64_t)conversion_fee) << ", speed fee = " << print_money(speed_fee) << ", speculation fee = " << print_money(speculation_fee));
       fee_estimate = (uint64_t)conversion_fee + speed_fee + speculation_fee;
       
-    } else if (fees_version == 2) {
+    } else if (fees_version >= 2) {
 
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
@@ -700,7 +700,7 @@ namespace cryptonote
       amount_usd += dt.amount_usd;
     }
 
-    if (0/*fees_version == 3*/) {
+    if (0/*fees_version >= 3*/) {
 
       // Get the delta
       // abs() implementation for uint64_t's

@@ -220,7 +220,7 @@ namespace cryptonote
     bool xasset_to_xusd = false;
     bool xusd_to_xasset = false;
     std::string xasset_type;
-    std::string fee_asset_type;
+    std::string fee_asset_type = "XHV";
     if (bOffshoreTx) {
       if (version >= HF_VERSION_XASSET_FULL) {
         int pos = offshore_data.data.find("-");
@@ -291,6 +291,9 @@ namespace cryptonote
           tx.amount_burnt / 5;
         if ((offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
             (onshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd))) {
+	  // HERE BE DRAGONS!!!
+	  // NEAC: check burnt values to be sure that xAsset fees are correct
+	  // LAND AHOY!!!
           LOG_PRINT_L1("conversion fee is incorrect - rejecting");
           tvc.m_verifivation_failed = true;
           tvc.m_fee_too_low = true;
@@ -369,6 +372,7 @@ namespace cryptonote
         meta.double_spend_seen = have_tx_keyimges_as_spent(tx, id);
         meta.pruned = tx.pruned;
         meta.bf_padding = 0;
+        memset(meta.padding1, 0, sizeof(meta.padding1));
         memset(meta.padding, 0, sizeof(meta.padding));
         try
         {
@@ -444,6 +448,7 @@ namespace cryptonote
           meta.double_spend_seen = false;
           meta.pruned = tx.pruned;
           meta.bf_padding = 0;
+	  memset(meta.padding1, 0, sizeof(meta.padding1));
           memset(meta.padding, 0, sizeof(meta.padding));
 
           if (!insert_key_images(tx, id, tx_relay))
