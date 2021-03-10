@@ -831,8 +831,8 @@ namespace cryptonote
       amount_xasset += dt.amount_xasset;
     }
 
-    // Calculate 0.2% of the total being sent
-    fee_estimate = amount_xasset / 500;
+    // Calculate 0.3% of the total being sent
+    fee_estimate = (amount_xasset * 3) / 1000;
 
     // Return success
     return true;
@@ -853,8 +853,8 @@ namespace cryptonote
       amount_usd += dt.amount_usd;
     }
 
-    // Calculate 0.2% of the total being sent
-    fee_estimate = amount_usd / 500;
+    // Calculate 0.3% of the total being sent
+    fee_estimate = (amount_usd * 3) / 1000;
 
     // Return success
     return true;

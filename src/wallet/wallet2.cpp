@@ -15912,7 +15912,7 @@ uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_
   }
 
   if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)) {
-    return amount_xasset / 500;
+    return (amount_xasset * 3) / 1000;
   }
 
   return 0;
@@ -15933,7 +15933,7 @@ uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_
   }
 
   if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)) {
-    return amount_usd / 500;
+    return (amount_usd * 3) / 1000;
   }
 
   return 0;

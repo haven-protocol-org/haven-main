@@ -6797,15 +6797,21 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     // Set the bool flags
     if ((strSource != "XUSD") && (strDest != "XUSD")) {
       xasset_transfer = true;
+      locked_blocks = 10;
       if (priority > 1) {
 	message_writer() << boost::format(tr("Reducing priority from %d to 1 - xAsset transfers do not permit other priorities\n")) % priority;
 	priority = 1;
       }
     } else if (strSource != "XUSD") {
       xasset_to_xusd = true;
+      locked_blocks = 10;
     } else {
       xusd_to_xasset = true;
+      locked_blocks = 10;
     }
+
+    // Modify the transfer_type to support the unlock time
+    transfer_type = TransferLocked;
   }
 
   // add the memo data to tx extra if it exist
