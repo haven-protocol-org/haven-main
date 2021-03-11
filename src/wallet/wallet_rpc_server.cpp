@@ -2490,7 +2490,12 @@ namespace tools
 
     try
     {
-      m_wallet->check_tx_key(txid, tx_key, additional_tx_keys, info.address, res.received, res.received_usd, res.in_pool, res.confirmations);
+      std::map<std::string, uint64_t> received; 
+      m_wallet->check_tx_key(txid, tx_key, additional_tx_keys, info.address, received, res.in_pool, res.confirmations);
+      for (const auto& r: received) {
+        res.received_assets.push_back(r.first);
+        res.received_amounts.push_back(r.second);
+      }
     }
     catch (const std::exception &e)
     {
@@ -2556,7 +2561,12 @@ namespace tools
 
     try
     {
-      res.good = m_wallet->check_tx_proof(txid, info.address, info.is_subaddress, req.message, req.signature, res.received, res.received_usd, res.received_xasset, res.asset_type, res.in_pool, res.confirmations);
+      std::map<std::string, uint64_t> received; 
+      res.good = m_wallet->check_tx_proof(txid, info.address, info.is_subaddress, req.message, req.signature, received, res.in_pool, res.confirmations);
+      for (const auto& r: received) {
+        res.received_assets.push_back(r.first);
+        res.received_amounts.push_back(r.second);
+      }
     }
     catch (const std::exception &e)
     {

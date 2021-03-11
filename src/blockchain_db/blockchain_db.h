@@ -166,17 +166,15 @@ struct txpool_tx_meta_t
   uint8_t relayed;
   uint8_t do_not_relay;
   uint8_t double_spend_seen: 1;
-  uint64_t fee_usd;
-  uint64_t fee_xasset;
-  uint64_t offshore_fee;
-  uint64_t offshore_fee_usd;
-  uint64_t offshore_fee_xasset;
   uint8_t pruned: 1;
   uint8_t is_local: 1;
   uint8_t dandelionpp_stem : 1;
   uint8_t bf_padding: 4;
+  uint8_t padding1[4];
+  uint64_t offshore_fee;
+  char fee_asset_type[8];
 
-  uint8_t padding[52]; // till 192 bytes
+  uint8_t padding[56]; // till 192 bytes
 
   void set_relay_method(relay_method method) noexcept;
   relay_method get_relay_method() const noexcept;

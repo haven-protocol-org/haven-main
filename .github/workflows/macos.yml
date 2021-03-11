@@ -10,11 +10,14 @@ jobs:
       USE_SINGLE_BUILDDIR: 1
     runs-on: macOS-latest
     steps:
+    - uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: '12.0'
     - uses: actions/checkout@v1
       with:
         submodules: recursive
     - name: install dependencies
-      run: brew install hidapi zmq libpgm miniupnpc ldns expat libunwind-headers protobuf
+      run: brew install zmq libpgm miniupnpc ldns expat libunwind-headers protobuf unbound
     - name: build boost
       run: |
         wget https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.gz
@@ -25,10 +28,10 @@ jobs:
         ./b2 install
     - name: build
       run: |
-        make release -j3
+        make release-static-mac-x86_64 -j${nproc}
         chmod +x build/release/bin/*
     - name: Upload artifact
       uses: actions/upload-artifact@v2
       with:
-        name: Haven-MacOS-10.14-and-later
+        name: Haven-MacOS
         path: build/release/bin/

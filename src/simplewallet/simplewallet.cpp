@@ -6797,15 +6797,21 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     // Set the bool flags
     if ((strSource != "XUSD") && (strDest != "XUSD")) {
       xasset_transfer = true;
+      locked_blocks = 10;
       if (priority > 1) {
 	message_writer() << boost::format(tr("Reducing priority from %d to 1 - xAsset transfers do not permit other priorities\n")) % priority;
 	priority = 1;
       }
     } else if (strSource != "XUSD") {
       xasset_to_xusd = true;
+      locked_blocks = 10;
     } else {
       xusd_to_xasset = true;
+      locked_blocks = 10;
     }
+
+    // Modify the transfer_type to support the unlock time
+    transfer_type = TransferLocked;
   }
 
   // add the memo data to tx extra if it exist
@@ -7027,8 +7033,9 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
         for (size_t n = 0; n < ptx_vector.size(); ++n)
         {
           total_fee += ptx_vector[n].fee;
-	  offshore_fee += (onshore || offshore_to_offshore) ?
-	    ptx_vector[n].tx.rct_signatures.txnOffshoreFee_usd :
+	  offshore_fee +=
+	    (xasset_to_xusd || xasset_transfer) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_xasset :
+	    (xusd_to_xasset || onshore || offshore_to_offshore) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_usd :
 	    ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
           for (auto i: ptx_vector[n].selected_transfers) {
 	    total_sent += m_wallet->get_transfer_details(strSource, i).amount();
@@ -8513,33 +8520,34 @@ bool simple_wallet::check_tx_key(const std::vector<std::string> &args_)
 
   try
   {
-    uint64_t received, received_usd;
+    std::map<std::string, uint64_t> received;
     bool in_pool;
     uint64_t confirmations;
-    m_wallet->check_tx_key(txid, tx_key, additional_tx_keys, info.address, received, received_usd, in_pool, confirmations);
-
-    if (received > 0)
-    {
-      success_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received") << " " << print_money(received) << " " << tr("in txid") << " " << txid;
-      if (in_pool)
+    m_wallet->check_tx_key(txid, tx_key, additional_tx_keys, info.address, received, in_pool, confirmations);
+    for (const auto& r: received) {
+      if (r.second > 0)
       {
-        success_msg_writer() << tr("WARNING: this transaction is not yet included in the blockchain!");
-      }
-      else
-      {
-        if (confirmations != (uint64_t)-1)
+        success_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received") << " " << print_money(r.second) << " " << r.first << " " << tr("in txid") << " " << txid;
+        if (in_pool)
         {
-          success_msg_writer() << boost::format(tr("This transaction has %u confirmations")) % confirmations;
+          success_msg_writer() << tr("WARNING: this transaction is not yet included in the blockchain!");
         }
         else
         {
-          success_msg_writer() << tr("WARNING: failed to determine number of confirmations!");
+          if (confirmations != (uint64_t)-1)
+          {
+            success_msg_writer() << boost::format(tr("This transaction has %u confirmations")) % confirmations;
+          }
+          else
+          {
+            success_msg_writer() << tr("WARNING: failed to determine number of confirmations!");
+          }
         }
       }
-    }
-    else
-    {
-      fail_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received nothing in txid") << " " << txid;
+      else
+      {
+        fail_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received nothing in txid") << " " << txid;
+      }
     }
   }
   catch (const std::exception &e)
@@ -8585,35 +8593,37 @@ bool simple_wallet::check_tx_proof(const std::vector<std::string> &args)
 
   try
   {
-    uint64_t received, received_usd, received_xasset;
+    std::map<std::string, uint64_t> received;
     bool in_pool;
     uint64_t confirmations;
     std::string asset_type;
-    if (m_wallet->check_tx_proof(txid, info.address, info.is_subaddress, args.size() == 4 ? args[3] : "", sig_str, received, received_usd, received_xasset, asset_type, in_pool, confirmations))
+    if (m_wallet->check_tx_proof(txid, info.address, info.is_subaddress, args.size() == 4 ? args[3] : "", sig_str, received, in_pool, confirmations))
     {
       success_msg_writer() << tr("Good signature");
-      if (received > 0)
-      {
-        success_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received") << " " << print_money(received) << " " << tr("in txid") << " " << txid;
-        if (in_pool)
+      for (const auto& r: received) {
+        if (r.second > 0)
         {
-          success_msg_writer() << tr("WARNING: this transaction is not yet included in the blockchain!");
-        }
-        else
-        {
-          if (confirmations != (uint64_t)-1)
+          success_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received") << " " << print_money(r.second) << " " << r.first << " " << tr("in txid") << " " << txid;
+          if (in_pool)
           {
-            success_msg_writer() << boost::format(tr("This transaction has %u confirmations")) % confirmations;
+            success_msg_writer() << tr("WARNING: this transaction is not yet included in the blockchain!");
           }
           else
           {
-            success_msg_writer() << tr("WARNING: failed to determine number of confirmations!");
+            if (confirmations != (uint64_t)-1)
+            {
+              success_msg_writer() << boost::format(tr("This transaction has %u confirmations")) % confirmations;
+            }
+            else
+            {
+              success_msg_writer() << tr("WARNING: failed to determine number of confirmations!");
+            }
           }
         }
-      }
-      else
-      {
-        fail_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received nothing in txid") << " " << txid;
+        else
+        {
+          fail_msg_writer() << get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address) << " " << tr("received nothing in txid") << " " << txid;
+        }
       }
     }
     else
