@@ -28,4 +28,4 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: Haven-Windows-x64
-        path: monero/build/release/bin/
+        path: build/release/bin/

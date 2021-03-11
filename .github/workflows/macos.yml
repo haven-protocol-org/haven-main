@@ -29,9 +29,9 @@ jobs:
     - name: build
       run: |
         make release-static-mac-x86_64 -j${nproc}
-        chmod +x monero/build/release/bin/*
+        chmod +x build/release/bin/*
     - name: Upload artifact
       uses: actions/upload-artifact@v2
       with:
         name: Haven-MacOS
-        path: monero/build/release/bin/
+        path: build/release/bin/
