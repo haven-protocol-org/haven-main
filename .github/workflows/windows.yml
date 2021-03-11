@@ -1,0 +1,31 @@
+name: winx64-cli
+
+on: [push, pull_request]
+
+jobs:
+  build-windows:
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      USE_SINGLE_BUILDDIR: 1
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: recursive
+    - uses: eine/setup-msys2@v0
+      with:
+        update: true
+    - name: Install Haven dependencies
+      run: msys2do pacman -S --noconfirm mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-libusb git patch
+    - name: install boost
+      run: |
+        msys2do wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-boost-1.72.0-3-any.pkg.tar.zst
+        msys2do wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-icu-66.1-1-any.pkg.tar.zst
+        msys2do pacman -U --noconfirm *.tar.zst
+    - name: build Haven
+      run: msys2do make release-static-win64
+    - name: Upload artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: Haven-Windows-x64
+        path: build/release/bin/
