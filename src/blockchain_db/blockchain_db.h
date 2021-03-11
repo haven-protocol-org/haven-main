@@ -172,9 +172,9 @@ struct txpool_tx_meta_t
   uint8_t bf_padding: 4;
   uint8_t padding1[4];
   uint64_t offshore_fee;
-  char fee_asset_type[4];
+  char fee_asset_type[8];
 
-  uint8_t padding[60]; // till 192 bytes
+  uint8_t padding[56]; // till 192 bytes
 
   void set_relay_method(relay_method method) noexcept;
   relay_method get_relay_method() const noexcept;
