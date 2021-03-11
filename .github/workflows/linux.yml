@@ -1,0 +1,108 @@
+name: linux-cli
+
+on: [push, pull_request]
+
+jobs:
+  build-linux-glibc-2-29:
+    env:
+      ZMQ_VERSION: v4.3.1
+      CPPZMQ_VERSION: v4.3.0
+      CFLAGS: -fPIC
+      CXXFLAGS: -fPIC
+      USE_SINGLE_BUILDDIR: 1
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: recursive
+    - name: remove bundled boost
+      run: sudo rm -rf /usr/local/share/boost
+    - name: set apt conf
+      run: |
+        echo "Acquire::Retries \"3\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+        echo "Acquire::http::Timeout \"120\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+        echo "Acquire::ftp::Timeout \"120\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+    - name: Install Haven dependencies
+      run: |
+        sudo apt update
+        sudo apt-get --no-install-recommends --yes install libcurl4-openssl-dev build-essential cmake pkg-config libboost-all-dev libssl-dev libunbound-dev libsodium-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev libudev-dev
+    - name: Install libzmq
+      run: |
+        git clone https://github.com/zeromq/libzmq.git -b ${ZMQ_VERSION}
+        cd libzmq
+        ./autogen.sh
+        ./configure --enable-static --disable-shared
+        make -j3
+        sudo make install
+        sudo ldconfig
+    - name: Install cppzmq
+      run: |
+        git clone https://github.com/zeromq/cppzmq.git -b ${CPPZMQ_VERSION}
+        cd cppzmq
+        sudo mv *.hpp /usr/local/include
+    - name: build Haven
+      run: |
+        make release-static -j3
+        chmod +x build/release/bin/*
+    - name: build haven explorer
+      run: |
+        cd haven-blockchain-explorer
+        ./build-block-explorer.sh -j3
+    - name: Upload Haven
+      uses: actions/upload-artifact@v2
+      with:
+        name: Haven-Linux-x64 (glibc 2.29)
+        path: build/release/bin/
+    - name: Upload Haven Explorer
+      uses: actions/upload-artifact@v2
+      with:
+        name: Haven-Explorer-Linux-x64 (glibc 2.29)
+        path: |
+          haven-blockchain-explorer/onion-monero-blockchain-explorer/build/xmrblocks
+          haven-blockchain-explorer/onion-monero-blockchain-explorer/build/templates
+  build-linux-glibc-2-27:
+    env:
+      ZMQ_VERSION: v4.3.1
+      CPPZMQ_VERSION: v4.3.0
+      CFLAGS: -fPIC
+      CXXFLAGS: -fPIC
+      USE_SINGLE_BUILDDIR: 1
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: recursive
+    - name: remove bundled boost
+      run: sudo rm -rf /usr/local/share/boost
+    - name: set apt conf
+      run: |
+        echo "Acquire::Retries \"3\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+        echo "Acquire::http::Timeout \"120\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+        echo "Acquire::ftp::Timeout \"120\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+    - name: Install Haven dependencies
+      run: |
+        sudo apt update
+        sudo apt-get --no-install-recommends --yes install build-essential cmake pkg-config libboost-all-dev libssl-dev libunbound-dev libsodium-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev libudev-dev
+    - name: Install libzmq
+      run: |
+        git clone https://github.com/zeromq/libzmq.git -b ${ZMQ_VERSION}
+        cd libzmq
+        ./autogen.sh
+        ./configure --enable-static --disable-shared
+        make -j3
+        sudo make install
+        sudo ldconfig
+    - name: Install cppzmq
+      run: |
+        git clone https://github.com/zeromq/cppzmq.git -b ${CPPZMQ_VERSION}
+        cd cppzmq
+        sudo mv *.hpp /usr/local/include
+    - name: build Haven
+      run: |
+        make release-static -j3
+        chmod +x build/release/bin/*
+    - name: Upload artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: Haven-Linux-x64 (glibc 2.27)
+        path: build/release/bin/
