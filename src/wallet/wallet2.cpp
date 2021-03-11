@@ -10472,7 +10472,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   boost::unique_lock<hw::device> hwdev_lock (hwdev);
   hw::reset_mode rst(hwdev);  
 
-  auto original_dsts = dsts;
+  // auto original_dsts = dsts;
 
   if(m_light_wallet) {
     // Populate m_transfers
@@ -11255,13 +11255,13 @@ skip_tx:
   if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) 
     bool b = get_pricing_record(pr, ptx_vector.back().tx.pricing_record_height);
   
-  THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, original_dsts, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, strSource, strDest, pr), error::wallet_internal_error, "Created transaction(s) failed sanity check");
+  THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
 
   // if we made it this far, we're OK to actually send the transactions
   return ptx_vector;
 }
 
-bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, std::vector<cryptonote::tx_destination_entry> dsts, bool offshore, bool onshore, bool offshore_to_offshore, bool xasset_to_xusd, bool xusd_to_xasset, bool xasset_transfer, const std::string strSource, const std::string strDest, offshore::pricing_record pr) const
+bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, std::vector<cryptonote::tx_destination_entry> dsts) const
 {
   MDEBUG("sanity_check: " << ptx_vector.size() << " txes, " << dsts.size() << " destinations");
 
@@ -11269,32 +11269,18 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
 
   THROW_WALLET_EXCEPTION_IF(ptx_vector.empty(), error::wallet_internal_error, "No transactions");
 
-  const bool use_offshore_outputs = onshore || offshore_to_offshore || xusd_to_xasset;
-  const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
-  //const transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
   
   // check every party in there does receive at least the required amount
   std::unordered_map<account_public_address, std::pair<std::map<std::string,uint64_t>, bool>> required;
   for (const auto &d: dsts)
   {
-    if (d.currency_type == "XHV") 
+    if (d.currency_type == "XHV")
       required[d.addr].first["XHV"] += d.amount;
     else if (d.currency_type == "XUSD") 
       required[d.addr].first["XUSD"] += d.amount_usd;
     else
       required[d.addr].first[d.currency_type] += d.amount_xasset;
-    /*
-    if (offshore) {
-      //required[d.addr].first.second += d.amount;
-      required[d.addr].first.first += d.amount;
-    } else if (onshore) {
-      required[d.addr].first.first += d.amount;
-    } else if (offshore_to_offshore) {
-      required[d.addr].first.second += d.amount;
-    } else {
-      required[d.addr].first.first += d.amount;
-    }
-    */
+
     required[d.addr].second = d.is_subaddress;
   }
 
@@ -11327,109 +11313,37 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
     required[ptx.change_dts.addr].second = ptx.change_dts.is_subaddress;
   }
 
-  for (const auto &r: required)
+  for (auto &r: required)
   {
     const account_public_address &address = r.first;
     const crypto::public_key &view_pkey = address.m_view_public_key;
 
-    uint64_t total_received = 0, total_received_usd = 0, total_received_xasset;
+    std::map<std::string, uint64_t> total_received;
     for (const auto &ptx: ptx_vector)
     {
-      uint64_t received = 0, received_usd = 0, received_xasset = 0;
+      std::map<std::string, uint64_t> received;
       try
       {
         std::string proof = get_tx_proof(ptx.tx, ptx.tx_key, ptx.additional_tx_keys, address, r.second.second, "automatic-sanity-check");
-	std::string asset_type;
-        check_tx_proof(ptx.tx, address, r.second.second, "automatic-sanity-check", proof, received, received_usd, received_xasset, asset_type);
+        check_tx_proof(ptx.tx, address, r.second.second, "automatic-sanity-check", proof, received);
       }
-      catch (const std::exception &e) { received = 0; }
-      total_received += received;
-      total_received_usd += received_usd;
-      total_received_xasset += received_xasset;
+      catch (const std::exception &e) {
+        for (auto& re: received) {
+          re.second = 0;
+        }
+      }
+      for (const auto& re: received) {
+        total_received[re.first] += re.second;
+      }
     }
 
-    // HERE BE DRAGONS!!!
-    // NEAC: The remaining code in this function needs to be rewritten to accommodate xAssets
-    // LAND AHOY!!!
-    /*    
-    // Now check the difference is accounted for by the exchange rate
-    std::stringstream ss;
-    if (offshore) {
-      if ((total_received > 0) && (total_received_usd < r.second.first.second)) {
-
-	boost::multiprecision::uint128_t usd_128 = (r.second.first.second - total_received_usd);
-	boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-	boost::multiprecision::uint128_t xhv_128 = usd_128 * 1000000000000;
-	xhv_128 /= exchange_128;
-	uint64_t xhv_result = (uint64_t)xhv_128;
-
-	ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	   << cryptonote::print_money(total_received) << ", expected " << cryptonote::print_money(r.second.first.first);
-	MDEBUG(ss.str());
-	THROW_WALLET_EXCEPTION_IF(total_received < xhv_result, error::wallet_internal_error, ss.str());
-
-      } else {
-	// Staying in same currency - change or offshore fee
-	ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	   << cryptonote::print_money(total_received_usd) << ", expected " << cryptonote::print_money(r.second.first.second);
-	MDEBUG(ss.str());
-	THROW_WALLET_EXCEPTION_IF(total_received_usd < r.second.first.second, error::wallet_internal_error, ss.str());
-      }
-      if ((total_received_usd > 0) && (total_received < r.second.first.first)) {
-
-	boost::multiprecision::uint128_t xhv_128 = (r.second.first.first - total_received);
-	boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-	boost::multiprecision::uint128_t usd_128 = xhv_128 * exchange_128;
-	usd_128 /= 1000000000000;
-	uint64_t usd_result = (uint64_t)usd_128;
-
-	ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	   << cryptonote::print_money(total_received_usd) << ", expected " << cryptonote::print_money(r.second.first.second);
-	MDEBUG(ss.str());
-	THROW_WALLET_EXCEPTION_IF(total_received_usd < usd_result, error::wallet_internal_error, ss.str());
-
-      } else {
-	// Staying in same currency - change
-	ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	   << cryptonote::print_money(total_received) << ", expected " << cryptonote::print_money(r.second.first.first);
-	MDEBUG(ss.str());
-	THROW_WALLET_EXCEPTION_IF(total_received < r.second.first.first, error::wallet_internal_error, ss.str());
-      }
-    } else if (onshore) {
-      if ((total_received_usd > 0) && (total_received < r.second.first.first)) {
-
-	boost::multiprecision::uint128_t xhv_128 = (r.second.first.first - total_received);
-	boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-	boost::multiprecision::uint128_t usd_128 = xhv_128 * exchange_128;
-	usd_128 /= 1000000000000;
-	uint64_t usd_result = (uint64_t)usd_128;
-
-	ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	   << cryptonote::print_money(total_received_usd) << ", expected " << cryptonote::print_money(r.second.first.second);
-	MDEBUG(ss.str());
-	THROW_WALLET_EXCEPTION_IF(total_received_usd < usd_result, error::wallet_internal_error, ss.str());
-
-      } else {
-	// Staying in same currency - change
-	ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	   << cryptonote::print_money(total_received) << ", expected " << cryptonote::print_money(r.second.first.first);
-	MDEBUG(ss.str());
-	THROW_WALLET_EXCEPTION_IF(total_received < r.second.first.first, error::wallet_internal_error, ss.str());
-      }
-    } else if (offshore_to_offshore) {
-      // Nothing to do here
+    for (const auto& tr: total_received) {
+      std::stringstream ss;
       ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	 << cryptonote::print_money(total_received_usd) << ", expected " << cryptonote::print_money(r.second.first.second);
+          << cryptonote::print_money(tr.second) << " " << tr.first << ", expected " << cryptonote::print_money(r.second.first[tr.first]);
       MDEBUG(ss.str());
-      THROW_WALLET_EXCEPTION_IF(total_received_usd < r.second.first.second, error::wallet_internal_error, ss.str());
-   } else {
-      // Nothing to do here
-      ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-	 << cryptonote::print_money(total_received) << ", expected " << cryptonote::print_money(r.second.first.first);
-      MDEBUG(ss.str());
-      THROW_WALLET_EXCEPTION_IF(total_received < r.second.first.first, error::wallet_internal_error, ss.str());
+      THROW_WALLET_EXCEPTION_IF(tr.second < r.second.first[tr.first], error::wallet_internal_error, ss.str());
     }
-    */    
   }
 
   return true;
@@ -12551,7 +12465,7 @@ bool wallet2::check_spend_proof(const crypto::hash &txid, const std::string &mes
 }
 //----------------------------------------------------------------------------------------------------
 
-void wallet2::check_tx_key(const crypto::hash &txid, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, const cryptonote::account_public_address &address, uint64_t &received, uint64_t &received_usd, bool &in_pool, uint64_t &confirmations)
+void wallet2::check_tx_key(const crypto::hash &txid, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, const cryptonote::account_public_address &address, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations)
 {
   crypto::key_derivation derivation;
   THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(address.m_view_public_key, tx_key, derivation), error::wallet_internal_error,
@@ -12563,12 +12477,11 @@ void wallet2::check_tx_key(const crypto::hash &txid, const crypto::secret_key &t
     THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(address.m_view_public_key, additional_tx_keys[i], additional_derivations[i]), error::wallet_internal_error,
       "Failed to generate key derivation from supplied parameters");
 
-  check_tx_key_helper(txid, derivation, additional_derivations, address, received, received_usd, in_pool, confirmations);
+  check_tx_key_helper(txid, derivation, additional_derivations, address, received, in_pool, confirmations);
 }
 
-void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypto::key_derivation &derivation, const std::vector<crypto::key_derivation> &additional_derivations, const cryptonote::account_public_address &address, uint64_t &received, uint64_t &received_usd) const
+void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypto::key_derivation &derivation, const std::vector<crypto::key_derivation> &additional_derivations, const cryptonote::account_public_address &address, std::map<std::string, uint64_t> &received) const
 {
-  received = 0;
 
   bool bOffshoreTx = false;
   tx_extra_offshore offshore_data;
@@ -12581,14 +12494,17 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
   {
     bool found = false;
     bool offshore = false;
+    bool xasset = false;
     crypto::public_key derived_out_key;
     crypto::key_derivation found_derivation;
 
     // NEAC - check for offshore & onshore types as well as regular outs
+    std::string asset_type;
     if (tx.vout[n].target.type() == typeid(txout_to_key)) {
+      asset_type = "XHV";
       const cryptonote::txout_to_key* const out_key = boost::get<cryptonote::txout_to_key>(std::addressof(tx.vout[n].target));
       if (!out_key)
-	continue;
+	      continue;
     
       bool r = crypto::derive_public_key(derivation, n, address.m_spend_public_key, derived_out_key);
       THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive public key");
@@ -12596,16 +12512,17 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
       found_derivation = derivation;
       if (!found && !additional_derivations.empty())
       {
-	r = crypto::derive_public_key(additional_derivations[n], n, address.m_spend_public_key, derived_out_key);
-	THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive public key");
-	found = out_key->key == derived_out_key;
-	found_derivation = additional_derivations[n];
+        r = crypto::derive_public_key(additional_derivations[n], n, address.m_spend_public_key, derived_out_key);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive public key");
+        found = out_key->key == derived_out_key;
+        found_derivation = additional_derivations[n];
       }
     } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
       offshore = true;
+      asset_type = "XUSD";
       const cryptonote::txout_offshore* const out_key = boost::get<cryptonote::txout_offshore>(std::addressof(tx.vout[n].target));
       if (!out_key)
-	continue;
+	      continue;
     
       bool r = crypto::derive_public_key(derivation, n, address.m_spend_public_key, derived_out_key);
       THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive offshore public key");
@@ -12613,10 +12530,28 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
       found_derivation = derivation;
       if (!found && !additional_derivations.empty())
       {
-	r = crypto::derive_public_key(additional_derivations[n], n, address.m_spend_public_key, derived_out_key);
-	THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive offshore public key");
-	found = out_key->key == derived_out_key;
-	found_derivation = additional_derivations[n];
+        r = crypto::derive_public_key(additional_derivations[n], n, address.m_spend_public_key, derived_out_key);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive offshore public key");
+        found = out_key->key == derived_out_key;
+        found_derivation = additional_derivations[n];
+      }
+    } else if (tx.vout[n].target.type() == typeid(txout_xasset)) { 
+      xasset = true;
+      const cryptonote::txout_xasset* const out_key = boost::get<cryptonote::txout_xasset>(std::addressof(tx.vout[n].target));
+      asset_type = out_key->asset_type;
+      if (!out_key)
+	      continue;
+    
+      bool r = crypto::derive_public_key(derivation, n, address.m_spend_public_key, derived_out_key);
+      THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive offshore public key");
+      found = out_key->key == derived_out_key;
+      found_derivation = derivation;
+      if (!found && !additional_derivations.empty())
+      {
+        r = crypto::derive_public_key(additional_derivations[n], n, address.m_spend_public_key, derived_out_key);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive offshore public key");
+        found = out_key->key == derived_out_key;
+        found_derivation = additional_derivations[n];
       }
     } else {
       LOG_PRINT_L2(__func__ << ":" << __LINE__ << " : warning - found invalid 'out' type - skipping");
@@ -12636,36 +12571,25 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
         crypto::derivation_to_scalar(found_derivation, n, scalar1);
         rct::ecdhTuple ecdh_info = tx.rct_signatures.ecdhInfo[n];
         rct::ecdhDecode(ecdh_info, rct::sk2rct(scalar1), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeCLSAGN);
-        const rct::key C = (offshore ? tx.rct_signatures.outPk_usd[n].mask : tx.rct_signatures.outPk[n].mask);
+        const rct::key C = (offshore ? tx.rct_signatures.outPk_usd[n].mask : xasset ? tx.rct_signatures.outPk_xasset[n].mask : tx.rct_signatures.outPk[n].mask);
         rct::key Ctmp;
         THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.mask.bytes) != 0, error::wallet_internal_error, "Bad ECDH input mask");
         THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.amount.bytes) != 0, error::wallet_internal_error, "Bad ECDH input amount");
         rct::addKeys2(Ctmp, ecdh_info.mask, ecdh_info.amount, rct::H);
         if (rct::equalKeys(C, Ctmp)) {
           amount = rct::h2d(ecdh_info.amount);
-	  if (offshore) {
-	    LOG_PRINT_L0("rct::equalKeys() passed for OFFSHORE amount " << amount);
-	  }
         }
-	else if (bOffshoreTx)
-	{
-          amount = rct::h2d(ecdh_info.amount);
-	  LOG_PRINT_L0("rct::equalKeys() FAILED for OFFSHORE amount " << amount);
-	}
-	else {
+        else {
           amount = 0;
-	}
+        }
       }
-      if (offshore) {
-	received_usd += amount;
-      } else {
-	received += amount;
-      }
+
+      received[asset_type] += amount;
     }
   }
 }
 
-void wallet2::check_tx_key_helper(const crypto::hash &txid, const crypto::key_derivation &derivation, const std::vector<crypto::key_derivation> &additional_derivations, const cryptonote::account_public_address &address, uint64_t &received, uint64_t &received_usd, bool &in_pool, uint64_t &confirmations)
+void wallet2::check_tx_key_helper(const crypto::hash &txid, const crypto::key_derivation &derivation, const std::vector<crypto::key_derivation> &additional_derivations, const cryptonote::account_public_address &address, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations)
 {
   COMMAND_RPC_GET_TRANSACTIONS::request req;
   COMMAND_RPC_GET_TRANSACTIONS::response res;
@@ -12706,7 +12630,7 @@ void wallet2::check_tx_key_helper(const crypto::hash &txid, const crypto::key_de
   THROW_WALLET_EXCEPTION_IF(!additional_derivations.empty() && additional_derivations.size() != tx.vout.size(), error::wallet_internal_error,
     "The size of additional derivations is wrong");
 
-  check_tx_key_helper(tx, derivation, additional_derivations, address, received, received_usd);
+  check_tx_key_helper(tx, derivation, additional_derivations, address, received);
 
   in_pool = res.txs.front().in_pool;
   confirmations = 0;
@@ -12868,9 +12792,11 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
   std::vector<crypto::key_derivation> additional_derivations(num_sigs - 1);
   for (size_t i = 1; i < num_sigs; ++i)
     THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[i], rct::rct2sk(rct::I), additional_derivations[i - 1]), error::wallet_internal_error, "Failed to generate key derivation");
-  uint64_t received, received_usd;
-  check_tx_key_helper(tx, derivation, additional_derivations, address, received, received_usd);
-  THROW_WALLET_EXCEPTION_IF(!received && !received_usd, error::wallet_internal_error, tr("No funds received in this tx."));
+  std::map<std::string, uint64_t> received;
+  check_tx_key_helper(tx, derivation, additional_derivations, address, received);
+  for (const auto& r: received) {
+    THROW_WALLET_EXCEPTION_IF(!r.second, error::wallet_internal_error, tr("No funds received in this tx."));
+  }
 
   // concatenate all signature strings
   for (size_t i = 0; i < num_sigs; ++i)
@@ -12880,7 +12806,7 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
   return sig_str;
 }
 
-bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account_public_address &address, bool is_subaddress, const std::string &message, const std::string &sig_str, uint64_t &received, uint64_t &received_usd, uint64_t &received_xasset, std::string &asset_type, bool &in_pool, uint64_t &confirmations)
+bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account_public_address &address, bool is_subaddress, const std::string &message, const std::string &sig_str, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations)
 {
   // fetch tx pubkey from the daemon
   COMMAND_RPC_GET_TRANSACTIONS::request req;
@@ -12919,7 +12845,7 @@ bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account
 
   THROW_WALLET_EXCEPTION_IF(tx_hash != txid, error::wallet_internal_error, "Failed to get the right transaction from daemon");
 
-  if (!check_tx_proof(tx, address, is_subaddress, message, sig_str, received, received_usd, received_xasset, asset_type))
+  if (!check_tx_proof(tx, address, is_subaddress, message, sig_str, received))
     return false;
 
   in_pool = res.txs.front().in_pool;
@@ -12935,7 +12861,7 @@ bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account
   return true;
 }
 
-bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote::account_public_address &address, bool is_subaddress, const std::string &message, const std::string &sig_str, uint64_t &received, uint64_t &received_usd, uint64_t &received_xasset, std::string &asset_type) const
+bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote::account_public_address &address, bool is_subaddress, const std::string &message, const std::string &sig_str, std::map<std::string, uint64_t> &received) const
 {
   const bool is_out = sig_str.substr(0, 3) == "Out";
   const std::string header = is_out ? "OutProofV1" : "InProofV1";
@@ -13021,7 +12947,7 @@ bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote
       if (good_signature[i])
         THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[i], rct::rct2sk(rct::I), additional_derivations[i - 1]), error::wallet_internal_error, "Failed to generate key derivation");
 
-    check_tx_key_helper(tx, derivation, additional_derivations, address, received, received_usd);
+    check_tx_key_helper(tx, derivation, additional_derivations, address, received);
     return true;
   }
   return false;

@@ -1405,12 +1405,9 @@ namespace rct {
         {
           const epee::span<const key> keys{&amount_keys[0], amount_keys.size()};
           rv.p.bulletproofs.push_back(proveRangeBulletproof(C, masks, outamounts_flat_amounts, keys, hwdev));
-          // HERE BE DRAGONS!!!
-          // NEAC: disable these checks again in the final builds
-          //#ifdef DBG
+          #ifdef DBG
 		      CHECK_AND_ASSERT_THROW_MES(verBulletproof(rv.p.bulletproofs.back()), "verBulletproof failed on newly created proof");
-          //#endif
-		      // LAND AHOY!!!
+          #endif
         }
 
         for (i = 0; i < outamounts.size(); ++i)
@@ -1452,9 +1449,9 @@ namespace rct {
         {
           const epee::span<const key> keys{&amount_keys[amounts_proved], batch_size};
           rv.p.bulletproofs.push_back(proveRangeBulletproof(C, masks, batch_amounts, keys, hwdev));
-          //#ifdef DBG
+          #ifdef DBG
           CHECK_AND_ASSERT_THROW_MES(verBulletproof(rv.p.bulletproofs.back()), "verBulletproof failed on newly created proof");
-          //#endif
+          #endif
         }
         for (i = 0; i < batch_size; ++i)
         {

@@ -1319,14 +1319,14 @@ namespace wallet_rpc
 
     struct response_t
     {
-      uint64_t received;
-      uint64_t received_usd;
+      std::vector<std::string> received_assets;
+      std::vector<uint64_t> received_amounts;
       bool in_pool;
       uint64_t confirmations;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(received)
-        KV_SERIALIZE(received_usd)
+        KV_SERIALIZE(received_assets)
+        KV_SERIALIZE(received_amounts)
         KV_SERIALIZE(in_pool)
         KV_SERIALIZE(confirmations)
       END_KV_SERIALIZE_MAP()
@@ -1382,19 +1382,15 @@ namespace wallet_rpc
     struct response_t
     {
       bool good;
-      uint64_t received;
-      uint64_t received_usd;
-      uint64_t received_xasset;
-      std::string asset_type;
+      std::vector<std::string> received_assets;
+      std::vector<uint64_t> received_amounts;
       bool in_pool;
       uint64_t confirmations;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(good)
-        KV_SERIALIZE(received)
-        KV_SERIALIZE(received_usd)
-        KV_SERIALIZE(received_xasset)
-	KV_SERIALIZE(asset_type)
+        KV_SERIALIZE(received_assets)
+        KV_SERIALIZE(received_amounts)
         KV_SERIALIZE(in_pool)
         KV_SERIALIZE(confirmations)
       END_KV_SERIALIZE_MAP()

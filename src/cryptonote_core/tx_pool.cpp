@@ -481,12 +481,12 @@ namespace cryptonote
 
     ++m_cookie;
 
-    MINFO("Transaction added to pool: txid " << id << " weight: " << tx_weight << " fee/byte: " << ((fee > 0 ? fee : fee_usd) / (double)(tx_weight ? tx_weight : 1)));
+    MINFO("Transaction added to pool: txid " << id << " weight: " << tx_weight << " fee/byte: " << (meta.fee / (double)(tx_weight ? tx_weight : 1)) << " " << meta.fee_asset_type);
 
     prune(m_txpool_max_weight);
 
     return true;
-    }
+  }
   //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx(transaction &tx, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {

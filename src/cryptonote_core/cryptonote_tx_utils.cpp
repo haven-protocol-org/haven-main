@@ -970,11 +970,6 @@ namespace cryptonote
         tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
       }
       
-      // HERE BE DRAGONS!!!
-      // NEAC : Disable shuffling of outs - it buggers up EVERYTHING!!!
-      shuffle_outs = false;
-      // LAND AHOY!!!
-      
     }
 
     // if we have a stealth payment id, find it and encrypt it with the tx key now
