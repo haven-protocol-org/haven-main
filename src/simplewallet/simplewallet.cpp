@@ -283,7 +283,7 @@ namespace
 
   const char* USAGE_XASSET_SWEEP_ALL("xasset_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_XASSET_SWEEP_SINGLE("xasset_sweep_single [<priority>] [<ring_size>] [outputs=<N>] <key_image> <address> [<payment_id (obsolete)>]");
-  const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount> [memo=<memo data>])");
+  const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount> <xAsset type> [memo=<memo data>])");
   const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type> [memo=<memo data>])");
   const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type> [memo=<memo data>])");
 
@@ -2448,7 +2448,15 @@ bool simple_wallet::xasset_to_xusd(const std::vector<std::string> &args)
   // check and remove the asset type
   std::string strCurrency = boost::algorithm::to_upper_copy(*it);
   if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strCurrency) == offshore::ASSET_TYPES.end()) {
-    fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
+    fail_msg_writer() << boost::format(tr("Invalid xAsset '%s' specified")) % strCurrency;
+    return false;
+  }
+  if (strCurrency == "XUSD") {
+    fail_msg_writer() << "XUSD is the target asset you want to convert to. You have to specify a source xAsset type.";
+    return false;
+  }
+  if (strCurrency == "XHV") {
+    fail_msg_writer() << "xasset commands doesn't work for XHV. Type 'help' and check for other commands.";
     return false;
   }
   local_args.erase(it);
@@ -2502,6 +2510,14 @@ bool simple_wallet::xasset_transfer(const std::vector<std::string> &args)
     fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
     return false;
   }
+  if (strCurrency == "XUSD") {
+    fail_msg_writer() << "xasset_tranfer command is only for xAssets. You have to use 'offhshore_transfer' command to transfer your xUSD to a different address.";
+    return false;
+  }
+  if (strCurrency == "XHV") {
+    fail_msg_writer() << "xasset_tranfer command is only for xAssets. You have to use 'transfer' command to transfer your XHV to a different address.";
+    return false;
+  }
   local_args.erase(it);
 
   // Add in the offshore extra signature
@@ -2539,6 +2555,14 @@ bool simple_wallet::xusd_to_xasset(const std::vector<std::string> &args)
   std::string strCurrency = boost::algorithm::to_upper_copy(*it);
   if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strCurrency) == offshore::ASSET_TYPES.end()) {
     fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
+    return false;
+  }
+  if (strCurrency == "XUSD") {
+    fail_msg_writer() << "XUSD is already the source currency. You have to specify a target xAsset to convert to.";
+    return false;
+  }
+  if (strCurrency == "XHV") {
+    fail_msg_writer() << "xasset commands doesn't work for XHV. Type 'help' and check for other commands.";
     return false;
   }
   local_args.erase(it);

@@ -20,6 +20,9 @@ cscope.out
 cscope.in.out
 cscope.po.out
 
+#Vscode config
+.vscode
+
 external/miniupnpc/Makefile
 miniupnpcstrings.h
 version/

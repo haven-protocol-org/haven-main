@@ -10639,7 +10639,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
 
   // calculate total amount being sent to all destinations IN THE CORRECT CURRENCY
   // throw if total amount overflows uint64_t
-  if ((strSource != "XHV") && (strSource != "XUSD")) needed_money = 0;
+  needed_money = 0;
   for(auto& dt: dsts)
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_destination);
@@ -10745,6 +10745,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
     balance_subtotal += balance_per_subaddr[index_minor];
     unlocked_balance_subtotal += unlocked_balance_per_subaddr[index_minor].first;
   }
+  std::cout << "needed_money: " << needed_money << " min_fee: " << min_fee  << " offshore_fee: " << offshore_fee << std::endl;
   THROW_WALLET_EXCEPTION_IF(needed_money + min_fee + offshore_fee > balance_subtotal, error::not_enough_money,
     balance_subtotal, needed_money, 0);
   // first check overall balance is enough, then unlocked one, so we throw distinct exceptions
@@ -11391,37 +11392,36 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
       // New xAsset-style of offshore_data
       int pos = offshore_data.data.find("-");
       if (pos != std::string::npos) {
-	strSource = offshore_data.data.substr(0,pos);
-	strDest = offshore_data.data.substr(pos+1);
-	if (strSource == "XHV") {
-	  offshore = true;
-	} else if (strDest == "XHV") {
-	  onshore = true;
-	} else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-	  offshore_transfer = true;
-	} else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-	  xasset_transfer = true;
-	} else if (strSource == "XUSD") {
-	  xusd_to_xasset = true;
-	} else {
-	  xasset_to_xusd = true;
-	}
+        strSource = offshore_data.data.substr(0,pos);
+        strDest = offshore_data.data.substr(pos+1);
+        if (strSource == "XHV") {
+          offshore = true;
+        } else if (strDest == "XHV") {
+          onshore = true;
+        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+          offshore_transfer = true;
+        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+          xasset_transfer = true;
+        } else if (strSource == "XUSD") {
+          xusd_to_xasset = true;
+        } else {
+          xasset_to_xusd = true;
+        }
       }
-      
     } else {
       // Pre-xAsset format of offshore_data
       // Set the bool flags
       if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-	offshore_transfer = true;
-	strSource = strDest = "XUSD";
+        offshore_transfer = true;
+        strSource = strDest = "XUSD";
       } else if (offshore_data.data.at(0) > 'A') {
-	onshore = true;
-	strSource = "XUSD";
-	strDest = "XHV";
+        onshore = true;
+        strSource = "XUSD";
+        strDest = "XHV";
       } else {
-	offshore = true;
-	strSource = "XHV";
-	strDest = "XUSD";
+        offshore = true;
+        strSource = "XHV";
+        strDest = "XUSD";
       }
     }
   }
