@@ -1156,6 +1156,26 @@ namespace cryptonote
       }
     }
 
+    // calculate offshore fees before shuffling destinations
+    uint64_t fee = 0;
+    uint64_t fee_usd = 0;
+    uint64_t fee_xasset = 0;
+    uint64_t offshore_fee = 0;
+    uint64_t offshore_fee_usd = 0;
+    uint64_t offshore_fee_xasset = 0;
+    bool r =
+      (offshore) ? get_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee, sources, current_height) :
+            (onshore) ? get_onshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (offshore_transfer) ? get_offshore_to_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (xusd_to_xasset) ? get_xusd_to_xasset_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (xasset_to_xusd) ? get_xasset_to_xusd_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_xasset, sources, current_height) :
+      (xasset_transfer) ? true :
+      true;
+    if (!r) {
+      LOG_ERROR("failed to get offshore fee - aborting");
+      return false;
+    }
+
     if (shuffle_outs)
     {
       std::shuffle(destinations.begin(), destinations.end(), crypto::random_device{});
@@ -1431,27 +1451,6 @@ namespace cryptonote
           }
         }
       }
-      
-      // TODO: are we gonna touch fees?
-      // fee
-      uint64_t fee = 0;
-      uint64_t fee_usd = 0;
-      uint64_t fee_xasset = 0;
-      uint64_t offshore_fee = 0;
-      uint64_t offshore_fee_usd = 0;
-      uint64_t offshore_fee_xasset = 0;
-      bool r =
-	(offshore) ? get_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee, sources, current_height) :
-        (onshore) ? get_onshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-	(offshore_transfer) ? get_offshore_to_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-	(xusd_to_xasset) ? get_xusd_to_xasset_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-	(xasset_to_xusd) ? get_xasset_to_xusd_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_xasset, sources, current_height) :
-	(xasset_transfer) ? true :
-	true;
-      if (!r) {
-        LOG_ERROR("failed to get offshore fee - aborting");
-        return false;
-      }
 
       if (summary_inputs_money > summary_outs_money) {
         fee = summary_inputs_money - summary_outs_money - offshore_fee;
@@ -1464,7 +1463,7 @@ namespace cryptonote
           outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", fee_usd));
         }
       } else if (summary_inputs_money_xasset > summary_outs_money_xasset) {
-	fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
+	      fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
         if (!use_simple_rct) {
           outamounts.push_back(std::pair<std::string, uint64_t>(strSource, fee_xasset));
         }
