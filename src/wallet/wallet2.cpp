@@ -7060,6 +7060,8 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
       utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
       input_asset = "XHV";
     } else if (in.type() == typeid(cryptonote::txin_xasset)) {
+      const auto &txin = boost::get<cryptonote::txin_xasset>(in);
+      utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
       input_asset =  boost::get<cryptonote::txin_xasset>(in).asset_type;
     }else {
       continue;
@@ -7201,11 +7203,7 @@ void wallet2::commit_tx(pending_tx& ptx)
 
   for(size_t idx: ptx.selected_transfers)
   {
-    if (ptx.tx.vin[0].type() == typeid(txin_to_key)) {
-      set_spent(idx, 0);
-    } else {
-      set_offshore_spent(idx, 0);
-    }
+    set_spent(specific_transfers[idx], 0);
   }
 
   // tx generated, get rid of used k values
@@ -10541,6 +10539,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
     bulletproof ? (use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : (use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : (use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1))) : 0
   };
 
+  // Check to make sure that only 1 destination is provided if memo data is specified.
+  // This is necessary because we shuffle outputs and there is no way to identify which memo data would relate to which destination if multiples were permitted.
+  tx_extra_memo memo;
+  if (get_memo_from_tx_extra(extra, memo)) {
+    THROW_WALLET_EXCEPTION_IF(dsts.size() > 1, error::wallet_internal_error, "Only 1 destination permitted if memo data is provided");
+  }
+  
   bool bOffshoreTx = false;
   tx_extra_offshore offshore_data;
   if (extra.size()) {

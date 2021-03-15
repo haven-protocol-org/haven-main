@@ -283,9 +283,9 @@ namespace
 
   const char* USAGE_XASSET_SWEEP_ALL("xasset_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_XASSET_SWEEP_SINGLE("xasset_sweep_single [<priority>] [<ring_size>] [outputs=<N>] <key_image> <address> [<payment_id (obsolete)>]");
-  const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount> <xAsset type> [memo=<memo data>])");
-  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type> [memo=<memo data>])");
-  const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xAsset type> [memo=<memo data>])");
+  const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset type> [memo=<memo data>]");
+  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>) <xAsset type> [memo=<memo data>]");
+  const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>) <xAsset type> [memo=<memo data>]");
 
   
   std::string input_line(const std::string& prompt, bool yesno = false)
@@ -3904,15 +3904,15 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("xasset_transfer",
                            boost::bind(&simple_wallet::xasset_transfer, this, _1),
                            tr(USAGE_XASSET_TRANSFER),
-                           tr("Transfer <amount> of xAsset type <xasset> from current balance to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
+                           tr("Transfer <xAsset amount> of xAsset type <xAsset type> from current balance to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
   m_cmd_binder.set_handler("xasset_to_xusd",
                            boost::bind(&simple_wallet::xasset_to_xusd, this, _1),
                            tr(USAGE_XASSET_TO_XUSD),
-                           tr("Converts <amount> of xAsset type <xasset> to Haven Dollars (XUSD), with optional <priority> [1-5]"));
+                           tr("Converts the required amount of xAsset type <xAsset type> to send <xUSD amount> of Haven Dollars (xUSD), with optional <priority> [1-5]. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
   m_cmd_binder.set_handler("xusd_to_xasset",
                            boost::bind(&simple_wallet::xusd_to_xasset, this, _1),
                            tr(USAGE_XUSD_TO_XASSET),
-                           tr("Converts <amount> of Haven Dollars (xUSD) to xAsset type <xasset>, with optional <priority> [1-5]"));
+                           tr("Converts <xUSD amount> of Haven Dollars (xUSD) to xAsset type <xAsset type>, with optional <priority> [1-5]. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
   m_cmd_binder.set_unknown_command_handler(boost::bind(&simple_wallet::on_command, this, &simple_wallet::on_unknown_command, _1));
   m_cmd_binder.set_empty_command_handler(boost::bind(&simple_wallet::on_empty_command, this));
   m_cmd_binder.set_cancel_handler(boost::bind(&simple_wallet::on_cancelled_command, this));

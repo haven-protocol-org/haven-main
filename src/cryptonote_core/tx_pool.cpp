@@ -205,6 +205,17 @@ namespace cryptonote
       return false;
     }
 
+    // Check to make sure that only 1 destination is provided if memo data is specified.
+    // This is necessary because we shuffle outputs and there is no way to identify which memo data would relate to which destination if multiples were permitted.
+    tx_extra_memo memo;
+    if (get_memo_from_tx_extra(tx.extra, memo)) {
+      if (tx.vout.size() > 2) {
+	LOG_PRINT_L1("transaction has memo data and multiple destinations specified - this is not permitted, rejecting.");
+	tvc.m_verifivation_failed = true;
+	return false;
+      }
+    }
+  
     bool bOffshoreTx = false;
     tx_extra_offshore offshore_data;
     if (tx.extra.size()) {

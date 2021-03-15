@@ -138,6 +138,14 @@ struct json_archive<true> : public json_archive_base<std::ostream, true>
     end_string(delimiter);
   }
 
+  void serialize_readable_string(const char *buf, size_t len, const char *delimiter="\"") {
+    begin_string(delimiter);
+    for (size_t i = 0; i < len; i++) {
+      stream_ << buf[i];
+    }
+    end_string(delimiter);
+  }
+  
   template <class T>
   void serialize_varint(T &v)
   {

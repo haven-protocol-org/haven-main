@@ -201,6 +201,10 @@ struct binary_archive<true> : public binary_archive_base<std::ostream, true>
     stream_.write((char *)buf, len);
   }
 
+  void serialize_readable_string(const char *buf, size_t len, const char *delimiter="\"") {
+    stream_.write(buf, len);
+  }
+  
   template <class T>
   void serialize_varint(T &v)
   {
