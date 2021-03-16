@@ -1285,7 +1285,7 @@ namespace rct {
 
     // These are different outamounts structures for differen purposes.
     // outamounts_rangesig is only used for barmanian prove(pre-bulletproof) and for only for regular XHV Txs.
-    // outamounts_flat_amounts only contains the output amounts without currency_type
+    // outamounts_flat_amounts only contains the output amounts without asset_type
     std::vector<xmr_amount> outamounts_rangesig, outamounts_flat_amounts;
     
     // Work out the type of the TX from the mix of inputs and outputs

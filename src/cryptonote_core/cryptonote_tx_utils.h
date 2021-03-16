@@ -59,16 +59,10 @@ namespace cryptonote
     bool rct;                           //true if the output is rct
     rct::key mask;                      //ringct amount mask
     rct::multisig_kLRki multisig_kLRki; //multisig info
-    /*
-    std::string currency_type_burnt;    // The type of currency sent (burnt)
-    uint64_t amount_usd;                // The amount of the new currency received (minted)
-    rct::key mask_usd;                  // The ringct amount mask for the new currency received (minted)
-    std::string currency_type_minted;   // The type of currency received (minted)
-    */
     uint64_t height;
     offshore::pricing_record pr;
     bool first_generation_input;
-    std::string currency_type;
+    std::string asset_type;
     
     void push_output(uint64_t idx, const crypto::public_key &k, uint64_t amount) { outputs.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(k), rct::zeroCommit(amount)}))); }
 
@@ -86,13 +80,9 @@ namespace cryptonote
       if (real_output >= outputs.size())
         return false;
 
-    //FIELD(currency_type_burnt)
-    //FIELD(amount_usd)
-    //FIELD(mask_usd)
-    //FIELD(currency_type_minted)
       FIELD(height)
       FIELD(pr)
-      FIELD(currency_type)
+      FIELD(asset_type)
       
     END_SERIALIZE()
   };
@@ -103,19 +93,19 @@ namespace cryptonote
     uint64_t amount;                    //money
     uint64_t amount_usd;                //money
     uint64_t amount_xasset;             //money
-    std::string currency_type;
+    std::string asset_type;
     account_public_address addr;        //destination address
     bool is_subaddress;
     bool is_integrated;
 
-    tx_destination_entry() : amount(0), amount_usd(0), amount_xasset(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), currency_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), currency_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), currency_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), currency_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), currency_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), currency_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), currency_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), currency_type(currency) { }
+    tx_destination_entry() : amount(0), amount_usd(0), amount_xasset(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type(currency) { }
  
     std::string address(network_type nettype, const crypto::hash &payment_id) const
     {
@@ -137,7 +127,7 @@ namespace cryptonote
       VARINT_FIELD(amount)
       VARINT_FIELD(amount_usd)
       VARINT_FIELD(amount_xasset)
-      FIELD(currency_type)
+      FIELD(asset_type)
       FIELD(addr)
       FIELD(is_subaddress)
       FIELD(is_integrated)
@@ -209,12 +199,6 @@ namespace boost
       if (ver < 2) {
 	return;
       }
-      if (ver < 5) {
-	//a & x.currency_type_burnt;
-	//a & x.amount_usd;
-	//a & x.mask_usd;
-	//a & x.currency_type_minted;
-      }
       if (ver < 3) {
 	return;
       }
@@ -227,7 +211,7 @@ namespace boost
       if (ver < 5) {
 	return;
       }
-      a & x.currency_type;
+      a & x.asset_type;
     }
 
     template <class Archive>
@@ -252,7 +236,7 @@ namespace boost
 	return;
       }
       a & x.amount_xasset;
-      a & x.currency_type;
+      a & x.asset_type;
     }
   }
 }

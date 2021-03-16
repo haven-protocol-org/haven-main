@@ -90,7 +90,8 @@ namespace
     if (block_reward == 0)
       entry.suggested_confirmations_threshold = 0;
     else
-      entry.suggested_confirmations_threshold = (entry.amount + block_reward - 1) / block_reward;
+      entry.suggested_confirmations_threshold = 10;
+      // entry.suggested_confirmations_threshold = (entry.amounts_map[0].second + block_reward - 1) / block_reward;
   }
 }
 
@@ -325,13 +326,14 @@ namespace tools
       entry.payment_id = entry.payment_id.substr(0,16);
     entry.height = pd.m_block_height;
     entry.timestamp = pd.m_timestamp;
-    entry.amount = pd.m_amount;
-    entry.amounts = pd.m_amounts;
+    entry.amounts_assets.push_back(pd.m_asset_type);
+    entry.amounts.push_back(pd.m_amount);
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = !m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
     entry.fee = pd.m_fee;
     entry.note = m_wallet->get_tx_note(pd.m_tx_hash);
-    entry.type = pd.m_coinbase ? "block" : ( pd.m_offshore || pd.m_offshore_to_offshore) ? "XUSD in" : "in";
+    // entry.type = pd.m_coinbase ? "block" : ( pd.m_offshore || pd.m_offshore_to_offshore) ? "XUSD in" : "in";
+    entry.type = pd.m_coinbase ? "block" : "in";
     entry.subaddr_index = pd.m_subaddr_index;
     entry.subaddr_indices.push_back(pd.m_subaddr_index);
     entry.address = m_wallet->get_subaddress_as_str(pd.m_subaddr_index);
@@ -348,10 +350,13 @@ namespace tools
     entry.timestamp = pd.m_timestamp;
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = !m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
-    // entry.fee = pd.m_amount_in - pd.m_amount_out;
-    entry.fee = 0; // TODO: fees
+    entry.fee = pd.m_fee;
+    entry.fee_asset = pd.m_source_currency_type;
     uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
-    entry.amount = pd.m_amount_in - change - entry.fee;
+    for (const auto& a: pd.m_amount_out) {
+      entry.amounts_assets.push_back(a.first);
+      entry.amounts.push_back(a.second);
+    }
     entry.note = m_wallet->get_tx_note(txid);
 
     for (const auto &d: pd.m_dests) {
@@ -362,7 +367,7 @@ namespace tools
     }
 
     // entry.type = ((pd.m_offshore_to_offshore || pd.m_onshore) ? "XUSD out" : "out");
-    entry.type = pd.m_dest_currency_type;
+    entry.type = "out";
     entry.subaddr_index = { pd.m_subaddr_account, 0 };
     for (uint32_t i: pd.m_subaddr_indices)
       entry.subaddr_indices.push_back({pd.m_subaddr_account, i});
@@ -380,9 +385,12 @@ namespace tools
       entry.payment_id = entry.payment_id.substr(0,16);
     entry.height = 0;
     entry.timestamp = pd.m_timestamp;
-    // entry.fee = pd.m_amount_in - pd.m_amount_out;
-    entry.fee = 0;
-    entry.amount = pd.m_amount_in - pd.m_change - entry.fee;
+    entry.fee = pd.m_fee;
+    entry.fee_asset = pd.m_source_currency_type;
+    for (const auto& a: pd.m_amount_out) {
+      entry.amounts_assets.push_back(a.first);
+      entry.amounts.push_back(a.second);
+    }
     entry.unlock_time = pd.m_tx.unlock_time;
     entry.locked = true;
     entry.note = m_wallet->get_tx_note(txid);
@@ -395,12 +403,7 @@ namespace tools
     }
 
     // entry.type = is_failed ? "failed" : (pd.m_offshore_to_offshore || pd.m_onshore)? "XUSD pending" : "pending";
-    if(is_failed) {
-      entry.type = "failed";
-    } else {
-      entry.type =  pd.m_dest_currency_type;
-    }
-
+    entry.type = is_failed ? "failed" : "pending";
     entry.subaddr_index = { pd.m_subaddr_account, 0 };
     for (uint32_t i: pd.m_subaddr_indices)
       entry.subaddr_indices.push_back({pd.m_subaddr_account, i});
@@ -417,14 +420,15 @@ namespace tools
       entry.payment_id = entry.payment_id.substr(0,16);
     entry.height = 0;
     entry.timestamp = pd.m_timestamp;
-    entry.amount = pd.m_amount;
-    entry.amounts = pd.m_amounts;
+    entry.amounts_assets.push_back(pd.m_asset_type);
+    entry.amounts.push_back(pd.m_amount);
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = true;
     entry.fee = pd.m_fee;
     entry.note = m_wallet->get_tx_note(pd.m_tx_hash);
     entry.double_spend_seen = ppd.m_double_spend_seen;
-    entry.type = ( pd.m_offshore || pd.m_offshore_to_offshore)? "XUSD pool" : "pool";
+    // entry.type = ( pd.m_offshore || pd.m_offshore_to_offshore)? "XUSD pool" : "pool";
+    entry.type = "pool";
     entry.subaddr_index = pd.m_subaddr_index;
     entry.subaddr_indices.push_back(pd.m_subaddr_index);
     entry.address = m_wallet->get_subaddress_as_str(pd.m_subaddr_index);
@@ -441,9 +445,9 @@ namespace tools
       res.unlocked_balance = req.all_accounts ? m_wallet->unlocked_balance_all(req.strict, &local_blocks_to_unlock, &local_time_to_unlock)[req.asset_type] : m_wallet->unlocked_balance(req.asset_type, req.account_index, req.strict, &res.blocks_to_unlock, &res.time_to_unlock);
 
       if (req.all_accounts) {
-	// Copy the values for the correct currency from the map to the response
-	res.blocks_to_unlock = local_blocks_to_unlock[req.asset_type];
-	res.time_to_unlock = local_time_to_unlock[req.asset_type];
+        // Copy the values for the correct currency from the map to the response
+        res.blocks_to_unlock = local_blocks_to_unlock[req.asset_type];
+        res.time_to_unlock = local_time_to_unlock[req.asset_type];
       }
       
       res.multisig_import_needed = m_wallet->multisig() && m_wallet->has_multisig_partial_key_images();

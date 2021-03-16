@@ -918,42 +918,39 @@ namespace cryptonote
     std::string strSource = "XHV"; // Default value is needed for non-offshore TXs
     std::string strDest = "XHV"; // Default value is needed for non-offshore TXs
     if (bOffshoreTx) {
-      // Split the TX extra information into the 2 currencies
-      if (offshore_data.data.size() > 2) {
+      int pos = offshore_data.data.find("-");
+      if (pos != std::string::npos) {
         // New xAsset-style of offshore_data
-        int pos = offshore_data.data.find("-");
-        if (pos != std::string::npos) {
-          strSource = offshore_data.data.substr(0,pos);
-          strDest = offshore_data.data.substr(pos+1);
-          if (strSource == "XHV") {
-            offshore = true;
-          } else if (strDest == "XHV") {
-            onshore = true;
-          } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-            offshore_transfer = true;
-          } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-            xasset_transfer = true;
-          } else if (strSource == "XUSD") {
-            xusd_to_xasset = true;
-          } else {
-            xasset_to_xusd = true;
-          }
+        strSource = offshore_data.data.substr(0,pos);
+        strDest = offshore_data.data.substr(pos+1);
+        if (strSource == "XHV") {
+          offshore = true;
+        } else if (strDest == "XHV") {
+          onshore = true;
+        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+          offshore_transfer = true;
+        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+          xasset_transfer = true;
+        } else if (strSource == "XUSD") {
+          xusd_to_xasset = true;
+        } else {
+          xasset_to_xusd = true;
         }
       } else {
         // Pre-xAsset format of offshore_data
         // Set the bool flags
-	if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-	  offshore_transfer = true;
-	  strSource = strDest = "XUSD";
-	} else if (offshore_data.data.at(0) > 'A') {
-	  onshore = true;
-	  strSource = "XUSD";
-	  strDest = "XHV";
-	} else {
-	  offshore = true;
-	  strSource = "XHV";
-	  strDest = "XUSD";
-	}
+        if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
+          offshore_transfer = true;
+          strSource = strDest = "XUSD";
+        } else if (offshore_data.data.at(0) > 'A') {
+          onshore = true;
+          strSource = "XUSD";
+          strDest = "XHV";
+        } else {
+          offshore = true;
+          strSource = "XHV";
+          strDest = "XUSD";
+        }
       }
     }
 
@@ -1066,9 +1063,9 @@ namespace cryptonote
         return false;
       }
 
-      if (src_entr.currency_type == "XHV") {
+      if (src_entr.asset_type == "XHV") {
         summary_inputs_money += src_entr.amount;
-      } else if (src_entr.currency_type == "XUSD") {
+      } else if (src_entr.asset_type == "XUSD") {
         summary_inputs_money_usd += src_entr.amount;
       } else {
         summary_inputs_money_xasset += src_entr.amount;
@@ -1131,7 +1128,7 @@ namespace cryptonote
         txin_xasset input_to_key;
         input_to_key.amount = src_entr.amount;
         input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
-        input_to_key.asset_type = src_entr.currency_type;
+        input_to_key.asset_type = src_entr.asset_type;
         
         //fill outputs array and use relative offsets
         for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
@@ -1269,12 +1266,12 @@ namespace cryptonote
       tx_out out;
       out.amount = dst_entr_clone.amount;
 
-      if (dst_entr_clone.currency_type == "XHV") {
+      if (dst_entr_clone.asset_type == "XHV") {
         txout_to_key tk;
         tk.key = out_eph_public_key;
         out.target = tk;
         outamounts.push_back(std::pair<std::string, uint64_t>("XHV", dst_entr_clone.amount));
-      } else if (dst_entr_clone.currency_type == "XUSD") {
+      } else if (dst_entr_clone.asset_type == "XUSD") {
         txout_offshore tk;
         tk.key = out_eph_public_key;
         out.target = tk;
@@ -1283,10 +1280,10 @@ namespace cryptonote
       } else {
         txout_xasset tk;
         tk.key = out_eph_public_key;
-	tk.asset_type = dst_entr_clone.currency_type;
+	tk.asset_type = dst_entr_clone.asset_type;
         out.target = tk;
         out.amount = dst_entr_clone.amount_xasset;
-        outamounts.push_back(std::pair<std::string, uint64_t>(dst_entr_clone.currency_type, dst_entr_clone.amount_xasset));
+        outamounts.push_back(std::pair<std::string, uint64_t>(dst_entr_clone.asset_type, dst_entr_clone.amount_xasset));
       }
 
       // pusdh to outputs

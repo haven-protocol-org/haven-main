@@ -418,8 +418,8 @@ private:
       uint32_t m_subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> m_subaddr_indices;  // set of address indices used as inputs in this transfer
       std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> m_rings; // relative
-      std::string m_source_currency_type;
-      std::string m_dest_currency_type;
+      std::string m_source_currency_type; // we need for the fee asset type
+      uint64_t m_fee;
     };
 
     struct confirmed_transfer_details
@@ -436,9 +436,9 @@ private:
       std::set<uint32_t> m_subaddr_indices;  // set of address indices used as inputs in this transfer
       std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> m_rings; // relative
       std::string m_source_currency_type;
-      std::string m_dest_currency_type;
+      uint64_t m_fee;
 
-      confirmed_transfer_details(): m_amount_in(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::null_hash), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1), m_source_currency_type("XHV"),m_dest_currency_type("XHV") {}
+      confirmed_transfer_details(): m_amount_in(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::null_hash), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1), m_source_currency_type("XHV") {}
       confirmed_transfer_details(const unconfirmed_transfer_details &utd, uint64_t height):
         m_amount_in(utd.m_amount_in), 
         m_change(utd.m_change), 
@@ -451,12 +451,9 @@ private:
         m_subaddr_indices(utd.m_subaddr_indices), 
         m_rings(utd.m_rings), 
         m_source_currency_type(utd.m_source_currency_type),
-        m_dest_currency_type(utd.m_dest_currency_type)
-      {
-        for (const auto& o: utd.m_amount_out) {
-          m_amount_out[o.first] = o.second;
-        }
-      }
+        m_fee(utd.m_fee),
+        m_amount_out(utd.m_amount_out)
+      {}
     };
 
     struct tx_construction_data

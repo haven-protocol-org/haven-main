@@ -54,6 +54,7 @@ using namespace epee;
 #include "common/notify.h"
 #include "hardforks/hardforks.h"
 #include "version.h"
+#include "offshore/asset_types.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "cn"
@@ -894,6 +895,17 @@ namespace cryptonote
           // Split the TX extra information into the 2 currencies
           strSource = offshore_data.substr(0,pos);
           strDest = offshore_data.substr(pos+1);
+
+          // check both strSource and strDest are supported.
+          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
+            MERROR_VER("Source Asset type " << strSource << " is not supported! Rejecting..");
+            return false;
+          }
+          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
+            MERROR_VER("Destination Asset type " << strDest << " is not supported! Rejecting..");
+            return false;
+          }
+
           if (strSource == "XHV") {
             offshore = true;
           } else if (strDest == "XHV") {
@@ -912,15 +924,15 @@ namespace cryptonote
           // Set the bool flags
           if ((offshore_data.at(0) > 'A') && (offshore_data.at(1) > 'A')) {
             offshore_transfer = true;
-	    strSource = strDest = "XUSD";
+	          strSource = strDest = "XUSD";
           } else if (offshore_data.at(0) > 'A') {
             onshore = true;
-	    strSource = "XUSD";
-	    strDest = "XHV";
+            strSource = "XUSD";
+            strDest = "XHV";
           } else {
             offshore = true;
-	    strSource = "XHV";
-	    strDest = "XUSD";
+            strSource = "XHV";
+            strDest = "XUSD";
           }
         }
 	
@@ -1027,11 +1039,11 @@ namespace cryptonote
         std::string strDest = "XHV";
         offshore::pricing_record pr;
         std::string offshore_data(tx_info[n].tx->offshore_data.begin(), tx_info[n].tx->offshore_data.end());
-	if (offshore_data.size() && offshore_data != "XHV-XHV") {
+	      if (offshore_data.size() && offshore_data != "XHV-XHV") {
         
           // New xAsset-style of offshore_data
           int pos = offshore_data.find("-");
-	  if (pos != std::string::npos) {
+          if (pos != std::string::npos) {
             // Split the TX extra information into the 2 currencies
             strSource = offshore_data.substr(0,pos);
             strDest = offshore_data.substr(pos+1);
@@ -1051,18 +1063,18 @@ namespace cryptonote
           } else {
             // Pre-xAsset format of offshore_data
             // Set the bool flags
-	    if ((offshore_data.at(0) > 'A') && (offshore_data.at(1) > 'A')) {
-	      offshore_transfer = true;
-	      strSource = strDest = "XUSD";
-	    } else if (offshore_data.at(0) > 'A') {
-	      onshore = true;
-	      strSource = "XUSD";
-	      strDest = "XHV";
-	    } else {
-	      offshore = true;
-	      strSource = "XHV";
-	      strDest = "XUSD";
-	    }
+            if ((offshore_data.at(0) > 'A') && (offshore_data.at(1) > 'A')) {
+              offshore_transfer = true;
+              strSource = strDest = "XUSD";
+            } else if (offshore_data.at(0) > 'A') {
+              onshore = true;
+              strSource = "XUSD";
+              strDest = "XHV";
+            } else {
+              offshore = true;
+              strSource = "XHV";
+              strDest = "XUSD";
+            }
           }
 	
           // Get the correct pricing record here, given the height

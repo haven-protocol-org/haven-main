@@ -305,10 +305,11 @@ namespace cryptonote
       uint64_t timestamp;
       std::string direction;
       bool confirmed;
-      uint64_t amount;
+      std::map<std::string, uint64_t> amounts;
       crypto::hash hash;
       std::string payment_id;
       uint64_t fee;
+      std::string fee_asset;
       std::vector<std::pair<std::string, uint64_t>> outputs;
       std::set<uint32_t> index;
       std::string note;
