@@ -87,6 +87,9 @@ namespace tools
         MAP_JON_RPC_WE("offshore",           on_offshore,           wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT)
         MAP_JON_RPC_WE("offshore_transfer",  on_offshore_transfer,  wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT)
         MAP_JON_RPC_WE("onshore",            on_onshore,            wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT)
+        MAP_JON_RPC_WE("xusd_to_xasset",     on_xusd_to_xasset,            wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT)
+        MAP_JON_RPC_WE("xasset_to_xusd",     on_xasset_to_xusd,            wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT)
+        MAP_JON_RPC_WE("xasset_transfer",    on_xasset_transfer,            wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT)
         MAP_JON_RPC_WE("transfer",           on_transfer,           wallet_rpc::COMMAND_RPC_TRANSFER)
         MAP_JON_RPC_WE("transfer_split",     on_transfer_split,     wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT)
         MAP_JON_RPC_WE("sign_transfer",      on_sign_transfer,      wallet_rpc::COMMAND_RPC_SIGN_TRANSFER)
@@ -180,6 +183,9 @@ namespace tools
       bool on_offshore(const wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::request& req, wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_offshore_transfer(const wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::request& req, wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_onshore(const wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::request& req, wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_xusd_to_xasset(const wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::request& req, wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_xasset_to_xusd(const wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::request& req, wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_xasset_transfer(const wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::request& req, wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_transfer(const wallet_rpc::COMMAND_RPC_TRANSFER::request& req, wallet_rpc::COMMAND_RPC_TRANSFER::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_transfer_split(const wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::request& req, wallet_rpc::COMMAND_RPC_TRANSFER_SPLIT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_sign_transfer(const wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::request& req, wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
@@ -264,7 +270,7 @@ namespace tools
 
       template<typename Ts, typename Tu>
       bool fill_response(std::vector<tools::wallet2::pending_tx> &ptx_vector,
-          bool get_tx_key, Ts& tx_key, Tu &amount, Tu &amount_usd, Tu &fee, Tu &weight, std::string &multisig_txset, std::string &unsigned_txset, bool do_not_relay,
+          bool get_tx_key, Ts& tx_key, Tu &amount, std::string amount_asset, Tu &fee, Tu &weight, std::string &multisig_txset, std::string &unsigned_txset, bool do_not_relay,
 			    Ts &tx_hash, bool get_tx_hex, Ts &tx_blob, bool get_tx_metadata, Ts &tx_metadata, epee::json_rpc::error &er, bool use_offshore_amounts = false);
 
       bool validate_transfer(const std::list<wallet_rpc::transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination, epee::json_rpc::error& er);

@@ -2752,7 +2752,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
     // here we check if in a given transaction, what we spent and what we recive is the same,
     // that means we sent some funds to ourselves. In this case, we find it in the comfirmed txs
-    // and we set the change amount to what we recived so it is less confusing. Since Haven users
+    // and set the outgoing payment amount to 0 so that it's less confusing. Since Haven users
     // will always send some funds to themselves for conversion of assets, input and output asset
     // type will almost be different from one another. So we have no choice but calculate
     // the output amounts and the fee in terms of input asset type so that following if statement
@@ -2783,13 +2783,13 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     // convert fee to xasset corresponded
     if (strSource != "XHV" && strSource != "XUSD") {
       if (strSource != strDest) {
-	recived_in += get_xasset_amount(fee, strSource, tx.pricing_record_height);
+	      recived_in += get_xasset_amount(fee, strSource, tx.pricing_record_height);
       } else {
-	recived_in += fee;
+	      recived_in += fee;
       }
     }
 
-    // by this point all 3 vars in the if staement should be in the same asset type
+    //by this point all 3 vars in the if staement should be in the same asset type
     if (tx_money_spent_in_ins == recived_in)
     {
       auto i = m_confirmed_txs.find(txid);
@@ -2926,18 +2926,9 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
     if (tx.version == 1)
       entry.first->second.m_amount_out["XHV"] = get_outs_money_amount(tx)["XHV"]; // strSource should do the same thing.
     else {
-      if (strSource == strDest) {
-	entry.first->second.m_amount_out[strDest] = spent - entry.first->second.m_fee;
-      } else {
-	entry.first->second.m_amount_out[strDest] = received[strDest];
-	entry.first->second.m_amount_out[strSource] = spent - tx.amount_burnt - entry.first->second.m_fee;
-      }
+	      entry.first->second.m_amount_out[strSource] = spent - received[strSource] - entry.first->second.m_fee;
     }
-    if (strSource == strDest) {
-      entry.first->second.m_change = received[strSource];
-    } else {
-      entry.first->second.m_change = spent - tx.amount_burnt;
-    }
+    entry.first->second.m_change = received[strSource];
     
     std::vector<tx_extra_field> tx_extra_fields;
     parse_tx_extra(tx.extra, tx_extra_fields); // ok if partially parsed
@@ -7096,7 +7087,6 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
             input_asset == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
             tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
 
-  //utd.m_amount_out[input_asset] += change_amount; // dests does not contain change
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -7200,29 +7190,9 @@ void wallet2::commit_tx(pending_tx& ptx)
     for(size_t idx: ptx.selected_transfers)
       amount_in += specific_transfers[idx].amount();
   }
-  // Check to see if this is an offshore tx
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (ptx.tx.extra.size()) {
-    bOffshoreTx = get_offshore_from_tx_extra(ptx.tx.extra, offshore_data);
-  }
-
-  bool offshore = false;
-  bool onshore = false;
-  bool offshore_to_offshore = false;
-
-  // Set the bool flags
-  if (bOffshoreTx) {
-    if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-      offshore_to_offshore = true;
-    } else if (offshore_data.data.at(0) > 'A') {
-      onshore = true;
-    } else {
-      offshore = true;
-    }
-  }
-  add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, (offshore_to_offshore || onshore) ? ptx.change_dts.amount_usd : ptx.change_dts.amount, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
-   if (store_tx_info() && ptx.tx_key != crypto::null_skey)
+  add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, strSourceCurrency == "XHV" ? ptx.change_dts.amount : strSourceCurrency == "XUSD" ? ptx.change_dts.amount_usd : ptx.change_dts.amount_xasset, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
+  
+  if (store_tx_info() && ptx.tx_key != crypto::null_skey)
   {
     m_tx_keys.insert(std::make_pair(txid, ptx.tx_key));
     m_additional_tx_keys.insert(std::make_pair(txid, ptx.additional_tx_keys));
@@ -10647,6 +10617,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
     }
   }
 
+  // check both strSource and strDest are supported.
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
+  }
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
+  }
+
   const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
   const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
   transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
@@ -11093,33 +11071,29 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
         goto skip_tx;
       }
 
-      // HERE BE DRAGONS!!!
-      // NEAC: Adjust the TX dsts here if necessary
       LOG_PRINT_L1("inputs = " << inputs << ", outputs = " << outputs);
       if (offshore || onshore) {
-	uint64_t adjustment = (tx.dsts.back().amount % 100000000);
-	tx.dsts.back().amount -= adjustment;
-	tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, "XHV", current_height);
-	dsts[0].amount += adjustment;
-	outputs -= adjustment;
+        uint64_t adjustment = (tx.dsts.back().amount % 100000000);
+        tx.dsts.back().amount -= adjustment;
+        tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, "XHV", current_height);
+        dsts[0].amount += adjustment;
+        outputs -= adjustment;
       } else if (xusd_to_xasset || xasset_to_xusd) {
-	uint64_t adjustment = (tx.dsts.back().amount_usd % 100000000);
-	tx.dsts.back().amount_usd -= adjustment;
-	tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, xusd_to_xasset ? strDest : strSource, current_height);
-	dsts[0].amount_usd += adjustment;
-	outputs -= adjustment;
+        uint64_t adjustment = (tx.dsts.back().amount_usd % 100000000);
+        tx.dsts.back().amount_usd -= adjustment;
+        tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, xusd_to_xasset ? strDest : strSource, current_height);
+        dsts[0].amount_usd += adjustment;
+        outputs -= adjustment;
       }
       if (offshore || xusd_to_xasset) {
-	THROW_WALLET_EXCEPTION_IF(outputs % 100000000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
+	      THROW_WALLET_EXCEPTION_IF(outputs % 100000000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
       } else if (onshore) {
-	THROW_WALLET_EXCEPTION_IF(outputs % 10000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
+	      THROW_WALLET_EXCEPTION_IF(outputs % 10000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
       }
-      // LAND AHOY!!!
       
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
         tx.selected_transfers.size() << " inputs");
       if (use_rct) {
-	//if ((strSource != "XHV") && (strSource != "XUSD")) needed_fee = 0;
         transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
 			      test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
       } else
@@ -11127,14 +11101,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx);
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
       needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_multiplier, fee_quantization_mask);
-      if ((strSource != "XHV") && (strSource != "XUSD")) needed_fee = 0;
+      // add back the offshore fee
+      needed_fee += offshore_fee;
       available_for_fee = test_ptx.fee + ((xasset_transfer || xasset_to_xusd) ? test_ptx.change_dts.amount_xasset : (onshore || offshore_transfer || xusd_to_xasset) ? test_ptx.change_dts.amount_usd : test_ptx.change_dts.amount) + (!test_ptx.dust_added_to_fee ? test_ptx.dust : 0);
       LOG_PRINT_L2("Made a " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(available_for_fee) << " available for fee (" <<
         print_money(needed_fee + offshore_fee) << " needed)");
 
-      // HERE BE DRAGONS!!!
-      // NEAC: think the following block of code doesn't account for offshore amounts in the dsts vector...
-      if (needed_fee + offshore_fee > available_for_fee && !dsts.empty() && (dsts[0].amount > 0))
+      if (needed_fee > available_for_fee && !dsts.empty() && (dsts[0].amount > 0))
       {
         // we don't have enough for the fee, but we've only partially paid the current address,
         // so we can take the fee from the paid amount, since we'll have to make another tx anyway
@@ -11154,7 +11127,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
           available_for_fee = needed_fee;
         }
       }
-      // LAND AHOY!!!
 
       if (needed_fee > available_for_fee)
       {
@@ -11167,25 +11139,26 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
           if (use_rct) {
-	    //if ((strSource != "XHV") && (strSource != "XUSD")) needed_fee = 0;
-	    transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
-				  test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
-	  } else
+            transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
+                test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
+          } else
             transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
               detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx);
+
           txBlob = t_serializable_object_to_blob(test_ptx.tx);
           needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_multiplier, fee_quantization_mask);
+          needed_fee += offshore_fee;
           LOG_PRINT_L2("Made an attempt at a  final " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(test_ptx.fee) <<
             " fee  and " << print_money(test_ptx.change_dts.amount) << " change");
         }
 
-	if (use_offshore_outputs) {
-	  LOG_PRINT_L2("Made a final " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(test_ptx.fee) <<
-		       " fee  and " << print_money(test_ptx.change_dts.amount_usd) << " change");
-	} else {
-	  LOG_PRINT_L2("Made a final " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(test_ptx.fee) <<
-		       " fee  and " << print_money(test_ptx.change_dts.amount) << " change");
-	}
+        if (use_offshore_outputs) {
+          LOG_PRINT_L2("Made a final " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(test_ptx.fee) <<
+                " fee  and " << print_money(test_ptx.change_dts.amount_usd) << " change");
+        } else {
+          LOG_PRINT_L2("Made a final " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(test_ptx.fee) <<
+                " fee  and " << print_money(test_ptx.change_dts.amount) << " change");
+        }
 
         tx.tx = test_tx;
         tx.ptx = test_ptx;
@@ -11239,7 +11212,6 @@ skip_tx:
     pending_tx test_ptx;
 
     if (use_rct) {
-      //if ((strSource != "XHV") && (strSource != "XUSD")) needed_fee = 0;
       transfer_selected_rct(tx.dsts,                    /* NOMOD std::vector<cryptonote::tx_destination_entry> dsts,*/
                             tx.selected_transfers,      /* const std::list<size_t> selected_transfers */
                             fake_outs_count,            /* CONST size_t fake_outputs_count, */
