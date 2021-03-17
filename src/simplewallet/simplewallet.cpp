@@ -9013,13 +9013,15 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
         payment_id = payment_id.substr(0,16);
       std::string note = m_wallet->get_tx_note(i->first);
+      std::map<std::string, uint64_t> amounts = pd.m_amount_out;
+      amounts[pd.m_source_currency_type] = pd.m_amount_in - change - pd.m_fee;
       transfers.push_back({
 	      "out",
         pd.m_block_height,
         pd.m_timestamp,
  	      "out",
         true,
-        pd.m_amount_out,
+	amounts,
         i->first,
         payment_id,
         pd.m_fee,

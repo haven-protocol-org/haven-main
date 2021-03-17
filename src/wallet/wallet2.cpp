@@ -2784,6 +2784,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     if (strSource != "XHV" && strSource != "XUSD") {
       if (strSource != strDest) {
 	recived_in += get_xasset_amount(fee, strSource, tx.pricing_record_height);
+      } else {
+	recived_in += fee;
       }
     }
 
@@ -2907,6 +2909,12 @@ void wallet2::process_unconfirmed(const crypto::hash &txid, const cryptonote::tr
 void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::transaction &tx, uint64_t height, uint64_t ts, uint64_t spent, std::map<std::string, uint64_t>& received, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices, std::string strSource, std::string strDest)
 {
   std::pair<std::unordered_map<crypto::hash, confirmed_transfer_details>::iterator, bool> entry = m_confirmed_txs.insert(std::make_pair(txid, confirmed_transfer_details()));
+
+  entry.first->second.m_fee =
+    strSource == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
+    strSource == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
+    tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
+  
   // fill with the info we know, some info might already be there
   if (entry.second)
   {
@@ -2918,11 +2926,19 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
     if (tx.version == 1)
       entry.first->second.m_amount_out["XHV"] = get_outs_money_amount(tx)["XHV"]; // strSource should do the same thing.
     else {
-      entry.first->second.m_amount_out[strDest] = received[strDest];
-      entry.first->second.m_amount_out[strSource] = received[strSource];
+      if (strSource == strDest) {
+	entry.first->second.m_amount_out[strDest] = spent - entry.first->second.m_fee;
+      } else {
+	entry.first->second.m_amount_out[strDest] = received[strDest];
+	entry.first->second.m_amount_out[strSource] = spent - tx.amount_burnt - entry.first->second.m_fee;
+      }
     }
-    entry.first->second.m_change = received[strSource];
-
+    if (strSource == strDest) {
+      entry.first->second.m_change = received[strSource];
+    } else {
+      entry.first->second.m_change = spent - tx.amount_burnt;
+    }
+    
     std::vector<tx_extra_field> tx_extra_fields;
     parse_tx_extra(tx.extra, tx_extra_fields); // ok if partially parsed
     tx_extra_nonce extra_nonce;
@@ -7080,7 +7096,7 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
             input_asset == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
             tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
 
-  utd.m_amount_out[input_asset] += change_amount; // dests does not contain change
+  //utd.m_amount_out[input_asset] += change_amount; // dests does not contain change
 }
 
 //----------------------------------------------------------------------------------------------------
