@@ -961,6 +961,7 @@ namespace wallet_rpc
   {
     std::string payment_id;
     std::string tx_hash;
+    std::string amount_asset;
     uint64_t amount;
     uint64_t block_height;
     uint64_t unlock_time;
@@ -972,6 +973,7 @@ namespace wallet_rpc
       KV_SERIALIZE(payment_id)
       KV_SERIALIZE(tx_hash)
       KV_SERIALIZE(amount)
+      KV_SERIALIZE(amount_asset)
       KV_SERIALIZE(block_height)
       KV_SERIALIZE(unlock_time)
       KV_SERIALIZE(locked)
@@ -1034,6 +1036,7 @@ namespace wallet_rpc
     bool spent;
     uint64_t global_index;
     std::string tx_hash;
+    std::string asset_type;
     cryptonote::subaddress_index subaddr_index;
     std::string key_image;
     uint64_t block_height;
@@ -1042,6 +1045,7 @@ namespace wallet_rpc
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(amount)
+      KV_SERIALIZE(asset_type)
       KV_SERIALIZE(spent)
       KV_SERIALIZE(global_index)
       KV_SERIALIZE(tx_hash)
