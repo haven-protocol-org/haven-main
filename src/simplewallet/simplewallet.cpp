@@ -8986,7 +8986,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
         pd.m_timestamp,
         type,
         true,
-        {{pd.m_asset_type, pd.m_amount}},
+        pd.m_amount,
         pd.m_tx_hash,
         payment_id,
         0,
@@ -9007,21 +9007,20 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
-        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), d.amount});
+        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), pd.m_source_currency_type == "XHV" ?  d.amount :
+                                                                                 pd.m_source_currency_type == "XUSD" ? d.amount_usd : d.amount_xasset});
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
         payment_id = payment_id.substr(0,16);
       std::string note = m_wallet->get_tx_note(i->first);
-      std::map<std::string, uint64_t> amounts = pd.m_amount_out;
-      amounts[pd.m_source_currency_type] = pd.m_amount_in - change - pd.m_fee;
       transfers.push_back({
 	      "out",
         pd.m_block_height,
         pd.m_timestamp,
  	      "out",
         true,
-	amounts,
+	      pd.m_amount_in - change - pd.m_fee,
         i->first,
         payment_id,
         pd.m_fee,
@@ -9063,7 +9062,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
           pd.m_timestamp,
           "in",
           false,
-          {{pd.m_asset_type, pd.m_amount}},
+          pd.m_amount,
           pd.m_tx_hash,
           payment_id,
           0,
@@ -9089,7 +9088,8 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       const tools::wallet2::unconfirmed_transfer_details &pd = i->second;
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
-        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), d.amount});
+        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), pd.m_source_currency_type == "XHV" ?  d.amount :
+                                                                                 pd.m_source_currency_type == "XUSD" ? d.amount_usd : d.amount_xasset});
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
@@ -9164,30 +9164,19 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
       }
     }
 
-    auto formatter = boost::format("%8.8llu %6.6s %8.8s %25.25s %s %s %s %14.14s %s %s %s - %s");
-
-    // prepare the amounts string. format <amouunt> <asset_type>, ..
-    std::string amounts_str;
-    bool comma = false;
-    for (const auto& a: transfer.amounts) {
-      if (comma) {
-        amounts_str += ", ";
-      } else {
-        comma = true;
-      }
-      amounts_str += print_money(a.second) + " " + a.first;
-    }
+    auto formatter = boost::format("%8.8llu %6.6s %8.8s %25.25s %20.20s %s %s %s %14.14s %s %s %s - %s");
 
     message_writer(color, false) << formatter
       % transfer.block
       % transfer.direction
       % transfer.unlocked
       % tools::get_human_readable_timestamp(transfer.timestamp)
-      % amounts_str
+      % print_money(transfer.amount)
+      % transfer.asset_type
       % string_tools::pod_to_hex(transfer.hash)
       % transfer.payment_id
       % print_money(transfer.fee)
-      % transfer.fee_asset
+      % transfer.asset_type
       % destinations
       % boost::algorithm::join(transfer.index | boost::adaptors::transformed([](uint32_t i) { return std::to_string(i); }), ", ")
       % transfer.note;
@@ -9226,11 +9215,11 @@ bool simple_wallet::export_transfers(const std::vector<std::string>& args_)
   // header
   file <<
       boost::format("%8.8s,%9.9s,%8.8s,%25.25s,%20.20s,%20.20s,%64.64s,%16.16s,%14.14s,%100.100s,%20.20s,%s,%s") %
-      tr("block") % tr("direction") % tr("unlocked") % tr("timestamp") % tr("amounts") % tr("running balance") % tr("hash") % tr("payment ID") % tr("fee") % tr("fee asset") % tr("destination") % tr("amount") % tr("index") % tr("note")
+      tr("block") % tr("direction") % tr("unlocked") % tr("timestamp") % tr("amount") % tr("asset type") % tr("running balance") % tr("hash") % tr("payment ID") % tr("fee") % tr("destination") % tr("amount") % tr("index") % tr("note")
       << std::endl;
 
   std::map<std::string, uint64_t> running_balance;
-  auto formatter = boost::format("%8.8llu,%9.9s,%8.8s,%25.25s,%s,%s,%64.64s,%16.16s,%14.14s,%100.100s,%20.20s,\"%s\",%s");
+  auto formatter = boost::format("%8.8llu,%9.9s,%8.8s,%25.25s,%20.20s,%s,%s,%64.64s,%16.16s,%14.14s,%100.100s,%20.20s,\"%s\",%s");
 
   for (const auto& transfer : all_transfers)
   {
@@ -9238,36 +9227,19 @@ bool simple_wallet::export_transfers(const std::vector<std::string>& args_)
     if (transfer.confirmed)
     {
       if (transfer.direction == "in" || transfer.direction == "block") {
-        for (const auto& a: transfer.amounts) {
-          running_balance[a.first] += a.second;
-        }
+        running_balance[transfer.asset_type] += transfer.amount;
       }
       else {
-        for (const auto& a: transfer.amounts) {
-          running_balance[a.first] -= a.second;
-        }
-        running_balance[transfer.fee_asset] -= transfer.fee;
+        running_balance[transfer.asset_type] -= transfer.amount + transfer.fee;
       }
-    }
-
-    // prepare the amounts string. format <amouunt> <asset_type>, ..
-    std::string amounts_str;
-    bool comma = false;
-    for (const auto& a: transfer.amounts) {
-      if (comma) {
-        amounts_str += ", ";
-      } else {
-        comma = true;
-      }
-     amounts_str += print_money(a.second) + " " + a.first;
     }
 
     // prepare the running balance string. format <amouunt> <asset_type>, ..
     std::string running_balance_str;
-    comma = false;
+    bool comma = false;
     for (const auto& a: running_balance) {
       if (comma) {
-        amounts_str += ", ";
+        running_balance_str += ", ";
       } else {
         comma = true;
       }
@@ -9279,7 +9251,8 @@ bool simple_wallet::export_transfers(const std::vector<std::string>& args_)
       % transfer.direction
       % transfer.unlocked
       % tools::get_human_readable_timestamp(transfer.timestamp)
-      % amounts_str
+      % print_money(transfer.amount)
+      % transfer.asset_type
       % running_balance_str
       % string_tools::pod_to_hex(transfer.hash)
       % transfer.payment_id

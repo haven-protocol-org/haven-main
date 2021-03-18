@@ -2754,59 +2754,44 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     // that means we sent some funds to ourselves. In this case, we find it in the comfirmed txs
     // and set the outgoing payment amount to 0 so that it's less confusing. Since Haven users
     // will always send some funds to themselves for conversion of assets, input and output asset
-    // type will almost be different from one another. So we have no choice but calculate
-    // the output amounts and the fee in terms of input asset type so that following if statement
-    // makes sense. And we have to use the same pricing record that this particular tx had used.
+    // type will almost alywas be different from one another. And we don't do it when they are, because
+    // users wanna see what they offshored.
     uint64_t recived_in = 0;
-    for (const auto& r : self_received) {
-      if (strSource == "XHV") {
-        if (r.first != "XHV") {
-          recived_in += get_xhv_amount(r.second, tx.pricing_record_height);
-        } else {
-          recived_in += r.second;
-        }
-      } else if (strSource == "XUSD") {
-        if (r.first != "XUSD") {
-          recived_in += get_xusd_amount(r.second, r.first, tx.pricing_record_height);
-        } else {
-          recived_in += r.second;
-        }
-      } else {
-        if (r.first != strSource) {
-          recived_in += get_xasset_amount(r.second, r.first, tx.pricing_record_height);
-        } else {
-          recived_in += r.second;
-        }
+    if (strSource == strDest) {
+      recived_in += self_received[strSource];
+      if (tx_money_spent_in_ins == recived_in + fee)
+      {
+        auto i = m_confirmed_txs.find(txid);
+        THROW_WALLET_EXCEPTION_IF(i == m_confirmed_txs.end(), error::wallet_internal_error,
+          "confirmed tx wasn't found: " + string_tools::pod_to_hex(txid));
+        i->second.m_change = self_received[strSource];
       }
-    }
-
-    // convert fee to xasset corresponded
-    if (strSource != "XHV" && strSource != "XUSD") {
-      if (strSource != strDest) {
-	      recived_in += get_xasset_amount(fee, strSource, tx.pricing_record_height);
-      } else {
-	      recived_in += fee;
-      }
-    }
-
-    //by this point all 3 vars in the if staement should be in the same asset type
-    if (tx_money_spent_in_ins == recived_in)
-    {
-      auto i = m_confirmed_txs.find(txid);
-      THROW_WALLET_EXCEPTION_IF(i == m_confirmed_txs.end(), error::wallet_internal_error,
-        "confirmed tx wasn't found: " + string_tools::pod_to_hex(txid));
-      i->second.m_change = self_received[strSource];
     }
   }
   
   // remove change sent to the spending subaddress account from the list of received funds
+  // We only wanna do this when it is a transfer rather than conversion. Haven users will wanna
+  // the converted assets in there so we don't remove the payment to ourself in that case.
   for (auto i = tx_money_got_in_outs.begin(); i != tx_money_got_in_outs.end();)
   {
-    if (subaddr_account && i->first.major == *subaddr_account)
-      i = tx_money_got_in_outs.erase(i);
-    else
+    // only remove the change paymet, do not remove the coverted asset payment
+    if (subaddr_account && i->first.major == *subaddr_account) {
+      // delete individual change asset output
+      for (auto assets_it = i->second.begin(); assets_it != i->second.end();) {
+        if (assets_it->first == strSource)
+          assets_it = i->second.erase(assets_it);
+        else
+          ++assets_it;
+      }
+      // delete the subaddress if it is empty
+      if (i->second.empty())
+        i = tx_money_got_in_outs.erase(i);
+      else
+        ++i;
+    } else
       ++i;
   }
+
   
   // create payment_details for each incoming transfer to a subaddress index
   if (tx_money_got_in_outs.size() > 0)// && (!bOffshoreTx || onshore))
@@ -2924,9 +2909,9 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
     entry.first->second.m_amount_in = spent;
     entry.first->second.m_source_currency_type = strSource;
     if (tx.version == 1)
-      entry.first->second.m_amount_out["XHV"] = get_outs_money_amount(tx)["XHV"]; // strSource should do the same thing.
+      entry.first->second.m_amount_out = get_outs_money_amount(tx)["XHV"]; // strSource should do the same thing.
     else {
-	      entry.first->second.m_amount_out[strSource] = spent - received[strSource] - entry.first->second.m_fee;
+	      entry.first->second.m_amount_out = spent - entry.first->second.m_fee;
     }
     entry.first->second.m_change = received[strSource];
     
@@ -7037,18 +7022,6 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
     bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
   }
 
-
-  // set the amount outs
-  for (const auto &d: dests) {
-    if (d.asset_type == "XHV") {
-      utd.m_amount_out["XHV"] += d.amount;
-    } else if (d.asset_type == "XUSD") {
-      utd.m_amount_out["XUSD"] += d.amount_usd;
-    }else {
-      utd.m_amount_out[d.asset_type] += d.amount_xasset;
-    }
-  }
-
   utd.m_amount_in = amount_in;
   utd.m_change = change_amount;
   utd.m_sent_time = time(NULL);
@@ -7092,6 +7065,8 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
             input_asset == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
             tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
 
+  // set the amount out
+  utd.m_amount_out = utd.m_amount_in - utd.m_change - utd.m_fee;
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -10322,7 +10297,7 @@ void wallet2::light_wallet_get_address_txs()
         {
           unconfirmed_transfer_details utd;
           utd.m_amount_in = amount_sent;
-          utd.m_amount_out["XHV"] = amount_sent;
+          utd.m_amount_out = amount_sent;
           utd.m_change = 0;
           utd.m_payment_id = payment_id;
           utd.m_timestamp = t.timestamp;
@@ -10345,7 +10320,7 @@ void wallet2::light_wallet_get_address_txs()
           {
             confirmed_transfer_details ctd;
             ctd.m_amount_in = amount_sent;
-            ctd.m_amount_out["XHV"] = amount_sent;
+            ctd.m_amount_out = amount_sent;
             ctd.m_change = 0;
             ctd.m_payment_id = payment_id;
             ctd.m_block_height = t.height;
@@ -10365,7 +10340,7 @@ void wallet2::light_wallet_get_address_txs()
           {
             MDEBUG("Adjusting amount sent/received for tx: <" + t.hash + ">. Is tx sent to own wallet? " << print_money(amount_sent) << " != " << print_money(confirmed_tx->second.m_amount_in));
             confirmed_tx->second.m_amount_in = amount_sent;
-            confirmed_tx->second.m_amount_out["XHV"] = amount_sent;
+            confirmed_tx->second.m_amount_out = amount_sent;
             confirmed_tx->second.m_change = 0;
           }
         }
@@ -13933,7 +13908,7 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
       const transfer_details& td = m_transfers[n];
       confirmed_transfer_details pd;
       pd.m_change = (uint64_t)-1;                             // change is unknown
-      pd.m_amount_in = pd.m_amount_out["XHV"] = td.amount();         // fee is unknown
+      pd.m_amount_in = pd.m_amount_out = td.amount();         // fee is unknown
       pd.m_block_height = 0;  // spent block height is unknown
       const crypto::hash &spent_txid = crypto::null_hash; // spent txid is unknown
       m_confirmed_txs.insert(std::make_pair(spent_txid, pd));

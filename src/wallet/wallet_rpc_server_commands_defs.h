@@ -1417,10 +1417,10 @@ namespace wallet_rpc
     std::string payment_id;
     uint64_t height;
     uint64_t timestamp;
-    std::vector<std::string> amounts_assets;
+    uint64_t amount;
+    std::string asset_type;
     amounts_container amounts;
     uint64_t fee;
-    std::string fee_asset;
     std::string note;
     std::list<transfer_destination> destinations;
     std::string type;
@@ -1439,9 +1439,9 @@ namespace wallet_rpc
       KV_SERIALIZE(height);
       KV_SERIALIZE(timestamp);
       KV_SERIALIZE(amounts);
-      KV_SERIALIZE(amounts_assets);
+      KV_SERIALIZE(amount);
+      KV_SERIALIZE(asset_type);
       KV_SERIALIZE(fee);
-      KV_SERIALIZE(fee_asset);
       KV_SERIALIZE(note);
       KV_SERIALIZE(destinations);
       KV_SERIALIZE(type);

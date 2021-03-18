@@ -327,8 +327,8 @@ namespace tools
       entry.payment_id = entry.payment_id.substr(0,16);
     entry.height = pd.m_block_height;
     entry.timestamp = pd.m_timestamp;
-    entry.amounts_assets.push_back(pd.m_asset_type);
-    entry.amounts.push_back(pd.m_amount);
+    entry.asset_type = pd.m_asset_type;
+    entry.amount = pd.m_amount;
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = !m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
     entry.fee = pd.m_fee;
@@ -351,18 +351,15 @@ namespace tools
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = !m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
     entry.fee = pd.m_fee;
-    entry.fee_asset = pd.m_source_currency_type;
     uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
-    for (const auto& a: pd.m_amount_out) {
-      entry.amounts_assets.push_back(a.first);
-      entry.amounts.push_back(a.second);
-    }
+    entry.amount = pd.m_amount_out;
+    entry.asset_type = pd.m_source_currency_type;
     entry.note = m_wallet->get_tx_note(txid);
 
     for (const auto &d: pd.m_dests) {
       entry.destinations.push_back(wallet_rpc::transfer_destination());
       wallet_rpc::transfer_destination &td = entry.destinations.back();
-      td.amount = d.amount;
+      td.amount = entry.asset_type == "XHV" ? d.amount :  entry.asset_type == "XUSD" ? d.amount_usd : d.amount_xasset;
       td.address = d.address(m_wallet->nettype(), pd.m_payment_id);
     }
 
@@ -385,11 +382,8 @@ namespace tools
     entry.height = 0;
     entry.timestamp = pd.m_timestamp;
     entry.fee = pd.m_fee;
-    entry.fee_asset = pd.m_source_currency_type;
-    for (const auto& a: pd.m_amount_out) {
-      entry.amounts_assets.push_back(a.first);
-      entry.amounts.push_back(a.second);
-    }
+    entry.amount = pd.m_amount_out;
+    entry.asset_type = pd.m_source_currency_type;
     entry.unlock_time = pd.m_tx.unlock_time;
     entry.locked = true;
     entry.note = m_wallet->get_tx_note(txid);
@@ -397,7 +391,7 @@ namespace tools
     for (const auto &d: pd.m_dests) {
       entry.destinations.push_back(wallet_rpc::transfer_destination());
       wallet_rpc::transfer_destination &td = entry.destinations.back();
-      td.amount = d.amount;
+      td.amount =   entry.asset_type == "XHV" ? d.amount :  entry.asset_type == "XUSD" ? d.amount_usd : d.amount_xasset;
       td.address = d.address(m_wallet->nettype(), pd.m_payment_id);
     }
 
@@ -418,8 +412,8 @@ namespace tools
       entry.payment_id = entry.payment_id.substr(0,16);
     entry.height = 0;
     entry.timestamp = pd.m_timestamp;
-    entry.amounts_assets.push_back(pd.m_asset_type);
-    entry.amounts.push_back(pd.m_amount);
+    entry.asset_type = pd.m_asset_type;
+    entry.amount = pd.m_amount;
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = true;
     entry.fee = pd.m_fee;

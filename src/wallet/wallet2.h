@@ -407,9 +407,9 @@ private:
     struct unconfirmed_transfer_details
     {
       cryptonote::transaction_prefix m_tx;
-      uint64_t m_amount_in;
-      std::map<std::string, uint64_t> m_amount_out;
-      uint64_t m_change;
+      uint64_t m_amount_in;   // whole input magnitude that is being used (in source currency)
+      uint64_t m_amount_out;  // what we actually sent (m_amount_in - change) (in source currency)
+      uint64_t m_change;      // change that comes back to us.
       time_t m_sent_time;
       std::vector<cryptonote::tx_destination_entry> m_dests;
       crypto::hash m_payment_id;
@@ -419,14 +419,14 @@ private:
       std::set<uint32_t> m_subaddr_indices;  // set of address indices used as inputs in this transfer
       std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> m_rings; // relative
       std::string m_source_currency_type; // we need for the fee asset type
-      uint64_t m_fee;
+      uint64_t m_fee; // (in source currency)
     };
 
     struct confirmed_transfer_details
     {
-      uint64_t m_amount_in;
-      std::map<std::string, uint64_t> m_amount_out;
-      uint64_t m_change;
+      uint64_t m_amount_in;   // whole input magnitude that is being used (in source currency)
+      uint64_t m_amount_out;  // what we actually sent (m_amount_in - change) (in source currency)
+      uint64_t m_change;      // change that comes back to us.
       uint64_t m_block_height;
       std::vector<cryptonote::tx_destination_entry> m_dests;
       crypto::hash m_payment_id;
@@ -1965,7 +1965,7 @@ namespace boost
         // as it's readily understood to be sum of outputs.
         // We convert it to include change from v6
         if (!typename Archive::is_saving() && x.m_change != (uint64_t)-1)
-          x.m_amount_out["XHV"] += x.m_change;
+          x.m_amount_out += x.m_change;
       }
       if (ver < 7)
       {
@@ -2003,8 +2003,8 @@ namespace boost
         // We convert it to include change from v3
         if (!typename Archive::is_saving() && x.m_change != (uint64_t)-1)
         {
-          if (x.m_amount_in > (x.m_amount_out["XHV"] + x.m_change))
-            x.m_amount_out["XHV"] += x.m_change;
+          if (x.m_amount_in > (x.m_amount_out + x.m_change))
+            x.m_amount_out += x.m_change;
         }
       }
       if (ver < 4)
