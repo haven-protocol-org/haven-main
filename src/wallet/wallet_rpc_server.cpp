@@ -433,7 +433,17 @@ namespace tools
     // check whether we have valid asset_type passed in
     if (req.asset_type.size() == 0 || (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), req.asset_type) == offshore::ASSET_TYPES.end())) {
       er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ASSET_TYPE;
-      er.message = "Field 'asset_type' is unknown.";
+      std::string assets_str;
+      bool comma = false;
+      for (const auto& asset: offshore::ASSET_TYPES) {
+        if (comma) {
+          assets_str += ", ";
+        } else {
+          comma = true;
+        }
+        assets_str += asset;
+      }
+      er.message = "Paremeter 'asset_type' is not supported. Currently supported asset types are: " + assets_str;
       return false;
     }
 
