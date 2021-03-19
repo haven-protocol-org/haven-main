@@ -418,6 +418,9 @@ private:
       uint32_t m_subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> m_subaddr_indices;  // set of address indices used as inputs in this transfer
       std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> m_rings; // relative
+      bool m_offshore;
+      bool m_offshore_to_offshore;
+      bool m_onshore;
       std::string m_source_currency_type; // we need for the fee asset type
       uint64_t m_fee; // (in source currency)
     };
@@ -435,6 +438,9 @@ private:
       uint32_t m_subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> m_subaddr_indices;  // set of address indices used as inputs in this transfer
       std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> m_rings; // relative
+      bool m_offshore;
+      bool m_offshore_to_offshore;
+      bool m_onshore;
       std::string m_source_currency_type;
       uint64_t m_fee;
 
@@ -1747,8 +1753,8 @@ BOOST_CLASS_VERSION(tools::wallet2::multisig_info::LR, 0)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_tx_set, 1)
 BOOST_CLASS_VERSION(tools::wallet2::payment_details, 6)
 BOOST_CLASS_VERSION(tools::wallet2::pool_payment_details, 1)
-BOOST_CLASS_VERSION(tools::wallet2::unconfirmed_transfer_details, 8)
-BOOST_CLASS_VERSION(tools::wallet2::confirmed_transfer_details, 6)
+BOOST_CLASS_VERSION(tools::wallet2::unconfirmed_transfer_details, 10)
+BOOST_CLASS_VERSION(tools::wallet2::confirmed_transfer_details, 8)
 BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 18)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
 BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
@@ -1977,6 +1983,23 @@ namespace boost
       if (ver < 8)
         return;
       a & x.m_rings;
+      if (ver < 9) {
+	x.m_offshore = false;
+	x.m_offshore_to_offshore = false;
+	x.m_onshore = false;
+	return;
+      }
+      a & x.m_offshore;
+      a & x.m_offshore_to_offshore;
+      a & x.m_onshore;
+      if (ver < 10)
+      {
+	x.m_source_currency_type = "XHV";
+	x.m_fee = 0;
+	return;
+      }
+      a & x.m_source_currency_type;
+      a & x.m_fee;
     }
 
     template <class Archive>
@@ -2024,6 +2047,23 @@ namespace boost
       if (ver < 6)
         return;
       a & x.m_rings;
+      if (ver < 7) {
+	x.m_offshore = false;
+	x.m_offshore_to_offshore = false;
+	x.m_onshore = false;
+	return;
+      }
+      a & x.m_offshore;
+      a & x.m_offshore_to_offshore;
+      a & x.m_onshore;
+      if (ver < 8)
+      {
+	x.m_source_currency_type = "XHV";
+	x.m_fee = 0;
+	return;
+      }
+      a & x.m_source_currency_type;
+      a & x.m_fee;
     }
 
     template <class Archive>
