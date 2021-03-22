@@ -961,7 +961,7 @@ namespace wallet_rpc
   {
     std::string payment_id;
     std::string tx_hash;
-    std::string amount_asset;
+    std::string type;
     uint64_t amount;
     uint64_t block_height;
     uint64_t unlock_time;
@@ -973,7 +973,7 @@ namespace wallet_rpc
       KV_SERIALIZE(payment_id)
       KV_SERIALIZE(tx_hash)
       KV_SERIALIZE(amount)
-      KV_SERIALIZE(amount_asset)
+      KV_SERIALIZE(type)
       KV_SERIALIZE(block_height)
       KV_SERIALIZE(unlock_time)
       KV_SERIALIZE(locked)
@@ -987,9 +987,11 @@ namespace wallet_rpc
     struct request_t
     {
       std::string payment_id;
+      std::vector<std::string> types;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(payment_id)
+	KV_SERIALIZE(types)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1011,10 +1013,12 @@ namespace wallet_rpc
     {
       std::vector<std::string> payment_ids;
       uint64_t min_block_height;
+      std::vector<std::string> types;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(payment_ids)
         KV_SERIALIZE(min_block_height)
+	KV_SERIALIZE(types)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

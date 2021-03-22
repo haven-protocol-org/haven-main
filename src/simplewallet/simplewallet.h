@@ -169,7 +169,7 @@ namespace cryptonote
     bool transfer(const std::vector<std::string> &args);
     bool locked_transfer(const std::vector<std::string> &args);
     bool locked_sweep_all(const std::vector<std::string> &args);
-    bool sweep_main(uint32_t account, uint64_t below, bool locked, const std::vector<std::string> &args, bool bOffshoreTx = false);
+    bool sweep_main(uint32_t account, uint64_t below, bool locked, const std::vector<std::string> &args);
     bool sweep_all(const std::vector<std::string> &args);
     bool sweep_account(const std::vector<std::string> &args);
     bool sweep_below(const std::vector<std::string> &args);
@@ -271,7 +271,7 @@ namespace cryptonote
 
     bool xasset_to_xusd(const std::vector<std::string> &args);
     bool xasset_sweep_all(const std::vector<std::string> &args);
-    bool xasset_sweep_single(const std::vector<std::string> &args);
+    bool xasset_sweep_below(const std::vector<std::string> &args);
     bool xasset_transfer(const std::vector<std::string> &args);
     bool xusd_to_xasset(const std::vector<std::string> &args);
 

@@ -554,7 +554,7 @@ namespace cryptonote
   {
     if (tx.version > 1)
     {
-      fee = tx.rct_signatures.txnFee;
+      fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
       return true;
     }
     uint64_t amount_in = 0;

@@ -333,7 +333,7 @@ namespace tools
     entry.locked = !m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
     entry.fee = pd.m_fee;
     entry.note = m_wallet->get_tx_note(pd.m_tx_hash);
-    entry.type = pd.m_coinbase ? "block" : "in";
+    entry.type = pd.m_coinbase ? "block" : (entry.asset_type == "XHV") ? "in" : entry.asset_type + " in";
     entry.subaddr_index = pd.m_subaddr_index;
     entry.subaddr_indices.push_back(pd.m_subaddr_index);
     entry.address = m_wallet->get_subaddress_as_str(pd.m_subaddr_index);
@@ -363,7 +363,7 @@ namespace tools
       td.address = d.address(m_wallet->nettype(), pd.m_payment_id);
     }
 
-    entry.type = "out";
+    entry.type = (entry.asset_type == "XHV") ? "out" : entry.asset_type + " out";
     entry.subaddr_index = { pd.m_subaddr_account, 0 };
     for (uint32_t i: pd.m_subaddr_indices)
       entry.subaddr_indices.push_back({pd.m_subaddr_account, i});
@@ -395,7 +395,7 @@ namespace tools
       td.address = d.address(m_wallet->nettype(), pd.m_payment_id);
     }
 
-    entry.type = is_failed ? "failed" : "pending";
+    entry.type = is_failed ? "failed" : (entry.asset_type == "XHV") ? "pending" : entry.asset_type + " pending";
     entry.subaddr_index = { pd.m_subaddr_account, 0 };
     for (uint32_t i: pd.m_subaddr_indices)
       entry.subaddr_indices.push_back({pd.m_subaddr_account, i});
@@ -419,7 +419,7 @@ namespace tools
     entry.fee = pd.m_fee;
     entry.note = m_wallet->get_tx_note(pd.m_tx_hash);
     entry.double_spend_seen = ppd.m_double_spend_seen;
-    entry.type = "pool";
+    entry.type = (entry.asset_type == "XHV") ? "pool" : entry.asset_type + " pool";
     entry.subaddr_index = pd.m_subaddr_index;
     entry.subaddr_indices.push_back(pd.m_subaddr_index);
     entry.address = m_wallet->get_subaddress_as_str(pd.m_subaddr_index);
@@ -910,7 +910,7 @@ namespace tools
         fill(tx_key, std::string(s.data(), s.size()));
       }
       // Compute amount leaving wallet in tx. By convention dests does not include change outputs
-      fill(amount, total_amount(ptx, amount_asset));
+      fill(amount, ptx.tx.amount_burnt > 0 ? ptx.tx.amount_burnt : total_amount(ptx, amount_asset));
       fill(fee, ptx.fee);
       fill(weight, cryptonote::get_transaction_weight(ptx.tx));
     }
@@ -1027,7 +1027,7 @@ namespace tools
       }
 
       // much easier to do it here then in fill_response
-      res.amount_asset = "XUSD";
+      res.amount_asset = "XHV";
       res.fee_asset = "XHV";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
 			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
@@ -1187,7 +1187,7 @@ namespace tools
       }
 
       // much easier to do it here then in fill_response
-      res.amount_asset = "XHV";
+      res.amount_asset = "XUSD";
       res.fee_asset = "XUSD";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
 			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
@@ -1270,7 +1270,7 @@ namespace tools
       }
 
       // much easier to do it here then in fill_response
-      res.amount_asset = req.asset_type;
+      res.amount_asset = "XUSD";
       res.fee_asset = "XUSD";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
 			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
@@ -1353,7 +1353,7 @@ namespace tools
       }
 
       // much easier to do it here then in fill_response
-      res.amount_asset = "XUSD";
+      res.amount_asset = req.asset_type;
       res.fee_asset = req.asset_type;
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
 			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
@@ -1986,7 +1986,7 @@ namespace tools
     {
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
-      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_all(req.below_amount, dsts[0].addr, dsts[0].is_subaddress, req.outputs, mixin, req.unlock_time, priority, extra, req.account_index, subaddr_indices);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_all(req.below_amount, dsts[0].addr, dsts[0].is_subaddress, req.outputs, mixin, req.unlock_time, priority, extra, req.account_index, subaddr_indices, "XHV");
 
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, "XHV", res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
 			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
@@ -2274,16 +2274,31 @@ namespace tools
     m_wallet->get_payments(payment_id, payment_list);
     for (auto & payment : payment_list)
     {
+      // Iterate over our vector to see which currencies are requested
+      bool bMatched = false;
+      std::vector<std::string> types = req.types;
+      if (!types.size())
+	types.push_back("xhv");
+
+      for (auto type: types) {
+	if (boost::algorithm::to_lower_copy(type) == boost::algorithm::to_lower_copy(payment.m_asset_type)) {
+	  bMatched = true;
+	} else if (boost::algorithm::to_lower_copy(type) == "all") {
+	  bMatched = true;
+	}
+      }
+      if (!bMatched)
+	continue;
       wallet_rpc::payment_details rpc_payment;
-      rpc_payment.payment_id   = req.payment_id;
-      rpc_payment.tx_hash      = epee::string_tools::pod_to_hex(payment.m_tx_hash);
-      rpc_payment.amount       = payment.m_amount;
-      rpc_payment.amount_asset = payment.m_asset_type;
-      rpc_payment.block_height = payment.m_block_height;
-      rpc_payment.unlock_time  = payment.m_unlock_time;
-      rpc_payment.locked       = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
+      rpc_payment.payment_id    = req.payment_id;
+      rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.m_tx_hash);
+      rpc_payment.amount        = payment.m_amount;
+      rpc_payment.type          = payment.m_asset_type;
+      rpc_payment.block_height  = payment.m_block_height;
+      rpc_payment.unlock_time   = payment.m_unlock_time;
+      rpc_payment.locked        = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
       rpc_payment.subaddr_index = payment.m_subaddr_index;
-      rpc_payment.address      = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
+      rpc_payment.address       = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
       res.payments.push_back(rpc_payment);
     }
 
@@ -2303,16 +2318,31 @@ namespace tools
 
       for (auto & payment : payment_list)
       {
+	// Iterate over our vector to see which currencies are requested
+	bool bMatched = false;
+	std::vector<std::string> types = req.types;
+	if (!types.size())
+	  types.push_back("xhv");
+
+	for (auto type: types) {
+	  if (boost::algorithm::to_lower_copy(type) == boost::algorithm::to_lower_copy(payment.second.m_asset_type)) {
+	    bMatched = true;
+	  } else if (boost::algorithm::to_lower_copy(type) == "all") {
+	    bMatched = true;
+	  }
+	}
+	if (!bMatched)
+	  continue;
         wallet_rpc::payment_details rpc_payment;
-        rpc_payment.payment_id   = epee::string_tools::pod_to_hex(payment.first);
-        rpc_payment.tx_hash      = epee::string_tools::pod_to_hex(payment.second.m_tx_hash);
-        rpc_payment.amount       = payment.second.m_amount;
-        rpc_payment.amount_asset = payment.second.m_asset_type;
-        rpc_payment.block_height = payment.second.m_block_height;
-        rpc_payment.unlock_time  = payment.second.m_unlock_time;
+        rpc_payment.payment_id    = epee::string_tools::pod_to_hex(payment.first);
+        rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.second.m_tx_hash);
+        rpc_payment.amount        = payment.second.m_amount;
+        rpc_payment.type          = payment.second.m_asset_type;
+        rpc_payment.block_height  = payment.second.m_block_height;
+        rpc_payment.unlock_time   = payment.second.m_unlock_time;
         rpc_payment.subaddr_index = payment.second.m_subaddr_index;
-        rpc_payment.address      = m_wallet->get_subaddress_as_str(payment.second.m_subaddr_index);
-        rpc_payment.locked       = !m_wallet->is_transfer_unlocked(payment.second.m_unlock_time, payment.second.m_block_height);
+        rpc_payment.address       = m_wallet->get_subaddress_as_str(payment.second.m_subaddr_index);
+        rpc_payment.locked        = !m_wallet->is_transfer_unlocked(payment.second.m_unlock_time, payment.second.m_block_height);
         res.payments.push_back(std::move(rpc_payment));
       }
 
@@ -2360,15 +2390,15 @@ namespace tools
       for (auto & payment : payment_list)
       {
         wallet_rpc::payment_details rpc_payment;
-        rpc_payment.payment_id   = payment_id_str;
-        rpc_payment.tx_hash      = epee::string_tools::pod_to_hex(payment.m_tx_hash);
-        rpc_payment.amount       = payment.m_amount;
-        rpc_payment.amount_asset = payment.m_asset_type;
-        rpc_payment.block_height = payment.m_block_height;
-        rpc_payment.unlock_time  = payment.m_unlock_time;
+        rpc_payment.payment_id    = payment_id_str;
+        rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.m_tx_hash);
+        rpc_payment.amount        = payment.m_amount;
+        rpc_payment.type          = payment.m_asset_type;
+        rpc_payment.block_height  = payment.m_block_height;
+        rpc_payment.unlock_time   = payment.m_unlock_time;
         rpc_payment.subaddr_index = payment.m_subaddr_index;
-        rpc_payment.address      = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
-        rpc_payment.locked       = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
+        rpc_payment.address       = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
+        rpc_payment.locked        = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
         res.payments.push_back(std::move(rpc_payment));
       }
     }
