@@ -9654,6 +9654,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   if (found_money - needed_money == 0)
   {
     change_dts.amount = change_dts.amount_usd = change_dts.amount_xasset = 0;
+    change_dts.asset_type = strSource;
     if (splitted_dsts.size() == 1)
     {
       // If the change is 0, send it to a random address, to avoid confusing
@@ -11690,7 +11691,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 	if (use_xasset_outputs) 
 	  tx.dsts.push_back(tx_destination_entry(0, 0, 1, address, is_subaddress, strDest));
 	else if (use_offshore_outputs) 
-	  tx.dsts.push_back(tx_destination_entry(0, 1, address, is_subaddress));
+	  tx.dsts.push_back(tx_destination_entry(0, 1, 0, address, is_subaddress, strDest));
 	else
 	  tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));	  
 
@@ -11720,7 +11721,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 	if (use_xasset_outputs) 
 	  tx.dsts.push_back(tx_destination_entry(0, 0, 1, address, is_subaddress, strDest));
 	else if (use_offshore_outputs) 
-	  tx.dsts.push_back(tx_destination_entry(0, 1, address, is_subaddress));
+	  tx.dsts.push_back(tx_destination_entry(0, 1, 0, address, is_subaddress, strDest));
 	else
 	  tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));	  
       }
@@ -11827,7 +11828,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
     std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", 0, 0, a, address, is_subaddress, strDest));
     THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, synthetic_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
   } else if (use_offshore_outputs) {
-    std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", 0, a, address, is_subaddress));
+    std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", 0, a, 0, address, is_subaddress, strDest));
     THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, synthetic_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
   } else {
     std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", a, address, is_subaddress));
