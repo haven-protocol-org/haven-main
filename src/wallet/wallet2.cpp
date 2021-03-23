@@ -11655,12 +11655,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 
     size_t idx =
       unused_transfers_indices.empty()
-        ? pop_best_value(unused_dust_indices, tx.selected_transfers)
+      ? pop_best_value_from(specific_transfers, unused_dust_indices, tx.selected_transfers)
       : unused_dust_indices.empty()
-        ? pop_best_value(unused_transfers_indices, tx.selected_transfers)
+        ? pop_best_value_from(specific_transfers, unused_transfers_indices, tx.selected_transfers)
       : ((tx.selected_transfers.size() & 1) || accumulated_outputs > fee_dust_threshold)
-        ? pop_best_value(unused_dust_indices, tx.selected_transfers)
-      : pop_best_value(unused_transfers_indices, tx.selected_transfers);
+        ? pop_best_value_from(specific_transfers, unused_dust_indices, tx.selected_transfers)
+      : pop_best_value_from(specific_transfers, unused_transfers_indices, tx.selected_transfers);
 
     const transfer_details &td = specific_transfers[idx];
     LOG_PRINT_L2("Picking output " << idx << ", amount " << print_money(td.amount()));
