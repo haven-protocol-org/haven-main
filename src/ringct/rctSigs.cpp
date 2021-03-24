@@ -50,80 +50,36 @@ using namespace std;
 namespace
 {
   rct::Bulletproof make_dummy_bulletproof(const std::vector<uint64_t> &outamounts, rct::keyV &C, rct::keyV &masks)
+  {
+    const size_t n_outs = outamounts.size();
+    const rct::key I = rct::identity();
+    size_t nrl = 0;
+    while ((1u << nrl) < n_outs)
+      ++nrl;
+    nrl += 6;
+
+    C.resize(n_outs);
+    masks.resize(n_outs);
+    for (size_t i = 0; i < n_outs; ++i)
     {
-        const size_t n_outs = outamounts.size();
-        const rct::key I = rct::identity();
-        size_t nrl = 0;
-        while ((1u << nrl) < n_outs)
-          ++nrl;
-        nrl += 6;
-
-        C.resize(n_outs);
-        masks.resize(n_outs);
-        for (size_t i = 0; i < n_outs; ++i)
-        {
-            masks[i] = I;
-            rct::key sv8, sv;
-            sv = rct::zero();
-            sv.bytes[0] = outamounts[i] & 255;
-            sv.bytes[1] = (outamounts[i] >> 8) & 255;
-            sv.bytes[2] = (outamounts[i] >> 16) & 255;
-            sv.bytes[3] = (outamounts[i] >> 24) & 255;
-            sv.bytes[4] = (outamounts[i] >> 32) & 255;
-            sv.bytes[5] = (outamounts[i] >> 40) & 255;
-            sv.bytes[6] = (outamounts[i] >> 48) & 255;
-            sv.bytes[7] = (outamounts[i] >> 56) & 255;
-            sc_mul(sv8.bytes, sv.bytes, rct::INV_EIGHT.bytes);
-            rct::addKeys2(C[i], rct::INV_EIGHT, sv8, rct::H);
-        }
-
-        return rct::Bulletproof{rct::keyV(n_outs, I), I, I, I, I, I, I, rct::keyV(nrl, I), rct::keyV(nrl, I), I, I, I};
-    }
-  /*  
-  rct::Bulletproof make_dummy_bulletproofXHV(const std::vector<std::pair<uint64_t, uint64_t>> &outamounts, rct::keyV &C, rct::keyV &masks)
-    {
-        const size_t n_outs = outamounts.size();
-        const rct::key I = rct::identity();
-        size_t nrl = 0;
-        while ((1u << nrl) < n_outs)
-          ++nrl;
-        nrl += 6;
-
-        C.resize(n_outs);
-        masks.resize(n_outs);
-        for (size_t i = 0; i < n_outs; ++i)
-        {
-            masks[i] = I;
-            rct::key sv8, sv;
-            sv = rct::zero();
-	    uint64_t amount_nonzero = (outamounts[i].first == 0 ? outamounts[i].second : outamounts[i].first);
-            sv.bytes[0] = amount_nonzero & 255;
-            sv.bytes[1] = (amount_nonzero >> 8) & 255;
-            sv.bytes[2] = (amount_nonzero >> 16) & 255;
-            sv.bytes[3] = (amount_nonzero >> 24) & 255;
-            sv.bytes[4] = (amount_nonzero >> 32) & 255;
-            sv.bytes[5] = (amount_nonzero >> 40) & 255;
-            sv.bytes[6] = (amount_nonzero >> 48) & 255;
-            sv.bytes[7] = (amount_nonzero >> 56) & 255;
-            sc_mul(sv8.bytes, sv.bytes, rct::INV_EIGHT.bytes);
-            rct::addKeys2(C[i], rct::INV_EIGHT, sv8, rct::H);
-        }
-
-        return rct::Bulletproof{rct::keyV(n_outs, I), I, I, I, I, I, I, rct::keyV(nrl, I), rct::keyV(nrl, I), I, I, I};
+      masks[i] = I;
+      rct::key sv8, sv;
+      sv = rct::zero();
+      sv.bytes[0] = outamounts[i] & 255;
+      sv.bytes[1] = (outamounts[i] >> 8) & 255;
+      sv.bytes[2] = (outamounts[i] >> 16) & 255;
+      sv.bytes[3] = (outamounts[i] >> 24) & 255;
+      sv.bytes[4] = (outamounts[i] >> 32) & 255;
+      sv.bytes[5] = (outamounts[i] >> 40) & 255;
+      sv.bytes[6] = (outamounts[i] >> 48) & 255;
+      sv.bytes[7] = (outamounts[i] >> 56) & 255;
+      sc_mul(sv8.bytes, sv.bytes, rct::INV_EIGHT.bytes);
+      rct::addKeys2(C[i], rct::INV_EIGHT, sv8, rct::H);
     }
 
-  void sc_div(unsigned char *s, const unsigned char *a, const unsigned char *b) {
-
-    ge_p3 ge_b;
-    ge_frombytes_vartime(&ge_b, b);
-    ge_p3 ge_out = ge_b;
-    fe_invert(ge_out.Y, ge_b.Y);
-    //fe_invert(ge_out.T, ge_b.T);
-    rct::key foo;
-    ge_p3_tobytes(foo.bytes, &ge_out);
-    sc_mul(s, a, foo.bytes);
+    return rct::Bulletproof{rct::keyV(n_outs, I), I, I, I, I, I, I, rct::keyV(nrl, I), rct::keyV(nrl, I), I, I, I};
   }
-  */
+  
   rct::key sm(rct::key y, int n, const rct::key &x)
   {
     while (n--)
@@ -190,29 +146,6 @@ namespace
 
 namespace rct {
 
-  Bulletproof proveRangeBulletproofXHV(keyV &C, keyV &masks, const std::vector<std::pair<uint64_t, uint64_t>> &amounts, epee::span<const key> sk, hw::device &hwdev)
-    {
-        CHECK_AND_ASSERT_THROW_MES(amounts.size() == sk.size(), "Invalid amounts/sk sizes");
-        masks.resize(amounts.size());
-        for (size_t i = 0; i < masks.size(); ++i)
-            masks[i] = hwdev.genCommitmentMask(sk[i]);
-	// HERE BE DRAGONS!!!
-	// NEAC: this might not work, depending on if we can ignore zero amounts in either currency
-	// NEAC: we KNOW that only one amount will be nonzero (either XHV or USD)...
-	std::vector<uint64_t> amounts_nonzero;
-	for (size_t i=0; i < amounts.size(); ++i) {
-	  if (amounts[i].first == 0)
-	    amounts_nonzero.push_back(amounts[i].second);
-	  else
-	    amounts_nonzero.push_back(amounts[i].first);
-	}
-	// LAND AHOY!!!
-        Bulletproof proof = bulletproof_PROVE(amounts_nonzero, masks);
-        CHECK_AND_ASSERT_THROW_MES(proof.V.size() == amounts_nonzero.size(), "V does not have the expected size");
-        C = proof.V;
-        return proof;
-    }
-
     Bulletproof proveRangeBulletproof(keyV &C, keyV &masks, const std::vector<uint64_t> &amounts, epee::span<const key> sk, hw::device &hwdev)
     {
         CHECK_AND_ASSERT_THROW_MES(amounts.size() == sk.size(), "Invalid amounts/sk sizes");
@@ -223,13 +156,6 @@ namespace rct {
         CHECK_AND_ASSERT_THROW_MES(proof.V.size() == amounts.size(), "V does not have the expected size");
         C = proof.V;
         return proof;
-    }
-
-    bool verBulletproofXHV(const Bulletproof &proof)
-    {
-      try { return bulletproof_VERIFY(proof); }
-      // we can get deep throws from ge_frombytes_vartime if input isn't valid
-      catch (...) { return false; }
     }
 
     bool verBulletproof(const Bulletproof &proof)
@@ -1539,7 +1465,6 @@ namespace rct {
     rv.txnOffshoreFee = txnOffshoreFee;
     rv.txnOffshoreFee_usd = txnOffshoreFee_usd;
     rv.txnOffshoreFee_xasset = txnOffshoreFee_xasset;
-    rv.fees_asset_type = in_asset_type;
     // TODO: unused ??
     // key txnFeeKey = scalarmultH(d2h(rv.txnFee));
 

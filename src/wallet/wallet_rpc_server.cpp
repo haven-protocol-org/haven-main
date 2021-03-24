@@ -995,7 +995,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 
@@ -1079,7 +1079,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 
@@ -1155,7 +1155,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 
@@ -1245,7 +1245,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 
@@ -1328,7 +1328,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 
@@ -1411,7 +1411,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 
@@ -1472,7 +1472,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 
@@ -1539,7 +1539,7 @@ namespace tools
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
       er.code = WALLET_RPC_ERROR_CODE_DENIED;
-      er.message = "Transaction memo can't be more than 255 charecters long!";
+      er.message = "Transaction memo can't be more than 127 charecters long!";
       return false;
     }
 

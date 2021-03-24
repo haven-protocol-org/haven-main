@@ -6888,7 +6888,7 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       memo.data = strMemo;
       cryptonote::add_memo_to_tx_extra(extra, memo);
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
-      fail_msg_writer() << tr("Transaction memo can't be more than 255 charecters long!");
+      fail_msg_writer() << tr("Transaction memo can't be more than 127 charecters long!");
       return false;
     }
   }

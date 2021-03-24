@@ -192,8 +192,8 @@
 #define HF_VERSION_OFFSHORE_FEES_V3             16
 #define HF_VERSION_XASSET_FULL                  16
 
-#define STAGENET_VERSION                        0x0b
-#define TESTNET_VERSION                         0x0b
+#define STAGENET_VERSION                        0x0c
+#define TESTNET_VERSION                         0x0c
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 

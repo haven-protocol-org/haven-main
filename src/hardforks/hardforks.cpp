@@ -56,8 +56,8 @@ const hardfork_t testnet_hard_forks[] = {
   { 11, 50, 0, 1593613842 },
   { 13, 60, 0, 1593615042 },
   { 14, 70, 0, 1593616242 },
-  { 15, 80, 0, 1593616243 },
-  { 16, 90, 0, 1593616244 }
+  { 15, 150, 0, 1593616243 },
+  { 16, 230, 0, 1593616244 }
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
 const uint64_t testnet_hard_fork_version_1_till = 24;

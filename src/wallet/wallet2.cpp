@@ -4182,14 +4182,6 @@ void wallet2::detach_blockchain(uint64_t height, bool use_offshore_outputs, std:
     else
       ++it;
   }
-
-  for (auto it = m_confirmed_offshore_txs.begin(); it != m_confirmed_offshore_txs.end(); )
-  {
-    if(height <= it->second.m_block_height)
-      it = m_confirmed_offshore_txs.erase(it);
-    else
-      ++it;
-  }
   for (auto it = m_confirmed_txs.begin(); it != m_confirmed_txs.end(); )
   {
     if(height <= it->second.m_block_height)
@@ -4224,7 +4216,6 @@ bool wallet2::clear()
   m_tx_keys.clear();
   m_additional_tx_keys.clear();
   m_confirmed_txs.clear();
-  m_confirmed_offshore_txs.clear();
   m_unconfirmed_payments.clear();
   m_scanned_pool_txs[0].clear();
   m_scanned_pool_txs[1].clear();
@@ -4250,7 +4241,6 @@ void wallet2::clear_soft(bool keep_key_images)
   m_unconfirmed_txs.clear();
   m_payments.clear();
   m_confirmed_txs.clear();
-  m_confirmed_offshore_txs.clear();
   m_unconfirmed_payments.clear();
   m_scanned_pool_txs[0].clear();
   m_scanned_pool_txs[1].clear();
@@ -6693,15 +6683,6 @@ void wallet2::get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirm
     uint64_t min_height, uint64_t max_height, const boost::optional<uint32_t>& subaddr_account, const std::set<uint32_t>& subaddr_indices) const
 {
   for (auto i = m_confirmed_txs.begin(); i != m_confirmed_txs.end(); ++i) {
-    if (i->second.m_block_height <= min_height || i->second.m_block_height > max_height)
-      continue;
-    if (subaddr_account && *subaddr_account != i->second.m_subaddr_account)
-      continue;
-    if (!subaddr_indices.empty() && std::count_if(i->second.m_subaddr_indices.begin(), i->second.m_subaddr_indices.end(), [&subaddr_indices](uint32_t index) { return subaddr_indices.count(index) == 1; }) == 0)
-      continue;
-    confirmed_payments.push_back(*i);
-  }
-  for (auto i = m_confirmed_offshore_txs.begin(); i != m_confirmed_offshore_txs.end(); ++i) {
     if (i->second.m_block_height <= min_height || i->second.m_block_height > max_height)
       continue;
     if (subaddr_account && *subaddr_account != i->second.m_subaddr_account)

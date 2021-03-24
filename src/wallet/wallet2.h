@@ -1079,7 +1079,6 @@ private:
         return;
       a & m_rpc_client_secret_key;
       a & m_offshore_transfers;
-      a & m_confirmed_offshore_txs;
       if(ver < 30)
         return;
       a & m_xasset_transfers;
@@ -1609,7 +1608,6 @@ private:
     hashchain m_blockchain;
     std::unordered_map<crypto::hash, unconfirmed_transfer_details> m_unconfirmed_txs;
     std::unordered_map<crypto::hash, confirmed_transfer_details> m_confirmed_txs;
-    std::unordered_map<crypto::hash, confirmed_transfer_details> m_confirmed_offshore_txs;
     std::unordered_multimap<crypto::hash, pool_payment_details> m_unconfirmed_payments;
     std::unordered_map<crypto::hash, crypto::secret_key> m_tx_keys;
     cryptonote::checkpoints m_checkpoints;

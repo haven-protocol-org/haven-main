@@ -280,7 +280,6 @@ namespace rct {
       xmr_amount txnOffshoreFee;
       xmr_amount txnOffshoreFee_usd;
       xmr_amount txnOffshoreFee_xasset;
-      std::string fees_asset_type;
 
         template<bool W, template <bool> class Archive>
         bool serialize_rctsig_base(Archive<W> &ar, size_t inputs, size_t outputs)
