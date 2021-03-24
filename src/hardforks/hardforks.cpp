@@ -41,7 +41,8 @@ const hardfork_t mainnet_hard_forks[] = {
   { 11, 640640, 0, 1595253600 },  // 20th July 2020 - 15:00 GMT
   { 13, 640650, 0, 1595254800 },   // 20th July 2020 - 15:20 GMT
   { 14, 653565, 0, 1596555180 },   // 7th August 2020 - 15:30 GMT
-  { 15, 741957, 0, 1606217525 }   // Fork time is on or around 8th December 2020 at 14:30 GMT. Fork time finalised on 2020-11-24.
+  { 15, 741957, 0, 1606217525 },   // Fork time is on or around 8th December 2020 at 14:30 GMT. Fork time finalised on 2020-11-24.
+  { 16, 831700, 0, 1616597544 }    // Fork time is on or around 12th April 2021 at 12:50 GMT. Fork time finalised on 2021-03-24.
  };
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
 const uint64_t mainnet_hard_fork_version_1_till = 38499;
