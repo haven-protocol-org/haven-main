@@ -6787,20 +6787,20 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     // Check for the type of offshore TX being done
 
     // Populate the txextra to signify that this is an offshore tx
-    cryptonote::tx_extra_offshore offshore_data;
+    std::string offshore_data;
     if (m_wallet->use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
       // Support new xAsset-style offshore_data
-      offshore_data.data = strSource + "-" + strDest;
+      offshore_data = strSource + "-" + strDest;
     } else {
       // Support old format of offshore_data
       if (strSource == "XHV")
-	offshore_data.data += 'A';
+	offshore_data += 'A';
       else 
-	offshore_data.data += 'N';
+	offshore_data += 'N';
       if (strDest == "XHV")
-	offshore_data.data += 'A';
+	offshore_data += 'A';
       else 
-	offshore_data.data += 'N';
+	offshore_data += 'N';
     }
     cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
 
@@ -6850,9 +6850,11 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     // Check for the type of xAsset TX being done
 
     // Populate the txextra to signify that this is an offshore / xAsset tx
-    cryptonote::tx_extra_offshore offshore_data;
-    offshore_data.data = strSource + "-" + strDest;
-    cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
+    std::string offshore_data = strSource + "-" + strDest;
+    if (!cryptonote::add_offshore_to_tx_extra(extra, offshore_data)) {
+      fail_msg_writer() << tr("Failed to serialise offshore data : ") << offshore_data;
+      return false;
+    }
 
     // Set the bool flags
     if ((strSource != "XUSD") && (strDest != "XUSD")) {
@@ -6884,11 +6886,12 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     // add to tx extra
     size_t memo_size = strMemo.size();
     if (memo_size > 0 && memo_size <= TX_EXTRA_MEMO_MAX_COUNT) {
-      cryptonote::tx_extra_memo memo;
-      memo.data = strMemo;
-      cryptonote::add_memo_to_tx_extra(extra, memo);
+      if (!cryptonote::add_memo_to_tx_extra(extra, strMemo)) {
+	fail_msg_writer() << tr("Failed to serialise transaction memo");
+	return false;
+      }
     } else if (memo_size > TX_EXTRA_MEMO_MAX_COUNT) {
-      fail_msg_writer() << tr("Transaction memo can't be more than 127 charecters long!");
+      fail_msg_writer() << tr("Transaction memo can't be more than 255 charecters long!");
       return false;
     }
   }
@@ -7561,8 +7564,8 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
   if (asset_type != "XHV") {
     
     // Populate the txextra to signify that this is an offshore tx
-    cryptonote::tx_extra_offshore offshore_data;
-    offshore_data.data = asset_type + "-" + asset_type;
+    std::string offshore_data;
+    offshore_data = asset_type + "-" + asset_type;
     cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
   }
   
@@ -10808,7 +10811,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
       success_msg_writer() << "txid: " << txid;
       success_msg_writer() << "Height: " << pd.m_block_height;
       success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_timestamp);
-      success_msg_writer() << "Amount: " << print_money(pd.m_amount);
+      success_msg_writer() << "Amount: " << print_money(pd.m_amount) << " " << pd.m_asset_type;
       success_msg_writer() << "Payment ID: " << payment_id;
       if (pd.m_unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
       {
@@ -10859,7 +10862,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
       success_msg_writer() << "txid: " << txid;
       success_msg_writer() << "Height: " << pd.m_block_height;
       success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_timestamp);
-      success_msg_writer() << "Amount: " << print_money(pd.m_amount_in - change - fee);
+      success_msg_writer() << "Amount: " << print_money(pd.m_amount_in - change - fee) << " " << pd.m_source_currency_type;
       success_msg_writer() << "Payment ID: " << payment_id;
       success_msg_writer() << "Change: " << print_money(change);
       success_msg_writer() << "Fee: " << print_money(fee);
@@ -10888,7 +10891,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
         success_msg_writer() << "Unconfirmed incoming transaction found in the txpool";
         success_msg_writer() << "txid: " << txid;
         success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_timestamp);
-        success_msg_writer() << "Amount: " << print_money(pd.m_amount);
+        success_msg_writer() << "Amount: " << print_money(pd.m_amount) << " " << pd.m_asset_type;
         success_msg_writer() << "Payment ID: " << payment_id;
         success_msg_writer() << "Address index: " << pd.m_subaddr_index.minor;
         success_msg_writer() << "Note: " << m_wallet->get_tx_note(txid);
@@ -10920,7 +10923,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
       success_msg_writer() << (is_failed ? "Failed" : "Pending") << " outgoing transaction found";
       success_msg_writer() << "txid: " << txid;
       success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_timestamp);
-      success_msg_writer() << "Amount: " << print_money(amount - pd.m_change - fee);
+      success_msg_writer() << "Amount: " << print_money(amount - pd.m_change - fee) << " " << pd.m_source_currency_type;
       success_msg_writer() << "Payment ID: " << payment_id;
       success_msg_writer() << "Change: " << print_money(pd.m_change);
       success_msg_writer() << "Fee: " << print_money(fee);

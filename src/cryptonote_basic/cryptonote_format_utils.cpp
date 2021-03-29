@@ -799,9 +799,10 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool add_offshore_to_tx_extra(std::vector<uint8_t>& tx_extra, cryptonote::tx_extra_offshore& extra_offshore)
+  bool add_offshore_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& offshore_data)
   {
-    CHECK_AND_ASSERT_MES(extra_offshore.data.size() <= TX_EXTRA_OFFSHORE_MAX_COUNT, false, "extra offshore data could be 127 bytes max");
+    CHECK_AND_ASSERT_MES(offshore_data.size() <= TX_EXTRA_OFFSHORE_MAX_COUNT, false, "extra offshore data could be 255 bytes max");
+    /*
     size_t start_pos = tx_extra.size();
     tx_extra.resize(tx_extra.size() + 2 + extra_offshore.data.size());
     tx_extra[start_pos] = TX_EXTRA_TAG_OFFSHORE;
@@ -810,11 +811,25 @@ namespace cryptonote
     ++start_pos;
     memcpy(&tx_extra[start_pos], reinterpret_cast<const char*>(extra_offshore.data.data()), extra_offshore.data.size());
     return true;
+    */
+    // serialize
+    tx_extra_field extra_field = tx_extra_offshore{offshore_data};
+    std::ostringstream oss;
+    binary_archive<true> ar(oss);
+    bool r = ::do_serialize(ar, extra_field);
+    CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to serialize tx extra memo data");
+    // append
+    std::string tx_extra_str = oss.str();
+    size_t pos = tx_extra.size();
+    tx_extra.resize(tx_extra.size() + tx_extra_str.size());
+    memcpy(&tx_extra[pos], tx_extra_str.data(), tx_extra_str.size());
+    return true;
   }
   //---------------------------------------------------------------
-  bool add_memo_to_tx_extra(std::vector<uint8_t>& tx_extra, cryptonote::tx_extra_memo& extra_memo)
+  bool add_memo_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& memo)
   {
-    CHECK_AND_ASSERT_MES(extra_memo.data.size() <= TX_EXTRA_MEMO_MAX_COUNT, false, "extra memo data could be 127 bytes max");
+    CHECK_AND_ASSERT_MES(memo.size() <= TX_EXTRA_MEMO_MAX_COUNT, false, "extra memo data could be 255 bytes max");
+    /*
     size_t start_pos = tx_extra.size();
     tx_extra.resize(tx_extra.size() + 2 + extra_memo.data.size());
     tx_extra[start_pos] = TX_EXTRA_TAG_MEMO;
@@ -823,11 +838,12 @@ namespace cryptonote
     ++start_pos;
     memcpy(&tx_extra[start_pos], reinterpret_cast<const char*>(extra_memo.data.data()), extra_memo.data.size());
     return true;
-    /*
+    */
     // serialize
+    tx_extra_field extra_field = tx_extra_memo{memo};
     std::ostringstream oss;
     binary_archive<true> ar(oss);
-    bool r = ::do_serialize(ar, extra_memo);
+    bool r = ::do_serialize(ar, extra_field);
     CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to serialize tx extra memo data");
     // append
     std::string tx_extra_str = oss.str();
@@ -835,7 +851,6 @@ namespace cryptonote
     tx_extra.resize(tx_extra.size() + tx_extra_str.size());
     memcpy(&tx_extra[pos], tx_extra_str.data(), tx_extra_str.size());
     return true;
-    */
   }
   //---------------------------------------------------------------
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type)

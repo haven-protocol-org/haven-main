@@ -85,8 +85,8 @@ namespace cryptonote
   bool get_memo_from_tx_extra(const std::vector<uint8_t>& tx_extra, cryptonote::tx_extra_memo& memo);
   bool add_additional_tx_pub_keys_to_extra(std::vector<uint8_t>& tx_extra, const std::vector<crypto::public_key>& additional_pub_keys);
   bool add_extra_nonce_to_tx_extra(std::vector<uint8_t>& tx_extra, const blobdata& extra_nonce);
-  bool add_offshore_to_tx_extra(std::vector<uint8_t>& tx_extra, cryptonote::tx_extra_offshore& extra_offshore);
-  bool add_memo_to_tx_extra(std::vector<uint8_t>& tx_extra, cryptonote::tx_extra_memo& extra_memo);
+  bool add_offshore_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& offshore_data);
+  bool add_memo_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& memo);
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type);
   void set_payment_id_to_tx_extra_nonce(blobdata& extra_nonce, const crypto::hash& payment_id);
   void set_encrypted_payment_id_to_tx_extra_nonce(blobdata& extra_nonce, const crypto::hash8& payment_id);

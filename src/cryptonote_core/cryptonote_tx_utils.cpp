@@ -212,7 +212,15 @@ namespace cryptonote
       {
         add_tx_pub_key_to_extra(tx, gov_key.pub);
 
-        if (hard_fork_version >= 4) {
+        if (hard_fork_version >= HF_VERSION_XASSET_FULL) {
+          if (nettype == TESTNET) {
+            cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);
+          } else if (nettype == STAGENET) {
+	    cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
+          } else {
+            cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW);
+          }
+        } else if (hard_fork_version >= 4) {
           // shouts to sebseb7
           if (nettype == TESTNET) {
             cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);

@@ -7334,8 +7334,24 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     rct::multisig_out msout;
     uint64_t current_height = get_blockchain_current_height()-1;
     offshore::pricing_record pr;
-    bool b = get_pricing_record(pr, current_height);
-    THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+    if (ptx.tx.offshore_data.size()) {
+      // Get the 2 currencies
+      std::string offshore_data(ptx.tx.offshore_data.begin(),ptx.tx.offshore_data.end());
+      int pos = offshore_data.find("-");
+      if (pos != std::string::npos) {
+        strSource = offshore_data.substr(0,pos);
+        strDest = offshore_data.substr(pos+1);
+	if (strSource != strDest) {
+	  bool b = get_pricing_record(pr, current_height);
+	  THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+	}
+      } else {
+	if (offshore_data[0] != offshore_data[1]) {
+	  bool b = get_pricing_record(pr, current_height);
+	  THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+	}
+      }
+    }
     uint32_t fees_version = use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
     bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
     bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sd.sources, sd.splitted_dsts, sd.change_dts.addr, sd.extra, ptx.tx, sd.unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, sd.use_rct, rct_config, m_multisig ? &msout : NULL);
@@ -7358,16 +7374,32 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     std::string key_images;
     bool all_are_txin_to_key = std::all_of(ptx.tx.vin.begin(), ptx.tx.vin.end(), [&](const txin_v& s_e) -> bool
     {
-      CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
-      key_images += boost::to_string(in.k_image) + " ";
-      return true;
+      if (s_e.type() == typeid(txin_xasset)) {
+	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_xasset, in, false);
+	key_images += boost::to_string(in.k_image) + " ";
+	return true;
+      }
+      else if (s_e.type() == typeid(txin_offshore)) {
+	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_offshore, in, false);
+	key_images += boost::to_string(in.k_image) + " ";
+	return true;
+      }
+      else if (s_e.type() == typeid(txin_onshore)) {
+	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_onshore, in, false);
+	key_images += boost::to_string(in.k_image) + " ";
+	return true;
+      }
+      else {
+	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
+	key_images += boost::to_string(in.k_image) + " ";
+	return true;
+      }
     });
     THROW_WALLET_EXCEPTION_IF(!all_are_txin_to_key, error::unexpected_txin_type, ptx.tx);
 
     ptx.key_images = key_images;
-    ptx.fee = 0;
-    for (const auto &i: sd.sources) ptx.fee += i.amount;
-    for (const auto &i: sd.splitted_dsts) ptx.fee -= i.amount;
+    THROW_WALLET_EXCEPTION_IF(!sd.fee, error::wallet_internal_error, "TX fee is 0 - prepared using old version of wallet. Please recreate the TX.");
+    ptx.fee = sd.fee;
     ptx.dust = 0;
     ptx.dust_added_to_fee = false;
     ptx.change_dts = sd.change_dts;
@@ -9674,7 +9706,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   LOG_PRINT_L2("constructing tx");
   auto sources_copy = sources;
   offshore::pricing_record pr;
-  if (offshore || onshore || offshore_to_offshore || xasset_to_xusd || xasset_transfer || xusd_to_xasset) {
+  if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
     bool b = get_pricing_record(pr, current_height);
     THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
   }
@@ -9804,6 +9836,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   ptx.construction_data.subaddr_indices.clear();
   for (size_t idx: selected_transfers)
     ptx.construction_data.subaddr_indices.insert(specific_transfers[idx].m_subaddr_index.minor);
+  ptx.construction_data.fee = fee;
   LOG_PRINT_L2("transfer_selected_rct done");
 }
 
@@ -10424,7 +10457,7 @@ bool wallet2::light_wallet_key_image_is_ours(const crypto::key_image& key_image,
 // This system allows for sending (almost) the entire balance, since it does
 // not generate spurious change in all txes, thus decreasing the instantaneous
 // usable balance.
-std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 {
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
@@ -10577,6 +10610,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
         strDest = "XUSD";
       }
     }
+
+    // Remove the offshore info from the TX extra data
+    //remove_field_from_tx_extra(extra, typeid(tx_extra_offshore));
   }
 
   // check both strSource and strDest are supported.
