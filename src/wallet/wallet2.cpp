@@ -7339,8 +7339,8 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       std::string offshore_data(ptx.tx.offshore_data.begin(),ptx.tx.offshore_data.end());
       int pos = offshore_data.find("-");
       if (pos != std::string::npos) {
-        strSource = offshore_data.substr(0,pos);
-        strDest = offshore_data.substr(pos+1);
+	std::string strSource = offshore_data.substr(0,pos);
+	std::string strDest = offshore_data.substr(pos+1);
 	if (strSource != strDest) {
 	  bool b = get_pricing_record(pr, current_height);
 	  THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
