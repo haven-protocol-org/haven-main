@@ -272,7 +272,6 @@ namespace cryptonote
       
       if (tx.pricing_record_height > 658500) {
 
-	// HERE BE DRAGONS!!!
 	// NEAC: recover from the reorg during Oracle switch - 1 TX affected
 	offshore::pricing_record pr;
 	if (tx.pricing_record_height == 821428) {
@@ -333,16 +332,16 @@ namespace cryptonote
           return false;
         }
         uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
-        uint64_t conversion_fee_check =
-          (priority == 1) ? tx.amount_burnt / 500 :
-          (priority == 2) ? tx.amount_burnt / 20 :
-          (priority == 3) ? tx.amount_burnt / 10 :
-          tx.amount_burnt / 5;
+        uint64_t conversion_fee_check = 0;
+	if (offshore || onshore) {
+          conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
+	} else if (xusd_to_xasset || xasset_to_xusd) {
+	  // Flat 0.3% conversion fee for xAsset TXs
+	  conversion_fee_check = (tx.amount_burnt * 3) / 1000;
+	}
         if ((offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
-            (onshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd))) {
-	  // HERE BE DRAGONS!!!
-	  // NEAC: check burnt values to be sure that xAsset fees are correct
-	  // LAND AHOY!!!
+            ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
+	    (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))) {
           LOG_PRINT_L1("conversion fee is incorrect - rejecting");
           tvc.m_verifivation_failed = true;
           tvc.m_fee_too_low = true;

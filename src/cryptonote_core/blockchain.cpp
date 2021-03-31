@@ -1734,7 +1734,15 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
       std::string governance_wallet_address_str;
 
-      if (version >= 4) {
+      if (version >= HF_VERSION_XASSET_FULL) {
+        if (m_nettype == TESTNET) {
+          governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+        } else if (m_nettype == STAGENET) {
+          governance_wallet_address_str = ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+        } else {
+          governance_wallet_address_str = ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+        }
+      } else if (version >= 4) {
         if (m_nettype == TESTNET) {
           governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
         } else if (m_nettype == STAGENET) {
@@ -2832,8 +2840,7 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
     }
   }
   
-  std::array<std::string, 3> oracle_urls = {{"oracle-testnet.havenprotocol.org:443"}};
-  //std::array<std::string, 3> oracle_urls = {{"oracle-testnet.havenprotocol.org:443", "oracle2.havenprotocol.org:443", "oracle3.havenprotocol.org:443"}};
+  std::array<std::string, 3> oracle_urls = {{"oracle.havenprotocol.org:443", "oracle2.havenprotocol.org:443", "oracle3.havenprotocol.org:443"}};
   std::shuffle(oracle_urls.begin(), oracle_urls.end(), std::default_random_engine(crypto::rand<unsigned>()));
   if (0/*m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_FEES_V3*/) {
     if ((m_nettype == TESTNET) || (m_nettype == STAGENET)) {
@@ -2849,6 +2856,7 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
       LOG_PRINT_L1("Obtained pricing record from Oracle : " << oracle_urls[n]);
       break;
     }
+    LOG_PRINT_L1("Failed to obtained pricing record from Oracle : " << oracle_urls[n]);
   }
     
   if (!r) {

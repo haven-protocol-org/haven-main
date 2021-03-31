@@ -936,7 +936,6 @@ namespace cryptonote
           }
         }
 
-	// HERE BE DRAGONS!!!
 	// NEAC: recover from the reorg during Oracle switch - 1 TX affected
 	if (pricing_record_height == 821428) {
 	  const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
@@ -977,7 +976,6 @@ namespace cryptonote
 	  }
 	  pr = blocks_pr[0].second.pricing_record;
 	}
-	// LAND AHOY!!!
       }
 
       for (const auto &out: tx_info[n].tx->vout) {
@@ -1111,7 +1109,6 @@ namespace cryptonote
             }
           }
 	
-	  // HERE BE DRAGONS!!!
 	  // NEAC: recover from the reorg during Oracle switch - 1 TX affected
 	  if (pricing_record_height == 821428) {
 	    const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
@@ -1152,7 +1149,6 @@ namespace cryptonote
 	    }
 	    pr = blocks_pr[0].second.pricing_record;
 	  }
-	  // LAND AHOY!!!
         }
 
         if (!tx_info[n].result)

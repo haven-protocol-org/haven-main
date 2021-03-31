@@ -7334,6 +7334,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     rct::multisig_out msout;
     uint64_t current_height = get_blockchain_current_height()-1;
     offshore::pricing_record pr;
+    /*
     if (ptx.tx.offshore_data.size()) {
       // Get the 2 currencies
       std::string offshore_data(ptx.tx.offshore_data.begin(),ptx.tx.offshore_data.end());
@@ -7352,6 +7353,9 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
 	}
       }
     }
+    */
+    bool b = get_pricing_record(pr, current_height);
+    THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
     uint32_t fees_version = use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
     bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
     bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sd.sources, sd.splitted_dsts, sd.change_dts.addr, sd.extra, ptx.tx, sd.unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, sd.use_rct, rct_config, m_multisig ? &msout : NULL);
@@ -10457,7 +10461,7 @@ bool wallet2::light_wallet_key_image_is_ours(const crypto::key_image& key_image,
 // This system allows for sending (almost) the entire balance, since it does
 // not generate spurious change in all txes, thus decreasing the instantaneous
 // usable balance.
-std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 {
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
