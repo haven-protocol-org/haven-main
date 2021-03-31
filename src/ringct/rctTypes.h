@@ -274,12 +274,12 @@ namespace rct {
       ctkeyV outPk;
       ctkeyV outPk_usd;
       ctkeyV outPk_xasset;
-      xmr_amount txnFee; // contains b
-      xmr_amount txnFee_usd;
-      xmr_amount txnFee_xasset;
-      xmr_amount txnOffshoreFee;
-      xmr_amount txnOffshoreFee_usd;
-      xmr_amount txnOffshoreFee_xasset;
+      xmr_amount txnFee = 0; // contains b
+      xmr_amount txnFee_usd = 0;
+      xmr_amount txnFee_xasset = 0;
+      xmr_amount txnOffshoreFee = 0;
+      xmr_amount txnOffshoreFee_usd = 0;
+      xmr_amount txnOffshoreFee_xasset = 0;
 
         template<bool W, template <bool> class Archive>
         bool serialize_rctsig_base(Archive<W> &ar, size_t inputs, size_t outputs)
