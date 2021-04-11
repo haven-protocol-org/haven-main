@@ -7028,7 +7028,7 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
     } else if (in.type() == typeid(cryptonote::txin_onshore)) {
       const auto &txin = boost::get<cryptonote::txin_onshore>(in);
       utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
-      input_asset = "XHV";
+      input_asset = "XUSD";
     } else if (in.type() == typeid(cryptonote::txin_xasset)) {
       const auto &txin = boost::get<cryptonote::txin_xasset>(in);
       utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
@@ -7090,7 +7090,7 @@ void wallet2::commit_tx(pending_tx& ptx)
   if (ptx.tx.vin[0].type() == typeid(txin_xasset)) {
     const cryptonote::txin_xasset &in_xasset = boost::get<cryptonote::txin_xasset>(ptx.tx.vin[0]);
     strSourceCurrency = in_xasset.asset_type;
-  } else if (ptx.tx.vin[0].type() == typeid(txin_offshore)) {
+  } else if (ptx.tx.vin[0].type() == typeid(txin_offshore) || ptx.tx.vin[0].type() == typeid(txin_onshore)) {
     strSourceCurrency = "XUSD";
   }
   transfer_container& specific_transfers =
