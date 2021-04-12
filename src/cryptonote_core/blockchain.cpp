@@ -2856,7 +2856,7 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
       LOG_PRINT_L1("Obtained pricing record from Oracle : " << oracle_urls[n]);
       break;
     }
-    LOG_PRINT_L1("Failed to obtained pricing record from Oracle : " << oracle_urls[n]);
+    LOG_PRINT_L1("Failed to obtain pricing record from Oracle : " << oracle_urls[n]);
   }
     
   if (!r) {
