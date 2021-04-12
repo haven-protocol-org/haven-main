@@ -326,11 +326,13 @@ namespace cryptonote
 
         // Verify the offshore conversion fee is present and correct here
         uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
-        if (unlock_time < 180) {
-          LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
-          tvc.m_verifivation_failed = true;
-          return false;
-        }
+        if (offshore || onshore) {
+	  if (unlock_time < 180) {
+	    LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
+	    tvc.m_verifivation_failed = true;
+	    return false;
+	  }
+	}
         uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
         uint64_t conversion_fee_check = 0;
 	if (offshore || onshore) {

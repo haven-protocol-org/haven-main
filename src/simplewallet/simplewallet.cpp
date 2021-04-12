@@ -6866,10 +6866,10 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       }
     } else if (strSource != "XUSD") {
       xasset_to_xusd = true;
-      locked_blocks = 10;
+      locked_blocks = 180;
     } else {
       xusd_to_xasset = true;
-      locked_blocks = 10;
+      locked_blocks = 180;
     }
 
     // Modify the transfer_type to support the unlock time
