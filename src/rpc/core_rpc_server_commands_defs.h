@@ -1047,7 +1047,18 @@ namespace cryptonote
       std::string pow_hash;
       uint64_t long_term_weight;
       std::string miner_tx_hash;
-      
+
+      struct asset_reward {
+	std::string asset_type;
+	uint64_t amount;
+
+        BEGIN_KV_SERIALIZE_MAP()
+	  KV_SERIALIZE(asset_type)
+	  KV_SERIALIZE(amount)
+	END_KV_SERIALIZE_MAP()
+      };
+    std::vector<asset_reward> rewards;
+    
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(major_version)
         KV_SERIALIZE(minor_version)
@@ -1072,6 +1083,7 @@ namespace cryptonote
         KV_SERIALIZE(pow_hash)
         KV_SERIALIZE_OPT(long_term_weight, (uint64_t)0)
         KV_SERIALIZE(miner_tx_hash)
+        KV_SERIALIZE(rewards)
       END_KV_SERIALIZE_MAP()
   };
 

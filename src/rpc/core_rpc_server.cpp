@@ -1912,6 +1912,37 @@ namespace cryptonote
     return reward;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  std::vector<block_header_response::asset_reward> core_rpc_server::get_block_rewards(const block& blk)
+  {
+    std::vector<block_header_response::asset_reward> rewards;
+    std::map<std::string, uint64_t> rewards_map;
+    for(const tx_out& out: blk.miner_tx.vout)
+    {
+      if (out.target.type() == typeid(txout_to_key)) {
+	// NEAC: we have to skip governance wallet amounts, because the miner s/w can only apply fixed % amounts
+	// to deduct governance rewards from the overall block rewards in order to work out how much to pay the miners.
+	// We skip the governance amounts by ignoring 2nd + subsequent for each currency (the miner part is always first)
+	if (rewards_map["XHV"] == 0)
+	  rewards_map["XHV"] = out.amount;
+      } else if (out.target.type() == typeid(txout_offshore)) {
+	if (rewards_map["XUSD"] == 0)
+	  rewards_map["XUSD"] = out.amount;
+      } else {
+	std::string asset_type = boost::get<txout_xasset>(out.target).asset_type;
+	if (rewards_map[asset_type] == 0)
+	  rewards_map[asset_type] = out.amount;
+      }
+    }
+    // Convert the rewards map to a vector of struct items
+    for (auto &reward: rewards_map) {
+      block_header_response::asset_reward ar;
+      ar.asset_type = reward.first;
+      ar.amount = reward.second;
+      rewards.push_back(ar);
+    }
+    return rewards;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::fill_block_header_response(const block& blk, bool orphan_status, uint64_t height, const crypto::hash& hash, block_header_response& response, bool fill_pow_hash)
   {
     PERF_TIMER(fill_block_header_response);
@@ -1931,6 +1962,7 @@ namespace cryptonote
     store_difficulty(m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(height),
         response.cumulative_difficulty, response.wide_cumulative_difficulty, response.cumulative_difficulty_top64);
     response.reward = get_block_reward(blk);
+    response.rewards = get_block_rewards(blk);
     response.block_size = response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
     response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_longhash(&(m_core.get_blockchain_storage()), blk, height, 0)) : "";

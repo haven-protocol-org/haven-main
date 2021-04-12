@@ -268,6 +268,7 @@ private:
     
     //utils
     uint64_t get_block_reward(const block& blk);
+    std::vector<block_header_response::asset_reward> get_block_rewards(const block& blk);
     bool fill_block_header_response(const block& blk, bool orphan_status, uint64_t height, const crypto::hash& hash, block_header_response& response, bool fill_pow_hash);
     std::map<std::string, bool> get_public_nodes(uint32_t credits_per_hash_threshold = 0);
     bool set_bootstrap_daemon(const std::string &address, const std::string &username_password);

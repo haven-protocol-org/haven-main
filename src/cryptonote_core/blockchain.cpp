@@ -3566,11 +3566,19 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
         }
       } else if (o.target.type() == typeid(txout_offshore)) {
 	const txout_offshore& out_to_key = boost::get<txout_offshore>(o.target);
+	if (hf_version < HF_VERSION_OFFSHORE_FULL) {
+	  tvc.m_invalid_output = true;
+	  return false;
+	}
 	if (!crypto::check_key(out_to_key.key)) {
 	  tvc.m_invalid_output = true;
 	  return false;
 	}
       } else if (o.target.type() == typeid(txout_xasset)) {
+	if (hf_version < HF_VERSION_XASSET_FULL) {
+	  tvc.m_invalid_output = true;
+	  return false;
+	}
 	const txout_xasset& out_to_key = boost::get<txout_xasset>(o.target);
 	if (!crypto::check_key(out_to_key.key)) {
 	  tvc.m_invalid_output = true;
