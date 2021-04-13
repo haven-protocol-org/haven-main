@@ -269,6 +269,16 @@ namespace cryptonote
           fee_asset_type = "XHV";
         }
       }
+
+      if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
+	// Validate that pricing record is not too old
+	uint64_t current_height = m_blockchain.get_current_blockchain_height();
+	if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+	  LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+	  tvc.m_verifivation_failed = true;
+	  return false;
+	}
+      }
       
       if (tx.pricing_record_height > 658500) {
 
@@ -1854,14 +1864,7 @@ namespace cryptonote
         LOG_PRINT_L2("  key images already seen");
         continue;
       }
-      if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0)) {
-	// Validate that pricing record is not too old
-	uint64_t current_height = m_blockchain.get_current_blockchain_height();
-	if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-	  LOG_PRINT_L2("  rejected - offshore transaction references a pricing record that is too old");
-	  continue;
-	}
-      }
+
       bl.tx_hashes.push_back(sorted_it->second);
       total_weight += meta.weight;
       fee_map[meta.fee_asset_type] += meta.fee;
