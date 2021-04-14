@@ -271,89 +271,88 @@ namespace cryptonote
       }
 
       if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
-	// Validate that pricing record is not too old
-	uint64_t current_height = m_blockchain.get_current_blockchain_height();
-	if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-	  LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-	  tvc.m_verifivation_failed = true;
-	  return false;
-	}
+        // Validate that pricing record is not too old
+        uint64_t current_height = m_blockchain.get_current_blockchain_height();
+        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
       }
       
       if (tx.pricing_record_height > 658500) {
+        // NEAC: recover from the reorg during Oracle switch - 1 TX affected
+        offshore::pricing_record pr;
+        if (tx.pricing_record_height == 821428) {
+          const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+          pr.xAG = 614976143259;
+          pr.xAU = 8892867133;
+          pr.xAUD = 20156914758078;
+          pr.xBTC = 275800760;
+          pr.xCAD = 0;
+          pr.xCHF = 14464149948650;
+          pr.xCNY = 0;
+          pr.xEUR = 13059317798903;
+          pr.xGBP = 11162715471325;
+          pr.xJPY = 1690137827184892;
+          pr.xNOK = 0;
+          pr.xNZD = 0;
+          pr.xUSD = 15393775330000;
+          pr.unused1 = 16040600000000;
+          pr.unused2 = 16100600000000;
+          pr.unused3 = 15359200000000;
+          std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+          int j=0;
+          for (unsigned int i = 0; i < sig.size(); i += 2) {
+            std::string byteString = sig.substr(i, 2);
+            pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
+          }
+          
+          if (!pr.verifySignature()) {
+            LOG_ERROR("Failed to set correct PR for block: " << tx.pricing_record_height);
+            return false;
+          }
+        } else {
+        
+          // Get the pricing record that was used for conversion
+          block bl;
+          bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
+          if (!r) {
+            LOG_ERROR("error: failed to get block containing pricing record");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
 
-	// NEAC: recover from the reorg during Oracle switch - 1 TX affected
-	offshore::pricing_record pr;
-	if (tx.pricing_record_height == 821428) {
-	  const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-	  pr.xAG = 614976143259;
-	  pr.xAU = 8892867133;
-	  pr.xAUD = 20156914758078;
-	  pr.xBTC = 275800760;
-	  pr.xCAD = 0;
-	  pr.xCHF = 14464149948650;
-	  pr.xCNY = 0;
-	  pr.xEUR = 13059317798903;
-	  pr.xGBP = 11162715471325;
-	  pr.xJPY = 1690137827184892;
-	  pr.xNOK = 0;
-	  pr.xNZD = 0;
-	  pr.xUSD = 15393775330000;
-	  pr.unused1 = 16040600000000;
-	  pr.unused2 = 16100600000000;
-	  pr.unused3 = 15359200000000;
-	  std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-	  int j=0;
-	  for (unsigned int i = 0; i < sig.size(); i += 2) {
-	    std::string byteString = sig.substr(i, 2);
-	    pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
-	  }
-	  
-	  if (!pr.verifySignature()) {
-	    LOG_ERROR("Failed to set correct PR for block: " << tx.pricing_record_height);
-	    return false;
-	  }
-	} else {
+          pr = bl.pricing_record;
+        }
 	
-	  // Get the pricing record that was used for conversion
-	  block bl;
-	  bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
-	  if (!r) {
-	    LOG_ERROR("error: failed to get block containing pricing record");
-	    tvc.m_verifivation_failed = true;
-	    return false;
-	  }
-
-	  pr = bl.pricing_record;
-	}
-	
-	// Check the amount burnt and minted
-	if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, offshore, onshore, xusd_to_xasset, xasset_to_xusd, xasset_type)) {
-	  LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
-	  tvc.m_verifivation_failed = true;
-	  return false;
-	}
+        // Check the amount burnt and minted
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, offshore, onshore, xusd_to_xasset, xasset_to_xusd, xasset_type)) {
+          LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
 
         // Verify the offshore conversion fee is present and correct here
         uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
         if (offshore || onshore) {
-	  if (unlock_time < 180) {
-	    LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
-	    tvc.m_verifivation_failed = true;
-	    return false;
-	  }
-	}
+          if (unlock_time < 180) {
+            LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        }
         uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
         uint64_t conversion_fee_check = 0;
-	if (offshore || onshore) {
-          conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
-	} else if (xusd_to_xasset || xasset_to_xusd) {
-	  // Flat 0.3% conversion fee for xAsset TXs
-	  conversion_fee_check = (tx.amount_burnt * 3) / 1000;
-	}
+        if (offshore || onshore) {
+                conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
+        } else if (xusd_to_xasset || xasset_to_xusd) {
+          // Flat 0.3% conversion fee for xAsset TXs
+          conversion_fee_check = (tx.amount_burnt * 3) / 1000;
+        }
         if ((offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
             ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
-	    (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))) {
+	          (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))) {
           LOG_PRINT_L1("conversion fee is incorrect - rejecting");
           tvc.m_verifivation_failed = true;
           tvc.m_fee_too_low = true;
@@ -508,7 +507,7 @@ namespace cryptonote
           meta.double_spend_seen = false;
           meta.pruned = tx.pruned;
           meta.bf_padding = 0;
-	  memset(meta.padding1, 0, sizeof(meta.padding1));
+	        memset(meta.padding1, 0, sizeof(meta.padding1));
           memset(meta.padding, 0, sizeof(meta.padding));
 
           if (!insert_key_images(tx, id, tx_relay))
@@ -529,9 +528,6 @@ namespace cryptonote
 
       static_assert(unsigned(relay_method::none) == 0, "expected relay_method::none value to be zero");
       if(meta.fee > 0){
-        tvc.m_relay = tx_relay;
-      } else if (tx_relay != relay_method::none && ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0))) {
-	      LOG_PRINT_L1("tx meta.fee is 0, but this is an offshore TX, so relaying enabled");
         tvc.m_relay = tx_relay;
       }
     }
