@@ -870,25 +870,25 @@ namespace cryptonote
       return true;
     }
 
+    // Set the offshore TX type flags
+    bool offshore = false;
+    bool onshore = false;
+    bool offshore_transfer = false;
+    bool xasset_transfer = false;
+    bool xasset_to_xusd = false;
+    bool xusd_to_xasset = false;
+    std::string source;
+    std::string dest;
+    offshore::pricing_record pr;
+      
     std::vector<const rct::rctSig*> rvv;
     for (size_t n = 0; n < tx_info.size(); ++n)
     {
       // Get the pricing_record_height for any offshore TX
       uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
     
-      // Set the offshore TX type flags
-      bool offshore = false;
-      bool onshore = false;
-      bool offshore_transfer = false;
-      bool xasset_transfer = false;
-      bool xasset_to_xusd = false;
-      bool xusd_to_xasset = false;
-      std::string source;
-      std::string dest;
-      offshore::pricing_record pr;
-      
-      if (!get_tx_asset_types(tx_info[n].tx, source, dest)) {
-        MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash)
+      if (!get_tx_asset_types(*tx_info[n].tx, source, dest)) {
+        MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
         tx_info[n].tvc.m_verifivation_failed = true;
         if (source.empty()) {
           tx_info[n].tvc.m_invalid_input = true;
@@ -978,7 +978,7 @@ namespace cryptonote
           tx_info[n].result = false;
           break;
         case rct::RCTTypeSimple:
-          if (!rct::verRctSemanticsSimple(rv, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, strSource, strDest))
+          if (!rct::verRctSemanticsSimple(rv, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest))
           {
             MERROR_VER("rct signature semantics check failed");
             set_semantics_failed(tx_info[n].tx_hash);
@@ -1030,8 +1030,8 @@ namespace cryptonote
         uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
 
         // get the tx asset types
-        if (!get_tx_asset_types(tx_info[n].tx, source, dest)) {
-          MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash)
+        if (!get_tx_asset_types(*tx_info[n].tx, source, dest)) {
+          MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
           if (source.empty()) {
           tx_info[n].tvc.m_invalid_input = true;
@@ -1103,7 +1103,7 @@ namespace cryptonote
           continue;
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN)
           continue;
-        if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, strSource, strDest))
+        if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest))
         {
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;

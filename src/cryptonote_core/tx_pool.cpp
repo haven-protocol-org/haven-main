@@ -247,7 +247,7 @@ namespace cryptonote
 
       std::string tx_offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
       if(tx_offshore_data.empty()) {
-        if (version >= HF_VERSION_OFFSHORE_FULL) {
+        if (version >= HF_VERSION_XASSET_FULL) {
           // old offshore data format suplied to tx extra
           LOG_PRINT_L1("Empty tx_offshore_data." << id);
           tvc.m_verifivation_failed = true;

@@ -44,6 +44,7 @@ using namespace epee;
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
 #include "multisig/multisig.h"
+#include "offshore/asset_types.h"
 
 using namespace crypto;
 
@@ -909,11 +910,11 @@ namespace cryptonote
 
     // check both strSource and strDest are supported.
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
-      LOG_ERROR("Source Asset type " << strSource << " is not supported! Rejecting..");
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
       return false;
     }
-    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest) == offshore::ASSET_TYPES.end()) {
-      LOG_ERROR("Destination Asset type " << strDest << " is not supported! Rejecting..");
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
       return false;
     }
 
@@ -1002,11 +1003,6 @@ namespace cryptonote
         // Set the bool flags
         if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
           offshore_transfer = true;
-          if (priority > 1) {
-            // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-            LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-            priority = 1;
-          }
           strSource = "XUSD";
           strDest = "XUSD";
         } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
@@ -1018,17 +1014,20 @@ namespace cryptonote
           strSource = "XHV";
           strDest = "XUSD";
         } else {
-          THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
+	  LOG_ERROR("Invalid offshore data");
+	  return false;
         }
       }
     }
 
     // check both strSource and strDest are supported.
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
-      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
+      LOG_ERROR("Unsupported source asset type " << strSource);
+      return false;
     }
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
-      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
+      LOG_ERROR("Unsupported destination asset type " << strDest);
+      return false;
     }
 
     const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;

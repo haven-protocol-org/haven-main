@@ -3639,12 +3639,12 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
   }
 
   // only accept rct::RCTTypeCLSAGN txs after xassets fork
-  if (hf_version >= HF_VERSION_XASSET_FULL) {
-    if (tx.rct_signatures.type != rct::RCTTypeCLSAGN) {
-      tvc.m_verifivation_failed = true;
-      return false;
-    }
-  }
+  //if (hf_version >= HF_VERSION_XASSET_FULL) {
+  //  if (tx.rct_signatures.type != rct::RCTTypeCLSAGN) {
+  //    tvc.m_verifivation_failed = true;
+  //    return false;
+  //  }
+  //}
 
   return true;
 }

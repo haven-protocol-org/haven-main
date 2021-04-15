@@ -11590,6 +11590,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
   accumulated_change = 0;
   needed_fee = 0;
 
+  bool bOffshoreTx = false;
+  tx_extra_offshore offshore_data;
+  if (extra.size()) {
+    // Check to see if this is an offshore tx
+    bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
+  }
+
   bool offshore = false;
   bool onshore = false;
   bool offshore_transfer = false;
