@@ -867,6 +867,59 @@ namespace cryptonote
     // Return success
     return true;
   }
+
+  /*
+    Returns the input and output asset types for a givn tx.
+  */
+  bool get_tx_asset_types(const transaction& tx, std::string& source, std::string& destination) {
+    
+    if (tx.vin[0].type() == typeid(txin_to_key)) {
+      source = "XHV";
+    } else if (tx.vin[0].type() == typeid(txin_offshore)) {
+      source = "XUSD";
+    } else if (tx.vin[0].type() == typeid(txin_onshore)) {
+      source = "XUSD";
+    } else if (tx.vin[0].type() == typeid(txin_xasset)) {
+      source = boost::get<txin_xasset>(tx.vin[0]).asset_type;
+    } else {
+      LOG_ERROR("Invalid Input Type for tx.");
+      source = "";
+      return false;
+    }
+
+    destination = "";
+    for (const auto &out: tx.vout) {
+      if (out.target.type() == typeid(txout_to_key)) {
+        destination = "XHV";
+      } else if (out.target.type() == typeid(txout_offshore)) {
+        destination = "XUSD";
+      } else if (out.target.type() == typeid(txout_xasset)) {
+        destination = boost::get<txout_xasset>(out.target).asset_type;
+      } else {
+        LOG_ERROR("Invalid Output Type for tx.");
+        destination = "";
+        return false;
+      }
+      // if we get the a destination different from source, that means we get what we want.
+      // if source and destination is the same we won't break early.
+      if (source != destination) {
+        break;
+      }
+    }
+
+    // check both strSource and strDest are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << strSource << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << strDest << " is not supported! Rejecting..");
+      return false;
+    }
+
+    return true;
+  }
+
   //---------------------------------------------------------------
   bool construct_tx_with_tx_key(
     const account_keys& sender_account_keys, 
@@ -947,34 +1000,47 @@ namespace cryptonote
       } else {
         // Pre-xAsset format of offshore_data
         // Set the bool flags
-        if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
+        if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
           offshore_transfer = true;
-          strSource = strDest = "XUSD";
-        } else if (offshore_data.data.at(0) > 'A') {
+          if (priority > 1) {
+            // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+            LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
+            priority = 1;
+          }
+          strSource = "XUSD";
+          strDest = "XUSD";
+        } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
           onshore = true;
           strSource = "XUSD";
           strDest = "XHV";
-        } else {
+        } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
           offshore = true;
           strSource = "XHV";
           strDest = "XUSD";
+        } else {
+          THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
         }
       }
+    }
+
+    // check both strSource and strDest are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
+      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
+      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
     }
 
     const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
     const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
 
     if (bOffshoreTx) {
-
       if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
         tx.pricing_record_height = current_height;
-        tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
       } else {
         tx.pricing_record_height = 0;
-        tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
       }
-      
+      tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
     }
 
     // if we have a stealth payment id, find it and encrypt it with the tx key now

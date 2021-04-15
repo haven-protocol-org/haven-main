@@ -290,27 +290,27 @@ namespace rct {
           if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN)
             return false;
           VARINT_FIELD(txnFee)
-	  if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN))
+	        if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN))
           {
-	    VARINT_FIELD(txnFee_usd)
-	    if (type == RCTTypeCLSAGN)
-	    {
-	      VARINT_FIELD(txnFee_xasset)
-	    }
-	    VARINT_FIELD(txnOffshoreFee)
-	    VARINT_FIELD(txnOffshoreFee_usd)
-	    if (type == RCTTypeCLSAGN)
-	    {
-	      VARINT_FIELD(txnOffshoreFee_xasset)
-	    }
-	  } else {
-	    txnFee_usd = 0;
-	    txnFee_xasset = 0;
-	    txnOffshoreFee = 0;
-	    txnOffshoreFee_usd = 0;
-	    txnOffshoreFee_xasset = 0;
-	  }
-          // inputs/outputs not saved, only here for serialization help
+            VARINT_FIELD(txnFee_usd)
+            if (type == RCTTypeCLSAGN)
+            {
+              VARINT_FIELD(txnFee_xasset)
+            }
+            VARINT_FIELD(txnOffshoreFee)
+            VARINT_FIELD(txnOffshoreFee_usd)
+            if (type == RCTTypeCLSAGN)
+            {
+              VARINT_FIELD(txnOffshoreFee_xasset)
+            }
+          } else {
+            txnFee_usd = 0;
+            txnFee_xasset = 0;
+            txnOffshoreFee = 0;
+            txnOffshoreFee_usd = 0;
+            txnOffshoreFee_xasset = 0;
+          }
+              // inputs/outputs not saved, only here for serialization help
           // FIELD(message) - not serialized, it can be reconstructed
           // FIELD(mixRing) - not serialized, it can be reconstructed
           if (type == RCTTypeSimple) // moved to prunable with bulletproofs

@@ -2174,39 +2174,36 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   std::string strSource = "XHV";
   std::string strDest = "XHV";
   if (bOffshoreTx) {
-    // Split the TX extra information into the 2 currencies
-    if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-      // New xAsset-style of offshore_data
-      int pos = offshore_data.data.find("-");
-      if (pos != std::string::npos) {
-        strSource = offshore_data.data.substr(0,pos);
-        strDest = offshore_data.data.substr(pos+1);
-        if (strSource == "XHV") {
-          offshore = true;
-        } else if (strDest == "XHV") {
-          onshore = true;
-        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-          offshore_to_offshore = true;
-        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-          xasset_transfer = true;
-        } else if (strSource == "XUSD") {
-          xusd_to_xasset = true;
-        } else {
-          xasset_to_xusd = true;
-        }
+    // New xAsset-style of offshore_data
+    int pos = offshore_data.data.find("-");
+    if (pos != std::string::npos) {
+      strSource = offshore_data.data.substr(0,pos);
+      strDest = offshore_data.data.substr(pos+1);
+      if (strSource == "XHV") {
+        offshore = true;
+      } else if (strDest == "XHV") {
+        onshore = true;
+      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+        offshore_to_offshore = true;
+      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+        xasset_transfer = true;
+      } else if (strSource == "XUSD") {
+        xusd_to_xasset = true;
+      } else {
+        xasset_to_xusd = true;
       }
     } else {
       // Pre-xAsset format of offshore_data
       // Set the bool flags
       if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-	      offshore_to_offshore = true;
+        offshore_to_offshore = true;
         strSource = strDest = "XUSD";
       } else if (offshore_data.data.at(0) > 'A') {
-	      onshore = true;
+        onshore = true;
         strSource = "XUSD";
         strDest = "XHV";
       } else {
-	      offshore = true;
+        offshore = true;
         strSource = "XHV";
         strDest = "XUSD";
       }
@@ -6996,13 +6993,6 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
 
   unconfirmed_transfer_details& utd = m_unconfirmed_txs[cryptonote::get_transaction_hash(tx)];
 
-  // Check to see if this is an offshore tx
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (tx.extra.size()) {
-    bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
-  }
-
   utd.m_amount_in = amount_in;
   utd.m_change = change_amount;
   utd.m_sent_time = time(NULL);
@@ -10560,42 +10550,38 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   std::string strSource = "XHV";
   std::string strDest = "XHV";
   if (bOffshoreTx) {
-
-    // Split the TX extra information into the 2 currencies
-    if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-      // New xAsset-style of offshore_data
-      int pos = offshore_data.data.find("-");
-      if (pos != std::string::npos) {
-        strSource = offshore_data.data.substr(0,pos);
-        strDest = offshore_data.data.substr(pos+1);
-        if (strSource == "XHV") {
-          offshore = true;
-        } else if (strDest == "XHV") {
-          onshore = true;
-        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-          offshore_transfer = true;
-          if (priority > 1) {
-            // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-            LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-            priority = 1;
-          }
-        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-          xasset_transfer = true;
-          if (priority > 1) {
-            // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-            LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xAsset transfers locked to low priority");
-            priority = 1;
-          }
-        } else if (strSource == "XUSD") {
-          xusd_to_xasset = true;
-        } else {
-          xasset_to_xusd = true;
+    // New xAsset-style of offshore_data
+    int pos = offshore_data.data.find("-");
+    if (pos != std::string::npos) {
+      strSource = offshore_data.data.substr(0,pos);
+      strDest = offshore_data.data.substr(pos+1);
+      if (strSource == "XHV") {
+        offshore = true;
+      } else if (strDest == "XHV") {
+        onshore = true;
+      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+        offshore_transfer = true;
+        if (priority > 1) {
+          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
+          priority = 1;
         }
+      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+        xasset_transfer = true;
+        if (priority > 1) {
+          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xAsset transfers locked to low priority");
+          priority = 1;
+        }
+      } else if (strSource == "XUSD") {
+        xusd_to_xasset = true;
+      } else {
+        xasset_to_xusd = true;
       }
     } else {
       // Pre-xAsset format of offshore_data
       // Set the bool flags
-      if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
+      if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
         offshore_transfer = true;
         if (priority > 1) {
           // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
@@ -10604,19 +10590,18 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
         }
         strSource = "XUSD";
         strDest = "XUSD";
-      } else if (offshore_data.data.at(0) > 'A') {
+      } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
         onshore = true;
         strSource = "XUSD";
         strDest = "XHV";
-      } else {
+      } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
         offshore = true;
         strSource = "XHV";
         strDest = "XUSD";
+      } else {
+        THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
       }
     }
-
-    // Remove the offshore info from the TX extra data
-    //remove_field_from_tx_extra(extra, typeid(tx_extra_offshore));
   }
 
   // check both strSource and strDest are supported.
@@ -11389,44 +11374,54 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
   std::string strSource = "XHV";
   std::string strDest = "XHV";
   if (bOffshoreTx) {
-
-    // Split the TX extra information into the 2 currencies
-    if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-      // New xAsset-style of offshore_data
-      int pos = offshore_data.data.find("-");
-      if (pos != std::string::npos) {
-        strSource = offshore_data.data.substr(0,pos);
-        strDest = offshore_data.data.substr(pos+1);
-        if (strSource == "XHV") {
-          offshore = true;
-        } else if (strDest == "XHV") {
-          onshore = true;
-        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-          offshore_transfer = true;
-        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-          xasset_transfer = true;
-        } else if (strSource == "XUSD") {
-          xusd_to_xasset = true;
-        } else {
-          xasset_to_xusd = true;
-        }
+    // New xAsset-style of offshore_data
+    int pos = offshore_data.data.find("-");
+    if (pos != std::string::npos) {
+      strSource = offshore_data.data.substr(0,pos);
+      strDest = offshore_data.data.substr(pos+1);
+      if (strSource == "XHV") {
+        offshore = true;
+      } else if (strDest == "XHV") {
+        onshore = true;
+      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+        offshore_transfer = true;
+      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+        xasset_transfer = true;
+      } else if (strSource == "XUSD") {
+        xusd_to_xasset = true;
+      } else {
+        xasset_to_xusd = true;
       }
     } else {
-      // Pre-xAsset format of offshore_data
-      // Set the bool flags
-      if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
+      if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
         offshore_transfer = true;
-        strSource = strDest = "XUSD";
-      } else if (offshore_data.data.at(0) > 'A') {
+        if (priority > 1) {
+          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
+          priority = 1;
+        }
+        strSource = "XUSD";
+        strDest = "XUSD";
+      } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
         onshore = true;
         strSource = "XUSD";
         strDest = "XHV";
-      } else {
+      } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
         offshore = true;
         strSource = "XHV";
         strDest = "XUSD";
+      } else {
+        THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
       }
     }
+  }
+
+  // check both strSource and strDest are supported.
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
+  }
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
   }
 
   const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
@@ -11595,13 +11590,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
   accumulated_change = 0;
   needed_fee = 0;
 
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (extra.size()) {
-    // Check to see if this is an offshore tx
-    bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
-  }
-
   bool offshore = false;
   bool onshore = false;
   bool offshore_transfer = false;
@@ -11611,44 +11599,54 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
   std::string strSource = "XHV";
   std::string strDest = "XHV";
   if (bOffshoreTx) {
-
-    // Split the TX extra information into the 2 currencies
-    if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-      // New xAsset-style of offshore_data
-      int pos = offshore_data.data.find("-");
-      if (pos != std::string::npos) {
-        strSource = offshore_data.data.substr(0,pos);
-        strDest = offshore_data.data.substr(pos+1);
-        if (strSource == "XHV") {
-          offshore = true;
-        } else if (strDest == "XHV") {
-          onshore = true;
-        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-          offshore_transfer = true;
-        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-          xasset_transfer = true;
-        } else if (strSource == "XUSD") {
-          xusd_to_xasset = true;
-        } else {
-          xasset_to_xusd = true;
-        }
+    // New xAsset-style of offshore_data
+    int pos = offshore_data.data.find("-");
+    if (pos != std::string::npos) {
+      strSource = offshore_data.data.substr(0,pos);
+      strDest = offshore_data.data.substr(pos+1);
+      if (strSource == "XHV") {
+        offshore = true;
+      } else if (strDest == "XHV") {
+        onshore = true;
+      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+        offshore_transfer = true;
+      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+        xasset_transfer = true;
+      } else if (strSource == "XUSD") {
+        xusd_to_xasset = true;
+      } else {
+        xasset_to_xusd = true;
       }
     } else {
-      // Pre-xAsset format of offshore_data
-      // Set the bool flags
-      if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
+      if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
         offshore_transfer = true;
-        strSource = strDest = "XUSD";
-      } else if (offshore_data.data.at(0) > 'A') {
+        if (priority > 1) {
+          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
+          priority = 1;
+        }
+        strSource = "XUSD";
+        strDest = "XUSD";
+      } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
         onshore = true;
         strSource = "XUSD";
         strDest = "XHV";
-      } else {
+      } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
         offshore = true;
         strSource = "XHV";
         strDest = "XUSD";
+      } else {
+        THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
       }
     }
+  }
+
+  // check both strSource and strDest are supported.
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
+  }
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
   }
 
   const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;

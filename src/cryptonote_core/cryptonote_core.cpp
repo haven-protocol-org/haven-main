@@ -883,111 +883,80 @@ namespace cryptonote
       bool xasset_transfer = false;
       bool xasset_to_xusd = false;
       bool xusd_to_xasset = false;
-      std::string strSource = "XHV";
-      std::string strDest = "XHV";
+      std::string source;
+      std::string dest;
       offshore::pricing_record pr;
-      std::string offshore_data(tx_info[n].tx->offshore_data.begin(), tx_info[n].tx->offshore_data.end());
-      if (offshore_data.size() && offshore_data != "XHV-XHV") {
-	
-        // New xAsset-style of offshore_data
-        int pos = offshore_data.find("-");
-        if (pos != std::string::npos) {
-          // Split the TX extra information into the 2 currencies
-          strSource = offshore_data.substr(0,pos);
-          strDest = offshore_data.substr(pos+1);
+      
+      if (!get_tx_asset_types(tx_info[n].tx, source, dest)) {
+        MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash)
+        tx_info[n].tvc.m_verifivation_failed = true;
+        if (source.empty()) {
+          tx_info[n].tvc.m_invalid_input = true;
+        }
+        if (dest.empty()) {
+          tx_info[n].tvc.m_invalid_output = true;
+        }
+        continue;
+      }
 
-          // check both strSource and strDest are supported.
-          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
-            MERROR_VER("Source Asset type " << strSource << " is not supported! Rejecting..");
-            return false;
-          }
-          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
-            MERROR_VER("Destination Asset type " << strDest << " is not supported! Rejecting..");
-            return false;
-          }
+      if (source != "XHV" || dest != "XHV") {
+        
+        if (source == "XHV") {
+          offshore = true;
+        } else if (dest == "XHV") {
+          onshore = true;
+        } else if ((source == "XUSD") && (dest == "XUSD")) {
+          offshore_transfer = true;
+        } else if ((source != "XUSD") && (dest != "XUSD")) {
+          xasset_transfer = true;
+        } else if (source == "XUSD") {
+          xusd_to_xasset = true;
+        } else {
+          xasset_to_xusd = true;
+        }
 
-          if (strSource == "XHV") {
-            offshore = true;
-          } else if (strDest == "XHV") {
-            onshore = true;
-          } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-            offshore_transfer = true;
-          } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-            xasset_transfer = true;
-          } else if (strSource == "XUSD") {
-            xusd_to_xasset = true;
-          } else {
-            xasset_to_xusd = true;
+        // NEAC: recover from the reorg during Oracle switch - 1 TX affected
+        if (pricing_record_height == 821428) {
+          const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+          pr.xAG = 614976143259;
+          pr.xAU = 8892867133;
+          pr.xAUD = 20156914758078;
+          pr.xBTC = 275800760;
+          pr.xCAD = 0;
+          pr.xCHF = 14464149948650;
+          pr.xCNY = 0;
+          pr.xEUR = 13059317798903;
+          pr.xGBP = 11162715471325;
+          pr.xJPY = 1690137827184892;
+          pr.xNOK = 0;
+          pr.xNZD = 0;
+          pr.xUSD = 15393775330000;
+          pr.unused1 = 16040600000000;
+          pr.unused2 = 16100600000000;
+          pr.unused3 = 15359200000000;
+          std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+          int j=0;
+          for (unsigned int i = 0; i < sig.size(); i += 2) {
+            std::string byteString = sig.substr(i, 2);
+            pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
+          }
+          
+          if (!pr.verifySignature()) {
+            MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
+            return false;
           }
         } else {
-          // Pre-xAsset format of offshore_data
-          // Set the bool flags
-          if ((offshore_data.at(0) > 'A') && (offshore_data.at(1) > 'A')) {
-            offshore_transfer = true;
-	          strSource = strDest = "XUSD";
-          } else if (offshore_data.at(0) > 'A') {
-            onshore = true;
-            strSource = "XUSD";
-            strDest = "XHV";
-          } else {
-            offshore = true;
-            strSource = "XHV";
-            strDest = "XUSD";
+          // Get the correct pricing record here, given the height
+          std::vector<std::pair<cryptonote::blobdata,block>> blocks_pr;
+          bool b = m_blockchain_storage.get_blocks(pricing_record_height, 1, blocks_pr);
+          if (!b) {
+            MERROR_VER("Failed to obtain pricing record for block: " << pricing_record_height);
+            return false;
           }
-        }
-
-	// NEAC: recover from the reorg during Oracle switch - 1 TX affected
-	if (pricing_record_height == 821428) {
-	  const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-	  pr.xAG = 614976143259;
-	  pr.xAU = 8892867133;
-	  pr.xAUD = 20156914758078;
-	  pr.xBTC = 275800760;
-	  pr.xCAD = 0;
-	  pr.xCHF = 14464149948650;
-	  pr.xCNY = 0;
-	  pr.xEUR = 13059317798903;
-	  pr.xGBP = 11162715471325;
-	  pr.xJPY = 1690137827184892;
-	  pr.xNOK = 0;
-	  pr.xNZD = 0;
-	  pr.xUSD = 15393775330000;
-	  pr.unused1 = 16040600000000;
-	  pr.unused2 = 16100600000000;
-	  pr.unused3 = 15359200000000;
-	  std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-	  int j=0;
-	  for (unsigned int i = 0; i < sig.size(); i += 2) {
-	    std::string byteString = sig.substr(i, 2);
-	    pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
-	  }
-	  
-	  if (!pr.verifySignature()) {
-	    MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
-	    return false;
-	  }
-	} else {
-	  // Get the correct pricing record here, given the height
-	  std::vector<std::pair<cryptonote::blobdata,block>> blocks_pr;
-	  bool b = m_blockchain_storage.get_blocks(pricing_record_height, 1, blocks_pr);
-	  if (!b) {
-	    MERROR_VER("Failed to obtain pricing record for block: " << pricing_record_height);
-	    return false;
-	  }
-	  pr = blocks_pr[0].second.pricing_record;
-	}
-      }
-
-      for (const auto &out: tx_info[n].tx->vout) {
-        if (out.target.type() == typeid(txout_to_key)) {
-          LOG_PRINT_L1("txout_to_key target key = " << boost::get<txout_to_key>(out.target).key);
-        } else if (out.target.type() == typeid(txout_offshore)) {
-          LOG_PRINT_L1("txout_offshore target key = " << boost::get<txout_offshore>(out.target).key);
-        } else if (out.target.type() == typeid(txout_xasset)) {
-          std::string asset_type = boost::get<txout_xasset>(out.target).asset_type;
-          LOG_PRINT_L1("txout_xasset target key = " << boost::get<txout_xasset>(out.target).key << ", asset type = " << asset_type) ;
+          pr = blocks_pr[0].second.pricing_record;
         }
       }
+      
 
       if (!check_tx_semantic(*tx_info[n].tx, keeped_by_block))
       {
@@ -1059,96 +1028,75 @@ namespace cryptonote
       {
         // Get the pricing_record_height for any offshore TX
         uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
-          
-        // Set the offshore TX type flags
-        bool offshore = false;
-        bool onshore = false;
-        bool offshore_transfer = false;
-        bool xasset_transfer = false;
-        bool xasset_to_xusd = false;
-        bool xusd_to_xasset = false;
-        std::string strSource = "XHV";
-        std::string strDest = "XHV";
-        offshore::pricing_record pr;
-        std::string offshore_data(tx_info[n].tx->offshore_data.begin(), tx_info[n].tx->offshore_data.end());
-	      if (offshore_data.size() && offshore_data != "XHV-XHV") {
-        
-          // New xAsset-style of offshore_data
-          int pos = offshore_data.find("-");
-          if (pos != std::string::npos) {
-            // Split the TX extra information into the 2 currencies
-            strSource = offshore_data.substr(0,pos);
-            strDest = offshore_data.substr(pos+1);
-            if (strSource == "XHV") {
-              offshore = true;
-            } else if (strDest == "XHV") {
-              onshore = true;
-            } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-              offshore_transfer = true;
-            } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-              xasset_transfer = true;
-            } else if (strSource == "XUSD") {
-              xusd_to_xasset = true;
-            } else {
-              xasset_to_xusd = true;
+
+        // get the tx asset types
+        if (!get_tx_asset_types(tx_info[n].tx, source, dest)) {
+          MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash)
+          tx_info[n].tvc.m_verifivation_failed = true;
+          if (source.empty()) {
+          tx_info[n].tvc.m_invalid_input = true;
+          }
+          if (dest.empty()) {
+            tx_info[n].tvc.m_invalid_output = true;
+          }
+          continue;
+        }
+
+        if (source != "XHV" || dest != "XHV") {
+          if (source == "XHV") {
+            offshore = true;
+          } else if (dest == "XHV") {
+            onshore = true;
+          } else if ((source == "XUSD") && (dest == "XUSD")) {
+            offshore_transfer = true;
+          } else if ((source != "XUSD") && (dest != "XUSD")) {
+            xasset_transfer = true;
+          } else if (source == "XUSD") {
+            xusd_to_xasset = true;
+          } else {
+            xasset_to_xusd = true;
+          }
+
+          // NEAC: recover from the reorg during Oracle switch - 1 TX affected
+          if (pricing_record_height == 821428) {
+            const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+            pr.xAG = 614976143259;
+            pr.xAU = 8892867133;
+            pr.xAUD = 20156914758078;
+            pr.xBTC = 275800760;
+            pr.xCAD = 0;
+            pr.xCHF = 14464149948650;
+            pr.xCNY = 0;
+            pr.xEUR = 13059317798903;
+            pr.xGBP = 11162715471325;
+            pr.xJPY = 1690137827184892;
+            pr.xNOK = 0;
+            pr.xNZD = 0;
+            pr.xUSD = 15393775330000;
+            pr.unused1 = 16040600000000;
+            pr.unused2 = 16100600000000;
+            pr.unused3 = 15359200000000;
+            std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+            int j=0;
+            for (unsigned int i = 0; i < sig.size(); i += 2) {
+              std::string byteString = sig.substr(i, 2);
+              pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
+            }
+            
+            if (!pr.verifySignature()) {
+              MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
+              return false;
             }
           } else {
-            // Pre-xAsset format of offshore_data
-            // Set the bool flags
-            if ((offshore_data.at(0) > 'A') && (offshore_data.at(1) > 'A')) {
-              offshore_transfer = true;
-              strSource = strDest = "XUSD";
-            } else if (offshore_data.at(0) > 'A') {
-              onshore = true;
-              strSource = "XUSD";
-              strDest = "XHV";
-            } else {
-              offshore = true;
-              strSource = "XHV";
-              strDest = "XUSD";
+            // Get the correct pricing record here, given the height
+            std::vector<std::pair<cryptonote::blobdata,block>> blocks_pr;
+            bool b = m_blockchain_storage.get_blocks(pricing_record_height, 1, blocks_pr);
+            if (!b) {
+              MERROR_VER("Failed to obtain pricing record for block: " << pricing_record_height);
+              return false;
             }
+            pr = blocks_pr[0].second.pricing_record;
           }
-	
-	  // NEAC: recover from the reorg during Oracle switch - 1 TX affected
-	  if (pricing_record_height == 821428) {
-	    const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-	    pr.xAG = 614976143259;
-	    pr.xAU = 8892867133;
-	    pr.xAUD = 20156914758078;
-	    pr.xBTC = 275800760;
-	    pr.xCAD = 0;
-	    pr.xCHF = 14464149948650;
-	    pr.xCNY = 0;
-	    pr.xEUR = 13059317798903;
-	    pr.xGBP = 11162715471325;
-	    pr.xJPY = 1690137827184892;
-	    pr.xNOK = 0;
-	    pr.xNZD = 0;
-	    pr.xUSD = 15393775330000;
-	    pr.unused1 = 16040600000000;
-	    pr.unused2 = 16100600000000;
-	    pr.unused3 = 15359200000000;
-	    std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-	    int j=0;
-	    for (unsigned int i = 0; i < sig.size(); i += 2) {
-	      std::string byteString = sig.substr(i, 2);
-	      pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
-	    }
-	  
-	    if (!pr.verifySignature()) {
-	      MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
-	      return false;
-	    }
-	  } else {
-	    // Get the correct pricing record here, given the height
-	    std::vector<std::pair<cryptonote::blobdata,block>> blocks_pr;
-	    bool b = m_blockchain_storage.get_blocks(pricing_record_height, 1, blocks_pr);
-	    if (!b) {
-	      MERROR_VER("Failed to obtain pricing record for block: " << pricing_record_height);
-	      return false;
-	    }
-	    pr = blocks_pr[0].second.pricing_record;
-	  }
         }
 
         if (!tx_info[n].result)

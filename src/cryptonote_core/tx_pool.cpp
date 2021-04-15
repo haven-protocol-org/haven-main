@@ -47,6 +47,7 @@
 #include "common/perf_timer.h"
 #include "crypto/hash.h"
 #include "crypto/duration.h"
+#include "offshore/asset_types.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "txpool"
@@ -194,15 +195,80 @@ namespace cryptonote
       offshore_fee_xasset = tx.rct_signatures.txnOffshoreFee_xasset;
     }
 
-    if (!kept_by_block &&
-	((tx.version < OFFSHORE_TRANSACTION_VERSION) || (tx.pricing_record_height == 0)) &&
-	(!fee || !m_blockchain.check_fee(tx_weight, fee)) &&
-	(!fee_usd || !m_blockchain.check_fee(tx_weight, fee_usd)) &&
-	(!fee_xasset || !m_blockchain.check_fee(tx_weight, fee_xasset)))
-    {
-      tvc.m_verifivation_failed = true;
-      tvc.m_fee_too_low = true;
-      return false;
+    // check the fee
+    if (!kept_by_block) {
+      if ((!fee || !m_blockchain.check_fee(tx_weight, fee)) && (!fee_usd || !m_blockchain.check_fee(tx_weight, fee_usd)) && (!fee_xasset || !m_blockchain.check_fee(tx_weight, fee_xasset)))
+      {
+        tvc.m_verifivation_failed = true;
+        tvc.m_fee_too_low = true;
+        return false;
+      }
+    }
+
+    //validate the offshore data
+    bool bOffshoreTx = false;
+    tx_extra_offshore offshore_data;
+    if (tx.extra.size()) {
+      bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
+    }
+    if (bOffshoreTx) {
+      if (version >= HF_VERSION_XASSET_FULL) {
+        int pos = offshore_data.data.find("-");
+        if (pos != std::string::npos) {
+          std::string source = offshore_data.data.substr(0,pos);
+          std::string dest = offshore_data.data.substr(pos+1);
+          // check both strSource and strDest are supported.
+          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+            tvc.m_verifivation_failed = true;
+            LOG_PRINT_L1("Source Asset type " << source << " is not supported! Rejecting..");
+            return false;
+          }
+          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest) == offshore::ASSET_TYPES.end()) {
+            tvc.m_verifivation_failed = true;
+            LOG_PRINT_L1("Destination Asset type " << dest << " is not supported! Rejecting..");
+            return false;
+          }
+        } else {
+          LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      } else if (version >= HF_VERSION_OFFSHORE_FULL) {
+        if (offshore_data.data.size() != 2 ||
+          (offshore_data.data.at(0) != 'A' && offshore_data.data.at(0) != 'N') || 
+          (offshore_data.data.at(1) != 'A' && offshore_data.data.at(1) != 'N')
+        ){
+          // old offshore data format suplied to tx extra
+          LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      }
+
+      std::string tx_offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
+      if(tx_offshore_data.empty()) {
+        if (version >= HF_VERSION_OFFSHORE_FULL) {
+          // old offshore data format suplied to tx extra
+          LOG_PRINT_L1("Empty tx_offshore_data." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        } else if (version >= HF_VERSION_OFFSHORE_FULL) {
+          // offshore_data must be "NN"
+          if (offshore_data.data != "NN") {
+            // old offshore data format suplied to tx extra
+            LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        }
+      } else {
+        if (tx_offshore_data != offshore_data.data) {
+          // old offshore data format suplied to tx extra
+          LOG_PRINT_L1("Tx offshore data doesn't match with the one from tx extra." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      }
     }
 
     // Check to make sure that only 1 destination is provided if memo data is specified.
@@ -210,67 +276,58 @@ namespace cryptonote
     tx_extra_memo memo;
     if (get_memo_from_tx_extra(tx.extra, memo)) {
       if (tx.vout.size() > 2) {
-	LOG_PRINT_L1("transaction has memo data and multiple destinations specified - this is not permitted, rejecting.");
-	tvc.m_verifivation_failed = true;
-	return false;
+        LOG_PRINT_L1("transaction has memo data and multiple destinations specified - this is not permitted, rejecting.");
+        tvc.m_verifivation_failed = true;
+        return false;
       }
     }
-  
-    bool bOffshoreTx = false;
-    tx_extra_offshore offshore_data;
-    if (tx.extra.size()) {
-      // Check to see if this is an offshore tx
-      bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
-    }
 
-    crypto::public_key txkey_pub;
+
+    // Set the offshore TX type flags
     bool offshore = false;
     bool onshore = false;
     bool offshore_transfer = false;
     bool xasset_transfer = false;
     bool xasset_to_xusd = false;
     bool xusd_to_xasset = false;
+    std::string source;
+    std::string dest;
+    offshore::pricing_record pr;
+    
+    if (!get_tx_asset_types(tx, source, dest)) {
+      LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
+      tvc.m_verifivation_failed = true;
+      if (source.empty()) {
+        tvc.m_invalid_input = true;
+      }
+      if (dest.empty()) {
+        tvc.m_invalid_output = true;
+      }
+    }
+
     std::string xasset_type;
     std::string fee_asset_type = "XHV";
-    if (bOffshoreTx) {
-      if (version >= HF_VERSION_XASSET_FULL) {
-        int pos = offshore_data.data.find("-");
-        if (pos != std::string::npos) {
-          std::string strSource = offshore_data.data.substr(0,pos);
-          std::string strDest = offshore_data.data.substr(pos+1);
-          if (strSource == "XHV") {
-            offshore = true;
-          } else if (strDest == "XHV") {
-            onshore = true;
-          } else if (strSource == "XUSD" && strDest == "XUSD") {
-            offshore_transfer = true;
-          } else if (strSource != "XUSD" && strDest != "XUSD") {
-            xasset_transfer = true;
-            xasset_type = strSource;
-          } else if (strSource == "XUSD") {
-            xusd_to_xasset = true;
-            xasset_type = strDest;
-          } else {
-            xasset_to_xusd = true;
-            xasset_type = strSource;
-          }
-          fee_asset_type = strSource;
-        }
+    if (source != "XHV" || dest != "XHV") {
+      if (source == "XHV") {
+        offshore = true;
+      } else if (dest == "XHV") {
+        onshore = true;
+      } else if (source == "XUSD" && dest == "XUSD") {
+        offshore_transfer = true;
+      } else if (source != "XUSD" && dest != "XUSD") {
+        xasset_transfer = true;
+        xasset_type = source;
+      } else if (source == "XUSD") {
+        xusd_to_xasset = true;
+        xasset_type = dest;
       } else {
-        // Set the bool flags
-        if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-          offshore_transfer = true;
-          fee_asset_type = "XUSD";
-        } else if (offshore_data.data.at(0) > 'A') {
-          onshore = true;
-          fee_asset_type = "XUSD";
-        } else {
-          offshore = true;
-          fee_asset_type = "XHV";
-        }
+        xasset_to_xusd = true;
+        xasset_type = source;
       }
+      fee_asset_type = source;
+    
 
-      if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
+      if (source != dest) { // it is conversion tx
         // Validate that pricing record is not too old
         uint64_t current_height = m_blockchain.get_current_blockchain_height();
         if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
@@ -280,6 +337,7 @@ namespace cryptonote
         }
       }
       
+      // this check is here because of a soft fork that needed to happen due to invalid pr
       if (tx.pricing_record_height > 658500) {
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
         offshore::pricing_record pr;
@@ -313,7 +371,6 @@ namespace cryptonote
             return false;
           }
         } else {
-        
           // Get the pricing record that was used for conversion
           block bl;
           bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
@@ -345,14 +402,15 @@ namespace cryptonote
         uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
         uint64_t conversion_fee_check = 0;
         if (offshore || onshore) {
-                conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
+          conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         } else if (xusd_to_xasset || xasset_to_xusd) {
           // Flat 0.3% conversion fee for xAsset TXs
           conversion_fee_check = (tx.amount_burnt * 3) / 1000;
         }
         if ((offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
             ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
-	          (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))) {
+	          (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))) 
+        {
           LOG_PRINT_L1("conversion fee is incorrect - rejecting");
           tvc.m_verifivation_failed = true;
           tvc.m_fee_too_low = true;
