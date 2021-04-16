@@ -10619,12 +10619,17 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   
   const uint64_t base_fee_orig  = get_base_fee();
   uint64_t base_fee = base_fee_orig;
+  // Convert fees to source asset type equvelent value if only it is a conversion.
+  // the reason we do this is we need the pr record for conversions.
+  // but we still want assets to be transferable even in the absence of oracle.
+  // so we don't try to adjust the fee according to usd equivalent.
+  // the only donwnside is fees are little bit higher for the assets that has high usd value.
   if (strSource == "XHV") {
   } else if (strSource == "XUSD") {
-    // Convert fee to xUSD
-    //base_fee = get_xusd_amount(base_fee_orig, "XHV", current_height);
+    if (strSource != strDest) {
+      base_fee = get_xusd_amount(base_fee_orig, "XHV", current_height);
+    }
   } else {
-    // xAsset TX - is it a conversion?
     if (strSource != strDest) {
       // Convert fee to xAsset
       base_fee = get_xasset_amount(get_xusd_amount(base_fee_orig, "XHV", current_height), strSource, current_height);
