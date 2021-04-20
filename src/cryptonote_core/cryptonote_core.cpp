@@ -870,20 +870,20 @@ namespace cryptonote
       return true;
     }
 
-    // Set the offshore TX type flags
-    bool offshore = false;
-    bool onshore = false;
-    bool offshore_transfer = false;
-    bool xasset_transfer = false;
-    bool xasset_to_xusd = false;
-    bool xusd_to_xasset = false;
-    std::string source;
-    std::string dest;
-    offshore::pricing_record pr;
-      
     std::vector<const rct::rctSig*> rvv;
     for (size_t n = 0; n < tx_info.size(); ++n)
     {
+      // Set the offshore TX type flags
+      bool offshore = false;
+      bool onshore = false;
+      bool offshore_transfer = false;
+      bool xasset_transfer = false;
+      bool xasset_to_xusd = false;
+      bool xusd_to_xasset = false;
+      std::string source;
+      std::string dest;
+      offshore::pricing_record pr;
+      
       // Get the pricing_record_height for any offshore TX
       uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
     
@@ -1026,6 +1026,17 @@ namespace cryptonote
       ret = false;
       for (size_t n = 0; n < tx_info.size(); ++n)
       {
+	// Set the offshore TX type flags
+	bool offshore = false;
+	bool onshore = false;
+	bool offshore_transfer = false;
+	bool xasset_transfer = false;
+	bool xasset_to_xusd = false;
+	bool xusd_to_xasset = false;
+	std::string source;
+	std::string dest;
+	offshore::pricing_record pr;
+      
         // Get the pricing_record_height for any offshore TX
         uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
 

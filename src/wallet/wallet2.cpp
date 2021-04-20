@@ -1151,8 +1151,8 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_http_client(std::move(http_client_factory->create())),
   m_multisig_rescan_info(NULL),
   m_multisig_rescan_k(NULL),
-  m_multisig_rescan_offshore_info(NULL),
-  m_multisig_rescan_offshore_k(NULL),
+  //m_multisig_rescan_offshore_info(NULL),
+  //m_multisig_rescan_offshore_k(NULL),
   m_upper_transaction_weight_limit(0),
   m_run(true),
   m_callback(0),
@@ -1750,6 +1750,16 @@ void wallet2::thaw(const crypto::key_image &ki)
   thaw(get_transfer_details(ki));
 }
 //----------------------------------------------------------------------------------------------------
+void wallet2::freeze(transfer_details& td)
+{
+  td.m_frozen = true;
+}
+//----------------------------------------------------------------------------------------------------
+void wallet2::thaw(transfer_details& td)
+{
+  td.m_frozen = false;
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::frozen(const crypto::key_image &ki) const
 {
   return frozen(get_transfer_details(ki));
@@ -2160,7 +2170,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     // Check to see if this is an offshore tx
     bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
     if (bOffshoreTx) {
-      if (m_multisig) return;
+      //if (m_multisig) return;
     }
   }
 
@@ -2507,8 +2517,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             {
               THROW_WALLET_EXCEPTION_IF(!m_multisig_rescan_k && m_multisig_rescan_info,
                   error::wallet_internal_error, "NULL m_multisig_rescan_k");
-              if (m_multisig_rescan_info && m_multisig_rescan_info->front().size() >= specific_transfers.size())
-                update_multisig_rescan_info(m_transfers, *m_multisig_rescan_k, *m_multisig_rescan_info, specific_transfers.size() - 1);
+              if (m_multisig_rescan_info && m_multisig_rescan_info->front().at(tx_scan_info[o].asset_type).size() >= specific_transfers.size())
+                update_multisig_rescan_info(tx_scan_info[o].asset_type, *m_multisig_rescan_k, *m_multisig_rescan_info, specific_transfers.size() - 1);
             }
 	          LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
 	          if (0 != m_callback)
@@ -2599,8 +2609,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               THROW_WALLET_EXCEPTION_IF(!m_multisig_rescan_k && m_multisig_rescan_info,
                 error::wallet_internal_error, "NULL m_multisig_rescan_k"
               );
-              if (m_multisig_rescan_info && m_multisig_rescan_info->front().size() >= specific_transfers.size())
-                update_multisig_rescan_info(specific_transfers, *m_multisig_rescan_k, *m_multisig_rescan_info, specific_transfers.size() - 1);
+              if (m_multisig_rescan_info && m_multisig_rescan_info->front().at(tx_scan_info[o].asset_type).size() >= specific_transfers.size())
+                update_multisig_rescan_info(tx_scan_info[o].asset_type, *m_multisig_rescan_k, *m_multisig_rescan_info, specific_transfers.size() - 1);
             }
             THROW_WALLET_EXCEPTION_IF(td.get_public_key() != tx_scan_info[o].in_ephemeral.pub, error::wallet_internal_error, "Inconsistent public keys");
 	          THROW_WALLET_EXCEPTION_IF(td.m_spent, error::wallet_internal_error, "Inconsistent spent status");
@@ -3230,11 +3240,7 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
         " (height " + std::to_string(start_height) + "), local block id at this height: " +
         string_tools::pod_to_hex(m_blockchain[current_index]));
 
-      detach_blockchain(current_index, false, output_tracker_cache);
-      // HERE BE DRAGONS!!!
-      // Call detach_blockchain a second time to ensure offshore TXs are cleaned up as well
-      detach_blockchain(current_index, true, output_tracker_cache);
-      // LAND AHOY!!!
+      detach_blockchain(current_index, output_tracker_cache);
       process_new_blockchain_entry(bl, blocks[i], parsed_blocks[i], bl_id, current_index, tx_cache_data, tx_cache_data_offset, output_tracker_cache);
     }
     else
@@ -4070,7 +4076,7 @@ bool wallet2::get_rct_distribution(uint64_t &start_height, std::vector<uint64_t>
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::detach_blockchain(uint64_t height, bool use_offshore_outputs, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
+void wallet2::detach_blockchain(uint64_t height, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
   LOG_PRINT_L0("Detaching blockchain on height " << height);
 
@@ -4080,93 +4086,59 @@ void wallet2::detach_blockchain(uint64_t height, bool use_offshore_outputs, std:
   THROW_WALLET_EXCEPTION_IF(height < m_blockchain.offset() && m_blockchain.size() > m_blockchain.offset(),
       error::wallet_internal_error, "Daemon claims reorg below last checkpoint");
 
-  transfer_container& specific_transfers = use_offshore_outputs ? m_offshore_transfers : m_transfers;
+  size_t transfers_detached = 0, total_transfers_detached = 0;
+
+  for (auto &asset_type: offshore::ASSET_TYPES) {
+
+    transfer_container &specific_transfers =
+      (asset_type == "XHV") ? m_transfers :
+      (asset_type == "XUSD") ? m_offshore_transfers :
+      m_xasset_transfers[asset_type];
   
-  size_t transfers_detached = 0, offshore_transfers_detached = 0;
-
-  for (size_t i = 0; i < m_transfers.size(); ++i)
-  {
-    wallet2::transfer_details &td = m_transfers[i];
-    if (td.m_spent && td.m_spent_height >= height)
+    for (size_t i = 0; i < specific_transfers.size(); ++i)
     {
-      LOG_PRINT_L1("Resetting spent/frozen status for output " << i << ": " << td.m_key_image);
-      set_unspent(i);
-      thaw(i, false);
+      wallet2::transfer_details &td = specific_transfers[i];
+      if (td.m_spent && td.m_spent_height >= height)
+      {
+	LOG_PRINT_L1("Resetting spent/frozen status for output " << i << ": " << td.m_key_image);
+	set_unspent(td);
+	thaw(td);
+      }
     }
-  }
 
-  for (size_t i = 0; i < m_offshore_transfers.size(); ++i)
-  {
-    wallet2::transfer_details &td = m_offshore_transfers[i];
-    if (td.m_spent && td.m_spent_height >= height)
+    for (transfer_details &td: specific_transfers)
     {
-      LOG_PRINT_L1("Resetting spent/frozen status for output " << i << ": " << td.m_key_image);
-      set_offshore_unspent(i);
-      thaw(i, true);
+      while (!td.m_uses.empty() && td.m_uses.back().first >= height)
+	td.m_uses.pop_back();
     }
-  }
 
-  for (transfer_details &td: m_transfers)
-  {
-    while (!td.m_uses.empty() && td.m_uses.back().first >= height)
-      td.m_uses.pop_back();
-  }
+    if (output_tracker_cache)
+      output_tracker_cache->clear();
 
-  for (transfer_details &td: m_offshore_transfers)
-  {
-    while (!td.m_uses.empty() && td.m_uses.back().first >= height)
-      td.m_uses.pop_back();
-  }
-
-  if (output_tracker_cache)
-    output_tracker_cache->clear();
-
-  {
     // XHV
-    auto it = std::find_if(m_transfers.begin(), m_transfers.end(), [&](const transfer_details& td){return td.m_block_height >= height;});
-    size_t i_start = it - m_transfers.begin();
+    auto it = std::find_if(specific_transfers.begin(), specific_transfers.end(), [&](const transfer_details& td){return td.m_block_height >= height;});
+    size_t i_start = it - specific_transfers.begin();
     
-    for(size_t i = i_start; i!= m_transfers.size();i++)
+    for(size_t i = i_start; i!= specific_transfers.size();i++)
     {
-      if (!m_transfers[i].m_key_image_known || m_transfers[i].m_key_image_partial)
+      if (!specific_transfers[i].m_key_image_known || specific_transfers[i].m_key_image_partial)
 	continue;
-      auto it_ki = m_key_images.find(m_transfers[i].m_key_image);
-      THROW_WALLET_EXCEPTION_IF(it_ki == m_key_images.end(), error::wallet_internal_error, "key image not found: index " + std::to_string(i) + ", ki " + epee::string_tools::pod_to_hex(m_transfers[i].m_key_image) + ", " + std::to_string(m_key_images.size()) + " key images known");
+      auto it_ki = m_key_images.find(specific_transfers[i].m_key_image);
+      THROW_WALLET_EXCEPTION_IF(it_ki == m_key_images.end(), error::wallet_internal_error, "key image not found: index " + std::to_string(i) + ", ki " + epee::string_tools::pod_to_hex(specific_transfers[i].m_key_image) + ", " + std::to_string(m_key_images.size()) + " key images known");
       m_key_images.erase(it_ki);
     }
 
-    for(size_t i = i_start; i!= m_transfers.size();i++)
+    for(size_t i = i_start; i!= specific_transfers.size();i++)
     {
-      auto it_pk = m_pub_keys.find(m_transfers[i].get_public_key());
+      auto it_pk = m_pub_keys.find(specific_transfers[i].get_public_key());
       THROW_WALLET_EXCEPTION_IF(it_pk == m_pub_keys.end(), error::wallet_internal_error, "public key not found");
       m_pub_keys.erase(it_pk);
     }
-    transfers_detached = std::distance(it, m_transfers.end());
-    m_transfers.erase(it, m_transfers.end());
-  }
-  
-  {
-    // XUSD
-    auto it = std::find_if(m_offshore_transfers.begin(), m_offshore_transfers.end(), [&](const transfer_details& td){return td.m_block_height >= height;});
-    size_t i_start = it - m_offshore_transfers.begin();
+    transfers_detached = std::distance(it, specific_transfers.end());
+    specific_transfers.erase(it, specific_transfers.end());
+    total_transfers_detached += transfers_detached;
     
-    for(size_t i = i_start; i!= m_offshore_transfers.size();i++)
-    {
-      if (!m_offshore_transfers[i].m_key_image_known || m_offshore_transfers[i].m_key_image_partial)
-	continue;
-      auto it_ki = m_key_images.find(m_offshore_transfers[i].m_key_image);
-      THROW_WALLET_EXCEPTION_IF(it_ki == m_key_images.end(), error::wallet_internal_error, "key image not found: index " + std::to_string(i) + ", ki " + epee::string_tools::pod_to_hex(m_offshore_transfers[i].m_key_image) + ", " + std::to_string(m_key_images.size()) + " key images known");
-      m_key_images.erase(it_ki);
-    }
-
-    for(size_t i = i_start; i!= m_offshore_transfers.size();i++)
-    {
-      auto it_pk = m_pub_keys.find(m_offshore_transfers[i].get_public_key());
-      THROW_WALLET_EXCEPTION_IF(it_pk == m_pub_keys.end(), error::wallet_internal_error, "public key not found");
-      m_pub_keys.erase(it_pk);
-    }
-    offshore_transfers_detached = std::distance(it, m_offshore_transfers.end());
-    m_offshore_transfers.erase(it, m_offshore_transfers.end());
+    LOG_PRINT_L0("Detached blockchain on height " << height << ", transfers detached " << transfers_detached << " " << asset_type);
   }
   
   size_t blocks_detached = m_blockchain.size() - height;
@@ -4187,7 +4159,7 @@ void wallet2::detach_blockchain(uint64_t height, bool use_offshore_outputs, std:
       ++it;
   }
 
-  LOG_PRINT_L0("Detached blockchain on height " << height << ", transfers detached " << transfers_detached << " XHV + " << offshore_transfers_detached << " xUSD, blocks detached " << blocks_detached);
+  LOG_PRINT_L0("Detached blockchain on height " << height << ", total transfers detached " << total_transfers_detached << ", blocks detached " << blocks_detached);
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::deinit()
@@ -7642,13 +7614,18 @@ std::string wallet2::save_multisig_tx(multisig_tx_set txs)
   // txes generated, get rid of used k values
   for (size_t n = 0; n < txs.m_ptx.size(); ++n) {
     for (size_t idx: txs.m_ptx[n].construction_data.selected_transfers) {
-      bool offshore = (txs.m_ptx[n].tx.rct_signatures.txnOffshoreFee != 0);
-      bool onshore = (txs.m_ptx[n].tx.rct_signatures.txnOffshoreFee_usd != 0);
-      bool offshore_to_offshore = (txs.m_ptx[n].tx.rct_signatures.txnFee_usd != 0) && (!onshore);
-      if (offshore_to_offshore || onshore) {
-	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
-      } else {
+      if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_to_key)) {
 	memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
+      } else if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_onshore)) {
+	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+      } else if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_offshore)) {
+	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+      } else if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_xasset)) {
+	// Get the asset type
+	std::string asset_type = boost::get<txin_xasset>(txs.m_ptx[n].tx.vin[0]).asset_type;
+	memwipe(m_xasset_transfers[asset_type][idx].m_multisig_k.data(), m_xasset_transfers[asset_type][idx].m_multisig_k.size() * sizeof(m_xasset_transfers[asset_type][idx].m_multisig_k[0]));
+      }	else {
+	THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "invalid VIN type");
       }
     }
   }
@@ -7850,6 +7827,75 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
     auto sources = sd.sources;
     rct::RCTConfig rct_config = sd.rct_config;
     uint64_t current_height = get_blockchain_current_height()-1;
+
+    bool bOffshoreTx = false;
+    tx_extra_offshore offshore_data;
+    if (sd.extra.size()) {
+      // Check to see if this is an offshore tx
+      bOffshoreTx = get_offshore_from_tx_extra(sd.extra, offshore_data);
+    }
+
+    bool offshore = false;
+    bool onshore = false;
+    bool offshore_transfer = false;
+    bool xasset_transfer = false;
+    bool xasset_to_xusd = false;
+    bool xusd_to_xasset = false;
+    std::string strSource = "XHV";
+    std::string strDest = "XHV";
+    if (bOffshoreTx) {
+      // New xAsset-style of offshore_data
+      int pos = offshore_data.data.find("-");
+      if (pos != std::string::npos) {
+	strSource = offshore_data.data.substr(0,pos);
+	strDest = offshore_data.data.substr(pos+1);
+	if (strSource == "XHV") {
+	  offshore = true;
+	} else if (strDest == "XHV") {
+	  onshore = true;
+	} else if ((strSource == "XUSD") && (strDest == "XUSD")) {
+	  offshore_transfer = true;
+	} else if ((strSource != "XUSD") && (strDest != "XUSD")) {
+	  xasset_transfer = true;
+	} else if (strSource == "XUSD") {
+	  xusd_to_xasset = true;
+	} else {
+	  xasset_to_xusd = true;
+	}
+      } else {
+	// Pre-xAsset format of offshore_data
+	// Set the bool flags
+	if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
+	  offshore_transfer = true;
+	  strSource = "XUSD";
+	  strDest = "XUSD";
+	} else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
+	  onshore = true;
+	  strSource = "XUSD";
+	  strDest = "XHV";
+	} else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
+	  offshore = true;
+	  strSource = "XHV";
+	  strDest = "XUSD";
+	} else {
+	  THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
+	}
+      }
+    }
+
+    // check both strSource and strDest are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
+      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
+      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
+    }
+
+    const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
+    const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
+    transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
+    
+
     offshore::pricing_record pr;
     bool b = get_pricing_record(pr, current_height);
     THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
@@ -7872,16 +7918,12 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
       {
         ptx.tx.rct_signatures = sig.sigs;
 
-	bool offshore = (ptx.tx.rct_signatures.txnOffshoreFee != 0);
-	bool onshore = (ptx.tx.rct_signatures.txnOffshoreFee_usd != 0);
-	bool offshore_to_offshore = (ptx.tx.rct_signatures.txnFee_usd != 0) && (!onshore);
-	
         rct::keyV k;
         rct::key skey = rct::zero();
         auto wiper = epee::misc_utils::create_scope_leave_handler([&](){ memwipe(k.data(), k.size() * sizeof(k[0])); memwipe(&skey, sizeof(skey)); });
 
         for (size_t idx: sd.selected_transfers)
-          k.push_back(get_multisig_k((offshore_to_offshore || onshore) ? m_offshore_transfers : m_transfers, idx, sig.used_L));
+          k.push_back(get_multisig_k((xasset_transfer || xasset_to_xusd) ? m_xasset_transfers[strSource] : (offshore_transfer || onshore || xusd_to_xasset) ? m_offshore_transfers : m_transfers, idx, sig.used_L));
 
         for (const auto &msk: get_account().get_multisig_keys())
         {
@@ -14415,84 +14457,59 @@ cryptonote::blobdata wallet2::export_multisig()
 
   std::string container_sizes;
 
-  // Write the expected number of entries for onshore TXs to the stream
+  // Write out the number of currencies
   std::stringstream ss;
-  ss << std::setfill('0') << std::setw(16) << m_transfers.size();
+  ss << std::setfill('0') << std::setw(16) << offshore::ASSET_TYPES.size();
   container_sizes += ss.str();
 
-  // Write the expected number of entries for offshore TXs to the stream
-  std::stringstream ss2;
-  ss2 << std::setfill('0') << std::setw(16) << m_offshore_transfers.size();
-  container_sizes += ss2.str();
+  for (auto &asset_type: offshore::ASSET_TYPES) {
 
-  std::vector<tools::wallet2::multisig_info> info;
-  info.resize(m_transfers.size());
-  for (size_t n = 0; n < m_transfers.size(); ++n)
-  {
-    transfer_details &td = m_transfers[n];
-    crypto::key_image ki;
-    td.m_multisig_k.clear();
-    info[n].m_LR.clear();
-    info[n].m_partial_key_images.clear();
+    transfer_container &specific_transfers =
+      (asset_type == "XHV") ? m_transfers :
+      (asset_type == "XUSD") ? m_offshore_transfers :
+      m_xasset_transfers[asset_type];
+
+    // Write out the asset type
+    ar << asset_type;
+
+    // Write out the number of transfers for this asset type
+    ar << specific_transfers.size();
+    
+    std::vector<tools::wallet2::multisig_info> info;
+    info.resize(specific_transfers.size());
+    for (size_t n = 0; n < specific_transfers.size(); ++n)
+    {
+      transfer_details &td = specific_transfers[n];
+      crypto::key_image ki;
+      td.m_multisig_k.clear();
+      info[n].m_LR.clear();
+      info[n].m_partial_key_images.clear();
       
-    for (size_t m = 0; m < get_account().get_multisig_keys().size(); ++m)
-    {
-      // we want to export the partial key image, not the full one, so we can't use td.m_key_image
-      bool r = generate_multisig_key_image(get_account().get_keys(), m, td.get_public_key(), ki);
-      CHECK_AND_ASSERT_THROW_MES(r, "Failed to generate key image");
-      info[n].m_partial_key_images.push_back(ki);
+      for (size_t m = 0; m < get_account().get_multisig_keys().size(); ++m)
+      {
+	// we want to export the partial key image, not the full one, so we can't use td.m_key_image
+	bool r = generate_multisig_key_image(get_account().get_keys(), m, td.get_public_key(), ki);
+	CHECK_AND_ASSERT_THROW_MES(r, "Failed to generate key image");
+	info[n].m_partial_key_images.push_back(ki);
+      }
+      
+      // Wallet tries to create as many transactions as many signers combinations. We calculate the maximum number here as follows:
+      // if we have 2/4 wallet with signers: A, B, C, D and A is a transaction creator it will need to pick up 1 signer from 3 wallets left.
+      // That means counting combinations for excluding 2-of-3 wallets (k = total signers count - threshold, n = total signers count - 1).
+      size_t nlr = tools::combinations_count(m_multisig_signers.size() - m_multisig_threshold, m_multisig_signers.size() - 1);
+      for (size_t m = 0; m < nlr; ++m)
+      {
+	td.m_multisig_k.push_back(rct::skGen());
+	const rct::multisig_kLRki kLRki = get_multisig_kLRki(specific_transfers, n, td.m_multisig_k.back());
+	info[n].m_LR.push_back({kLRki.L, kLRki.R});
+      }
+      
+      info[n].m_signer = signer;
     }
-    
-    // Wallet tries to create as many transactions as many signers combinations. We calculate the maximum number here as follows:
-    // if we have 2/4 wallet with signers: A, B, C, D and A is a transaction creator it will need to pick up 1 signer from 3 wallets left.
-    // That means counting combinations for excluding 2-of-3 wallets (k = total signers count - threshold, n = total signers count - 1).
-    size_t nlr = tools::combinations_count(m_multisig_signers.size() - m_multisig_threshold, m_multisig_signers.size() - 1);
-    for (size_t m = 0; m < nlr; ++m)
-    {
-      td.m_multisig_k.push_back(rct::skGen());
-      const rct::multisig_kLRki kLRki = get_multisig_kLRki(m_transfers, n, td.m_multisig_k.back());
-      info[n].m_LR.push_back({kLRki.L, kLRki.R});
-    }
-    
-    info[n].m_signer = signer;
+
+    ar << info;
   }
-
-  ar << info;
-
-  std::vector<tools::wallet2::multisig_info> info_offshore;
-  info_offshore.resize(m_offshore_transfers.size());
-  for (size_t n = 0; n < m_offshore_transfers.size(); ++n)
-  {
-    transfer_details &td = m_offshore_transfers[n];
-    crypto::key_image ki;
-    td.m_multisig_k.clear();
-    info_offshore[n].m_LR.clear();
-    info_offshore[n].m_partial_key_images.clear();
-      
-    for (size_t m = 0; m < get_account().get_multisig_keys().size(); ++m)
-    {
-      // we want to export the partial key image, not the full one, so we can't use td.m_key_image
-      bool r = generate_multisig_key_image(get_account().get_keys(), m, td.get_public_key(), ki);
-      CHECK_AND_ASSERT_THROW_MES(r, "Failed to generate key image");
-      info_offshore[n].m_partial_key_images.push_back(ki);
-    }
-      
-    // Wallet tries to create as many transactions as many signers combinations. We calculate the maximum number here as follows:
-    // if we have 2/4 wallet with signers: A, B, C, D and A is a transaction creator it will need to pick up 1 signer from 3 wallets left.
-    // That means counting combinations for excluding 2-of-3 wallets (k = total signers count - threshold, n = total signers count - 1).
-    size_t nlr = tools::combinations_count(m_multisig_signers.size() - m_multisig_threshold, m_multisig_signers.size() - 1);
-    for (size_t m = 0; m < nlr; ++m)
-    {
-      td.m_multisig_k.push_back(rct::skGen());
-      const rct::multisig_kLRki kLRki = get_multisig_kLRki(m_offshore_transfers, n, td.m_multisig_k.back());
-      info_offshore[n].m_LR.push_back({kLRki.L, kLRki.R});
-    }
-      
-    info_offshore[n].m_signer = signer;
-  }
-
-  ar << info_offshore;
-    
+  
   const cryptonote::account_public_address &keys = get_account().get_keys().m_account_address;
   std::string header;
   header += std::string((const char *)&keys.m_spend_public_key, sizeof(crypto::public_key));
@@ -14504,8 +14521,13 @@ cryptonote::blobdata wallet2::export_multisig()
   return MULTISIG_EXPORT_FILE_MAGIC + ciphertext;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::update_multisig_rescan_info(transfer_container &specific_transfers, const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::vector<tools::wallet2::multisig_info>> &info, size_t n)
+void wallet2::update_multisig_rescan_info(const std::string& asset_type, const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::map<std::string, std::vector<tools::wallet2::multisig_info>>> &info, size_t n)
 {
+  transfer_container &specific_transfers =
+    (asset_type == "XHV") ? m_transfers :
+    (asset_type == "XUSD") ? m_offshore_transfers :
+    m_xasset_transfers[asset_type];
+
   CHECK_AND_ASSERT_THROW_MES(n < specific_transfers.size(), "Bad index in update_multisig_info");
   CHECK_AND_ASSERT_THROW_MES(multisig_k.size() >= specific_transfers.size(), "Mismatched sizes of multisig_k and info");
 
@@ -14514,8 +14536,8 @@ void wallet2::update_multisig_rescan_info(transfer_container &specific_transfers
   td.m_multisig_info.clear();
   for (const auto &pi: info)
   {
-    CHECK_AND_ASSERT_THROW_MES(n < pi.size(), "Bad pi size");
-    td.m_multisig_info.push_back(pi[n]);
+    CHECK_AND_ASSERT_THROW_MES(n < pi.at(asset_type).size(), "Bad pi size");
+    td.m_multisig_info.push_back(pi.at(asset_type)[n]);
   }
   m_key_images.erase(td.m_key_image);
   td.m_key_image = get_multisig_composite_key_image(specific_transfers, n);
@@ -14532,6 +14554,7 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
 
   std::vector<std::vector<tools::wallet2::multisig_info>> info;
   std::vector<std::vector<tools::wallet2::multisig_info>> info_offshore;
+  std::vector<std::map<std::string, std::vector<tools::wallet2::multisig_info>>> info_xasset;
   std::unordered_set<crypto::public_key> seen;
   for (cryptonote::blobdata &data: blobs)
   {
@@ -14540,15 +14563,15 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
 			      error::wallet_internal_error, "Bad multisig info file magic in ");
     
     data = decrypt_with_view_secret_key(std::string(data, magiclen));
-    
-    const size_t headerlen = (3 * sizeof(crypto::public_key)) + (2 * 16);
+
+    // header consists of 3 keys plus number of currencies as a 16-char string containing a zero-padded uint64_t as a base-10
+    const size_t headerlen = (3 * sizeof(crypto::public_key)) + (16); 
     THROW_WALLET_EXCEPTION_IF(data.size() < headerlen, error::wallet_internal_error, "Bad data size");
     
     const crypto::public_key &public_spend_key = *(const crypto::public_key*)&data[0];
     const crypto::public_key &public_view_key = *(const crypto::public_key*)&data[sizeof(crypto::public_key)];
     const crypto::public_key &signer = *(const crypto::public_key*)&data[2*sizeof(crypto::public_key)];
-    const std::string str_onshore_count(&data[3*sizeof(crypto::public_key)], 16);
-    const std::string str_offshore_count(&data[3*sizeof(crypto::public_key)] + 16, 16);
+    const std::string str_asset_count(&data[3*sizeof(crypto::public_key)], 16);
     const cryptonote::account_public_address &keys = get_account().get_keys().m_account_address;
     THROW_WALLET_EXCEPTION_IF(public_spend_key != keys.m_spend_public_key || public_view_key != keys.m_view_public_key,
 			      error::wallet_internal_error, "Multisig info is for a different account");
@@ -14566,29 +14589,35 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
     
     std::string body(data, headerlen);
     std::istringstream iss(body);
-    std::vector<tools::wallet2::multisig_info> i;
-    std::vector<tools::wallet2::multisig_info> i_offshore;
+    std::map<std::string, std::vector<tools::wallet2::multisig_info>> i_xasset;
     boost::archive::portable_binary_iarchive ar(iss);
-    ar >> i;
-    ar >> i_offshore;
-    MINFO(boost::format("%u onshore outputs and %u offshore outputs found") % boost::lexical_cast<std::string>(i.size()) % boost::lexical_cast<std::string>(i_offshore.size()));
-    THROW_WALLET_EXCEPTION_IF((i.size() != std::stoull(str_onshore_count)) ||
-			      (i_offshore.size() != stoull(str_offshore_count)),
-			      error::wallet_internal_error, "Multisig info contains incorrect number of entries");
+    uint64_t asset_count = std::stoull(str_asset_count);
+    for (int i=0; i<asset_count; i++) {
+      std::string asset_type;
+      uint64_t entry_count;
+      ar >> asset_type;
+      ar >> entry_count;
+      ar >> i_xasset[asset_type];
+      THROW_WALLET_EXCEPTION_IF(i_xasset[asset_type].size() != entry_count,
+				error::wallet_internal_error,
+				"Multisig info contains wrong number of entries for " + asset_type);
+      MINFO(boost::format("%u outputs found for %s") % boost::lexical_cast<std::string>(i_xasset[asset_type].size()) % asset_type);
+    }
 
-    info.push_back(std::move(i));
-    info_offshore.push_back(std::move(i_offshore));
+    info_xasset.push_back(std::move(i_xasset));
   }
 
   size_t n_outputs_global = 0;
-  std::vector<std::string> modes = {"offshore", "onshore"};
-  for (auto current_mode: modes) {
 
-    transfer_container &specific_transfers = (current_mode == "offshore") ? m_offshore_transfers : m_transfers;
-    std::vector<std::vector<tools::wallet2::multisig_info>> &specific_info = (current_mode == "offshore") ? info_offshore : info;
-
-    CHECK_AND_ASSERT_THROW_MES(specific_info.size() + 1 <= m_multisig_signers.size() && specific_info.size() + 1 >= m_multisig_threshold, "Wrong number of multisig sources");
+  CHECK_AND_ASSERT_THROW_MES(info_xasset.size() + 1 <= m_multisig_signers.size() && info_xasset.size() + 1 >= m_multisig_threshold, "Wrong number of multisig sources");
     
+  for (auto &asset_type: offshore::ASSET_TYPES) {
+
+    transfer_container &specific_transfers =
+      (asset_type == "XHV") ? m_transfers :
+      (asset_type == "XUSD") ? m_offshore_transfers :
+      m_xasset_transfers[asset_type];
+
     std::vector<std::vector<rct::key>> k;
     k.reserve(specific_transfers.size());
     for (const auto &td: specific_transfers)
@@ -14596,79 +14625,64 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
     
     // how many outputs we're going to update
     size_t n_outputs = specific_transfers.size();
-    for (const auto &pi: specific_info)
-      if (pi.size() < n_outputs)
-	n_outputs = pi.size();
+    for (auto &pi: info_xasset)
+      if (pi[asset_type].size() < n_outputs)
+	n_outputs = pi[asset_type].size();
     
     if (n_outputs != 0) {
 
       n_outputs_global += n_outputs;
     
       // check signers are consistent
-      for (const auto &pi: specific_info)
+      for (auto &pi: info_xasset)
 	{
-	  CHECK_AND_ASSERT_THROW_MES(std::find(m_multisig_signers.begin(), m_multisig_signers.end(), pi[0].m_signer) != m_multisig_signers.end(),
+	  CHECK_AND_ASSERT_THROW_MES(std::find(m_multisig_signers.begin(), m_multisig_signers.end(), pi[asset_type][0].m_signer) != m_multisig_signers.end(),
 				     "Signer is not a member of this multisig wallet");
 	  for (size_t n = 1; n < n_outputs; ++n)
-	    CHECK_AND_ASSERT_THROW_MES(pi[n].m_signer == pi[0].m_signer, "Mismatched signers in imported multisig info");
+	    CHECK_AND_ASSERT_THROW_MES(pi[asset_type][n].m_signer == pi[asset_type][0].m_signer, "Mismatched signers in imported multisig info");
 	}
     
       // trim data we don't have info for from all participants
-      for (auto &pi: specific_info)
-	pi.resize(n_outputs);
+      for (auto &pi: info_xasset)
+	pi[asset_type].resize(n_outputs);
     
       // sort by signer
-      if (!specific_info.empty() && !specific_info.front().empty())
-	{
-	  std::sort(specific_info.begin(), specific_info.end(), [](const std::vector<tools::wallet2::multisig_info> &i0, const std::vector<tools::wallet2::multisig_info> &i1){ return memcmp(&i0[0].m_signer, &i1[0].m_signer, sizeof(i0[0].m_signer)); });
-	}
+      if (!info_xasset.empty() && !info_xasset.front().at(asset_type).empty())
+      {
+	std::sort(info_xasset.begin(), info_xasset.end(), [&asset_type](const std::map<std::string, std::vector<tools::wallet2::multisig_info>> &i0, const std::map<std::string, std::vector<tools::wallet2::multisig_info>> &i1){
+							    return memcmp(&i0.at(asset_type)[0].m_signer, &i1.at(asset_type)[0].m_signer, sizeof(i0.at(asset_type)[0].m_signer)); });
+      }
 
       // first pass to determine where to detach the blockchain
       for (size_t n = 0; n < n_outputs; ++n)
-	{
-	  const transfer_details &td = specific_transfers[n];
-	  if (!td.m_key_image_partial)
-	    continue;
-	  MINFO("Multisig info importing from block height " << td.m_block_height);
-	  detach_blockchain(td.m_block_height, (current_mode == "offshore"));
-	  break;
-	}
+      {
+	const transfer_details &td = specific_transfers[n];
+	if (!td.m_key_image_partial)
+	  continue;
+	MINFO("Multisig info importing from block height " << td.m_block_height);
+	detach_blockchain(td.m_block_height);
+	break;
+      }
     
       for (size_t n = 0; n < n_outputs && n < specific_transfers.size(); ++n)
-	{
-	  update_multisig_rescan_info(specific_transfers, k, specific_info, n);
-	}
-    
-      if (current_mode == "offshore") {
-	m_multisig_rescan_offshore_k = &k;
-	m_multisig_rescan_offshore_info = &specific_info;
-      } else {
-	m_multisig_rescan_k = &k;
-	m_multisig_rescan_info = &specific_info;
+      {
+	update_multisig_rescan_info(asset_type, k, info_xasset, n);
       }
+    
+      m_multisig_rescan_k = &k;
+      m_multisig_rescan_info = &info_xasset;
       try
-	{
-      
-	  refresh(false);
-	}
+      {
+       refresh(false);
+      }
       catch (...)
-	{
-	  if (current_mode == "offshore") {
-	    m_multisig_rescan_offshore_info = NULL;
-	    m_multisig_rescan_offshore_k = NULL;
-	  } else {
-	    m_multisig_rescan_info = NULL;
-	    m_multisig_rescan_k = NULL;
-	  }
-	  throw;
-	}
-      if (current_mode == "offshore") {
-	m_multisig_rescan_offshore_info = NULL;
-	m_multisig_rescan_offshore_k = NULL;
-      } else {
+      {
 	m_multisig_rescan_info = NULL;
 	m_multisig_rescan_k = NULL;
+	throw;
       }
+      m_multisig_rescan_info = NULL;
+      m_multisig_rescan_k = NULL;
     }
   }
   return n_outputs_global;
