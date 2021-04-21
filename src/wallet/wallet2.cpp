@@ -7928,15 +7928,19 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
   // txes generated, get rid of used k values
   for (size_t n = 0; n < exported_txs.m_ptx.size(); ++n) {
     for (size_t idx: exported_txs.m_ptx[n].construction_data.selected_transfers) {
-	
-      bool offshore = (exported_txs.m_ptx[n].tx.rct_signatures.txnOffshoreFee != 0);
-      bool onshore = (exported_txs.m_ptx[n].tx.rct_signatures.txnOffshoreFee_usd != 0);
-      bool offshore_to_offshore = (exported_txs.m_ptx[n].tx.rct_signatures.txnFee_usd != 0) && (!onshore);
-	
-      if (offshore_to_offshore || onshore) {
-	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
-      } else {
+
+      if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_to_key)) {
 	memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
+      } else if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_onshore)) {
+	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+      } else if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_offshore)) {
+	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+      } else if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_xasset)) {
+	// Get the asset type
+	std::string asset_type = boost::get<txin_xasset>(exported_txs.m_ptx[n].tx.vin[0]).asset_type;
+	memwipe(m_xasset_transfers[asset_type][idx].m_multisig_k.data(), m_xasset_transfers[asset_type][idx].m_multisig_k.size() * sizeof(m_xasset_transfers[asset_type][idx].m_multisig_k[0]));
+      }	else {
+	THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "invalid VIN type");
       }
     }
   }
