@@ -887,6 +887,7 @@ namespace cryptonote
       // Get the pricing_record_height for any offshore TX
       uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
     
+      // Get the TX asset types
       if (!get_tx_asset_types(*tx_info[n].tx, source, dest)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
         tx_info[n].tvc.m_verifivation_failed = true;
@@ -899,22 +900,15 @@ namespace cryptonote
         continue;
       }
 
-      if (source != "XHV" || dest != "XHV") {
+      // Get the TX type flags
+      if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
+        MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
+        tx_info[n].tvc.m_verifivation_failed = true;
+	continue;
+      }
+      
+      if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
         
-        if (source == "XHV") {
-          offshore = true;
-        } else if (dest == "XHV") {
-          onshore = true;
-        } else if ((source == "XUSD") && (dest == "XUSD")) {
-          offshore_transfer = true;
-        } else if ((source != "XUSD") && (dest != "XUSD")) {
-          xasset_transfer = true;
-        } else if (source == "XUSD") {
-          xusd_to_xasset = true;
-        } else {
-          xasset_to_xusd = true;
-        }
-
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
         if (pricing_record_height == 821428) {
           const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
@@ -1053,20 +1047,14 @@ namespace cryptonote
           continue;
         }
 
-        if (source != "XHV" || dest != "XHV") {
-          if (source == "XHV") {
-            offshore = true;
-          } else if (dest == "XHV") {
-            onshore = true;
-          } else if ((source == "XUSD") && (dest == "XUSD")) {
-            offshore_transfer = true;
-          } else if ((source != "XUSD") && (dest != "XUSD")) {
-            xasset_transfer = true;
-          } else if (source == "XUSD") {
-            xusd_to_xasset = true;
-          } else {
-            xasset_to_xusd = true;
-          }
+	// Get the TX type flags
+	if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
+	  MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
+	  tx_info[n].tvc.m_verifivation_failed = true;
+	  continue;
+	}
+      
+	if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
 
           // NEAC: recover from the reorg during Oracle switch - 1 TX affected
           if (pricing_record_height == 821428) {

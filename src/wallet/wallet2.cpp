@@ -2163,63 +2163,21 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   // In this function, tx (probably) only contains the base information
   // (that is, the prunable stuff may or may not be included)
 
-  // Check to see if this is an offshore TX
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (tx.extra.size()) {
-    // Check to see if this is an offshore tx
-    bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
-    if (bOffshoreTx) {
-      //if (m_multisig) return;
-    }
-  }
-
   // Flags to track offshore TX direction
   bool offshore = false;
   bool onshore = false;
-  bool offshore_to_offshore = false;
+  bool offshore_transfer = false;
   bool xasset_transfer = false;
   bool xasset_to_xusd = false;
   bool xusd_to_xasset = false;
-  std::string strSource = "XHV";
-  std::string strDest = "XHV";
-  if (bOffshoreTx) {
-    // New xAsset-style of offshore_data
-    int pos = offshore_data.data.find("-");
-    if (pos != std::string::npos) {
-      strSource = offshore_data.data.substr(0,pos);
-      strDest = offshore_data.data.substr(pos+1);
-      if (strSource == "XHV") {
-        offshore = true;
-      } else if (strDest == "XHV") {
-        onshore = true;
-      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-        offshore_to_offshore = true;
-      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-        xasset_transfer = true;
-      } else if (strSource == "XUSD") {
-        xusd_to_xasset = true;
-      } else {
-        xasset_to_xusd = true;
-      }
-    } else {
-      // Pre-xAsset format of offshore_data
-      // Set the bool flags
-      if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-        offshore_to_offshore = true;
-        strSource = strDest = "XUSD";
-      } else if (offshore_data.data.at(0) > 'A') {
-        onshore = true;
-        strSource = "XUSD";
-        strDest = "XHV";
-      } else {
-        offshore = true;
-        strSource = "XHV";
-        strDest = "XUSD";
-      }
-    }
-  }
+  std::string source;
+  std::string dest;
 
+  bool r = cryptonote::get_tx_asset_types(tx, source, dest);
+  THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get TX asset types");
+  r = cryptonote::get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer);
+  THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get TX type");
+  
   if (!miner_tx && !pool) {
     process_unconfirmed(txid, tx, height);
   }
@@ -2740,8 +2698,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   uint64_t fee = miner_tx ? 0 :
     // if the tx version is 1, the asset_type must be XHV
     tx.version == 1 ? tx_money_spent_in_ins - get_outs_money_amount(tx)["XHV"] :
-    strSource == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
-    strSource == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd :
+    source == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
+    source == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd :
     tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset;
 
   if (tx_money_spent_in_ins > 0 && !pool)
@@ -2755,7 +2713,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
       }
     }
 
-    process_outgoing(txid, tx, height, ts, tx_money_spent_in_ins, self_received, *subaddr_account, subaddr_indices, strSource, strDest);
+    process_outgoing(txid, tx, height, ts, tx_money_spent_in_ins, self_received, *subaddr_account, subaddr_indices, source, dest);
 
     // here we check if in a given transaction, what we spent and what we recive is the same,
     // that means we sent some funds to ourselves. In this case, we find it in the comfirmed txs
@@ -2764,14 +2722,14 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     // type will almost alywas be different from one another. And we don't do it when they are, because
     // users wanna see what they offshored.
     uint64_t recived_in = 0;
-    if (strSource == strDest) {
-      recived_in += self_received[strSource];
+    if (source == dest) {
+      recived_in += self_received[source];
       if (tx_money_spent_in_ins == recived_in + fee)
       {
         auto i = m_confirmed_txs.find(txid);
         THROW_WALLET_EXCEPTION_IF(i == m_confirmed_txs.end(), error::wallet_internal_error,
           "confirmed tx wasn't found: " + string_tools::pod_to_hex(txid));
-        i->second.m_change = self_received[strSource];
+        i->second.m_change = self_received[source];
       }
     }
   }
@@ -2785,7 +2743,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     if (subaddr_account && i->first.major == *subaddr_account) {
       // delete individual change asset output
       for (auto assets_it = i->second.begin(); assets_it != i->second.end();) {
-        if (assets_it->first == strSource)
+        if (assets_it->first == source)
           assets_it = i->second.erase(assets_it);
         else
           ++assets_it;
@@ -2801,7 +2759,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
   
   // create payment_details for each incoming transfer to a subaddress index
-  if (tx_money_got_in_outs.size() > 0)// && (!bOffshoreTx || onshore))
+  if (tx_money_got_in_outs.size() > 0)
   {
     tx_extra_nonce extra_nonce;
     crypto::hash payment_id = null_hash;
@@ -7048,16 +7006,14 @@ void wallet2::commit_tx(pending_tx& ptx)
 {
   using namespace cryptonote;
 
-  std::string strSourceCurrency = "XHV";
-  if (ptx.tx.vin[0].type() == typeid(txin_xasset)) {
-    const cryptonote::txin_xasset &in_xasset = boost::get<cryptonote::txin_xasset>(ptx.tx.vin[0]);
-    strSourceCurrency = in_xasset.asset_type;
-  } else if (ptx.tx.vin[0].type() == typeid(txin_offshore) || ptx.tx.vin[0].type() == typeid(txin_onshore)) {
-    strSourceCurrency = "XUSD";
-  }
+  std::string source;
+  std::string dest;
+  bool r = cryptonote::get_tx_asset_types(ptx.tx, source, dest);
+  THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "failed to get TX asset types");
+  
   transfer_container& specific_transfers =
     ptx.tx.vin[0].type() == typeid(txin_to_key) ? m_transfers
-    : ptx.tx.vin[0].type() == typeid(txin_xasset) ? m_xasset_transfers[strSourceCurrency]
+    : ptx.tx.vin[0].type() == typeid(txin_xasset) ? m_xasset_transfers[source]
     : m_offshore_transfers;
   
   if(m_light_wallet) 
@@ -7113,7 +7069,7 @@ void wallet2::commit_tx(pending_tx& ptx)
     for(size_t idx: ptx.selected_transfers)
       amount_in += specific_transfers[idx].amount();
   }
-  add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, strSourceCurrency == "XHV" ? ptx.change_dts.amount : strSourceCurrency == "XUSD" ? ptx.change_dts.amount_usd : ptx.change_dts.amount_xasset, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
+  add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, source == "XHV" ? ptx.change_dts.amount : source == "XUSD" ? ptx.change_dts.amount_usd : ptx.change_dts.amount_xasset, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
   
   if (store_tx_info() && ptx.tx_key != crypto::null_skey)
   {
@@ -7135,8 +7091,8 @@ void wallet2::commit_tx(pending_tx& ptx)
   //fee includes dust if dust policy specified it.
   LOG_PRINT_L1("Transaction successfully sent. <" << txid << ">" << ENDL
             << "Commission: " << print_money(ptx.fee) << " (dust sent to dust addr: " << print_money((ptx.dust_added_to_fee ? 0 : ptx.dust)) << ")" << ENDL
-	       << "Balance: " << print_money(balance(strSourceCurrency, ptx.construction_data.subaddr_account, false)) << ENDL
-	       << "Unlocked: " << print_money(unlocked_balance(strSourceCurrency, ptx.construction_data.subaddr_account, false)) << ENDL
+	       << "Balance: " << print_money(balance(source, ptx.construction_data.subaddr_account, false)) << ENDL
+	       << "Unlocked: " << print_money(unlocked_balance(source, ptx.construction_data.subaddr_account, false)) << ENDL
             << "Please, wait for confirmation for your balance to be unlocked.");
 }
 

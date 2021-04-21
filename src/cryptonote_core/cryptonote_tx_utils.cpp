@@ -369,7 +369,7 @@ namespace cryptonote
     size_t count = 0;
     for (const auto &i : destinations)
     {
-      if (i.amount == 0)
+      if (i.amount == 0 && i.amount_usd == 0 && i.amount_xasset == 0)
         continue;
       if (change_addr && i.addr == *change_addr)
         continue;
@@ -870,24 +870,27 @@ namespace cryptonote
   }
 
   /*
-    Returns the input and output asset types for a givn tx.
+    Returns the input and output asset types for a given tx.
   */
   bool get_tx_asset_types(const transaction& tx, std::string& source, std::string& destination) {
-    
-    if (tx.vin[0].type() == typeid(txin_to_key)) {
-      source = "XHV";
-    } else if (tx.vin[0].type() == typeid(txin_offshore)) {
-      source = "XUSD";
-    } else if (tx.vin[0].type() == typeid(txin_onshore)) {
-      source = "XUSD";
-    } else if (tx.vin[0].type() == typeid(txin_xasset)) {
-      source = boost::get<txin_xasset>(tx.vin[0]).asset_type;
-    } else {
-      LOG_ERROR("Invalid Input Type for tx.");
-      source = "";
-      return false;
+
+    // Clear the source
+    source = "";
+    for (int i=0; i<tx.vin.size(); i++) {
+      if (tx.vin[i].type() == typeid(txin_to_key)) {
+	source = "XHV";
+      } else if (tx.vin[i].type() == typeid(txin_offshore)) {
+	source = "XUSD";
+      } else if (tx.vin[i].type() == typeid(txin_onshore)) {
+	source = "XUSD";
+      } else if (tx.vin[i].type() == typeid(txin_xasset)) {
+	source = boost::get<txin_xasset>(tx.vin[0]).asset_type;
+      } else {
+	continue;
+      }
     }
 
+    // Clear the destination
     destination = "";
     for (const auto &out: tx.vout) {
       if (out.target.type() == typeid(txout_to_key)) {
@@ -897,9 +900,7 @@ namespace cryptonote
       } else if (out.target.type() == typeid(txout_xasset)) {
         destination = boost::get<txout_xasset>(out.target).asset_type;
       } else {
-        LOG_ERROR("Invalid Output Type for tx.");
-        destination = "";
-        return false;
+	continue;
       }
       // if we get the a destination different from source, that means we get what we want.
       // if source and destination is the same we won't break early.
@@ -918,6 +919,43 @@ namespace cryptonote
       return false;
     }
 
+    return true;
+  }
+
+  //---------------------------------------------------------------
+  bool get_tx_type(const std::string& source, const std::string& destination, bool& offshore, bool& onshore, bool& offshore_transfer, bool& xusd_to_xasset, bool& xasset_to_xusd, bool& xasset_transfer) {
+
+    // Clear all the flags
+    offshore = onshore = offshore_transfer = xusd_to_xasset = xasset_to_xusd = xasset_transfer = false;
+
+    // check both source and destination are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
+      return false;
+    }
+
+    // Find the tx type
+    if (source != "XHV" || destination != "XHV") {
+      if (source == "XHV") {
+	offshore = true;
+      } else if (destination == "XHV") {
+	onshore = true;
+      } else if ((source == "XUSD") && (destination == "XUSD")) {
+	offshore_transfer = true;
+      } else if ((source != "XUSD") && (destination != "XUSD")) {
+	xasset_transfer = true;
+      } else if (source == "XUSD") {
+	xusd_to_xasset = true;
+      } else {
+	xasset_to_xusd = true;
+      }
+    }
+
+    // Return success to caller
     return true;
   }
 

@@ -2063,9 +2063,9 @@ try
             return signMultisigMLSAG(rv, indices, k, msout, secret_key);
     }
 
-  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, bool offshore, bool onshore, bool xusd_to_xasset, bool xasset_to_xusd, std::string xasset_type) {
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination) {
 
-    if (offshore) {
+    if (source == "XHV" && destination == "XUSD") {
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
       boost::multiprecision::uint128_t exchange_128 = pr.unused1;
       boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
@@ -2075,7 +2075,7 @@ try
         LOG_PRINT_L1("Minted/burnt verification failed (offshore)");
         return false;
       }
-    } else if (onshore) {
+    } else if (source == "XUSD" && destination == "XHV") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
       boost::multiprecision::uint128_t exchange_128 = pr.unused1;
       boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
@@ -2085,9 +2085,9 @@ try
         LOG_PRINT_L1("Minted/burnt verification failed (onshore)");
         return false;
       }
-    } else if (xusd_to_xasset) {
+    } else if (source == "XUSD" && destination != "XHV" && destination != "XUSD") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = pr[xasset_type];
+      boost::multiprecision::uint128_t exchange_128 = pr[destination];
       boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
       xasset_128 /= 1000000000000;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
@@ -2095,9 +2095,9 @@ try
         LOG_PRINT_L1("Minted/burnt verification failed (xusd_to_xasset)");
         return false;
       }
-    } else if (xasset_to_xusd) {
+    } else if (source != "XHV" && source != "XUSD" && destination == "XUSD") {
       boost::multiprecision::uint128_t xasset_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = pr[xasset_type];
+      boost::multiprecision::uint128_t exchange_128 = pr[source];
       boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
       xusd_128 /= exchange_128;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
