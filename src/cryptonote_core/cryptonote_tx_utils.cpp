@@ -877,7 +877,8 @@ namespace cryptonote
     // Clear the source
     source = "";
     for (int i=0; i<tx.vin.size(); i++) {
-      if (tx.vin[i].type() == typeid(txin_to_key)) {
+      if ((tx.vin[i].type() == typeid(txin_to_key)) ||
+	  (tx.vin[i].type() == typeid(txin_gen))) {
 	source = "XHV";
       } else if (tx.vin[i].type() == typeid(txin_offshore)) {
 	source = "XUSD";
