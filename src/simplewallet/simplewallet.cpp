@@ -8105,6 +8105,11 @@ bool simple_wallet::xasset_sweep_all(const std::vector<std::string> &args_)
     fail_msg_writer() << "xAsset commands do not support XHV. Please use the sweep_all() function.";
     return false;
   }
+  local_args.pop_back();
+
+  // push the offshore data
+  local_args.push_back(strCurrency);
+
   return sweep_main(m_current_subaddress_account, 0, false, local_args);
 }
 //----------------------------------------------------------------------------------------------------
@@ -8140,6 +8145,11 @@ bool simple_wallet::xasset_sweep_below(const std::vector<std::string> &args_)
     fail_msg_writer() << "xAsset commands do not support XHV. Please use the sweep_below() function.";
     return false;
   }
+  local_args.pop_back();
+
+  // push the offshore data
+  local_args.push_back(strCurrency);
+
   return sweep_main(m_current_subaddress_account, below, false, local_args);
 }
 //----------------------------------------------------------------------------------------------------
