@@ -613,10 +613,11 @@ namespace cryptonote
      *
      * @param tx_weight the transaction weight
      * @param fee the fee
+     * @param fee_asset the asset type of the fee
      *
      * @return true if the fee is enough, false otherwise
      */
-    bool check_fee(size_t tx_weight, uint64_t fee) const;
+    bool check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest) const;
 
     /**
      * @brief check that a transaction's outputs conform to current standards

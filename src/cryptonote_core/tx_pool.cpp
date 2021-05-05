@@ -195,16 +195,6 @@ namespace cryptonote
       offshore_fee_xasset = tx.rct_signatures.txnOffshoreFee_xasset;
     }
 
-    // check the fee
-    if (!kept_by_block) {
-      if ((!fee || !m_blockchain.check_fee(tx_weight, fee)) && (!fee_usd || !m_blockchain.check_fee(tx_weight, fee_usd)) && (!fee_xasset || !m_blockchain.check_fee(tx_weight, fee_xasset)))
-      {
-        tvc.m_verifivation_failed = true;
-        tvc.m_fee_too_low = true;
-        return false;
-      }
-    }
-
     //validate the offshore data
     bool bOffshoreTx = false;
     tx_extra_offshore offshore_data;
@@ -292,7 +282,6 @@ namespace cryptonote
     std::string source;
     std::string dest;
     offshore::pricing_record pr;
-    
     if (!get_tx_asset_types(tx, source, dest)) {
       LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
       tvc.m_verifivation_failed = true;
@@ -304,8 +293,6 @@ namespace cryptonote
       }
       return false;
     }
-
-    // Get the TX type flags
     if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
       LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
       tvc.m_verifivation_failed = true;
@@ -317,15 +304,15 @@ namespace cryptonote
       // Validate that pricing record is not too old
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-	LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-	tvc.m_verifivation_failed = true;
-	return false;
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+        tvc.m_verifivation_failed = true;
+        return false;
       }
       
       // this check is here because of a soft fork that needed to happen due to invalid pr
       if (tx.pricing_record_height > 658500) {
+
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
-        offshore::pricing_record pr;
         if (tx.pricing_record_height == 821428) {
           const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
           pr.xAG = 614976143259;
@@ -350,11 +337,6 @@ namespace cryptonote
             std::string byteString = sig.substr(i, 2);
             pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
           }
-          
-          if (!pr.verifySignature()) {
-            LOG_ERROR("Failed to set correct PR for block: " << tx.pricing_record_height);
-            return false;
-          }
         } else {
           // Get the pricing record that was used for conversion
           block bl;
@@ -367,7 +349,14 @@ namespace cryptonote
 
           pr = bl.pricing_record;
         }
-	
+        ////// recover ends //////////
+
+        // verify the pr
+        if (!pr.verifySignature()) {
+          LOG_ERROR("Failed to set correct PR for block: " << tx.pricing_record_height);
+          return false;
+        }
+
         // Check the amount burnt and minted
         if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
@@ -392,15 +381,25 @@ namespace cryptonote
           // Flat 0.3% conversion fee for xAsset TXs
           conversion_fee_check = (tx.amount_burnt * 3) / 1000;
         }
-        if ((offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
-            ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
-	    (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))) 
-        {
+        if (
+          (offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
+          ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
+	        (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
+        ){
           LOG_PRINT_L1("conversion fee is incorrect - rejecting");
           tvc.m_verifivation_failed = true;
           tvc.m_fee_too_low = true;
           return false;
         }
+      }
+    }
+
+    // check the std tx fee
+    if (!kept_by_block) {
+      if ((!fee || !m_blockchain.check_fee(tx_weight, source == "XHV" ? fee : source == "XUSD" ? fee_usd : fee_xasset, pr, source, dest))){
+        tvc.m_verifivation_failed = true;
+        tvc.m_fee_too_low = true;
+        return false;
       }
     }
     
@@ -532,16 +531,16 @@ namespace cryptonote
           meta.last_relayed_time = std::numeric_limits<decltype(meta.last_relayed_time)>::max();
           meta.receive_time = receive_time;
           meta.weight = tx_weight;
-	  if (source == "XHV") {
-	    meta.fee = fee;
-	    meta.offshore_fee = offshore_fee;
-	  } else if (source == "XUSD") {
-	    meta.fee = fee_usd;
-	    meta.offshore_fee = offshore_fee_usd;
-	  } else {
-	    meta.fee = fee_xasset;
-	    meta.offshore_fee = offshore_fee_xasset;
-	  }
+          if (source == "XHV") {
+            meta.fee = fee;
+            meta.offshore_fee = offshore_fee;
+          } else if (source == "XUSD") {
+            meta.fee = fee_usd;
+            meta.offshore_fee = offshore_fee_usd;
+          } else {
+            meta.fee = fee_xasset;
+            meta.offshore_fee = offshore_fee_xasset;
+          }
           meta.max_used_block_id = max_used_block_id;
           meta.max_used_block_height = max_used_block_height;
           meta.last_failed_height = 0;

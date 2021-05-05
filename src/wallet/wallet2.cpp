@@ -10627,14 +10627,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   // so we don't try to adjust the fee according to usd equivalent.
   // the only donwnside is fees are little bit higher for the assets that has high usd value.
   if (strSource == "XHV") {
-  } else if (strSource == "XUSD") {
-    if (strSource != strDest) {
-      base_fee = get_xusd_amount(base_fee_orig, "XHV", current_height);
-    }
   } else {
     if (strSource != strDest) {
-      // Convert fee to xAsset
-      base_fee = get_xasset_amount(get_xusd_amount(base_fee_orig, "XHV", current_height), strSource, current_height);
+      // Convert fee to xUSD
+      base_fee = get_xusd_amount(base_fee_orig, "XHV", current_height);
+      if (strSource != "XUSD") {
+        // Convert fee to xAsset
+        base_fee = get_xasset_amount(base_fee, strSource, current_height);
+      }
     }
   }
   const uint64_t fee_multiplier = get_fee_multiplier(priority, get_fee_algorithm());
