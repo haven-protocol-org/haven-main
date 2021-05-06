@@ -317,9 +317,20 @@ namespace cryptonote
       // Validate that pricing record is not too old
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-	LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-	tvc.m_verifivation_failed = true;
-	return false;
+
+        // For a time, pricing record validation on tx's existed only in 2 places: here when first adding a tx into the pool, and client-side in tx_sanity_check.
+        // At some point before block 848280, the transaction with hash 3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6 entered the tx pool
+        // successfully, and then sat in the pool until being mined in block 848280, at which point the tx should have been validated again, but was not. Live nodes
+        // that remained connected to the network continued building off the chain, since this tx had already passed validation to enter their tx pool in the first place,
+        // thereby preventing other nodes disconnected from the network from syncing later on. This issue was prevented by adding pricing record validation below in fill_block_template,
+        // so that live nodes would reject a pricing record if it grew old since entering the pool. Unfortunately a single tx was affected by this issue, which was tx 
+        // 3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6 below. Nodes will allow this tx and only this tx to pass validation.
+        if (current_height != 848280 || tx.pricing_record_height != 848269 || epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6")
+        {
+          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
       }
       
       // this check is here because of a soft fork that needed to happen due to invalid pr
