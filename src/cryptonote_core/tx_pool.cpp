@@ -396,7 +396,7 @@ namespace cryptonote
 
     // check the std tx fee
     if (!kept_by_block) {
-      if ((!fee || !m_blockchain.check_fee(tx_weight, source == "XHV" ? fee : source == "XUSD" ? fee_usd : fee_xasset, pr, source, dest))){
+      if ((!fee && !fee_usd && !fee_xasset) || !m_blockchain.check_fee(tx_weight, source == "XHV" ? fee : source == "XUSD" ? fee_usd : fee_xasset, pr, source, dest)){
         tvc.m_verifivation_failed = true;
         tvc.m_fee_too_low = true;
         return false;
