@@ -1837,13 +1837,13 @@ namespace cryptonote
           LOG_PRINT_L2("  would exceed maximum block weight");
           continue;
         }
-	if (strcmp(meta.fee_asset_type, "XHV") == 0) {
-	  coinbase = block_reward + fee_map["XHV"] + meta.fee;
-	} else {
-	  coinbase = block_reward + fee_map["XHV"];
-	}
-	/*
-        if (coinbase < template_accept_threshold(best_coinbase))
+        if (strcmp(meta.fee_asset_type, "XHV") == 0) {
+          coinbase = block_reward + fee_map["XHV"] + meta.fee;
+        } else {
+          coinbase = block_reward + fee_map["XHV"];
+        }
+	      /*
+          if (coinbase < template_accept_threshold(best_coinbase))
         */
         if (coinbase < best_coinbase)
         {
@@ -1884,14 +1884,14 @@ namespace cryptonote
       if (memcmp(&original_meta, &meta, sizeof(meta)))
       {
         try
-	{
-	  m_blockchain.update_txpool_tx(sorted_it->second, meta);
-	}
+        {
+          m_blockchain.update_txpool_tx(sorted_it->second, meta);
+        }
         catch (const std::exception &e)
-	{
-	  MERROR("Failed to update tx meta: " << e.what());
-	  // continue, not fatal
-	}
+        {
+          MERROR("Failed to update tx meta: " << e.what());
+          // continue, not fatal
+        }
       }
       if (!ready)
       {
@@ -1901,6 +1901,13 @@ namespace cryptonote
       if (have_key_images(k_images, tx))
       {
         LOG_PRINT_L2("  key images already seen");
+        continue;
+      }
+
+      // Validate that pricing record is not too old
+      uint64_t current_height = m_blockchain.get_current_blockchain_height();
+      if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
         continue;
       }
 

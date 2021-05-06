@@ -81,7 +81,7 @@
 
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
-#define PRICING_RECORD_VALID_BLOCKS                     10
+#define PRICING_RECORD_VALID_BLOCKS                     11 // 10 + 1 (1 block buffer because the tx will be included into next block)
 
 #define DIFFICULTY_TARGET_V2                            120  // seconds
 #define DIFFICULTY_TARGET_V1                            120  // seconds - before first fork
