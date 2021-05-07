@@ -4613,7 +4613,7 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
 }
 
 //------------------------------------------------------------------
-bool Blockchain::check_fee(size_t tx_weight, uint64_t fee) const
+bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest) const
 {
   const uint8_t version = get_current_hard_fork_version();
 
@@ -4656,6 +4656,26 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee) const
     needed_fee = tx_weight / 1024;
     needed_fee += (tx_weight % 1024) ? 1 : 0;
     needed_fee *= fee_per_kb;
+  }
+  
+  // convert fee to asset type value
+  if (source == "XHV") {
+  } else {
+    if (source != dest) {
+      // get_xusd_amount()
+      boost::multiprecision::uint128_t amount_128 = needed_fee;
+      boost::multiprecision::uint128_t exchange_128 = pr.unused1; // XHV value moving avg
+      boost::multiprecision::uint128_t result_128 = (amount_128 * exchange_128) / 1000000000000;
+      needed_fee = (uint64_t)result_128;
+
+      // get_xasset_amount() if fee is paid in xasset
+      if (source != "XUSD") {
+        amount_128 = needed_fee;
+        exchange_128 = pr[source];
+        result_128 = (amount_128 * exchange_128) / 1000000000000;
+        needed_fee = (uint64_t)result_128;
+      }
+    }
   }
 
   if (fee < needed_fee - needed_fee / 50) // keep a little 2% buffer on acceptance - no integer overflow
