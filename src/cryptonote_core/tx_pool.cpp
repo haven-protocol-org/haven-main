@@ -349,6 +349,12 @@ namespace cryptonote
             std::string byteString = sig.substr(i, 2);
             pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
           }
+
+          // verify the pr
+          if (!pr.verifySignature()) {
+            LOG_ERROR("Failed to set correct PR for block: " << tx.pricing_record_height);
+            return false;
+          }
         } else {
           // Get the pricing record that was used for conversion
           block bl;
@@ -362,12 +368,6 @@ namespace cryptonote
           pr = bl.pricing_record;
         }
         ////// recover ends //////////
-
-        // verify the pr
-        if (!pr.verifySignature()) {
-          LOG_ERROR("Failed to set correct PR for block: " << tx.pricing_record_height);
-          return false;
-        }
 
         // Check the amount burnt and minted
         if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest)) {
