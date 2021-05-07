@@ -5403,6 +5403,18 @@ leave:
       }
     }
 #endif
+
+    // Validate that pricing record has not grown too old since it was first included in the pool
+    if (tx.pricing_record_height > 0 && (blockchain_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+      // see explanation for these hard-coded allowances in add_tx tx_pool.cpp 
+      if (blockchain_height != 848280 || tx.pricing_record_height != 848269 || epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6")
+      {
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+    }
+
     TIME_MEASURE_FINISH(cc);
     t_checktx += cc;
     fee_map[fee_asset_type] += fee; 

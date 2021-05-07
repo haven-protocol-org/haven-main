@@ -54,7 +54,14 @@ cmake-debug:
 	mkdir -p $(builddir)/debug
 	cd $(builddir)/debug && cmake -D CMAKE_BUILD_TYPE=Debug $(topdir)
 
+cmake-debug-static:
+	mkdir -p $(builddir)/debug
+	cd $(builddir)/debug && cmake -D STATIC=ON -D CMAKE_BUILD_TYPE=Debug $(topdir)
+
 debug: cmake-debug
+	cd $(builddir)/debug && $(MAKE)
+
+debug-static: cmake-debug-static
 	cd $(builddir)/debug && $(MAKE)
 
 # Temporarily disable some tests:
