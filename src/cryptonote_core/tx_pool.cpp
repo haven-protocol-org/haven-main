@@ -318,12 +318,13 @@ namespace cryptonote
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
 
-        // For a time, pricing record validation on tx's existed only in 2 places: here when first adding a tx into the pool, and client-side in tx_sanity_check.
+        // For a time, pricing record validation on tx's existed only in 2 places: here when first adding a tx into the pool, and the less important tx_sanity_check.
         // At some point before block 848280, the transaction with hash 3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6 entered the tx pool
-        // successfully, and then sat in the pool until being mined in block 848280, at which point the tx should have been validated again, but was not. Live nodes
-        // that remained connected to the network continued building off the chain, since this tx had already passed validation to enter their tx pool in the first place,
-        // thereby preventing other nodes disconnected from the network from syncing later on. This issue was prevented by adding pricing record validation below in fill_block_template,
-        // so that live nodes would reject a pricing record if it grew old since entering the pool. Unfortunately a single tx was affected by this issue, which was tx 
+        // successfully, and then sat in the pool until being mined in block 848280, at which point the tx's pricing record had grown too old and should have
+        // been validated again, but was not. Live nodes that remained connected to the network continued building off the chain, since this tx had already 
+        // passed validation to enter their tx pool in the first place, thereby preventing other nodes disconnected from the network from adding this tx later on. 
+        // This issue was prevented by adding pricing record validation in handle_block_to_main_chain (blockchain.cpp), so that connected nodes would reject a 
+        // pricing record if it has grown too old since first entering the pool. Unfortunately a single tx was affected by this issue, which was tx 
         // 3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6 below. Nodes will allow this tx and only this tx to pass validation.
         if (current_height != 848280 || tx.pricing_record_height != 848269 || epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6")
         {
@@ -1913,6 +1914,36 @@ namespace cryptonote
       {
         LOG_PRINT_L2("  key images already seen");
         continue;
+      }
+
+      // Set the offshore TX type flags
+      bool offshore = false;
+      bool onshore = false;
+      bool offshore_transfer = false;
+      bool xasset_transfer = false;
+      bool xasset_to_xusd = false;
+      bool xusd_to_xasset = false;
+      std::string source;
+      std::string dest;
+
+      if (!get_tx_asset_types(tx, source, dest)) {
+        // this validation is redundant, it should never make it here since it already passed this when added to the pool
+        LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << tx.hash);
+        continue;
+      }
+
+      // Get the TX type flags
+      if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
+        // this validation is redundant, it should never make it here since it already passed this when added to the pool
+        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
+        continue;
+      }
+
+      // Validate that pricing record has not grown too old since it was first included in the pool
+      if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
+        uint64_t current_height = m_blockchain.get_current_blockchain_height();
+        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height)
+          continue;
       }
 
       bl.tx_hashes.push_back(sorted_it->second);
