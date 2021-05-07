@@ -5384,48 +5384,14 @@ leave:
     }
 #endif
 
-    // Set the offshore TX type flags
-    bool offshore = false;
-    bool onshore = false;
-    bool offshore_transfer = false;
-    bool xasset_transfer = false;
-    bool xasset_to_xusd = false;
-    bool xusd_to_xasset = false;
-    std::string source;
-    std::string dest;
-
-    if (!get_tx_asset_types(tx, source, dest)) {
-      // this validation is redundant, it should never make it here since it already passed this when added to the pool
-      LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
-      bvc.m_verifivation_failed = true;
-      if (source.empty()) {
+    // Validate that pricing record has not grown too old since it was first included in the pool
+    if (tx.pricing_record_height > 0 && (blockchain_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+      // see explanation for these hard-coded allowances in add_tx tx_pool.cpp 
+      if (blockchain_height != 848280 || tx.pricing_record_height != 848269 || epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6")
+      {
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
         bvc.m_verifivation_failed = true;
-      }
-      if (dest.empty()) {
-        bvc.m_verifivation_failed = true;
-      }
-      return false;
-    }
-
-    // Get the TX type flags
-    if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
-      // this is redundant, it should never make it here since it already passed this when added to the pool
-      LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
-      bvc.m_verifivation_failed = true;
-      return false;
-    }
-
-    if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
-
-      // Validate that pricing record has not grown too old since it was first included in the pool
-      if ((blockchain_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-        // see explanation for these hard-coded allowances in add_tx tx_pool.cpp 
-        if (blockchain_height != 848280 || tx.pricing_record_height != 848269 || epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6")
-        {
-          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
+        goto leave;
       }
     }
 

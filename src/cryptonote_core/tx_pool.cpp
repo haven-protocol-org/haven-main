@@ -1916,34 +1916,12 @@ namespace cryptonote
         continue;
       }
 
-      // Set the offshore TX type flags
-      bool offshore = false;
-      bool onshore = false;
-      bool offshore_transfer = false;
-      bool xasset_transfer = false;
-      bool xasset_to_xusd = false;
-      bool xusd_to_xasset = false;
-      std::string source;
-      std::string dest;
-
-      if (!get_tx_asset_types(tx, source, dest)) {
-        // this validation is redundant, it should never make it here since it already passed this when added to the pool
-        LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << tx.hash);
-        continue;
-      }
-
-      // Get the TX type flags
-      if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
-        // this validation is redundant, it should never make it here since it already passed this when added to the pool
-        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
-        continue;
-      }
-
       // Validate that pricing record has not grown too old since it was first included in the pool
-      if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
-        uint64_t current_height = m_blockchain.get_current_blockchain_height();
-        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height)
-          continue;
+      uint64_t current_height = m_blockchain.get_current_blockchain_height();
+      if (tx.pricing_record_height > 0 && (current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height)
+      {
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+        continue;
       }
 
       bl.tx_hashes.push_back(sorted_it->second);
