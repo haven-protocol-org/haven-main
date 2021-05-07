@@ -317,9 +317,21 @@ namespace cryptonote
       // Validate that pricing record is not too old
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-	LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-	tvc.m_verifivation_failed = true;
-	return false;
+
+        // For a time, pricing record validation on tx's existed only in 2 places: here when first adding a tx into the pool, and the less important tx_sanity_check.
+        // At some point before block 848280, the transaction with hash 3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6 entered the tx pool
+        // successfully, and then sat in the pool until being mined in block 848280, at which point the tx's pricing record had grown too old and should have
+        // been validated again, but was not. Live nodes that remained connected to the network continued building off the chain, since this tx had already 
+        // passed validation to enter their tx pool in the first place, thereby preventing other nodes disconnected from the network from adding this tx later on. 
+        // This issue was prevented by adding pricing record validation in handle_block_to_main_chain (blockchain.cpp), so that connected nodes would reject a 
+        // pricing record if it has grown too old since first entering the pool. Unfortunately a single tx was affected by this issue, which was tx 
+        // 3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6 below. Nodes will allow this tx and only this tx to pass validation.
+        if (current_height != 848280 || tx.pricing_record_height != 848269 || epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6")
+        {
+          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
       }
       
       // this check is here because of a soft fork that needed to happen due to invalid pr
@@ -1904,11 +1916,14 @@ namespace cryptonote
         continue;
       }
 
-      // Validate that pricing record is not too old
-      uint64_t current_height = m_blockchain.get_current_blockchain_height();
-      if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-        continue;
+      // Validate that pricing record has not grown too old since it was first included in the pool
+      if (tx.pricing_record_height > 0)
+      {
+        uint64_t current_height = m_blockchain.get_current_blockchain_height();
+        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+          continue;
+        }
       }
 
       bl.tx_hashes.push_back(sorted_it->second);
