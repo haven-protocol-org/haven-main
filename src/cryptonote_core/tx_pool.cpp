@@ -304,9 +304,6 @@ namespace cryptonote
       // Validate that pricing record is not too old
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-        tvc.m_verifivation_failed = true;
-        return false;
 
         // For a time, pricing record validation on tx's existed only in 2 places: here when first adding a tx into the pool, and the less important tx_sanity_check.
         // At some point before block 848280, the transaction with hash 3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6 entered the tx pool
