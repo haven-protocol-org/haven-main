@@ -3386,11 +3386,11 @@ void wallet2::update_pool_state(std::vector<std::tuple<cryptonote::transaction, 
             txin_to_key &tx_in_to_key = boost::get<txin_to_key>(pit->second.m_tx.vin[vini]);
             for (size_t i = 0; i < m_transfers.size(); ++i)
             {
-              const transfer_details &td = m_transfers[i];
+              transfer_details &td = m_transfers[i];
               if (td.m_key_image == tx_in_to_key.k_image)
               {
                  LOG_PRINT_L1("Resetting spent status for output " << vini << ": " << td.m_key_image);
-                 set_unspent(i);
+                 set_unspent(td);
                  break;
               }
             }
@@ -3398,11 +3398,11 @@ void wallet2::update_pool_state(std::vector<std::tuple<cryptonote::transaction, 
             txin_onshore &tx_in_to_key = boost::get<txin_onshore>(pit->second.m_tx.vin[vini]);
             for (size_t i = 0; i < m_transfers.size(); ++i)
             {
-              const transfer_details &td = m_transfers[i];
+              transfer_details &td = m_transfers[i];
               if (td.m_key_image == tx_in_to_key.k_image)
               {
                  LOG_PRINT_L1("Resetting spent status for output " << vini << ": " << td.m_key_image);
-                 set_unspent(i);
+                 set_unspent(td);
                  break;
               }
             }
@@ -3410,11 +3410,11 @@ void wallet2::update_pool_state(std::vector<std::tuple<cryptonote::transaction, 
             txin_offshore &tx_in_to_key = boost::get<txin_offshore>(pit->second.m_tx.vin[vini]);
             for (size_t i = 0; i < m_offshore_transfers.size(); ++i)
             {
-              const transfer_details &td = m_offshore_transfers[i];
+              transfer_details &td = m_offshore_transfers[i];
               if (td.m_key_image == tx_in_to_key.k_image)
               {
                  LOG_PRINT_L1("Resetting spent status for output " << vini << ": " << td.m_key_image);
-                 set_unspent(i);
+                 set_unspent(td);
                  break;
               }
             }
@@ -3422,11 +3422,11 @@ void wallet2::update_pool_state(std::vector<std::tuple<cryptonote::transaction, 
             txin_xasset &tx_in_to_key = boost::get<txin_xasset>(pit->second.m_tx.vin[vini]);
             for (size_t i = 0; i < m_xasset_transfers[tx_in_to_key.asset_type].size(); ++i)
             {
-              const transfer_details &td = m_xasset_transfers[tx_in_to_key.asset_type][i];
+              transfer_details &td = m_xasset_transfers[tx_in_to_key.asset_type][i];
               if (td.m_key_image == tx_in_to_key.k_image)
               {
                  LOG_PRINT_L1("Resetting spent status for output " << vini << ": " << td.m_key_image);
-                 set_unspent(i);
+                 set_unspent(td);
                  break;
               }
             }
@@ -6682,7 +6682,7 @@ void wallet2::rescan_spent()
         if (td.m_spent)
         {
           LOG_PRINT_L0("Marking output " << i << "(" << td.m_key_image << ") as unspent, it was marked as spent");
-          set_unspent(i);
+          set_unspent(td);
           td.m_spent_height = 0;
         }
         else
