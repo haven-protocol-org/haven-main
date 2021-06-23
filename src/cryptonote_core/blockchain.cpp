@@ -73,7 +73,7 @@
 
 #define FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE (100*1024*1024) // 100 MB
 
-#define MINER_TX_ADDITIONAL_VERIFICATION 883400
+#define MINER_TX_ADDITIONAL_VERIFICATION 883500
 
 using namespace crypto;
 
@@ -1816,8 +1816,8 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
 		return false;
 	      }
-	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx, boost::get<txout_offshore>(b.miner_tx.vout[idx].target).key, m_nettype)) {
-		MERROR("Governance reward public key incorrect (vout[" << idx <<"]).");
+	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_offshore>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
+		MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
 		return false;
 	      }
 	    }
@@ -1833,14 +1833,18 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "] asset types (" << asset_type << " != " << asset_type_check <<")");
 		return false;
 	      }
-	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx, boost::get<txout_xasset>(b.miner_tx.vout[idx].target).key, m_nettype)) {
-		MERROR("Governance reward public key incorrect (vout[" << idx <<"]).");
+	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
+		MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
 		return false;
 	      }
 	    }
 	  } else {
 	    MERROR("tx.vout[" << idx << "] is not valid type");
-	    return false;
+	    if (additional_verification_checks) {
+	      return false;
+	    } else {
+	      continue;
+	    }
 	  }
 	  uint64_t miner_reward_xasset = fee_map[asset_type];
 	  uint64_t governance_reward_xasset = get_governance_reward(m_db->height(), miner_reward_xasset);
