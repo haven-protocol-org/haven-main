@@ -1681,6 +1681,10 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
 bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
+
+  // Soft fork check here
+  bool additional_verification_checks = (m_db->height() >= 883400);
+  
   //validate reward
   std::map<std::string, uint64_t> money_in_use_map;
   for (auto& o: b.miner_tx.vout) {
@@ -1688,8 +1692,11 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       money_in_use_map["XUSD"] += o.amount;
     } else if (o.target.type() == typeid(txout_xasset)) {
       money_in_use_map[boost::get<cryptonote::txout_xasset>(o.target).asset_type] += o.amount;
-    } else {
+    } else if (o.target.type() == typeid(txout_to_key)) {
       money_in_use_map["XHV"] += o.amount;
+    } else {
+      MERROR("Detected invalid output type in validate_miner_transaction() : " << o.target.type());
+      return false;
     }
   }
   partial_block_reward = false;
@@ -1774,10 +1781,36 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 	  std::string asset_type;
 	  if (b.miner_tx.vout[idx].target.type() == typeid(txout_offshore)) {
 	    asset_type = "XUSD";
+	    if (additional_verification_checks) {
+	      if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_offshore)) {
+		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
+		return false;
+	      }
+	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx, boost::get<txout_offshore>(b.miner_tx.vout[idx].target).key, m_nettype)) {
+		MERROR("Governance reward public key incorrect (vout[" << idx <<"]).");
+		return false;
+	      }
+	    }
 	  } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
 	    asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
+	    if (additional_verification_checks) {
+	      if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_xasset)) {
+		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
+		return false;
+	      }
+	      std::string asset_type_check = boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).asset_type;
+	      if (asset_type != asset_type_check) {
+		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "] asset types (" << asset_type << " != " << asset_type_check <<")");
+		return false;
+	      }
+	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx, boost::get<txout_xasset>(b.miner_tx.vout[idx].target).key, m_nettype)) {
+		MERROR("Governance reward public key incorrect (vout[" << idx <<"]).");
+		return false;
+	      }
+	    }
 	  } else {
-	    continue;
+	    MERROR("tx.vout[" << idx << "] is not valid type");
+	    return false;
 	  }
 	  uint64_t miner_reward_xasset = fee_map[asset_type];
 	  uint64_t governance_reward_xasset = get_governance_reward(m_db->height(), miner_reward_xasset);
@@ -1825,11 +1858,21 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
     if (version >= HF_VERSION_OFFSHORE_FULL) {
       // Check offshore / xAsset amounts as well
-      for (auto &fee_map_entry: fee_map) {
-	if (fee_map_entry.first == "XHV") continue;
-	if (fee_map_entry.second + offshore_fee_map[fee_map_entry.first] < money_in_use_map[fee_map_entry.first]) {
-	  MDEBUG("miner transaction is spending too much money in " << fee_map_entry.first << ":  spent: " << money_in_use_map[fee_map_entry.first] << ",  fees " << fee_map_entry.second << ", conversion fees " << offshore_fee_map[fee_map_entry.first]);
-	  return false;
+      if (additional_verification_checks) {
+	for (auto &money_in_use_map_entry: money_in_use_map) {
+	  if (money_in_use_map_entry.first == "XHV") continue;
+	  if (money_in_use_map_entry.second > fee_map[money_in_use_map_entry.first] + offshore_fee_map[money_in_use_map_entry.first]) {
+	    MDEBUG("miner transaction is spending too much money in " << money_in_use_map_entry.first << ":  spent: " << money_in_use_map_entry.first << ",  fees " << fee_map[money_in_use_map_entry.first] << ", conversion fees " << offshore_fee_map[money_in_use_map_entry.first]);
+	    return false;
+	  }
+	}
+      } else {
+	for (auto &fee_map_entry: fee_map) {
+	  if (fee_map_entry.first == "XHV") continue;
+	  if (fee_map_entry.second + offshore_fee_map[fee_map_entry.first] < money_in_use_map[fee_map_entry.first]) {
+	    MDEBUG("miner transaction is spending too much money in " << fee_map_entry.first << ":  spent: " << money_in_use_map[fee_map_entry.first] << ",  fees " << fee_map_entry.second << ", conversion fees " << offshore_fee_map[fee_map_entry.first]);
+	    return false;
+	  }
 	}
       }
     }
