@@ -73,6 +73,8 @@
 
 #define FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE (100*1024*1024) // 100 MB
 
+#define MINER_TX_ADDITIONAL_VERIFICATION 883400
+
 using namespace crypto;
 
 //#include "serialization/json_archive.h"
@@ -222,6 +224,13 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_ke
   size_t count = 0;
   for (const uint64_t& i : absolute_offsets)
   {
+    // Check for known invalid output IDs
+    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
+      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+	MERROR_VER("Known invalid output id " << i << " detected - rejecting");
+	return false;
+      }
+    }
     try
     {
       output_data_t output_index;
@@ -354,6 +363,13 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_offsh
   size_t count = 0;
   for (const uint64_t& i : absolute_offsets)
   {
+    // Check for known invalid output IDs
+    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
+      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+	MERROR_VER("Known invalid output id " << i << " detected - rejecting");
+	return false;
+      }
+    }
     try
     {
       output_data_t output_index;
@@ -486,6 +502,13 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_onsho
   size_t count = 0;
   for (const uint64_t& i : absolute_offsets)
   {
+    // Check for known invalid output IDs
+    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
+      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+	MERROR_VER("Known invalid output id " << i << " detected - rejecting");
+	return false;
+      }
+    }
     try
     {
       output_data_t output_index;
@@ -618,6 +641,13 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_xasse
   size_t count = 0;
   for (const uint64_t& i : absolute_offsets)
   {
+    // Check for known invalid output IDs
+    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
+      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+	MERROR_VER("Known invalid output id " << i << " detected - rejecting");
+	return false;
+      }
+    }
     try
     {
       output_data_t output_index;
@@ -1683,7 +1713,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   LOG_PRINT_L3("Blockchain::" << __func__);
 
   // Soft fork check here
-  bool additional_verification_checks = (m_db->height() >= 883400);
+  bool additional_verification_checks = (m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION);
   
   //validate reward
   std::map<std::string, uint64_t> money_in_use_map;
@@ -1695,7 +1725,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     } else if (o.target.type() == typeid(txout_to_key)) {
       money_in_use_map["XHV"] += o.amount;
     } else {
-      MERROR("Detected invalid output type in validate_miner_transaction() : " << o.target.type());
+      MERROR("Detected invalid output type in validate_miner_transaction()");
       return false;
     }
   }
