@@ -1839,8 +1839,8 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 	      }
 	    }
 	  } else {
-	    MERROR("tx.vout[" << idx << "] is not valid type");
 	    if (additional_verification_checks) {
+	      MERROR("tx.vout[" << idx << "] is not valid type");
 	      return false;
 	    } else {
 	      continue;
