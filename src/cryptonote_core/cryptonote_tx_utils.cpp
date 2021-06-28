@@ -878,16 +878,16 @@ namespace cryptonote
     source = "";
     for (int i=0; i<tx.vin.size(); i++) {
       if ((tx.vin[i].type() == typeid(txin_to_key)) ||
-	  (tx.vin[i].type() == typeid(txin_gen))) {
-	source = "XHV";
+        (tx.vin[i].type() == typeid(txin_gen))) {
+        source = "XHV";
       } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-	source = "XUSD";
+	      source = "XUSD";
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-	source = "XUSD";
+	      source = "XUSD";
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	source = boost::get<txin_xasset>(tx.vin[0]).asset_type;
+	      source = boost::get<txin_xasset>(tx.vin[0]).asset_type;
       } else {
-	continue;
+	      continue;
       }
     }
 
@@ -901,7 +901,7 @@ namespace cryptonote
       } else if (out.target.type() == typeid(txout_xasset)) {
         destination = boost::get<txout_xasset>(out.target).asset_type;
       } else {
-	continue;
+	      continue;
       }
       // if we get the a destination different from source, that means we get what we want.
       // if source and destination is the same we won't break early.
@@ -941,18 +941,21 @@ namespace cryptonote
 
     // Find the tx type
     if (source != "XHV" || destination != "XHV") {
-      if (source == "XHV") {
-	offshore = true;
-      } else if (destination == "XHV") {
-	onshore = true;
+      if (source == "XHV" && destination == "XUSD") {
+	      offshore = true;
+      } else if (destination == "XHV" && source == "XUSD") {
+	      onshore = true;
       } else if ((source == "XUSD") && (destination == "XUSD")) {
-	offshore_transfer = true;
-      } else if ((source != "XUSD") && (destination != "XUSD")) {
-	xasset_transfer = true;
-      } else if (source == "XUSD") {
-	xusd_to_xasset = true;
+	      offshore_transfer = true;
+      } else if ((source != "XUSD") && (destination != "XUSD") && source == destination) {
+	      xasset_transfer = true;
+      } else if (source == "XUSD" && destination != "XHV" && destination != "XUSD") {
+	      xusd_to_xasset = true;
+      } else if (destination == "XUSD" && source != "XHV" && source != "XUSD") {
+	      xasset_to_xusd = true;
       } else {
-	xasset_to_xusd = true;
+        LOG_ERROR("Destination Asset type " << destination << " is not same as Source Asset type " << source << "! Rejecting..");
+        return false;
       }
     }
 
