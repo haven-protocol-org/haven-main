@@ -282,7 +282,7 @@ namespace cryptonote
     std::string source;
     std::string dest;
     offshore::pricing_record pr;
-    if (!get_tx_asset_types(tx, source, dest)) {
+    if (!get_tx_asset_types(tx, source, dest, false)) {
       LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
       tvc.m_verifivation_failed = true;
       if (source.empty()) {

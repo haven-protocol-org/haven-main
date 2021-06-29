@@ -872,44 +872,96 @@ namespace cryptonote
   /*
     Returns the input and output asset types for a given tx.
   */
-  bool get_tx_asset_types(const transaction& tx, std::string& source, std::string& destination) {
+  bool get_tx_asset_types(const transaction& tx, std::string& source, std::string& destination, const bool is_miner_tx) {
 
     // Clear the source
+    std::set<std::string> source_asset_types;
     source = "";
     for (int i=0; i<tx.vin.size(); i++) {
-      if ((tx.vin[i].type() == typeid(txin_to_key)) ||
-        (tx.vin[i].type() == typeid(txin_gen))) {
-        source = "XHV";
+      if (tx.vin[i].type() == typeid(txin_gen)) {
+	if (!is_miner_tx) {
+	  LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
+	  return false;
+	}
+	source_asset_types.insert("XHV");
+      } else if (tx.vin[i].type() == typeid(txin_to_key)) {
+	source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-	      source = "XUSD";
+	source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-	      source = "XUSD";
+	source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	      source = boost::get<txin_xasset>(tx.vin[0]).asset_type;
+	source_asset_types.insert(boost::get<txin_xasset>(tx.vin[0]).asset_type);
       } else {
-	      continue;
+	LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
+	return false;
       }
     }
 
+    std::vector<std::string> sat;
+    sat.reserve(source_asset_types.size());
+    std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
+    
+    // Sanity check that we only have 1 source asset type
+    if (sat.size() != 1) {
+      LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
+      return false;
+    }
+    source = sat[0];
+    
     // Clear the destination
+    std::set<std::string> destination_asset_types;
     destination = "";
     for (const auto &out: tx.vout) {
       if (out.target.type() == typeid(txout_to_key)) {
-        destination = "XHV";
+        destination_asset_types.insert("XHV");
       } else if (out.target.type() == typeid(txout_offshore)) {
-        destination = "XUSD";
+        destination_asset_types.insert("XUSD");
       } else if (out.target.type() == typeid(txout_xasset)) {
-        destination = boost::get<txout_xasset>(out.target).asset_type;
+        destination_asset_types.insert(boost::get<txout_xasset>(out.target).asset_type);
       } else {
-	      continue;
-      }
-      // if we get the a destination different from source, that means we get what we want.
-      // if source and destination is the same we won't break early.
-      if (source != destination) {
-        break;
+	LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
+	return false;
       }
     }
 
+    std::vector<std::string> dat;
+    dat.reserve(destination_asset_types.size());
+    std::copy(destination_asset_types.begin(), destination_asset_types.end(), std::back_inserter(dat));
+    
+    // Check that we have at least 1 destination_asset_type
+    if (!dat.size()) {
+      LOG_ERROR("No supported destinations asset types detected. Rejecting..");
+      return false;
+    }
+    
+    // Handle miner_txs differently - full validation is performed in validate_miner_transaction()
+    if (is_miner_tx) {
+      destination = dat[0];
+    } else {
+    
+      // Sanity check that we only have 1 or 2 destination asset types
+      if (dat.size() > 2) {
+	LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
+	return false;
+      } else if (dat.size() == 1) {
+	if (dat[0] != source) {
+	  LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
+	  return false;
+	}
+	destination = dat[0];
+      } else {
+	if (dat[0] == source) {
+	  destination = dat[1];
+	} else if (dat[1] == source) {
+	  destination = dat[0];
+	} else {
+	  LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
+	  return false;
+	}
+      }
+    }
+    
     // check both strSource and strDest are supported.
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
       LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");

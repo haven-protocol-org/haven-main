@@ -2173,7 +2173,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   std::string source;
   std::string dest;
 
-  bool r = cryptonote::get_tx_asset_types(tx, source, dest);
+  bool r = cryptonote::get_tx_asset_types(tx, source, dest, miner_tx);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get TX asset types");
   r = cryptonote::get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get TX type");
@@ -7008,7 +7008,7 @@ void wallet2::commit_tx(pending_tx& ptx)
 
   std::string source;
   std::string dest;
-  bool r = cryptonote::get_tx_asset_types(ptx.tx, source, dest);
+  bool r = cryptonote::get_tx_asset_types(ptx.tx, source, dest, false);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "failed to get TX asset types");
   
   transfer_container& specific_transfers =

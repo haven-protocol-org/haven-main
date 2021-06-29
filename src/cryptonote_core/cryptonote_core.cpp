@@ -888,7 +888,7 @@ namespace cryptonote
       uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
     
       // Get the TX asset types
-      if (!get_tx_asset_types(*tx_info[n].tx, source, dest)) {
+      if (!get_tx_asset_types(*tx_info[n].tx, source, dest, false)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
         tx_info[n].tvc.m_verifivation_failed = true;
         if (source.empty()) {
@@ -1035,7 +1035,7 @@ namespace cryptonote
         uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
 
         // get the tx asset types
-        if (!get_tx_asset_types(*tx_info[n].tx, source, dest)) {
+        if (!get_tx_asset_types(*tx_info[n].tx, source, dest, false)) {
           MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
           if (source.empty()) {
