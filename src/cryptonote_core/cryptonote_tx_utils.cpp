@@ -879,22 +879,22 @@ namespace cryptonote
     source = "";
     for (int i=0; i<tx.vin.size(); i++) {
       if (tx.vin[i].type() == typeid(txin_gen)) {
-	if (!is_miner_tx) {
-	  LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
-	  return false;
-	}
-	source_asset_types.insert("XHV");
+        if (!is_miner_tx) {
+          LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
+          return false;
+        }
+	      source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_to_key)) {
-	source_asset_types.insert("XHV");
+	      source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-	source_asset_types.insert("XUSD");
+	      source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-	source_asset_types.insert("XUSD");
+	      source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	source_asset_types.insert(boost::get<txin_xasset>(tx.vin[0]).asset_type);
+	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[0]).asset_type);
       } else {
-	LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
-	return false;
+        LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
+        return false;
       }
     }
 
@@ -920,8 +920,8 @@ namespace cryptonote
       } else if (out.target.type() == typeid(txout_xasset)) {
         destination_asset_types.insert(boost::get<txout_xasset>(out.target).asset_type);
       } else {
-	LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
-	return false;
+        LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
+        return false;
       }
     }
 
@@ -937,28 +937,28 @@ namespace cryptonote
     
     // Handle miner_txs differently - full validation is performed in validate_miner_transaction()
     if (is_miner_tx) {
-      destination = dat[0];
+      destination = "XHV";
     } else {
     
       // Sanity check that we only have 1 or 2 destination asset types
       if (dat.size() > 2) {
-	LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
-	return false;
+        LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
+        return false;
       } else if (dat.size() == 1) {
-	if (dat[0] != source) {
-	  LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
-	  return false;
-	}
-	destination = dat[0];
+        if (dat[0] != source) {
+          LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
+          return false;
+        }
+        destination = dat[0];
       } else {
-	if (dat[0] == source) {
-	  destination = dat[1];
-	} else if (dat[1] == source) {
-	  destination = dat[0];
-	} else {
-	  LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
-	  return false;
-	}
+        if (dat[0] == source) {
+          destination = dat[1];
+        } else if (dat[1] == source) {
+          destination = dat[0];
+        } else {
+          LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
+          return false;
+        }
       }
     }
     
