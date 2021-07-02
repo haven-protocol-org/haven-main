@@ -51,8 +51,10 @@ namespace rpc
   };
 
   typedef std::vector<uint64_t> tx_output_indices;
+  typedef std::vector<uint64_t> tx_asset_type_output_indices;
 
   typedef std::vector<tx_output_indices> block_output_indices;
+  typedef std::vector<tx_asset_type_output_indices> block_asset_type_output_indices;
 
   struct transaction_info
   {

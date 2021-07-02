@@ -2063,7 +2063,7 @@ try
             return signMultisigMLSAG(rv, indices, k, msout, secret_key);
     }
 
-  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination) {
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version) {
 
     if (source == "XHV" && destination == "XUSD") {
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
@@ -2087,6 +2087,9 @@ try
       }
     } else if (source == "XUSD" && destination != "XHV" && destination != "XUSD") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
+      if (version >= HF_VERSION_XASSET_FEES_V2) {
+	      xusd_128 -= ((rv.txnOffshoreFee_usd * 80) / 100);
+      }
       boost::multiprecision::uint128_t exchange_128 = pr[destination];
       boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
       xasset_128 /= 1000000000000;
@@ -2097,6 +2100,9 @@ try
       }
     } else if (source != "XHV" && source != "XUSD" && destination == "XUSD") {
       boost::multiprecision::uint128_t xasset_128 = amount_burnt;
+      if (version >= HF_VERSION_XASSET_FEES_V2) {
+	      xasset_128 -= ((rv.txnOffshoreFee_xasset * 80) / 100);
+      }
       boost::multiprecision::uint128_t exchange_128 = pr[source];
       boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
       xusd_128 /= exchange_128;

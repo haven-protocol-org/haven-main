@@ -109,8 +109,7 @@ Blockchain::Blockchain(tx_memory_pool& tx_pool) :
   m_difficulty_for_next_block(1),
   m_btc_valid(false),
   m_batch_success(true),
-  m_prepare_height(0),
-  m_oracle_public_key(NULL)
+  m_prepare_height(0)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 }
@@ -738,6 +737,16 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   m_nettype = test_options != NULL ? FAKECHAIN : nettype;
   m_offline = offline;
   m_fixed_difficulty = fixed_difficulty;
+
+  std::string oracle_public_key = get_config(m_nettype).ORACLE_PUBLIC_KEY;
+  MINFO("Using oracle public key:" << ENDL << oracle_public_key);
+  BIO* bio = BIO_new_mem_buf(oracle_public_key.c_str(), oracle_public_key.size());
+  if (!bio) {
+    return false;
+  }
+  m_oracle_public_key = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+  BIO_free(bio);
+
   if (m_hardfork == nullptr)
   {
     if (m_nettype ==  FAKECHAIN || m_nettype == STAGENET)
@@ -1708,7 +1717,7 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
 }
 //------------------------------------------------------------------
 // This function validates the miner transaction reward
-bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
+bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, std::map<std::string, uint64_t>& xasset_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -1806,61 +1815,71 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       // Check for presence of xUSD or xAsset fees
       if (b.miner_tx.vout.size() > 2) {
 
-	for (uint64_t idx = 2; idx < b.miner_tx.vout.size(); idx += 2) {
+        for (uint64_t idx = 2; idx < b.miner_tx.vout.size(); idx += 2) {
 
-	  std::string asset_type;
-	  if (b.miner_tx.vout[idx].target.type() == typeid(txout_offshore)) {
-	    asset_type = "XUSD";
-	    if (additional_verification_checks) {
-	      if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_offshore)) {
-		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
-		return false;
-	      }
-	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_offshore>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
-		MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
-		return false;
-	      }
-	    }
-	  } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
-	    asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
-	    if (additional_verification_checks) {
-	      if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_xasset)) {
-		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
-		return false;
-	      }
-	      std::string asset_type_check = boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).asset_type;
-	      if (asset_type != asset_type_check) {
-		MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "] asset types (" << asset_type << " != " << asset_type_check <<")");
-		return false;
-	      }
-	      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
-		MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
-		return false;
-	      }
-	    }
-	  } else {
-	    if (additional_verification_checks) {
-	      MERROR("tx.vout[" << idx << "] is not valid type");
-	      return false;
-	    } else {
-	      continue;
-	    }
-	  }
-	  uint64_t miner_reward_xasset = fee_map[asset_type];
-	  uint64_t governance_reward_xasset = get_governance_reward(m_db->height(), miner_reward_xasset);
-	  miner_reward_xasset -= governance_reward_xasset;
-	  governance_reward_xasset += offshore_fee_map[asset_type];
+          std::string asset_type;
+          if (b.miner_tx.vout[idx].target.type() == typeid(txout_offshore)) {
+            asset_type = "XUSD";
+            if (additional_verification_checks) {
+              if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_offshore)) {
+                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
+                return false;
+              }
+              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_offshore>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
+                MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
+                return false;
+              }
+            }
+          } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
+            asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
+            if (additional_verification_checks) {
+              if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_xasset)) {
+                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
+                return false;
+              }
+              std::string asset_type_check = boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).asset_type;
+              if (asset_type != asset_type_check) {
+                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "] asset types (" << asset_type << " != " << asset_type_check <<")");
+                return false;
+              }
+              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
+                MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
+                return false;
+              }
+            }
+          } else {
+            if (additional_verification_checks) {
+              MERROR("tx.vout[" << idx << "] is not valid type");
+              return false;
+            } else {
+              continue;
+            }
+          }
+          uint64_t miner_reward_xasset = fee_map[asset_type];
+          uint64_t governance_reward_xasset = get_governance_reward(m_db->height(), miner_reward_xasset);
+          miner_reward_xasset -= governance_reward_xasset;
+          governance_reward_xasset += offshore_fee_map[asset_type];
 
-	  // the Nth(vout[N]) output is xAsset fee that goes to miner
-	  // the N+1th output is xAsset fee that goes to governance wallet
-	  if (b.miner_tx.vout[idx].amount != miner_reward_xasset) {
-	    MERROR("Miner reward amount for " << asset_type << " is incorrect. Should be: " << print_money(miner_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx].amount));
-	    return false;
-	  }
-	  if (b.miner_tx.vout[idx+1].amount != governance_reward_xasset) {
-	    MERROR("Governance reward amount for " << asset_type << " is incorrect. Should be: " << print_money(governance_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx+1].amount));
-	    return false;
-	  }
+          // xAsset fees change fork
+          if (version >= HF_VERSION_XASSET_FEES_V2) {
+            uint64_t fee =  xasset_fee_map[asset_type];  
+            // burn 80%
+            fee -= (fee * 80) / 100;
+            // split the rest
+            miner_reward_xasset += fee / 2;
+            governance_reward_xasset += fee / 2;
+          }
+
+          // the Nth(vout[N]) output is xAsset fee that goes to miner
+          // the N+1th output is xAsset fee that goes to governance wallet
+          if (b.miner_tx.vout[idx].amount != miner_reward_xasset) {
+            MERROR("Miner reward amount for " << asset_type << " is incorrect. Should be: " << print_money(miner_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx].amount));
+            return false;
+          }
+          if (b.miner_tx.vout[idx+1].amount != governance_reward_xasset) {
+            MERROR("Governance reward amount for " << asset_type << " is incorrect. Should be: " << print_money(governance_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx+1].amount));
+            return false;
+          }
         }
       }
     }
@@ -1893,21 +1912,21 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     if (version >= HF_VERSION_OFFSHORE_FULL) {
       // Check offshore / xAsset amounts as well
       if (additional_verification_checks) {
-	for (auto &money_in_use_map_entry: money_in_use_map) {
-	  if (money_in_use_map_entry.first == "XHV") continue;
-	  if (money_in_use_map_entry.second > fee_map[money_in_use_map_entry.first] + offshore_fee_map[money_in_use_map_entry.first]) {
-	    MDEBUG("miner transaction is spending too much money in " << money_in_use_map_entry.first << ":  spent: " << money_in_use_map_entry.first << ",  fees " << fee_map[money_in_use_map_entry.first] << ", conversion fees " << offshore_fee_map[money_in_use_map_entry.first]);
-	    return false;
-	  }
-	}
+        for (auto &money_in_use_map_entry: money_in_use_map) {
+          if (money_in_use_map_entry.first == "XHV") continue;
+          if (money_in_use_map_entry.second > fee_map[money_in_use_map_entry.first] + offshore_fee_map[money_in_use_map_entry.first] + xasset_fee_map[money_in_use_map_entry.first]) {
+            MDEBUG("miner transaction is spending too much money in " << money_in_use_map_entry.first << ":  spent: " << money_in_use_map_entry.first << ",  fees " << fee_map[money_in_use_map_entry.first] << ", conversion fees " << offshore_fee_map[money_in_use_map_entry.first]);
+            return false;
+          }
+        }
       } else {
-	for (auto &fee_map_entry: fee_map) {
-	  if (fee_map_entry.first == "XHV") continue;
-	  if (fee_map_entry.second + offshore_fee_map[fee_map_entry.first] < money_in_use_map[fee_map_entry.first]) {
-	    MDEBUG("miner transaction is spending too much money in " << fee_map_entry.first << ":  spent: " << money_in_use_map[fee_map_entry.first] << ",  fees " << fee_map_entry.second << ", conversion fees " << offshore_fee_map[fee_map_entry.first]);
-	    return false;
-	  }
-	}
+        for (auto &fee_map_entry: fee_map) {
+          if (fee_map_entry.first == "XHV") continue;
+          if (fee_map_entry.second + offshore_fee_map[fee_map_entry.first] + xasset_fee_map[fee_map_entry.first] < money_in_use_map[fee_map_entry.first]) {
+            MDEBUG("miner transaction is spending too much money in " << fee_map_entry.first << ":  spent: " << money_in_use_map[fee_map_entry.first] << ",  fees " << fee_map_entry.second << ", conversion fees " << offshore_fee_map[fee_map_entry.first]);
+            return false;
+          }
+        }
       }
     }
   }
@@ -2121,8 +2140,9 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   CHECK_AND_ASSERT_MES(diffic, false, "difficulty overhead.");
 
   size_t txs_weight;
-  std::map<std::string, uint64_t> fee_map, offshore_fee_map;
-  if (!m_tx_pool.fill_block_template(b, median_weight, already_generated_coins, txs_weight, fee_map, offshore_fee_map, expected_reward, b.major_version))
+  // we need to separate offshore/onshore fees from xasset conversion fees due to different rules that wil appyl to them
+  std::map<std::string, uint64_t> fee_map, offshore_fee_map, xasset_fee_map;
+  if (!m_tx_pool.fill_block_template(b, median_weight, already_generated_coins, txs_weight, fee_map, offshore_fee_map, xasset_fee_map, expected_reward, b.major_version))
   {
     return false;
   }
@@ -2194,7 +2214,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
   size_t max_outs = hf_version >= 4 ? 1 : 11;
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee_map, offshore_fee_map, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
+  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee_map, offshore_fee_map, xasset_fee_map, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
@@ -2203,7 +2223,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
 #endif
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
-    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee_map, offshore_fee_map, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
+    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee_map, offshore_fee_map, xasset_fee_map, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);
@@ -2733,13 +2753,49 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
   std::vector<cryptonote::output_data_t> data;
   try
   {
-    std::vector<uint64_t> amounts, offsets;
+    // if an asset type is provided in the request, most indexes provided in the request are asset type output id's.
+    // need to use the asset type output id's provided to retrieve the respective global output id's
+    std::map<uint64_t, uint64_t> global_outs_by_asset_type_output_id;
+    if (!req.asset_type.empty())
+    {
+      std::vector<uint64_t> asset_type_output_indices;
+      for (const auto &i: req.outputs)
+      {
+        // some inputs in the request have already been used in attempted rings in the past. These inputs will
+        // have the is_global_out flag set to true, since they already have the global output id saved
+        if (!i.is_global_out)
+          asset_type_output_indices.push_back(i.index);
+      }
+
+      std::vector<uint64_t> global_out_ids;
+      global_out_ids.reserve(asset_type_output_indices.size());
+
+      m_db->get_output_id_from_asset_type_output_index(req.asset_type, asset_type_output_indices, global_out_ids);
+
+      uint64_t global_outs = 0;
+      for (const auto &i: req.outputs)
+      {
+        if (!i.is_global_out)
+        {
+          global_outs_by_asset_type_output_id[i.index] = global_out_ids[global_outs];
+          ++global_outs;
+        }
+      }
+    }
+
+    std::vector<uint64_t> amounts;
+    std::vector<uint64_t> offsets;
     amounts.reserve(req.outputs.size());
     offsets.reserve(req.outputs.size());
     for (const auto &i: req.outputs)
     {
       amounts.push_back(i.amount);
-      offsets.push_back(i.index);
+      
+      // if no asset type provided, the offsets provided are already global output id's unless specifically set
+      if (req.asset_type.empty() || i.is_global_out)
+        offsets.push_back(i.index);
+      else
+        offsets.push_back(global_outs_by_asset_type_output_id[i.index]);
     }
     m_db->get_output_key(epee::span<const uint64_t>(amounts.data(), amounts.size()), offsets, data);
     if (data.size() != req.outputs.size())
@@ -2758,6 +2814,11 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
         res.outs[i].txid = toi.first;
       }
     }
+    if (!req.asset_type.empty())
+    {
+      for (size_t i = 0; i < req.outputs.size(); ++i)
+        res.outs[i].output_id = offsets[i];
+    }
   }
   catch (const std::exception &e)
   {
@@ -2775,7 +2836,7 @@ void Blockchain::get_output_key_mask_unlocked(const uint64_t& amount, const uint
   unlocked = is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first));
 }
 //------------------------------------------------------------------
-bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
+bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::string asset_type, uint64_t default_tx_spendable_age, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base, uint64_t &num_spendable_global_outs) const
 {
   // rct outputs don't exist before v5
   if (amount == 0)
@@ -2792,6 +2853,7 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
   else
     start_height = 0;
   base = 0;
+  num_spendable_global_outs = 0;
 
   if (to_height > 0 && to_height < from_height)
     return false;
@@ -2812,7 +2874,9 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
     const uint64_t real_start_height = start_height > 0 ? start_height-1 : start_height;
     for (uint64_t h = real_start_height; h <= to_height; ++h)
       heights.push_back(h);
-    distribution = m_db->get_block_cumulative_rct_outputs(heights);
+    std::pair<std::vector<uint64_t>, uint64_t> block_cum_outputs = m_db->get_block_cumulative_rct_outputs(heights, asset_type, default_tx_spendable_age);
+    distribution = block_cum_outputs.first;
+    num_spendable_global_outs = block_cum_outputs.second;
     if (start_height > 0)
     {
       base = distribution[0];
@@ -2917,7 +2981,7 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
     }
   }
   
-  std::array<std::string, 3> oracle_urls = {{"oracle.havenprotocol.org:443", "oracle2.havenprotocol.org:443", "oracle3.havenprotocol.org:443"}};
+  std::array<std::string, 3> oracle_urls = get_config(m_nettype).ORACLE_URLS;
   std::shuffle(oracle_urls.begin(), oracle_urls.end(), std::default_random_engine(crypto::rand<unsigned>()));
   if (0/*m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_FEES_V3*/) {
     if ((m_nettype == TESTNET) || (m_nettype == STAGENET)) {
@@ -2927,7 +2991,7 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
   }
   for (size_t n=0; n<oracle_urls.size(); n++) {
     http_client.set_server(oracle_urls[n], boost::none, epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
-    std::string url = "/price/" + boost::lexical_cast<std::string>(timestamp);
+    std::string url = "/price/?timestamp=" + boost::lexical_cast<std::string>(timestamp) + "&version=" + std::to_string(m_hardfork->get_current_version());
     r = epee::net_utils::invoke_http_json(url, req, res, http_client, std::chrono::seconds(10), "GET");
     if (r) {
       LOG_PRINT_L1("Obtained pricing record from Oracle : " << oracle_urls[n]);
@@ -2940,12 +3004,16 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
     LOG_PRINT_L0("Failed to get pricing record from Oracle - returning empty PR");
     res.pr = offshore::pricing_record();
   }
+  
+  const uint8_t hf_version = m_hardfork->get_current_version();
+  if (hf_version < HF_VERSION_XASSET_FEES_V2)
+    res.pr.timestamp = 0;
 
   // Pricing records can go in at any time - we just mustn't create txs that use them before the HF!!!
-  if (m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_PRICING) {
+  if (hf_version >= HF_VERSION_OFFSHORE_PRICING) {
 
     // Only VERIFY if full mode has been enabled
-    if (m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_FULL) {
+    if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
 
       // Verify the signature
       if (res.pr.verifySignature(m_oracle_public_key)) {
@@ -3501,7 +3569,7 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const
+bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<std::pair<uint64_t, uint64_t>>>& indexs) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
@@ -3517,7 +3585,7 @@ bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
+bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<std::pair<uint64_t, uint64_t>>& indexs) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
@@ -3527,7 +3595,7 @@ bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<u
     MERROR_VER("get_tx_outputs_gindexs failed to find transaction with id = " << tx_id);
     return false;
   }
-  std::vector<std::vector<uint64_t>> indices = m_db->get_tx_amount_output_indices(tx_index, 1);
+  std::vector<std::vector<std::pair<uint64_t, uint64_t>>> indices = m_db->get_tx_amount_output_indices(tx_index, 1);
   CHECK_AND_ASSERT_MES(indices.size() == 1, false, "Wrong indices size");
   indexs = indices.front();
   return true;
@@ -5185,8 +5253,11 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   {
     MERROR_VER("Block with id: " << id << std::endl << "has wrong prev_id: " << bl.prev_id << std::endl << "expected: " << top_hash);
     bvc.m_verifivation_failed = true;
-leave:
+leave: {
+    if (bvc.m_verifivation_failed)
+      invalidate_block_template_cache();
     return false;
+}
   }
 
   // warn users if they're running an old version
@@ -5255,10 +5326,40 @@ leave:
       }
     }
 
-    if (!bl.pricing_record.verifySignature(m_oracle_public_key)) {
-      MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record signature: " << std::hex << bl.pricing_record.signature);
-      bvc.m_verifivation_failed = true;
-      goto leave;
+    if (!bl.pricing_record.is_empty()) {
+      if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+        // protects chain from the oracle providing a timestamp too far in the future
+        if (bl.pricing_record.timestamp > bl.timestamp + PRICING_RECORD_VALID_TIME_DIFF_FROM_BLOCK) {
+          MERROR_VER("Block with id: " << id << std::endl << "has pricing record timestamp too far in the future: " << std::to_string(bl.pricing_record.timestamp)
+            << " Header timestamp: " << std::to_string(bl.timestamp));
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+
+        if (!bl.pricing_record.verifySignature(m_oracle_public_key)) {
+          MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record signature: " << epee::string_tools::pod_to_hex(bl.pricing_record.signature));
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+
+        uint64_t top_block_timestamp = m_db->get_top_block_timestamp();
+        if (bl.pricing_record.timestamp <= top_block_timestamp) {
+          MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record timestamp: " << std::to_string(bl.pricing_record.timestamp)
+            << " Top timestamp: " << std::to_string(top_block_timestamp));
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+      }
+      else
+      {
+        unsigned char test_sig[64];
+        std::memset(test_sig, 0, sizeof(test_sig));
+        if (std::memcmp(test_sig, bl.pricing_record.signature, sizeof(bl.pricing_record.signature)) != 0 && !bl.pricing_record.verifySignature(m_oracle_public_key)) {
+          MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record signature: " << epee::string_tools::pod_to_hex(bl.pricing_record.signature));
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+      }
     }
 
     TIME_MEASURE_FINISH(pricing_record);
@@ -5368,6 +5469,7 @@ leave:
 
   std::map<std::string, uint64_t> fee_map;
   std::map<std::string, uint64_t> offshore_fee_map;
+  std::map<std::string, uint64_t> xasset_fee_map; // only used for xasset conversions.
   uint64_t t_checktx = 0;
   uint64_t t_exists = 0;
   uint64_t t_pool = 0;
@@ -5481,6 +5583,11 @@ leave:
     }
 #endif
 
+    if(m_hardfork->get_current_version() >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
     // Validate that pricing record has not grown too old since it was first included in the pool
     if (tx.pricing_record_height > 0 && (blockchain_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
       // see explanation for these hard-coded allowances in add_tx tx_pool.cpp 
@@ -5492,10 +5599,23 @@ leave:
       }
     }
 
+    // get the asset types
+    std::string source;
+    std::string dest;
+    if (!get_tx_asset_types(tx, source, dest, false)) {
+      LOG_PRINT_L2("At least 1 input or 1 output of the tx was invalid.");
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
     TIME_MEASURE_FINISH(cc);
     t_checktx += cc;
-    fee_map[fee_asset_type] += fee; 
-    offshore_fee_map[fee_asset_type] += offshore_fee; 
+    fee_map[fee_asset_type] += fee;
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != dest && source != "XHV" && dest != "XHV") {
+      xasset_fee_map[fee_asset_type] += offshore_fee;
+    } else {
+      offshore_fee_map[fee_asset_type] += offshore_fee;
+    }
     cumulative_block_weight += tx_weight;
   }
 
@@ -5515,7 +5635,7 @@ leave:
   TIME_MEASURE_START(vmt);
   uint64_t base_reward = 0;
   uint64_t already_generated_coins = blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;
-  if(!validate_miner_transaction(bl, cumulative_block_weight, fee_map, offshore_fee_map, base_reward, already_generated_coins, bvc.m_partial_block_reward, m_hardfork->get_current_version()))
+  if(!validate_miner_transaction(bl, cumulative_block_weight, fee_map, offshore_fee_map, xasset_fee_map, base_reward, already_generated_coins, bvc.m_partial_block_reward, m_hardfork->get_current_version()))
   {
     MERROR_VER("Block with id: " << id << " has incorrect miner transaction");
     bvc.m_verifivation_failed = true;

@@ -33,4 +33,111 @@ namespace offshore {
 
   const std::vector<std::string> ASSET_TYPES = {"XHV", "XAG", "XAU", "XAUD", "XBTC", "XCAD", "XCHF", "XCNY", "XEUR", "XGBP", "XJPY", "XNOK", "XNZD", "XUSD"};
 
+  class asset_type_counts
+  {
+
+    public:
+
+      // Fields 
+      uint64_t XHV;
+      uint64_t XAG;
+      uint64_t XAU;
+      uint64_t XAUD;
+      uint64_t XBTC;
+      uint64_t XCAD;
+      uint64_t XCHF;
+      uint64_t XCNY;
+      uint64_t XEUR;
+      uint64_t XGBP;
+      uint64_t XJPY;
+      uint64_t XNOK;
+      uint64_t XNZD;
+      uint64_t XUSD;
+
+      asset_type_counts() noexcept
+        : XHV(0)
+        , XAG(0)
+        , XAU(0)
+        , XAUD(0)
+        , XBTC(0)
+        , XCAD(0)
+        , XCHF(0)
+        , XCNY(0)
+        , XEUR(0)
+        , XGBP(0)
+        , XJPY(0)
+        , XNOK(0)
+        , XNZD(0)
+        , XUSD(0)
+      {
+      }
+
+      uint64_t operator[](const std::string asset_type) const noexcept
+      {
+        if (asset_type == "XHV") {
+          return XHV;
+        } else if (asset_type == "XUSD") {
+          return XUSD;
+        } else if (asset_type == "XAG") {
+          return XAG;
+        } else if (asset_type == "XAU") {
+          return XAU;
+        } else if (asset_type == "XAUD") {
+          return XAUD;
+        } else if (asset_type == "XBTC") {
+          return XBTC;
+        } else if (asset_type == "XCAD") {
+          return XCAD;
+        } else if (asset_type == "XCHF") {
+          return XCHF;
+        } else if (asset_type == "XCNY") {
+          return XCNY;
+        } else if (asset_type == "XEUR") {
+          return XEUR;
+        } else if (asset_type == "XGBP") {
+          return XGBP;
+        } else if (asset_type == "XJPY") {
+          return XJPY;
+        } else if (asset_type == "XNOK") {
+          return XNOK;
+        } else if (asset_type == "XNZD") {
+          return XNZD;
+        }
+
+        return 0;
+      }
+
+      void add(const std::string asset_type, const uint64_t val)
+      {
+        if (asset_type == "XHV") {
+          XHV += val;
+        } else if (asset_type == "XUSD") {
+          XUSD += val;
+        } else if (asset_type == "XAG") {
+          XAG += val;
+        } else if (asset_type == "XAU") {
+          XAU += val;
+        } else if (asset_type == "XAUD") {
+          XAUD += val;
+        } else if (asset_type == "XBTC") {
+          XBTC += val;
+        } else if (asset_type == "XCAD") {
+          XCAD += val;
+        } else if (asset_type == "XCHF") {
+          XCHF += val;
+        } else if (asset_type == "XCNY") {
+          XCNY += val;
+        } else if (asset_type == "XEUR") {
+          XEUR += val;
+        } else if (asset_type == "XGBP") {
+          XGBP += val;
+        } else if (asset_type == "XJPY") {
+          XJPY += val;
+        } else if (asset_type == "XNOK") {
+          XNOK += val;
+        } else if (asset_type == "XNZD") {
+          XNZD += val;
+        }
+      }
+  };
 }

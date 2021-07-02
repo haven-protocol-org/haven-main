@@ -541,7 +541,7 @@ namespace cryptonote
       FIELD(prev_id)
       FIELD(nonce)
     if (major_version >= HF_VERSION_OFFSHORE_PRICING)
-      FIELD(pricing_record)
+      FIELD_CUSTOM_VAL(pricing_record, major_version)
     END_SERIALIZE()
   };
 

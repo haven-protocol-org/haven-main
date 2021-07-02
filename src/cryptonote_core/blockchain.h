@@ -516,11 +516,14 @@ namespace cryptonote
      * @param amount the amount to get a ditribution for
      * @param from_height the height before which we do not care about the data
      * @param to_height the height after which we do not care about the data
+     * @param asset_type the asset type to get a distribution of outputs for
+     * @param default_tx_spendable_age the number of blocks old an output must be to be spendable
      * @param return-by-reference start_height the height of the first rct output
      * @param return-by-reference distribution the start offset of the first rct output in this block (same as previous if none)
      * @param return-by-reference base how many outputs of that amount are before the stated distribution
+     * @param return-by-reference num_spendable_global_outs the total number of spendable global outputs available
      */
-    bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
+    bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::string asset_type, uint64_t default_tx_spendable_age, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base, uint64_t &num_spendable_global_outs) const;
 
     /**
      * @brief gets the global indices for outputs from a given transaction
@@ -529,13 +532,13 @@ namespace cryptonote
      * to a specific transaction.
      *
      * @param tx_id the hash of the transaction to fetch indices for
-     * @param indexs return-by-reference the global indices for the transaction's outputs
+     * @param indexs return-by-reference the global indices and asset type output indices for the transaction's outputs
      * @param n_txes how many txes in a row to get results for
      *
      * @return false if the transaction does not exist, or if no indices are found, otherwise true
      */
-    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const;
-    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const;
+    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<std::pair<uint64_t, uint64_t>>& indexs) const;
+    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<std::pair<uint64_t, uint64_t>>>& indexs) const;
 
     /**
      * @brief stores the blockchain
@@ -970,6 +973,7 @@ namespace cryptonote
      */
     std::vector<std::pair<block_extended_info,std::vector<crypto::hash>>> get_alternative_chains() const;
 
+    network_type get_nettype() const { return m_nettype; }
     void add_txpool_tx(const crypto::hash &txid, const cryptonote::blobdata &blob, const txpool_tx_meta_t &meta);
     void update_txpool_tx(const crypto::hash &txid, const txpool_tx_meta_t &meta);
     void remove_txpool_tx(const crypto::hash &txid);
@@ -1328,7 +1332,7 @@ namespace cryptonote
      *
      * @return false if anything is found wrong with the miner transaction, otherwise true
      */
-    bool validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version);
+    bool validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, std::map<std::string, uint64_t>& xasset_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version);
 
     /**
      * @brief reverts the blockchain to its previous state following a failed switch

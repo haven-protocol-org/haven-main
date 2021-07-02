@@ -155,6 +155,11 @@ namespace cryptonote
       return false;
     }
 
+    if(version >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+
     // fee per kilobyte, size rounded up.
     uint64_t fee = 0, fee_usd = 0, fee_xasset = 0, offshore_fee = 0, offshore_fee_usd = 0, offshore_fee_xasset = 0;
 
@@ -322,10 +327,10 @@ namespace cryptonote
       }
       
       // this check is here because of a soft fork that needed to happen due to invalid pr
-      if (tx.pricing_record_height > 658500) {
+      if (tx.pricing_record_height > 658500 || m_blockchain.get_nettype() != MAINNET) {
 
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
-        if (tx.pricing_record_height == 821428) {
+        if (tx.pricing_record_height == 821428 && m_blockchain.get_nettype() == MAINNET) {
           const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
           pr.xAG = 614976143259;
           pr.xAU = 8892867133;
@@ -343,6 +348,7 @@ namespace cryptonote
           pr.unused1 = 16040600000000;
           pr.unused2 = 16100600000000;
           pr.unused3 = 15359200000000;
+          pr.timestamp = 0;
           std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
           int j=0;
           for (unsigned int i = 0; i < sig.size(); i += 2) {
@@ -370,7 +376,7 @@ namespace cryptonote
         ////// recover ends //////////
 
         // Check the amount burnt and minted
-        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest)) {
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest, version)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
           tvc.m_verifivation_failed = true;
           return false;
@@ -384,15 +390,31 @@ namespace cryptonote
             tvc.m_verifivation_failed = true;
             return false;
           }
+        } else if (xasset_to_xusd || xusd_to_xasset) {
+          if (version >= HF_VERSION_XASSET_FEES_V2) {
+            if (unlock_time < 1440) {
+              LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          }
         }
+
+        // validate conversion fees
         uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
         uint64_t conversion_fee_check = 0;
         if (offshore || onshore) {
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         } else if (xusd_to_xasset || xasset_to_xusd) {
-          // Flat 0.3% conversion fee for xAsset TXs
-          conversion_fee_check = (tx.amount_burnt * 3) / 1000;
+          if (version >= HF_VERSION_XASSET_FEES_V2) {
+            // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment for the tx.amount_burnt containing the 80% burnt fee proportion as well
+            conversion_fee_check = (tx.amount_burnt * 10) / (2000 + 8);
+          } else {
+            // Flat 0.3% conversion fee for xAsset TXs
+            conversion_fee_check = (tx.amount_burnt * 3) / 1000;
+          }
         }
+
         if (
           (offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
           ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
@@ -561,7 +583,7 @@ namespace cryptonote
           meta.double_spend_seen = false;
           meta.pruned = tx.pruned;
           meta.bf_padding = 0;
-	  memset(meta.padding1, 0, sizeof(meta.padding1));
+	        memset(meta.padding1, 0, sizeof(meta.padding1));
           memset(meta.padding, 0, sizeof(meta.padding));
 
           if (!insert_key_images(tx, id, tx_relay))
@@ -1032,11 +1054,31 @@ namespace cryptonote
     CRITICAL_REGION_LOCAL(m_transactions_lock);
     CRITICAL_REGION_LOCAL1(m_blockchain);
     std::list<std::pair<crypto::hash, uint64_t>> remove;
-    m_blockchain.for_all_txpool_txes([this, &remove](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata*) {
+    const uint64_t bc_height = m_blockchain.get_current_blockchain_height();
+    m_blockchain.for_all_txpool_txes([this, &remove, &bc_height](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata* bd) {
       uint64_t tx_age = time(nullptr) - meta.receive_time;
 
+      // Remove the conversion transactions with a pr that is more than 10 block old.
+      // Those transaction won't be mined anyways since their pricing record should be pointing to a block that is older than 10 block.
+      // Users doesn't need to wait 24 hours for it to passt the pool tx life time, especially if they want to convert their assets.
+      bool invalid_pr = false;
+      cryptonote::transaction tx;
+      if (!parse_and_validate_tx_from_blob(*bd, tx))
+      {
+        MERROR("Failed to parse tx from txpool");
+        invalid_pr = true;
+      }
+      else
+      {
+        // give 1 block buffer
+        if (tx.pricing_record_height > 0 && (bc_height - tx.pricing_record_height + 1) > HAVEN_PRICING_RECORD_LIFESPAN) {
+          invalid_pr = true;
+        }
+      }
+
       if((tx_age > CRYPTONOTE_MEMPOOL_TX_LIVETIME && !meta.kept_by_block) ||
-         (tx_age > CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME && meta.kept_by_block) )
+         (tx_age > CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME && meta.kept_by_block) ||
+         invalid_pr)
       {
         LOG_PRINT_L1("Tx " << txid << " removed from tx pool due to outdated, age: " << tx_age );
         auto sorted_it = find_tx_in_sorted_container(txid);
@@ -1052,7 +1094,7 @@ namespace cryptonote
         remove.push_back(std::make_pair(txid, meta.weight));
       }
       return true;
-    }, false, relay_category::all);
+    }, true, relay_category::all);
 
     if (!remove.empty())
     {
@@ -1782,7 +1824,7 @@ namespace cryptonote
   }
   //---------------------------------------------------------------------------------
   //TODO: investigate whether boolean return is appropriate
-  bool tx_memory_pool::fill_block_template(block &bl, size_t median_weight, uint64_t already_generated_coins, size_t &total_weight, std::map<std::string, uint64_t> &fee_map, std::map<std::string, uint64_t> &offshore_fee_map, uint64_t &expected_reward, uint8_t version)
+  bool tx_memory_pool::fill_block_template(block &bl, size_t median_weight, uint64_t already_generated_coins, size_t &total_weight, std::map<std::string, uint64_t> &fee_map, std::map<std::string, uint64_t> &offshore_fee_map, std::map<std::string, uint64_t> &xasset_fee_map, uint64_t &expected_reward, uint8_t version)
   {
     CRITICAL_REGION_LOCAL(m_transactions_lock);
     CRITICAL_REGION_LOCAL1(m_blockchain);
@@ -1925,10 +1967,27 @@ namespace cryptonote
         }
       }
 
+      if(version >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER)
+        continue;
+
+      // get the asset types
+      std::string source;
+      std::string dest;
+      if (!get_tx_asset_types(tx, source, dest, false)) {
+        LOG_PRINT_L2("At least 1 input or 1 output of the tx was invalid.");
+        continue;
+      }
+
       bl.tx_hashes.push_back(sorted_it->second);
       total_weight += meta.weight;
       fee_map[meta.fee_asset_type] += meta.fee;
-      offshore_fee_map[meta.fee_asset_type] += meta.offshore_fee;
+      if (version >= HF_VERSION_XASSET_FEES_V2 && source != dest && source != "XHV" && dest != "XHV") {
+        // xAsset converison
+        xasset_fee_map[meta.fee_asset_type] += meta.offshore_fee;
+      } else {
+        // offshore/onshore
+        offshore_fee_map[meta.fee_asset_type] += meta.offshore_fee;
+      }
       best_coinbase = coinbase;
       append_key_images(k_images, tx);
       LOG_PRINT_L2("  added, new block weight " << total_weight << "/" << max_total_weight << ", coinbase " << print_money(best_coinbase));

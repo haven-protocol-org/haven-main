@@ -904,13 +904,13 @@ namespace cryptonote
       if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
         tx_info[n].tvc.m_verifivation_failed = true;
-	continue;
+	      continue;
       }
       
       if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
         
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
-        if (pricing_record_height == 821428) {
+        if (pricing_record_height == 821428 && m_nettype == MAINNET) {
           const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
           pr.xAG = 614976143259;
           pr.xAU = 8892867133;
@@ -928,6 +928,7 @@ namespace cryptonote
           pr.unused1 = 16040600000000;
           pr.unused2 = 16100600000000;
           pr.unused3 = 15359200000000;
+          pr.timestamp = 0;
           std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
           int j=0;
           for (unsigned int i = 0; i < sig.size(); i += 2) {
@@ -1020,16 +1021,16 @@ namespace cryptonote
       ret = false;
       for (size_t n = 0; n < tx_info.size(); ++n)
       {
-	// Set the offshore TX type flags
-	bool offshore = false;
-	bool onshore = false;
-	bool offshore_transfer = false;
-	bool xasset_transfer = false;
-	bool xasset_to_xusd = false;
-	bool xusd_to_xasset = false;
-	std::string source;
-	std::string dest;
-	offshore::pricing_record pr;
+        // Set the offshore TX type flags
+        bool offshore = false;
+        bool onshore = false;
+        bool offshore_transfer = false;
+        bool xasset_transfer = false;
+        bool xasset_to_xusd = false;
+        bool xusd_to_xasset = false;
+        std::string source;
+        std::string dest;
+        offshore::pricing_record pr;
       
         // Get the pricing_record_height for any offshore TX
         uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
@@ -1047,17 +1048,17 @@ namespace cryptonote
           continue;
         }
 
-	// Get the TX type flags
-	if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
-	  MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
-	  tx_info[n].tvc.m_verifivation_failed = true;
-	  continue;
-	}
+        // Get the TX type flags
+        if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
+          MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          continue;
+        }
       
-	if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
+	      if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
 
           // NEAC: recover from the reorg during Oracle switch - 1 TX affected
-          if (pricing_record_height == 821428) {
+          if (pricing_record_height == 821428 && m_nettype == MAINNET) {
             const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
             pr.xAG = 614976143259;
             pr.xAU = 8892867133;
@@ -1075,6 +1076,7 @@ namespace cryptonote
             pr.unused1 = 16040600000000;
             pr.unused2 = 16100600000000;
             pr.unused3 = 15359200000000;
+            pr.timestamp = 0;
             std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
             int j=0;
             for (unsigned int i = 0; i < sig.size(); i += 2) {
@@ -1582,17 +1584,17 @@ namespace cryptonote
     return m_blockchain_storage.get_outs(req, res);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
+  bool core::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::string asset_type, uint64_t default_tx_spendable_age, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base, uint64_t &num_spendable_global_outs) const
   {
-    return m_blockchain_storage.get_output_distribution(amount, from_height, to_height, start_height, distribution, base);
+    return m_blockchain_storage.get_output_distribution(amount, from_height, to_height, asset_type, default_tx_spendable_age, start_height, distribution, base, num_spendable_global_outs);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
+  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<std::pair<uint64_t, uint64_t>>& indexs) const
   {
     return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, indexs);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const
+  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<std::pair<uint64_t, uint64_t>>>& indexs) const
   {
     return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, n_txes, indexs);
   }

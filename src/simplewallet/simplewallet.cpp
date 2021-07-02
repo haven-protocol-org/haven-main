@@ -6056,57 +6056,62 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
   bc_height = get_daemon_blockchain_height(err);
   offshore::pricing_record pr;
   bool r = m_wallet->get_pricing_record(pr, bc_height-1);
-  
+
   // Output the currency totals across all subaddresses
   for (auto &asset : balance_total) {
     std::string unlock_time_message;
     if (blocks_to_unlock[asset.first] > 0 && time_to_unlock[asset.first] > 0) 
       unlock_time_message = (boost::format(" (%lu block(s) and %s to unlock)") 
-			     % blocks_to_unlock[asset.first] 
-			     % get_human_readable_timespan(time_to_unlock[asset.first])).str();
+          % blocks_to_unlock[asset.first] 
+          % get_human_readable_timespan(time_to_unlock[asset.first])).str();
     else if (blocks_to_unlock[asset.first] > 0)
       unlock_time_message = (boost::format(" (%lu block(s) to unlock)") % blocks_to_unlock[asset.first]).str();
     else if (time_to_unlock[asset.first] > 0)
       unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock[asset.first])).str();
 
-    // Calculate the CURRENT xUSD value of xAssets
-    std::string xusd_value_str = "";
-    std::string xusd_unlocked_value_str = "";
-    if (asset.first != "XHV" && asset.first != "XUSD") {
-      
-      uint64_t value = 0, value_unlocked = 0;
-      // Work out the xAsset value of the amount
-      boost::multiprecision::uint128_t xasset_128 = asset.second;
-      boost::multiprecision::uint128_t xasset_unlocked_128 = unlocked_balance_total[asset.first];
-      boost::multiprecision::uint128_t exchange_128 =
-	asset.first == "XAG" ? pr.xAG :
-	asset.first == "XAU" ? pr.xAU :
-	asset.first == "XAUD" ? pr.xAUD :
-	asset.first == "XBTC" ? pr.xBTC :
-	asset.first == "XCAD" ? pr.xCAD :
-	asset.first == "XCHF" ? pr.xCHF :
-	asset.first == "XCNY" ? pr.xCNY :
-	asset.first == "XEUR" ? pr.xEUR :
-	asset.first == "XGBP" ? pr.xGBP :
-	asset.first == "XJPY" ? pr.xJPY :
-	asset.first == "XNOK" ? pr.xNOK :
-	asset.first == "XNZD" ? pr.xNZD :
-	asset.first == "XUSD" ? pr.xUSD :
-	pr.unused1;
 
-      // The total balance
-      boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
-      xusd_128 /= exchange_128;
-      value = (uint64_t)xusd_128;
-      xusd_value_str = " (" + print_money(value) + " XUSD)\t ";
+    if (r) {
+      // Calculate the CURRENT xUSD value of xAssets
+      std::string xusd_value_str = "";
+      std::string xusd_unlocked_value_str = "";
+      if (asset.first != "XHV" && asset.first != "XUSD") {
+        
+        uint64_t value = 0, value_unlocked = 0;
+        // Work out the xAsset value of the amount
+        boost::multiprecision::uint128_t xasset_128 = asset.second;
+        boost::multiprecision::uint128_t xasset_unlocked_128 = unlocked_balance_total[asset.first];
+        boost::multiprecision::uint128_t exchange_128 =
+        asset.first == "XAG" ? pr.xAG :
+        asset.first == "XAU" ? pr.xAU :
+        asset.first == "XAUD" ? pr.xAUD :
+        asset.first == "XBTC" ? pr.xBTC :
+        asset.first == "XCAD" ? pr.xCAD :
+        asset.first == "XCHF" ? pr.xCHF :
+        asset.first == "XCNY" ? pr.xCNY :
+        asset.first == "XEUR" ? pr.xEUR :
+        asset.first == "XGBP" ? pr.xGBP :
+        asset.first == "XJPY" ? pr.xJPY :
+        asset.first == "XNOK" ? pr.xNOK :
+        asset.first == "XNZD" ? pr.xNZD :
+        asset.first == "XUSD" ? pr.xUSD :
+        pr.unused1;
 
-      // The unlocked balance
-      boost::multiprecision::uint128_t xusd_unlocked_128 = xasset_unlocked_128 * 1000000000000;
-      xusd_unlocked_128 /= exchange_128;
-      value_unlocked = (uint64_t)xusd_unlocked_128;
-      xusd_unlocked_value_str = " (" + print_money(value_unlocked) + " XUSD)\t ";
+        // The total balance
+        boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
+        xusd_128 /= exchange_128;
+        value = (uint64_t)xusd_128;
+        xusd_value_str = " (" + print_money(value) + " XUSD)\t ";
+
+        // The unlocked balance
+        boost::multiprecision::uint128_t xusd_unlocked_128 = xasset_unlocked_128 * 1000000000000;
+        xusd_unlocked_128 /= exchange_128;
+        value_unlocked = (uint64_t)xusd_unlocked_128;
+        xusd_unlocked_value_str = " (" + print_money(value_unlocked) + " XUSD)\t ";
+      }
+      success_msg_writer() << tr("Currency: ") << asset.first << tr(", balance: ") << print_money(asset.second) << xusd_value_str << tr(", unlocked balance: ") << print_money(unlocked_balance_total[asset.first]) << xusd_unlocked_value_str << unlock_time_message;
+    } else {
+      success_msg_writer() << tr("Currency: ") << asset.first << tr(", balance: ") << print_money(asset.second) << tr(", unlocked balance: ") << print_money(unlocked_balance_total[asset.first]) << unlock_time_message;
     }
-    success_msg_writer() << tr("Currency: ") << asset.first << tr(", balance: ") << print_money(asset.second) << xusd_value_str << tr(", unlocked balance: ") << print_money(unlocked_balance_total[asset.first]) << xusd_unlocked_value_str << unlock_time_message;
   }
   
   if (!detailed)
@@ -6794,13 +6799,13 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     } else {
       // Support old format of offshore_data
       if (strSource == "XHV")
-	offshore_data += 'A';
+	      offshore_data += 'A';
       else 
-	offshore_data += 'N';
+	      offshore_data += 'N';
       if (strDest == "XHV")
-	offshore_data += 'A';
+	      offshore_data += 'A';
       else 
-	offshore_data += 'N';
+	      offshore_data += 'N';
     }
     cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
 
@@ -6808,8 +6813,8 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     if ((strSource != "XHV") && (strDest != "XHV")) {
       offshore_to_offshore = true;
       if (priority > 1) {
-	message_writer() << boost::format(tr("Reducing priority from %d to 1 - xUSD transfers do not permit other priorities\n")) % priority;
-	priority = 1;
+        message_writer() << boost::format(tr("Reducing priority from %d to 1 - xUSD transfers do not permit other priorities\n")) % priority;
+        priority = 1;
       }
     } else if (strSource != "XHV") {
       onshore = true;
@@ -6819,14 +6824,13 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
 
     // Force an unlock time if offshore or onshore
     if (offshore || onshore) {
-
       // Modify the count of locked blocks
       if (0/*m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)*/) {
-	locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 1440 : (priority == 2) ? 3600 : 7200;
+	      locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 1440 : (priority == 2) ? 3600 : 7200;
       } else if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
-	locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+	      locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
       } else {
-	locked_blocks = 60 * pow(3, std::max((uint32_t)0, 4-priority));
+	      locked_blocks = 60 * pow(3, std::max((uint32_t)0, 4-priority));
       }
 
       // Modify the transfer_type to support the unlock time
@@ -6857,19 +6861,25 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     }
 
     // Set the bool flags
-    if ((strSource != "XUSD") && (strDest != "XUSD")) {
+    if (strSource == strDest) {
       xasset_transfer = true;
       locked_blocks = 10;
       if (priority > 1) {
-	message_writer() << boost::format(tr("Reducing priority from %d to 1 - xAsset transfers do not permit other priorities\n")) % priority;
-	priority = 1;
+        message_writer() << boost::format(tr("Reducing priority from %d to 1 - xAsset transfers do not permit other priorities\n")) % priority;
+        priority = 1;
       }
-    } else if (strSource != "XUSD") {
-      xasset_to_xusd = true;
-      locked_blocks = 10;
     } else {
-      xusd_to_xasset = true;
-      locked_blocks = 10;
+      if (m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
+        locked_blocks = 1440; // ~48 hours
+      } else {
+        locked_blocks = 10;
+      }
+
+      if (strSource == "XUSD") {
+        xusd_to_xasset = true;
+      } else {
+        xasset_to_xusd = true;
+      }
     }
 
     // Modify the transfer_type to support the unlock time
@@ -7036,8 +7046,8 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       double worst_fee_per_byte = std::numeric_limits<double>::max();
       for (size_t n = 0; n < ptx_vector.size(); ++n)
       {
-	// NEAC : skip the check for offshore TXs
-	if ((ptx_vector[n].tx.version >= OFFSHORE_TRANSACTION_VERSION) && (ptx_vector[n].tx.pricing_record_height != 0)) continue;
+	    // NEAC : skip the check for offshore TXs
+	    if ((ptx_vector[n].tx.version >= OFFSHORE_TRANSACTION_VERSION) && (ptx_vector[n].tx.pricing_record_height != 0)) continue;
         const uint64_t blob_size = cryptonote::tx_to_blob(ptx_vector[n].tx).size();
         const double fee_per_byte = ptx_vector[n].fee / (double)blob_size;
         if (fee_per_byte < worst_fee_per_byte)
@@ -7087,141 +7097,146 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     // if more than one tx necessary, prompt user to confirm
     if (m_wallet->always_confirm_transfers() || ptx_vector.size() > 1)
     {
-        uint64_t total_sent = 0;
-        uint64_t total_fee = 0;
-        uint64_t dust_not_in_fee = 0;
-        uint64_t dust_in_fee = 0;
-        uint64_t change = 0;
-	uint64_t offshore_fee = 0;
-        for (size_t n = 0; n < ptx_vector.size(); ++n)
-        {
-          total_fee += ptx_vector[n].fee;
-	  offshore_fee +=
-	    (xasset_to_xusd || xasset_transfer) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_xasset :
-	    (xusd_to_xasset || onshore || offshore_to_offshore) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_usd :
-	    ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
-          for (auto i: ptx_vector[n].selected_transfers) {
-	    total_sent += m_wallet->get_transfer_details(strSource, i).amount();
-	  }
-	  if (strSource == "XHV") {
-	    total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
-	    change += ptx_vector[n].change_dts.amount;
-	  } else if (strSource == "XUSD") {
-	    total_sent -= ptx_vector[n].change_dts.amount_usd + ptx_vector[n].fee;
-	    change += ptx_vector[n].change_dts.amount_usd;
-	  } else {
-	    total_sent -= ptx_vector[n].change_dts.amount_xasset + ptx_vector[n].fee;
-	    change += ptx_vector[n].change_dts.amount_xasset;
-	  }
-          if (ptx_vector[n].dust_added_to_fee)
-            dust_in_fee += ptx_vector[n].dust;
-          else
-            dust_not_in_fee += ptx_vector[n].dust;
+      uint64_t total_sent = 0;
+      uint64_t total_fee = 0;
+      uint64_t dust_not_in_fee = 0;
+      uint64_t dust_in_fee = 0;
+      uint64_t change = 0;
+      uint64_t offshore_fee = 0;
+      for (size_t n = 0; n < ptx_vector.size(); ++n)
+      {
+        total_fee += ptx_vector[n].fee;
+	      offshore_fee += (xasset_to_xusd || xasset_transfer) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_xasset :
+	                      (xusd_to_xasset || onshore || offshore_to_offshore) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_usd :
+	                      ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
+
+        for (auto i: ptx_vector[n].selected_transfers) {
+	        total_sent += m_wallet->get_transfer_details(strSource, i).amount();
+	      }
+
+        if (strSource == "XHV") {
+          total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
+          change += ptx_vector[n].change_dts.amount;
+        } else if (strSource == "XUSD") {
+          total_sent -= ptx_vector[n].change_dts.amount_usd + ptx_vector[n].fee;
+          change += ptx_vector[n].change_dts.amount_usd;
+        } else {
+          total_sent -= ptx_vector[n].change_dts.amount_xasset + ptx_vector[n].fee;
+          change += ptx_vector[n].change_dts.amount_xasset;
         }
 
-        std::stringstream prompt;
-        for (size_t n = 0; n < ptx_vector.size(); ++n)
-        {
-          prompt << tr("\nTransaction ") << (n + 1) << "/" << ptx_vector.size() << ":\n";
-          subaddr_indices.clear();
-          for (uint32_t i : ptx_vector[n].construction_data.subaddr_indices)
-            subaddr_indices.insert(i);
-          for (uint32_t i : subaddr_indices)
-            prompt << boost::format(tr("Spending from address index %d\n")) % i;
-          if (subaddr_indices.size() > 1)
-            prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
-        }
-	if (offshore) {
-	  total_sent = dsts.back().amount;
-	  uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
-	  prompt << boost::format(tr("Offshoring %s xUSD by burning %s XHV (plus conversion fee %s XHV).  ")) % print_money(xusd_estimate) % print_money(total_sent) % print_money(offshore_fee);
-	} else if (onshore) {
-	  total_sent = dsts.back().amount;
-	  uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
-	  prompt << boost::format(tr("Onshoring %s XHV by burning %s xUSD (plus conversion fee %s xUSD).  ")) % print_money(total_sent) % print_money(usd_estimate) % print_money(offshore_fee);
-	} else if (offshore_to_offshore) {
-	  total_sent = dsts.back().amount;
-	  prompt << boost::format(tr("Sending %s xUSD.  ")) % print_money(total_sent);
-	} else if (xusd_to_xasset) {
-	  total_sent = dsts.back().amount;
-	  prompt << boost::format(tr("Converting %s %s into %s %s (plus conversion fee %s %s).\n"))
-	    % print_money(total_sent) % strSource
-	    % print_money(m_wallet->get_xasset_amount(total_sent, strDest, bc_height-1)) % strDest
-	    % print_money(offshore_fee) % strSource;
-	  offshore::pricing_record pr;
-	  bool r = m_wallet->get_pricing_record(pr, bc_height-1);
-	  if (r) {
-	    prompt << boost::format(tr("Exchange rate = %s\n")) % print_money(pr[strDest]);
-	  }
-	} else if (xasset_to_xusd) {
-	  total_sent = dsts.back().amount;
-	  prompt << boost::format(tr("Converting %s %s into %s %s (plus conversion fee %s %s).\n"))
-	    % print_money(m_wallet->get_xasset_amount(total_sent, strSource, bc_height-1)) % strSource
-	    % print_money(total_sent) % strDest
-	    % print_money(offshore_fee) % strSource;
-	  offshore::pricing_record pr;
-	  bool r = m_wallet->get_pricing_record(pr, bc_height-1);
-	  if (r) {
-	    prompt << boost::format(tr("Exchange rate = %s\n")) % print_money(pr[strSource]);
-	  }
-	} else {
-	  prompt << boost::format(tr("Sending %s %s. ")) % print_money(total_sent) % strSource;
-	}
-        if (ptx_vector.size() > 1)
-        {
-          prompt << boost::format(tr("Your transaction needs to be split into %llu transactions.  "
-            "This will result in a transaction fee being applied to each transaction, for a total fee of %s\n")) %
-            ((unsigned long long)ptx_vector.size()) % print_money(total_fee);
-        }
+        if (ptx_vector[n].dust_added_to_fee)
+          dust_in_fee += ptx_vector[n].dust;
         else
-        {
-          prompt << boost::format(tr("The transaction fee is %s %s")) % print_money(total_fee - offshore_fee) % strSource;
+          dust_not_in_fee += ptx_vector[n].dust;
+      }
+
+      std::stringstream prompt;
+      for (size_t n = 0; n < ptx_vector.size(); ++n)
+      {
+        prompt << tr("\nTransaction ") << (n + 1) << "/" << ptx_vector.size() << ":\n";
+        subaddr_indices.clear();
+        for (uint32_t i : ptx_vector[n].construction_data.subaddr_indices)
+          subaddr_indices.insert(i);
+        for (uint32_t i : subaddr_indices)
+          prompt << boost::format(tr("Spending from address index %d\n")) % i;
+        if (subaddr_indices.size() > 1)
+          prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
+      }
+
+      if (offshore) {
+        total_sent = dsts.back().amount;
+        uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
+        prompt << boost::format(tr("Offshoring %s xUSD by burning %s XHV (plus conversion fee %s XHV).  ")) % print_money(xusd_estimate) % print_money(total_sent) % print_money(offshore_fee);
+      } else if (onshore) {
+        total_sent = dsts.back().amount;
+        uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
+        prompt << boost::format(tr("Onshoring %s XHV by burning %s xUSD (plus conversion fee %s xUSD).  ")) % print_money(total_sent) % print_money(usd_estimate) % print_money(offshore_fee);
+      } else if (offshore_to_offshore) {
+        total_sent = dsts.back().amount;
+        prompt << boost::format(tr("Sending %s xUSD.  ")) % print_money(total_sent);
+      } else if (xusd_to_xasset) {
+        total_sent = dsts.back().amount;
+        prompt << boost::format(tr("Converting %s %s into %s %s (plus conversion fee %s %s).\n"))
+          % print_money(total_sent) % strSource
+          % print_money(m_wallet->get_xasset_amount(total_sent, strDest, bc_height-1)) % strDest
+          % print_money(offshore_fee) % strSource;
+        offshore::pricing_record pr;
+        bool r = m_wallet->get_pricing_record(pr, bc_height-1);
+        if (r) {
+          prompt << boost::format(tr("Exchange rate = %s\n")) % print_money(pr[strDest]);
         }
-        if (dust_in_fee != 0) prompt << boost::format(tr(", of which %s is dust from change")) % print_money(dust_in_fee);
-        if (dust_not_in_fee != 0)  prompt << tr(".") << ENDL << boost::format(tr("A total of %s from dust change will be sent to dust address")) 
+      } else if (xasset_to_xusd) {
+        total_sent = dsts.back().amount;
+        prompt << boost::format(tr("Converting %s %s into %s %s (plus conversion fee %s %s).\n"))
+          % print_money(m_wallet->get_xasset_amount(total_sent, strSource, bc_height-1)) % strSource
+          % print_money(total_sent) % strDest
+          % print_money(offshore_fee) % strSource;
+        offshore::pricing_record pr;
+        bool r = m_wallet->get_pricing_record(pr, bc_height-1);
+        if (r) {
+          prompt << boost::format(tr("Exchange rate = %s\n")) % print_money(pr[strSource]);
+        }
+      } else {
+        prompt << boost::format(tr("Sending %s %s. ")) % print_money(total_sent) % strSource;
+      }
+
+      if (ptx_vector.size() > 1)
+      {
+        prompt << boost::format(tr("Your transaction needs to be split into %llu transactions.  "
+          "This will result in a transaction fee being applied to each transaction, for a total fee of %s\n")) %
+          ((unsigned long long)ptx_vector.size()) % print_money(total_fee);
+      }
+      else
+      {
+        prompt << boost::format(tr("The transaction fee is %s %s")) % print_money(total_fee - offshore_fee) % strSource;
+      }
+      if (dust_in_fee != 0) prompt << boost::format(tr(", of which %s is dust from change")) % print_money(dust_in_fee);
+      if (dust_not_in_fee != 0)  prompt << tr(".") << ENDL << boost::format(tr("A total of %s from dust change will be sent to dust address")) 
                                                    % print_money(dust_not_in_fee);
-        if (transfer_type == TransferLocked)
-        {
-          float days = locked_blocks / 720.0f;
-          prompt << boost::format(tr(".\nThis transaction (including %s change) will unlock on block %llu, in approximately %s days (assuming 2 minutes per block)")) % cryptonote::print_money(change) % ((unsigned long long)unlock_block) % days;
-	  if (offshore || onshore) {
-           if (0/*m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)*/) {
-	      prompt << tr("\n(Priority levels : low|unimportant=7200 blocks, normal=3600 blocks, medium|elevated=1440 blocks, high|priority=180 blocks)");
-           } else if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
-	      prompt << tr("\n(Priority levels : low|unimportant=5040 blocks, normal=1440 blocks, medium|elevated=720 blocks, high|priority=180 blocks)");
-           }
-	  }
-        }
-        if (!process_ring_members(ptx_vector, prompt, m_wallet->print_ring_members()))
-          return false;
-        bool default_ring_size = true;
-        for (const auto &ptx: ptx_vector)
-        {
-          for (const auto &vin: ptx.tx.vin)
-          {
-            if (vin.type() == typeid(txin_to_key))
-            {
-              const txin_to_key& in_to_key = boost::get<txin_to_key>(vin);
-              if (in_to_key.key_offsets.size() != DEFAULT_MIX + 1)
-                default_ring_size = false;
-            }
+      if (transfer_type == TransferLocked)
+      {
+        float days = locked_blocks / 720.0f;
+        prompt << boost::format(tr(".\nThis transaction (including %s change) will unlock on block %llu, in approximately %s days (assuming 2 minutes per block)")) % cryptonote::print_money(change) % ((unsigned long long)unlock_block) % days;
+        if (offshore || onshore) {
+          if (0/*m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)*/) {
+            prompt << tr("\n(Priority levels : low|unimportant=7200 blocks, normal=3600 blocks, medium|elevated=1440 blocks, high|priority=180 blocks)");
+          } else if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
+            prompt << tr("\n(Priority levels : low|unimportant=5040 blocks, normal=1440 blocks, medium|elevated=720 blocks, high|priority=180 blocks)");
           }
         }
-        if (m_wallet->confirm_non_default_ring_size() && !default_ring_size)
-        {
-          prompt << tr("WARNING: this is a non default ring size, which may harm your privacy. Default is recommended.");
-        }
-        prompt << ENDL << tr("Is this okay?");
-        
-        std::string accepted = input_line(prompt.str(), true);
-        if (std::cin.eof())
-          return false;
-        if (!command_line::is_yes(accepted))
-        {
-          fail_msg_writer() << tr("transaction cancelled.");
+      }
 
-          return false;
+      if (!process_ring_members(ptx_vector, prompt, m_wallet->print_ring_members()))
+        return false;
+
+      bool default_ring_size = true;
+      for (const auto &ptx: ptx_vector)
+      {
+        for (const auto &vin: ptx.tx.vin)
+        {
+          if (vin.type() == typeid(txin_to_key))
+          {
+            const txin_to_key& in_to_key = boost::get<txin_to_key>(vin);
+            if (in_to_key.key_offsets.size() != DEFAULT_MIX + 1)
+              default_ring_size = false;
+          }
         }
+      }
+      if (m_wallet->confirm_non_default_ring_size() && !default_ring_size)
+      {
+        prompt << tr("WARNING: this is a non default ring size, which may harm your privacy. Default is recommended.");
+      }
+      prompt << ENDL << tr("Is this okay?");
+        
+      std::string accepted = input_line(prompt.str(), true);
+      if (std::cin.eof())
+        return false;
+      if (!command_line::is_yes(accepted))
+      {
+        fail_msg_writer() << tr("transaction cancelled.");
+        return false;
+      }
     }
 
     // actually commit the transactions

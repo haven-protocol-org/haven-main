@@ -144,7 +144,7 @@ namespace cryptonote
   }
   
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, std::map<std::string, uint64_t> fee_map,  std::map<std::string, uint64_t> offshore_fee_map, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, cryptonote::network_type nettype) {
+  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, std::map<std::string, uint64_t> fee_map,  std::map<std::string, uint64_t> offshore_fee_map, std::map<std::string, uint64_t> xasset_fee_map, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, cryptonote::network_type nettype) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -217,7 +217,7 @@ namespace cryptonote
           if (nettype == TESTNET) {
             cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);
           } else if (nettype == STAGENET) {
-	    cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
+	          cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
           } else {
             cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW);
           }
@@ -226,7 +226,7 @@ namespace cryptonote
           if (nettype == TESTNET) {
             cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);
           } else if (nettype == STAGENET) {
-	    cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
+	          cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
           } else {
             cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS_MULTI);
           }
@@ -234,7 +234,7 @@ namespace cryptonote
           if (nettype == TESTNET) {
             cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS);
           } else if (nettype == STAGENET) {
-	    cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS);
+	          cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS);
           } else {
             cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS);
           }
@@ -270,79 +270,91 @@ namespace cryptonote
       // Add all of the outputs for all of the currencies in the contained TXs
       uint64_t idx = 2;
       for (auto &fee_map_entry: fee_map) {
+        // Skip XHV - we have already handled that above
+        if (fee_map_entry.first == "XHV")
+          continue;
+    
+        if (fee_map_entry.second != 0) {
 
-	// Skip XHV - we have already handled that above
-	if (fee_map_entry.first == "XHV")
-	  continue;
-	
-	if (fee_map_entry.second != 0) {
+          uint64_t block_reward_xasset = fee_map_entry.second;
+          uint64_t governance_reward_xasset = 0;
+          governance_reward_xasset = get_governance_reward(height, fee_map_entry.second);
+          block_reward_xasset -= governance_reward_xasset;
 
-	  uint64_t block_reward_xasset = fee_map_entry.second;
-	  uint64_t governance_reward_xasset = 0;
-	  governance_reward_xasset = get_governance_reward(height, fee_map_entry.second);
-	  block_reward_xasset -= governance_reward_xasset;
+          // Add the conversion fee to the governance payment (if provided)
+          if (offshore_fee_map[fee_map_entry.first] != 0) {
+            governance_reward_xasset += offshore_fee_map[fee_map_entry.first];
+          }
+          
+          // we got 0.5% from xasset conversions. Here we wanna burn 80%(0.4% of the initial whole) of it and 
+          // spilit the rest between governance wallet and the miner
+          if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
+            if (xasset_fee_map[fee_map_entry.first] != 0) {
+              uint64_t fee = xasset_fee_map[fee_map_entry.first];
+              // burn 80%
+              fee -= (fee * 80) / 100;
+              // split the rest
+              block_reward_xasset += fee / 2;
+              governance_reward_xasset += fee / 2;
+            }
+          }
 
-	  // Add the conversion fee to the governance payment (if provided)
-	  if (offshore_fee_map[fee_map_entry.first] != 0) {
-	    governance_reward_xasset += offshore_fee_map[fee_map_entry.first];
-	  }
+          // Miner component of the xAsset TX fee
+          r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
+          CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
+          idx++;
 
-	  // Miner component of the xAsset TX fee
-	  r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
-	  CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
-	  idx++;
+          if (fee_map_entry.first == "XUSD") {
+            // Offshore TX
+            txout_offshore tk_off;
+            tk_off.key = out_eph_public_key;
+            
+            tx_out out_off;
+            out_off.amount = block_reward_xasset;
+            out_off.target = tk_off;
+            tx.vout.push_back(out_off);
+          } else {
+            // xAsset TX
+            txout_xasset tk_off;
+            tk_off.key = out_eph_public_key;
+            tk_off.asset_type = fee_map_entry.first;
+            
+            tx_out out_off;
+            out_off.amount = block_reward_xasset;
+            out_off.target = tk_off;
+            tx.vout.push_back(out_off);
+          }
 
-	  if (fee_map_entry.first == "XUSD") {
-	    // Offshore TX
-	    txout_offshore tk_off;
-	    tk_off.key = out_eph_public_key;
-      
-	    tx_out out_off;
-	    out_off.amount = block_reward_xasset;
-	    out_off.target = tk_off;
-	    tx.vout.push_back(out_off);
-	  } else {
-	    // xAsset TX
-	    txout_xasset tk_off;
-	    tk_off.key = out_eph_public_key;
-	    tk_off.asset_type = fee_map_entry.first;
-      
-	    tx_out out_off;
-	    out_off.amount = block_reward_xasset;
-	    out_off.target = tk_off;
-	    tx.vout.push_back(out_off);
-	  }
+          crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
 
-	  crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
+          if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
+          {
+            MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
+            return false;
+          }
+          idx++;
 
-	  if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
-	  {
-	    MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
-	    return false;
-	  }
-	  idx++;
-
-	  if (fee_map_entry.first == "XUSD") {
-	    // Offshore TX
-	    txout_offshore tk_gov;
-	    tk_gov.key = out_eph_public_key_xasset;
-	    
-	    tx_out out_gov;
-	    out_gov.amount = governance_reward_xasset;
-	    out_gov.target = tk_gov;
-	    tx.vout.push_back(out_gov);
-	  } else {
-	    // xAsset TX
-	    txout_xasset tk_gov;
-	    tk_gov.key = out_eph_public_key_xasset;
-	    tk_gov.asset_type = fee_map_entry.first;
-	    
-	    tx_out out_gov;
-	    out_gov.amount = governance_reward_xasset;
-	    out_gov.target = tk_gov;
-	    tx.vout.push_back(out_gov);
-	  }
-	}
+          if (fee_map_entry.first == "XUSD") {
+            // Offshore TX
+            txout_offshore tk_gov;
+            tk_gov.key = out_eph_public_key_xasset;
+            
+            tx_out out_gov;
+            out_gov.amount = governance_reward_xasset;
+            out_gov.target = tk_gov;
+            tx.vout.push_back(out_gov);
+          } else {
+            // xAsset TX
+            txout_xasset tk_gov;
+            tk_gov.key = out_eph_public_key_xasset;
+            tk_gov.asset_type = fee_map_entry.first;
+            
+            tx_out out_gov;
+            out_gov.amount = governance_reward_xasset;
+            out_gov.target = tk_gov;
+            tx.vout.push_back(out_gov);
+          }
+        }
       }
     }
     
@@ -400,110 +412,15 @@ namespace cryptonote
       }
     }
 
-    if (0/*fees_version >= 3*/) {
-
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Work out the priority 
-      uint32_t priority =
-	(unlock_time >= 7200) ? 1 :
-	(unlock_time >= 3600) ? 2 :
-	(unlock_time >= 1440) ? 3 :
-	4;
-     
-      // Estimate the fee components
-      boost::multiprecision::uint128_t conversion_fee = amount / 500;
-      conversion_fee *= priority;
-      boost::multiprecision::uint128_t conversion_extra = delta;
-      conversion_extra *= amount;
-      uint64_t speed_fee = 0;
-      uint64_t speculation_fee = 0;
-      switch (priority) {
-      case 4:
-	conversion_extra *= 110;
-	conversion_extra /= 100;
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      case 3:
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      case 2:
-	conversion_extra *= 75;
-	conversion_extra /= 100;
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      case 1:
-      default:
-	conversion_extra *= 25;
-	conversion_extra /= 100;
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      }
-
-      // Calculate the speed fee and speculation fee
-      if (sources.size() == 0) {
-	// Best-case estimates for now
-	speed_fee =
-	  (priority == 4) ? amount / 50 :
-	  (priority == 3) ? amount / 125 :
-	  0;
-      } else {
-
-	// Take a copy of the sources, so we can sort by age
-	auto sources_copy = sources;
-	std::sort(sources_copy.begin(), sources_copy.end(),
-		  [](const tx_source_entry &a, const tx_source_entry &b) { return a.height < b.height; });
-      
-	// Determine the accurate speed fee and speculation_fee
-	if (priority >= 3) {
-	  uint64_t running_total = 0;
-	  uint64_t target_total = amount;// - ((dsts.back().amount > 0) ? dsts.back().amount : dsts.back().amount_usd);
-	  for (auto src: sources_copy) {
-	    uint64_t age = current_height - src.height;
-	    uint64_t src_amount = src.amount;
-	    if (running_total + src_amount <= target_total) {
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    } else {
-	      // Recalculate the src_amount to finish off the TX
-	      src_amount = target_total - running_total;
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    }
-	    // Advance the running total
-	    running_total += src_amount;
-	  }
-	}
-      }
-    
-      // Return the fee
-      MINFO("Priority = " << priority << ", spot price = " << print_money((uint64_t)pr.xUSD) << ", MA = " << print_money(pr.unused1));
-      MINFO("Conversion fee = " << print_money((uint64_t)conversion_fee) << ", speed fee = " << print_money(speed_fee));
-      fee_estimate = (uint64_t)conversion_fee + speed_fee + speculation_fee;
-      
-    } else if (fees_version >= 2) {
-
+    if (fees_version >= 2) {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
       fee_estimate =
-	(unlock_time >= 5040) ? (amount / 500) :
-	(unlock_time >= 1440) ? (amount / 20) :
-	(unlock_time >= 720) ? (amount / 10) :
-	amount / 5;
-
+      (unlock_time >= 5040) ? (amount / 500) :
+      (unlock_time >= 1440) ? (amount / 20) :
+      (unlock_time >= 720) ? (amount / 10) :
+      amount / 5;
     } else {
       // Get the delta
       // abs() implementation for uint64_t's
@@ -531,155 +448,15 @@ namespace cryptonote
       }
     }
 
-    if (0/*fees_version >= 3*/) {
-
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Work out the priority 
-      uint32_t priority =
-	(unlock_time >= 7200) ? 1 :
-	(unlock_time >= 3600) ? 2 :
-	(unlock_time >= 1440) ? 3 :
-	4;
-     
-      // Estimate the fee components
-      boost::multiprecision::uint128_t conversion_fee = amount_usd / 500;
-      conversion_fee *= priority;
-      boost::multiprecision::uint128_t conversion_extra = delta;
-      conversion_extra *= amount_usd;
-      uint64_t speed_fee = 0;
-      uint64_t speculation_fee = 0;
-      switch (priority) {
-      case 4:
-	conversion_extra *= 110;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 3:
-	conversion_extra /= 1000000000000;
-	conversion_fee += conversion_extra;
-	break;
-      case 2:
-	conversion_extra *= 75;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 1:
-      default:
-	conversion_extra *= 25;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      }
-
-      // Calculate the speed fee and speculation fee
-      if (sources.size() == 0) {
-	// Best-case estimates for now
-	speed_fee =
-	  (priority == 4) ? amount_usd / 50 :
-	  (priority == 3) ? amount_usd / 125 :
-	  0;
-      } else {
-
-	// Take a copy of the sources, so we can sort by age
-	auto sources_copy = sources;
-	std::sort(sources_copy.begin(), sources_copy.end(),
-		  [](const tx_source_entry &a, const tx_source_entry &b) { return a.height < b.height; });
-      
-	// Create a vector of block heights to obtain pricing records for
-	std::vector<uint64_t> heights;
-      
-	// Determine the accurate speed fee and speculation_fee
-	if (priority >= 3) {
-	  uint64_t running_total = 0;
-	  uint64_t target_total = amount_usd;// - ((dsts.back().amount > 0) ? dsts.back().amount : dsts.back().amount_usd);
-	  for (auto src: sources_copy) {
-	    heights.push_back(src.height);
-	    uint64_t age = current_height - src.height;
-	    uint64_t src_amount = src.amount;
-	    if (running_total + src_amount <= target_total) {
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    } else {
-	      // Recalculate the src_amount to finish off the TX
-	      src_amount = target_total - running_total;
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    }
-	    // Advance the running total
-	    running_total += src_amount;
-	  }
-	}
-	
-	// Only bother if we have some heights to use
-	if (heights.size()) {
-
-	  int i=0;
-	  for (auto src: sources_copy) {
-
-	    // Only charge fees for first-generation offshore inputs
-	    if (!src.first_generation_input) {
-	      MINFO("Input was not created using XHV - no speculation fee applied");
-	      continue;
-	    }
-	    if (pr.unused1 < src.pr.unused1) {
-	      // current exchange rate less than when the input was created - how old is it?
-
-	      boost::multiprecision::uint128_t ma_diff = (src.pr.unused1 - pr.unused1);
-	      ma_diff *= src.amount;
-	      ma_diff /= 1000000000000;
-	      
-	      // Check the age of the input
-	      uint64_t age = current_height - src.height;
-	      uint64_t fee_addition = 0;
-	      if (priority == 4) {
-		if (age < (30 * 24)) {
-		  // Calculate the speculation fee
-		  fee_addition = (uint64_t)ma_diff / 2;
-		} else if (age < (30 * 48)) {
-		  // Calculate the speculation fee
-		  fee_addition = ((uint64_t)ma_diff * 4) / 10;
-		} else if (age < (30 * 120)) {
-		  // Calculate the speculation fee
-		  fee_addition = (uint64_t)ma_diff / 10;
-		}
-	      } else if (priority == 3) {
-		if (age < (30 * 120)) {
-		  // Calculate the speculation fee
-		  fee_addition = (uint64_t)ma_diff / 10;
-		}
-	      }
-	      MINFO("Input created using XHV - amount = " << print_money(src.amount) << ", age = " << age);
-	      MINFO("Original MA = " << print_money(src.pr.unused1) << ", speculation fee " << print_money(fee_addition) << " applied");
-	      speculation_fee += fee_addition;
-	    }
-	  }
-	}
-      }
-    
-      // Return the fee
-      MINFO("Priority = " << priority << ", spot price = " << print_money((uint64_t)pr.xUSD) << ", MA = " << print_money(pr.unused1));
-      MINFO("Conversion fee = " << print_money((uint64_t)conversion_fee) << ", speed fee = " << print_money(speed_fee) << ", speculation fee = " << print_money(speculation_fee));
-      fee_estimate = (uint64_t)conversion_fee + speed_fee + speculation_fee;
-      
-    } else if (fees_version >= 2) {
-
+    if (fees_version >= 2) {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
       fee_estimate =
-	(unlock_time >= 5040) ? (amount_usd / 500) :
-	(unlock_time >= 1440) ? (amount_usd / 20) :
-	(unlock_time >= 720) ? (amount_usd / 10) :
-	amount_usd / 5;
+      (unlock_time >= 5040) ? (amount_usd / 500) :
+      (unlock_time >= 1440) ? (amount_usd / 20) :
+      (unlock_time >= 720) ? (amount_usd / 10) :
+      amount_usd / 5;
 
     } else {
       // Get the delta
@@ -834,14 +611,20 @@ namespace cryptonote
     uint64_t amount_xasset = 0;
     for (auto dt: dsts_copy) {
       if (0 == dt.amount_xasset) {
-	MERROR("No xAsset amount specified for destination");
-	return false;
+        MERROR("No xAsset amount specified for destination");
+        return false;
       }
       amount_xasset += dt.amount_xasset;
     }
 
-    // Calculate 0.3% of the total being sent
-    fee_estimate = (amount_xasset * 3) / 1000;
+    if (fees_version >= 3) {
+      // Calculate 0.5% of the total being sent
+      fee_estimate = (amount_xasset * 5) / 1000;
+    } else {  
+      // Calculate 0.3% of the total being sent
+      fee_estimate = (amount_xasset * 3) / 1000;
+    }
+
 
     // Return success
     return true;
@@ -856,14 +639,19 @@ namespace cryptonote
     uint64_t amount_usd = 0;
     for (auto dt: dsts_copy) {
       if (0 == dt.amount_usd) {
-	MERROR("No USD amount specified for destination");
-	return false;
+        MERROR("No USD amount specified for destination");
+        return false;
       }
       amount_usd += dt.amount_usd;
     }
 
-    // Calculate 0.3% of the total being sent
-    fee_estimate = (amount_usd * 3) / 1000;
+    if (fees_version >= 3) {
+      // Calculate 0.5% of the total being sent
+      fee_estimate = (amount_usd * 5) / 1000;
+    } else {
+      // Calculate 0.3% of the total being sent
+      fee_estimate = (amount_usd * 3) / 1000;
+    }
 
     // Return success
     return true;
@@ -1684,10 +1472,18 @@ namespace cryptonote
           double d_xasset_amount = boost::lexical_cast<double>(tx.amount_minted);
           double d_exchange_rate = boost::lexical_cast<double>(pr[strDest]);
           tx.amount_burnt = (uint64_t)((d_xasset_amount / d_exchange_rate) * 1000000000000.0);
+          if (fees_version >= 3) {
+            // Add the burnt part of the fee
+            tx.amount_burnt += (uint64_t)((offshore_fee_usd * 80) / 100);
+          }
         } else if (xasset_to_xusd) {
           double d_xusd_amount = boost::lexical_cast<double>(tx.amount_minted) / 1000000000000.0;
           double d_exchange_rate = boost::lexical_cast<double>(pr[strSource]);
           tx.amount_burnt = (uint64_t)(d_xusd_amount * d_exchange_rate);
+          if (fees_version >= 3) {
+            // Add the burnt part of the fee
+            tx.amount_burnt += (uint64_t)((offshore_fee_xasset * 80) / 100);
+          }
         } else if (xasset_transfer) {
           tx.amount_burnt = tx.amount_minted = 0;
         }
@@ -1767,8 +1563,8 @@ namespace cryptonote
     bl = {};
     account_public_address ac = boost::value_initialized<account_public_address>();
     std::vector<size_t> sz;
-    std::map<std::string, uint64_t> fee_map, offshore_fee_map;
-    construct_miner_tx(0, 0, 0, 0, fee_map, offshore_fee_map, ac, bl.miner_tx, blobdata(), 999, 1, nettype); // zero fee in genesis
+    std::map<std::string, uint64_t> fee_map, offshore_fee_map, xasset_fee_map;
+    construct_miner_tx(0, 0, 0, 0, fee_map, offshore_fee_map, xasset_fee_map, ac, bl.miner_tx, blobdata(), 999, 1, nettype); // zero fee in genesis
     blobdata txb = tx_to_blob(bl.miner_tx);
     std::string hex_tx_represent = string_tools::buff_to_hex_nodelimer(txb);
 
