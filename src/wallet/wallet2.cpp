@@ -15869,182 +15869,8 @@ uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> 
 uint64_t wallet2::get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
 {
   // Calculate the amount being sent
-  uint64_t amount_usd = 0;
   for (auto dt: dsts) {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount_usd, error::zero_destination);
-    amount_usd += dt.amount_usd;
-  }
-
-  if (0/*use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)*/) {
-
-    // Get the latest pricing records from the top block
-    cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::request req_last = AUTO_VAL_INIT(req_last);
-    cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::response res_last = AUTO_VAL_INIT(res_last);
-    bool r = invoke_http_json_rpc("/json_rpc", "get_last_block_header", req_last, res_last);
-    THROW_WALLET_EXCEPTION_IF(!r, tools::error::wallet_internal_error, "failed to get last block header");
-    THROW_WALLET_EXCEPTION_IF(res_last.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "get_offshore_fee");
-    THROW_WALLET_EXCEPTION_IF(res_last.status != CORE_RPC_STATUS_OK, tools::error::wallet_generic_rpc_error, "get_offshore_fee", res_last.status);
-
-    // Get the delta
-    uint64_t pricing_average = res_last.block_header.pricing_record.unused1;
-
-    // abs() implementation for uint64_t's
-    uint64_t delta = (pricing_average > res_last.block_header.pricing_record.xUSD)
-      ? pricing_average - res_last.block_header.pricing_record.xUSD
-      : res_last.block_header.pricing_record.xUSD - pricing_average;
-
-    // Estimate the fee components
-    boost::multiprecision::uint128_t conversion_fee = amount_usd / 500;
-    conversion_fee *= priority;
-    boost::multiprecision::uint128_t conversion_extra = delta;
-    conversion_extra *= amount_usd;
-    uint64_t speed_fee = 0;
-    uint64_t speculation_fee = 0;
-    switch (priority) {
-    case 4:
-      conversion_extra *= 110;
-      conversion_extra /= (100 * 1000000000000);
-      conversion_fee += conversion_extra;
-      speed_fee = amount_usd / 20;
-      break;
-    case 3:
-      conversion_extra /= 1000000000000;
-      conversion_fee += conversion_extra;
-      speed_fee = amount_usd / 50;
-      break;
-    case 2:
-      conversion_extra *= 75;
-      conversion_extra /= (100 * 1000000000000);
-      conversion_fee += conversion_extra;
-      speed_fee = 0;
-      break;
-    case 1:
-    default:
-      conversion_extra *= 25;
-      conversion_extra /= (100 * 1000000000000);
-      conversion_fee += conversion_extra;
-      speed_fee = 0;
-      break;
-    }
-
-    // Calculate the speed fee and speculation fee
-    if (sources.size() == 0) {
-      // Best-case estimates for now
-      speed_fee =
-	(priority == 4) ? (amount_usd / 50) :
-	(priority == 3) ? (amount_usd / 125) :
-	0;
-    } else {
-
-      // Get the current blockchain height
-      uint64_t current_height = get_blockchain_current_height();
-
-      // Take a copy of the sources, so we can sort by age
-      auto sources_copy = sources;
-      std::sort(sources_copy.begin(), sources_copy.end(),
-          [](const transfer_details &a, const transfer_details &b) { return a.m_block_height < b.m_block_height; });
-
-      // Create a vector of block heights to obtain pricing records for
-      std::vector<uint64_t> heights;
-      
-      // Determine the accurate speed fee and speculation_fee
-      if (priority >= 3) {
-	uint64_t running_total = 0;
-	uint64_t target_total = amount_usd;
-	for (auto src: sources_copy) {
-	  heights.push_back(src.m_block_height);
-	  uint64_t age = current_height - src.m_block_height;
-	  uint64_t src_amount = src.amount();
-	  if (running_total + src_amount <= target_total) {
-	    if (age < (30*24*30)) {
-	      speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	    } else {
-	      speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	    }
-	  } else {
-	    // Recalculate the src_amount to finish off the TX
-	    src_amount = target_total - running_total;
-	    if (age < (30*24*30)) {
-	      speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	    } else {
-	      speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	    }
-	  }
-	  // Advance the running total
-	  running_total += src_amount;
-	}
-      }
-
-      // Only bother if we have some heights to use
-      if (heights.size()) {
-
-	// Prepare a request + response container
-	COMMAND_RPC_GET_BLOCKS_BY_HEIGHT::request req;
-	COMMAND_RPC_GET_BLOCKS_BY_HEIGHT::response res;
-	req.heights = heights;
-
-	bool r;
-	{
-	  const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-	  req.client = get_client_signature();
-	  r = net_utils::invoke_http_bin("/getblocks_by_height.bin", req, res, *m_http_client, rpc_timeout);
-	}
-
-	if (!r || res.status != CORE_RPC_STATUS_OK) {
-	  std::ostringstream oss;
-	  oss << "failed to get blocks by heights: ";
-	  for (auto height : req.heights)
-	    oss << height << ' ';
-	  oss << endl << "reason: ";
-	  if (!r)
-	    oss << "possibly lost connection to daemon";
-	  else if (res.status == CORE_RPC_STATUS_BUSY)
-	    oss << "daemon is busy";
-	  else
-	    oss << get_rpc_status(res.status);
-	  throw std::runtime_error(oss.str());
-	}
-	int i=0;
-	for (auto src: sources_copy) {
-
-	  cryptonote::block blk;
-	  if (!parse_and_validate_block_from_blob(res.blocks[i++].block, blk))
-	    throw std::runtime_error("failed to parse blob at height " + std::to_string(req.heights[i]));
-
-	  // Got the block, which means we have the ppricing record as well - compute the difference in XHV prices to see if they made a notional profit
-	  if (pricing_average < blk.pricing_record.unused1) {
-	    // current exchange rate less than when the input was created - how old is it?
-
-	    boost::multiprecision::uint128_t ma_diff = (blk.pricing_record.unused1 - pricing_average);
-	    ma_diff *= src.amount();
-	    ma_diff /= 1000000000000;
-	      
-	    // Check the age of the input
-	    uint64_t age = current_height - src.m_block_height;
-	    if (priority == 4) {
-	      if (age < (30 * 24)) {
-		// Calculate the speculation fee
-		speculation_fee += (uint64_t)ma_diff / 2;
-	      } else if (age < (30 * 48)) {
-		// Calculate the speculation fee
-		speculation_fee += ((uint64_t)ma_diff * 4) / 10;
-	      } else if (age < (30 * 120)) {
-		// Calculate the speculation fee
-		speculation_fee += (uint64_t)ma_diff / 10;
-	      }
-	    } else if (priority == 3) {
-	      if (age < (30 * 120)) {
-		// Calculate the speculation fee
-		speculation_fee += (uint64_t)ma_diff / 10;
-	      }
-	    }
-	  }
-	}
-      }
-    }
-    
-    // Return the fee
-    return speculation_fee;
   }
 
   // No fee for offshore-to-offshore prior to v3
@@ -16061,11 +15887,15 @@ uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_
   }
 
   if (use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
-    return (amount_xasset * 5) / 1000; // 0.5%
+    boost::multiprecision::uint128_t amount_128 = amount_xasset;
+    amount_128 = (amount_128 * 5) / 1000; // 0.5%
+    return (uint64_t)amount_128;
   }
 
   if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-    return (amount_xasset * 3) / 1000;
+    boost::multiprecision::uint128_t amount_128 = amount_xasset;
+    amount_128 = (amount_128 * 3) / 1000;
+    return (uint64_t)amount_128;
   }
 
   return 0;
@@ -16086,11 +15916,15 @@ uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_
   }
 
   if (use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
-    return (amount_usd * 5) / 1000; // 0.5%
+    boost::multiprecision::uint128_t amount_128 = amount_usd;
+    amount_128 = (amount_128 * 5) / 1000; // 0.5%
+    return (uint64_t)amount_128;
   }
 
   if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-    return (amount_usd * 3) / 1000;
+    boost::multiprecision::uint128_t amount_128 = amount_usd;
+    amount_128 = (amount_128 * 3) / 1000;
+    return (uint64_t)amount_128;
   }
 
   return 0;

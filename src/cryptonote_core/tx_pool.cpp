@@ -408,10 +408,14 @@ namespace cryptonote
         } else if (xusd_to_xasset || xasset_to_xusd) {
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment for the tx.amount_burnt containing the 80% burnt fee proportion as well
-            conversion_fee_check = (tx.amount_burnt * 10) / (2000 + 8);
+            boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+            amount_128 = (amount_128 * 10) / (2000 + 8);
+            conversion_fee_check = (uint64_t)amount_128;
           } else {
             // Flat 0.3% conversion fee for xAsset TXs
-            conversion_fee_check = (tx.amount_burnt * 3) / 1000;
+            boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+            amount_128 = (amount_128 * 3) / 1000;
+            conversion_fee_check = (uint64_t)(amount_128);
           }
         }
 
