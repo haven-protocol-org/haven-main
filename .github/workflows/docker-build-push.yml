@@ -15,7 +15,7 @@ jobs:
         id: docker_meta
         uses: crazy-max/ghaction-docker-meta@v1
         with:
-          images: havenprotocolorg/haven-cli
+          images: ${{ secrets.DOCKERHUB_REPO }}
           tag-semver: |
             {{version}}
       - name: Set up QEMU
