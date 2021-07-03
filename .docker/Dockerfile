@@ -5,6 +5,7 @@ ARG HAVEN_VERSION=v1.3.1
 ARG TARGETOS
 ARG TARGETARCH 
 ARG TARGETVARIANT
+ARG USE_SINGLE_BUILDDIR=1
 
 RUN apk --no-cache add git 
 RUN apk --no-cache add bash
@@ -19,17 +20,16 @@ RUN apk --no-cache add libunwind-dev
 RUN apk --no-cache add boost-dev
 RUN apk --no-cache add boost-static
 
-
-WORKDIR /
-RUN git clone --recursive --depth 1 --branch ${HAVEN_VERSION} --single-branch https://github.com/haven-protocol-org/haven-offshore.git 
-WORKDIR /haven-offshore
+COPY . /haven-main
+WORKDIR /haven-main
+RUN git submodule update --init --force 
 RUN if [ "$TARGETARCH" = "amd64" ]; then export build=x86_64; fi; \
 if  [ "$TARGETARCH" = "386" ]; then export build=i686; fi; \
 if [ "$TARGETARCH" = "arm" ]; then export build=${TARGETARCH}${TARGETVARIANT}; fi; \
 if [ "$TARGETARCH" = "arm64" ]; then export build=armv8; fi; \
-./build-haven.sh release-static-${TARGETOS}-${build} -j4
+make release-static-${TARGETOS}-${build} -j${nproc}
 
-RUN monero/build/release/bin/havend --version
+RUN build/release/bin/havend --version
 
 FROM alpine:3.12 as runner
 
@@ -60,10 +60,7 @@ VOLUME /home/haven/.haven
 
 VOLUME /wallet
 
-COPY --from=builder /haven-offshore/monero/build/release/bin/* /usr/local/bin/
-
-ADD ./docker_entrypoint.sh /usr/local/bin/docker_entrypoint.sh
-RUN chmod a+x /usr/local/bin/docker_entrypoint.sh
+COPY --from=builder /haven-main/build/release/bin/* /usr/local/bin/
 
 # switch to user haven
 USER haven
