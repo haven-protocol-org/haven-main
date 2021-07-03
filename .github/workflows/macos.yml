@@ -1,0 +1,83 @@
+name: macos-cli
+
+on: [push, pull_request]
+
+jobs:
+  build-macos:
+    env:
+      CMAKE_OSX_DEPLOYMENT_TARGET: 10.14
+      OSX_MIN_VERSION: 10.14
+      USE_SINGLE_BUILDDIR: 1
+    runs-on: macOS-latest
+    steps:
+    - uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: '12.0'
+    - uses: actions/checkout@v1
+      with:
+        submodules: recursive
+    - name: install dependencies
+      run: brew install zmq libpgm miniupnpc ldns expat libunwind-headers protobuf unbound boost
+    - name: build
+      run: |
+        make release-static-mac-x86_64 -j2
+    - name: package haven CLI
+      run: |
+        cd build/release/bin/
+        ./havend --version
+        tar -czvf haven-macos.tar.gz *
+        echo ::set-output name=haven-macos::$(shasum -a 256 haven-macos.tar.gz)
+    - uses: actions/upload-artifact@v2
+      with:
+        name: haven-macos.tar.gz
+        path: build/release/bin/haven-macos.tar.gz
+        retention-days: 10
+
+  upload-macos:
+    needs: build-macos
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/download-artifact@v2
+      with:
+        name: haven-macos.tar.gz
+    - name: Upload Haven CLI
+      uses: goshiz/do-space-sync-action@master
+      with:
+        args: --acl public-read
+      env:
+        SOURCE_DIR: 'haven-macos.tar.gz'
+        SPACE_NAME: ${{ secrets.SPACE_NAME }}
+        SPACE_FOLDER: binaries
+        SPACE_REGION: ${{ secrets.SPACE_REGION}}
+        SPACE_ACCESS_KEY_ID: ${{ secrets.SPACE_ACCESS_KEY_ID }}
+        SPACE_SECRET_ACCESS_KEY: ${{ secrets.SPACE_SECRET_ACCESS_KEY }}
+    - name: notification
+      env:
+        BINARY_NAME: /haven-macos.tar.gz
+        BINARY_URL: https://docs.havenprotocol.org/binaries/
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      shell: bash
+      run: |
+        export checksum=($(sha256sum haven-macos.tar.gz))
+        export payload='{"username": "Github", "content": "CLI (macOS) : '${BINARY_URL}${GITHUB_REF##*/}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
+        echo $payload
+        curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
+
+  publish-macos:
+    needs: build-macos
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v2
+      with:
+        name: haven-macos.tar.gz
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: haven-macos.tar.gz
+        asset_name: haven-macos.tar.gz
+        tag: ${{ github.ref }}
+        overwrite: true
+        body: ""
+        prerelease: false

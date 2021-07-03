@@ -1,0 +1,106 @@
+name: linux-227-cli
+
+on: [push, pull_request]
+
+jobs:
+  build-linux-glibc-2-27:
+    env:
+      ZMQ_VERSION: v4.3.1
+      CPPZMQ_VERSION: v4.3.0
+      CFLAGS: -fPIC
+      CXXFLAGS: -fPIC
+      USE_SINGLE_BUILDDIR: 1
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: recursive
+    - name: remove bundled boost
+      run: sudo rm -rf /usr/local/share/boost
+    - name: set apt conf
+      run: |
+        echo "Acquire::Retries \"3\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+        echo "Acquire::http::Timeout \"120\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+        echo "Acquire::ftp::Timeout \"120\";" | sudo tee -a /etc/apt/apt.conf.d/80-custom
+    - name: Install Haven dependencies
+      run: |
+        sudo apt update
+        sudo apt-get --no-install-recommends --yes install build-essential cmake pkg-config libboost-all-dev libssl-dev libunbound-dev libsodium-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev libudev-dev
+    - name: Install libzmq
+      run: |
+        git clone https://github.com/zeromq/libzmq.git -b ${ZMQ_VERSION}
+        cd libzmq
+        ./autogen.sh
+        ./configure --enable-static --disable-shared
+        make -j3
+        sudo make install
+        sudo ldconfig
+    - name: Install cppzmq
+      run: |
+        git clone https://github.com/zeromq/cppzmq.git -b ${CPPZMQ_VERSION}
+        cd cppzmq
+        sudo mv *.hpp /usr/local/include
+    - name: build Haven
+      run: |
+        make release-static -j3
+    - name: package haven CLI
+      run: |
+        cd build/release/bin/
+        tar -czvf haven-linux-glibc227.tar.gz *
+        echo ::set-output name=haven-linux-glibc227::$(sha256sum haven-linux-glibc227.tar.gz)
+    - uses: actions/upload-artifact@v2
+      with:
+        name: haven-linux-glibc227.tar.gz
+        path: build/release/bin/haven-linux-glibc227.tar.gz
+        retention-days: 10
+      
+    
+  upload-linux-glibc-2-27:
+    needs: build-linux-glibc-2-27
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/download-artifact@v2
+      with:
+        name: haven-linux-glibc227.tar.gz
+    - name: Upload Haven CLI
+      uses: goshiz/do-space-sync-action@master
+      with:
+        args: --acl public-read
+      env:
+        SOURCE_DIR: 'haven-linux-glibc227.tar.gz'
+        SPACE_NAME: ${{ secrets.SPACE_NAME }}
+        SPACE_FOLDER: binaries
+        SPACE_REGION: ${{ secrets.SPACE_REGION}}
+        SPACE_ACCESS_KEY_ID: ${{ secrets.SPACE_ACCESS_KEY_ID }}
+        SPACE_SECRET_ACCESS_KEY: ${{ secrets.SPACE_SECRET_ACCESS_KEY }}
+    - name: notification
+      env:
+        BINARY_NAME: /haven-linux-glibc227.tar.gz
+        BINARY_URL: https://docs.havenprotocol.org/binaries/
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      shell: bash
+      run: |
+        export checksum=($(sha256sum haven-linux-glibc227.tar.gz))
+        export payload='{"username": "Github", "content": "CLI (Linux 2.27) : '${BINARY_URL}${GITHUB_REF##*/}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
+        echo $payload
+        curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
+  
+  publish-linux-glibc-2-27:
+    needs: build-linux-glibc-2-27
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v2
+      with:
+        name: haven-linux-glibc227.tar.gz
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: haven-linux-glibc227.tar.gz
+        asset_name: haven-linux-glibc227.tar.gz
+        tag: ${{ github.ref }}
+        overwrite: true
+        body: ""
+        prerelease: false
+        
