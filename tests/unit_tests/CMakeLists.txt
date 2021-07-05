@@ -58,7 +58,7 @@ set(unit_tests_sources
   keccak.cpp
   levin.cpp
   logging.cpp
-  long_term_block_weight.cpp
+#  long_term_block_weight.cpp
   lmdb.cpp
   main.cpp
   memwipe.cpp
@@ -70,24 +70,25 @@ set(unit_tests_sources
   net.cpp
   node_server.cpp
   notify.cpp
-  output_distribution.cpp
+#  output_distribution.cpp
   parse_amount.cpp
+  pricing_record.cpp
   pruning.cpp
   random.cpp
   rolling_median.cpp
-  serialization.cpp
+#  serialization.cpp
   sha256.cpp
   slow_memmem.cpp
   subaddress.cpp
-  test_tx_utils.cpp
+#  test_tx_utils.cpp
   test_peerlist.cpp
   test_protocol_pack.cpp
   threadpool.cpp
-  hardfork.cpp
+#  hardfork.cpp
   unbound.cpp
   uri.cpp
   varint.cpp
-  ringct.cpp
+#  ringct.cpp
   output_selection.cpp
   vercmp.cpp
   ringdb.cpp
@@ -113,6 +114,7 @@ target_link_libraries(unit_tests
     lmdb_lib
     rpc
     net
+    offshore
     serialization
     wallet
     p2p

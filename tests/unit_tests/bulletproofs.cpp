@@ -76,7 +76,7 @@ TEST(bulletproofs, valid_multi_random)
     ASSERT_TRUE(rct::bulletproof_VERIFY(proof));
   }
 }
-
+/*
 TEST(bulletproofs, multi_splitting)
 {
   rct::ctkeyV sc, pc;
@@ -142,7 +142,7 @@ TEST(bulletproofs, multi_splitting)
     }
   }
 }
-
+*/
 TEST(bulletproofs, valid_aggregated)
 {
   static const size_t N_PROOFS = 8;
