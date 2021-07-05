@@ -1,0 +1,88 @@
+name: winx64-cli
+
+on: [push, pull_request]
+
+jobs:
+  build-windows:
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      USE_SINGLE_BUILDDIR: 1
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: recursive
+    - uses: eine/setup-msys2@v2
+      with:
+        update: true
+    - name: Install Haven dependencies
+      run: pacman -S --noconfirm mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-libusb git patch
+    - name: install boost
+      run: |
+        wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-boost-1.72.0-3-any.pkg.tar.zst
+        wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-icu-66.1-1-any.pkg.tar.zst
+        pacman -U --noconfirm *.tar.zst
+    - name: build Haven
+      run: make release-static-win64
+    - name: package haven CLI
+      run: |
+        cd build/release/bin/
+        tar -czvf haven-windows.tar.gz *.exe
+        echo ::set-output name=haven-windows::$(sha256sum haven-windows.tar.gz)
+    - uses: actions/upload-artifact@v2
+      with:
+        name: haven-windows.tar.gz
+        path: build/release/bin/haven-windows.tar.gz
+        retention-days: 10
+
+  upload-windows:
+    needs: build-windows
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/download-artifact@v2
+      with:
+        name: haven-windows.tar.gz
+    - name: Upload Haven CLI
+      uses: goshiz/do-space-sync-action@master
+      with:
+        args: --acl public-read
+      env:
+        SOURCE_DIR: 'haven-windows.tar.gz'
+        SPACE_NAME: ${{ secrets.SPACE_NAME }}
+        SPACE_FOLDER: binaries
+        SPACE_REGION: ${{ secrets.SPACE_REGION}}
+        SPACE_ACCESS_KEY_ID: ${{ secrets.SPACE_ACCESS_KEY_ID }}
+        SPACE_SECRET_ACCESS_KEY: ${{ secrets.SPACE_SECRET_ACCESS_KEY }}
+    - name: notification
+      env:
+        BINARY_NAME: /haven-windows.tar.gz
+        BINARY_URL: https://docs.havenprotocol.org/binaries/
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      shell: bash
+      run: |
+        export checksum=($(sha256sum haven-windows.tar.gz))
+        export payload='{"username": "Github", "content": "CLI (Windows) : '${BINARY_URL}${GITHUB_REF##*/}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
+        echo $payload
+        curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
+
+  publish-windows:
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v2
+      with:
+        name: haven-windows.tar.gz
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: haven-windows.tar.gz
+        asset_name: haven-windows.tar.gz
+        tag: ${{ github.ref }}
+        overwrite: true
+        body: ""
+        prerelease: false
