@@ -68,6 +68,7 @@ struct pre_rct_output_data_t
   crypto::public_key pubkey;       //!< the output's public key (for spend verification)
   uint64_t           unlock_time;  //!< the output's unlock time (or height)
   uint64_t           height;       //!< the height of the block which created the output
+  std::string        asset_type;   //!< the asset type of the output
 };
 #pragma pack(pop)
 
@@ -1287,6 +1288,16 @@ std::pair<uint64_t, uint64_t> BlockchainLMDB::add_output(const crypto::hash& tx_
   if (result)
     throw0(DB_ERROR(lmdb_error("Failed to add output tx hash to db transaction: ", result).c_str()));
 
+  // get the asset_type
+  std::string output_asset_type;
+  if (tx_output.target.type() == typeid(txout_to_key)) {
+    output_asset_type = "XHV";
+  } else if (tx_output.target.type() == typeid(txout_offshore)) {
+    output_asset_type = "XUSD";
+  } else if (tx_output.target.type() == typeid(txout_xasset)) {
+    output_asset_type = boost::get<txout_xasset>(tx_output.target).asset_type;
+  }
+
   outkey ok;
   MDB_val data;
   MDB_val_copy<uint64_t> val_amount(tx_output.amount);
@@ -1310,6 +1321,8 @@ std::pair<uint64_t, uint64_t> BlockchainLMDB::add_output(const crypto::hash& tx_
     : boost::get < txout_xasset > (tx_output.target).key;
   ok.data.unlock_time = unlock_time;
   ok.data.height = m_height;
+  ok.data.asset_type = output_asset_type;
+  
   if (tx_output.amount == 0)
   {
     ok.data.commitment = *commitment;
@@ -1324,14 +1337,6 @@ std::pair<uint64_t, uint64_t> BlockchainLMDB::add_output(const crypto::hash& tx_
   if ((result = mdb_cursor_put(m_cur_output_amounts, &val_amount, &data, MDB_APPENDDUP)))
       throw0(DB_ERROR(lmdb_error("Failed to add output pubkey to db transaction: ", result).c_str()));
 
-  std::string output_asset_type;
-  if (tx_output.target.type() == typeid(txout_to_key)) {
-    output_asset_type = "XHV";
-  } else if (tx_output.target.type() == typeid(txout_offshore)) {
-    output_asset_type = "XUSD";
-  } else if (tx_output.target.type() == typeid(txout_xasset)) {
-    output_asset_type = boost::get<txout_xasset>(tx_output.target).asset_type;
-  }
 
   MDB_val_copy<const char *> k(output_asset_type.c_str());
   MDB_val v;
@@ -6246,9 +6251,9 @@ void BlockchainLMDB::migrate_6_7()
       result = mdb_cursor_get(m_cur_circ_supply, &k, &v, op);
       op = MDB_NEXT;
       if (result == MDB_NOTFOUND)
-	break;
+	      break;
       if (result)
-	throw0(DB_ERROR(lmdb_error("Failed to enumerate circ_supply table: ", result).c_str()));
+	      throw0(DB_ERROR(lmdb_error("Failed to enumerate circ_supply table: ", result).c_str()));
       const circ_supply &cs = *(const circ_supply*)v.mv_data;
       boost::multiprecision::int128_t burnt = cs.amount_burnt;
       tally_entries[cs.source_currency_type] -= burnt;
@@ -6313,12 +6318,12 @@ void BlockchainLMDB::migrate_6_7()
     while(i < blockchain_height) {
 
       LOGIF(el::Level::Info) {
-	std::cout << "Phase 1 of 2: " << i << " / " << blockchain_height << "  \r" << std::flush;
+	      std::cout << "Phase 1 of 2: " << i << " / " << blockchain_height << "  \r" << std::flush;
       }
       txn.commit();
       result = mdb_txn_begin(m_env, NULL, 0, txn);
       if (result)
-	throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+	      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
       
       result = mdb_cursor_open(txn, m_output_amounts, &c_output_amounts);
       result = mdb_cursor_open(txn, output_types, &c_output_types);
@@ -6327,73 +6332,73 @@ void BlockchainLMDB::migrate_6_7()
       std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
       bool r = get_blocks_from(i, 1, 1000, (1024*1024*1000), blocks, true, false, true);
       if (!r)
-	throw0(DB_ERROR("Failed to enumerate block information"));
+	      throw0(DB_ERROR("Failed to enumerate block information"));
 
       for (auto&block: blocks)
       {
-	for (auto&tx_pair: block.second)
-	{
-	  transaction tx;
-	  if (!parse_and_validate_tx_base_from_blob(tx_pair.second, tx))
-	    throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
-	  
-	  std::vector<std::pair<uint64_t, uint64_t>> tx_output_indices;
-	  bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
-	  for (auto &output: tx.vout) {
-	    // Get the asset type
-	    std::string asset_type = "";
-	    if (output.target.type() == typeid(txout_to_key)) {
-	      asset_type = "XHV";
-	    } else if (output.target.type() == typeid(txout_offshore)) {
-	      asset_type = "XUSD";
-	    } else if (output.target.type() == typeid(txout_xasset)) {
-	      // Get the asset type from the output
-	      asset_type = boost::get<txout_xasset>(output.target).asset_type;
-	    } else {
-	      continue;
-	    }
-	    
-	    // Update the cumulative total for this block height
-	    tx_asset_types[i][asset_type]++;
+        for (auto&tx_pair: block.second)
+        {
+          transaction tx;
+          if (!parse_and_validate_tx_base_from_blob(tx_pair.second, tx))
+            throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+          
+          std::vector<std::pair<uint64_t, uint64_t>> tx_output_indices;
+          bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
+          for (auto &output: tx.vout) {
+            // Get the asset type
+            std::string asset_type = "";
+            if (output.target.type() == typeid(txout_to_key)) {
+              asset_type = "XHV";
+            } else if (output.target.type() == typeid(txout_offshore)) {
+              asset_type = "XUSD";
+            } else if (output.target.type() == typeid(txout_xasset)) {
+              // Get the asset type from the output
+              asset_type = boost::get<txout_xasset>(output.target).asset_type;
+            } else {
+              continue;
+            }
+            
+            // Update the cumulative total for this block height
+            tx_asset_types[i][asset_type]++;
 
-	    // Update the output_types table with an entry for this output
-	    outassettype oat;
-	    oat.asset_type_output_index = output_type_totals[asset_type];
-	
-	    // Store the global output_id for this entry
-	    // This is done BEFORE the increment below, because it is 0-indexed
-	    oat.output_id = num_outputs;
-      uint64_t amount_index = num_outputs;
+            // Update the output_types table with an entry for this output
+            outassettype oat;
+            oat.asset_type_output_index = output_type_totals[asset_type];
+        
+            // Store the global output_id for this entry
+            // This is done BEFORE the increment below, because it is 0-indexed
+            oat.output_id = num_outputs;
+            uint64_t amount_index = num_outputs;
 
-	    // Write this to the output_types table
-	    MDB_val_set(voat, oat);
-	    MDB_val_copy<const char *> koat(asset_type.c_str());
-	    if ((result = mdb_cursor_put(c_output_types, &koat, &voat, MDB_APPENDDUP)))
-	      throw0(DB_ERROR(lmdb_error("Failed to add output type to db transaction: ", result).c_str()));
+            // Write this to the output_types table
+            MDB_val_set(voat, oat);
+            MDB_val_copy<const char *> koat(asset_type.c_str());
+            if ((result = mdb_cursor_put(c_output_types, &koat, &voat, MDB_APPENDDUP)))
+              throw0(DB_ERROR(lmdb_error("Failed to add output type to db transaction: ", result).c_str()));
 
-	    // Add to the vector for later insertion into the db
-	    tx_output_indices.push_back(std::make_pair(amount_index, oat.asset_type_output_index));
+            // Add to the vector for later insertion into the db
+            tx_output_indices.push_back(std::make_pair(amount_index, oat.asset_type_output_index));
 
-	    // Increment the number of outputs (of any type) we have seen
-	    num_outputs++;
-	
-	    // Update the cumulative total for this asset type
-	    output_type_totals[asset_type]++;
-	  }
+            // Increment the number of outputs (of any type) we have seen
+            num_outputs++;
+        
+            // Update the cumulative total for this asset type
+            output_type_totals[asset_type]++;
+          }
 
-	  size_t num_outputs = tx_output_indices.size();
-	  MDB_val_set(k_tx_id, num_txs);
-	  MDB_val v;
-	  v.mv_data = num_outputs ? (void *)tx_output_indices.data() : (void*)"";
-	  v.mv_size = sizeof(std::pair<uint64_t, uint64_t>) * num_outputs;
-	  result = mdb_cursor_put(c_tx_outputs, &k_tx_id, &v, MDB_APPEND);
-	  if (result)
-	    throw0(DB_ERROR(std::string("Failed to add <tx hash, amount output index array> to db transaction: ").append(mdb_strerror(result)).c_str()));
-      
-	  num_txs++;
-	  
-	}
-	i++;
+          size_t num_outputs = tx_output_indices.size();
+          MDB_val_set(k_tx_id, num_txs);
+          MDB_val v;
+          v.mv_data = num_outputs ? (void *)tx_output_indices.data() : (void*)"";
+          v.mv_size = sizeof(std::pair<uint64_t, uint64_t>) * num_outputs;
+          result = mdb_cursor_put(c_tx_outputs, &k_tx_id, &v, MDB_APPEND);
+          if (result)
+            throw0(DB_ERROR(std::string("Failed to add <tx hash, amount output index array> to db transaction: ").append(mdb_strerror(result)).c_str()));
+            
+          num_txs++;
+          
+        }
+        i++;
       }
     }
 
@@ -6460,7 +6465,7 @@ void BlockchainLMDB::migrate_6_7()
 
       // Calculate the cum_rct_by_asset_type values
       for (auto const& asset_type : offshore::ASSET_TYPES)
-	cum_rct_by_asset_type.add(asset_type, tx_asset_types[bi.bi_height][asset_type]);
+	    cum_rct_by_asset_type.add(asset_type, tx_asset_types[bi.bi_height][asset_type]);
 
       // Copy the cum_rct_by_asset_type into the BI
       bi.bi_cum_rct_by_asset_type = cum_rct_by_asset_type;
