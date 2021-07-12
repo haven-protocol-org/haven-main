@@ -304,8 +304,16 @@ namespace cryptonote
       return false;
     }
 
-    if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
+    // check whether this is a conversion tx.
+    if (source != dest) {
 
+      // Block all conversions as of fork 17
+      if (version >= HF_VERSION_XASSET_FEES_V2) {
+        LOG_ERROR("Conversion TXs are not permitted as of fork << ",HF_VERSION_XASSET_FEES_V2);
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      
       // Validate that pricing record is not too old
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
@@ -374,6 +382,28 @@ namespace cryptonote
           pr = bl.pricing_record;
         }
         ////// recover ends //////////
+
+        // check whether we have a valid exchange rate
+        if (offshore || onshore) {
+          if (!pr.unused1) { // using 24 hr MA in unused1
+            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        } else {
+          if (!pr[source] || !pr[dest]) {
+            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        }
+        
+        // check whether we have a valid amount burnt/mint
+        if (!tx.amount_burnt || !tx.amount_minted) {
+          LOG_ERROR("error: Invalid Tx found. 0 burnt/minted for a conversion tx.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
 
         // Check the amount burnt and minted
         if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest, version)) {

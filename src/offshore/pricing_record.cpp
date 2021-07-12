@@ -194,7 +194,7 @@ namespace offshore
     return *this;
   }
 
-  uint64_t pricing_record::operator[](const std::string asset_type) const noexcept
+  uint64_t pricing_record::operator[](const std::string asset_type) const
   {
     if (asset_type == "XHV") {
       return 1000000000000;
@@ -225,7 +225,7 @@ namespace offshore
     } else if (asset_type == "XNZD") {
       return xNZD;
     } else {
-      return 1000000000000;
+     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
     }
   }
   

@@ -751,7 +751,7 @@ namespace cryptonote
         } else if (dat[1] == source) {
           destination = dat[0];
         } else {
-          LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
+          LOG_ERROR("Conversion outputs are incorrect asset types (source asset type not found - [" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
           return false;
         }
       }

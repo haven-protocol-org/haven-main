@@ -907,7 +907,7 @@ namespace cryptonote
 	      continue;
       }
       
-      if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
+      if (source != dest) {
         
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
         if (pricing_record_height == 821428 && m_nettype == MAINNET) {
@@ -1055,7 +1055,7 @@ namespace cryptonote
           continue;
         }
       
-	      if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
+        if (source != dest) {
 
           // NEAC: recover from the reorg during Oracle switch - 1 TX affected
           if (pricing_record_height == 821428 && m_nettype == MAINNET) {
