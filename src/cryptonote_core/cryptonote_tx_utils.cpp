@@ -619,12 +619,15 @@ namespace cryptonote
 
     if (fees_version >= 3) {
       // Calculate 0.5% of the total being sent
-      fee_estimate = (amount_xasset * 5) / 1000;
-    } else {  
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 5) / 1000; // 0.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else {
       // Calculate 0.3% of the total being sent
-      fee_estimate = (amount_xasset * 3) / 1000;
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 3) / 1000;
+      fee_estimate = (uint64_t)amount_128;
     }
-
 
     // Return success
     return true;
@@ -647,10 +650,14 @@ namespace cryptonote
 
     if (fees_version >= 3) {
       // Calculate 0.5% of the total being sent
-      fee_estimate = (amount_usd * 5) / 1000;
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 5) / 1000; // 0.5%
+      fee_estimate  = (uint64_t)amount_128;
     } else {
       // Calculate 0.3% of the total being sent
-      fee_estimate = (amount_usd * 3) / 1000;
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 3) / 1000;
+      fee_estimate = (uint64_t)amount_128;
     }
 
     // Return success
@@ -1459,27 +1466,35 @@ namespace cryptonote
       // Calculate amount_burnt from the amount_minted
       if (bOffshoreTx) {
         if (offshore) {
-          double d_xusd_amount = boost::lexical_cast<double>(tx.amount_minted);
-          double d_exchange_rate = boost::lexical_cast<double>(pr.unused1);
-          tx.amount_burnt = (uint64_t)((d_xusd_amount / d_exchange_rate) * 1000000000000.0);
+          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+          boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+          amount_128 *= 1000000000000;
+          amount_128 /= exchange_128;
+          tx.amount_burnt = (uint64_t)(amount_128);
         } else if (onshore) {
-          double d_xhv_amount = boost::lexical_cast<double>(tx.amount_minted) / 1000000000000.0;
-          double d_exchange_rate = boost::lexical_cast<double>(pr.unused1);
-          tx.amount_burnt = (uint64_t)(d_xhv_amount * d_exchange_rate);
+          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+          boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+          amount_128 *= exchange_128;
+          amount_128 /= 1000000000000;
+          tx.amount_burnt = (uint64_t)(amount_128);
         } else if (offshore_transfer) {
           tx.amount_burnt = tx.amount_minted = 0;
         } else if (xusd_to_xasset) {
-          double d_xasset_amount = boost::lexical_cast<double>(tx.amount_minted);
-          double d_exchange_rate = boost::lexical_cast<double>(pr[strDest]);
-          tx.amount_burnt = (uint64_t)((d_xasset_amount / d_exchange_rate) * 1000000000000.0);
+          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+          boost::multiprecision::uint128_t exchange_128 = pr[strDest];
+          amount_128 *= 1000000000000;
+          amount_128 /= exchange_128;
+          tx.amount_burnt = (uint64_t)(amount_128);
           if (fees_version >= 3) {
             // Add the burnt part of the fee
             tx.amount_burnt += (uint64_t)((offshore_fee_usd * 80) / 100);
           }
         } else if (xasset_to_xusd) {
-          double d_xusd_amount = boost::lexical_cast<double>(tx.amount_minted) / 1000000000000.0;
-          double d_exchange_rate = boost::lexical_cast<double>(pr[strSource]);
-          tx.amount_burnt = (uint64_t)(d_xusd_amount * d_exchange_rate);
+          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+          boost::multiprecision::uint128_t exchange_128 = pr[strSource];
+          amount_128 *= exchange_128;
+          amount_128 /= 1000000000000;
+          tx.amount_burnt = (uint64_t)(amount_128);
           if (fees_version >= 3) {
             // Add the burnt part of the fee
             tx.amount_burnt += (uint64_t)((offshore_fee_xasset * 80) / 100);
