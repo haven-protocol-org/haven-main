@@ -307,6 +307,13 @@ namespace cryptonote
     // check whether this is a conversion tx.
     if (source != dest) {
 
+      // Block all conversions as of fork 17
+      if (version >= HF_VERSION_XASSET_FEES_V2) {
+        LOG_ERROR("Conversion TXs are not permitted as of fork << ",HF_VERSION_XASSET_FEES_V2);
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      
       // Validate that pricing record is not too old
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
