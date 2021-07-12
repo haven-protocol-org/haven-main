@@ -309,7 +309,7 @@ namespace cryptonote
 
       // Block all conversions as of fork 17
       if (version >= HF_VERSION_XASSET_FEES_V2) {
-        LOG_ERROR("Conversion TXs are not permitted as of fork << ",HF_VERSION_XASSET_FEES_V2);
+        LOG_ERROR("Conversion TXs are not permitted as of fork" << HF_VERSION_XASSET_FEES_V2);
         tvc.m_verifivation_failed = true;
         return false;
       }
@@ -452,12 +452,17 @@ namespace cryptonote
         if (
           (offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
           ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
-	        (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
+          (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
         ){
-          LOG_PRINT_L1("conversion fee is incorrect - rejecting");
-          tvc.m_verifivation_failed = true;
-          tvc.m_fee_too_low = true;
-          return false;
+          // Check for 2 known overflow TXs
+          if ((epee::string_tools::pod_to_hex(tx.hash) != "5cdd9be420bd9034e2ff83a04cd22978c163a5263f8e7a0577f46ec762a21da6") &&
+              (epee::string_tools::pod_to_hex(tx.hash) != "b5cd616fc1b64a04750f890e466663ee3308c07846a174daf4d64c111f2de052")) {
+          
+            LOG_PRINT_L1("conversion fee is incorrect - rejecting");
+            tvc.m_verifivation_failed = true;
+            tvc.m_fee_too_low = true;
+            return false;
+          }
         }
       }
     }

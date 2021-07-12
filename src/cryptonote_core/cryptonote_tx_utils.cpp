@@ -767,6 +767,14 @@ namespace cryptonote
       return false;
     }
 
+    // Check for the 3 known exploited TXs that converted XJPY to XBTC
+    const std::vector<std::string> exploit_txs = {"4c87e7245142cb33a8ed4f039b7f33d4e4dd6b541a42a55992fd88efeefc40d1",
+                                                  "7089a8faf5bddf8640a3cb41338f1ec2cdd063b1622e3b27923e2c1c31c55418",
+                                                  "ad5d15085594b8f2643f058b05931c3e60966128b4c33298206e70bdf9d41c22"};
+    std::string tx_hash = epee::string_tools::pod_to_hex(tx.hash);
+    if (std::find(exploit_txs.begin(), exploit_txs.end(), tx_hash) != exploit_txs.end()) {
+      destination = "XJPY";
+    }
     return true;
   }
 
