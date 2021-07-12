@@ -1105,7 +1105,7 @@ namespace cryptonote
       else
       {
         // give 1 block buffer
-        if (tx.pricing_record_height > 0 && (bc_height - tx.pricing_record_height + 1) > HAVEN_PRICING_RECORD_LIFESPAN) {
+        if (tx.pricing_record_height > 0 && (bc_height - tx.pricing_record_height + 1) > PRICING_RECORD_VALID_BLOCKS) {
           invalid_pr = true;
         }
       }

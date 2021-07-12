@@ -110,7 +110,6 @@
 
 #define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    86400  //seconds, one day
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
-#define HAVEN_PRICING_RECORD_LIFESPAN                     10 // 10 block
 
 #define CRYPTONOTE_DANDELIONPP_FLUSH_AVERAGE 5 // seconds
 
