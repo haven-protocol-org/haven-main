@@ -911,35 +911,7 @@ namespace cryptonote
         
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
         if (pricing_record_height == 821428 && m_nettype == MAINNET) {
-          const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-          pr.xAG = 614976143259;
-          pr.xAU = 8892867133;
-          pr.xAUD = 20156914758078;
-          pr.xBTC = 275800760;
-          pr.xCAD = 0;
-          pr.xCHF = 14464149948650;
-          pr.xCNY = 0;
-          pr.xEUR = 13059317798903;
-          pr.xGBP = 11162715471325;
-          pr.xJPY = 1690137827184892;
-          pr.xNOK = 0;
-          pr.xNZD = 0;
-          pr.xUSD = 15393775330000;
-          pr.unused1 = 16040600000000;
-          pr.unused2 = 16100600000000;
-          pr.unused3 = 15359200000000;
-          pr.timestamp = 0;
-          std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-          int j=0;
-          for (unsigned int i = 0; i < sig.size(); i += 2) {
-            std::string byteString = sig.substr(i, 2);
-            pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
-          }
-          
-          if (!pr.verifySignature()) {
-            MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
-            return false;
-          }
+          pr.set_for_block_821428();
         } else {
           // Get the correct pricing record here, given the height
           std::vector<std::pair<cryptonote::blobdata,block>> blocks_pr;
@@ -1059,35 +1031,7 @@ namespace cryptonote
 
           // NEAC: recover from the reorg during Oracle switch - 1 TX affected
           if (pricing_record_height == 821428 && m_nettype == MAINNET) {
-            const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-            pr.xAG = 614976143259;
-            pr.xAU = 8892867133;
-            pr.xAUD = 20156914758078;
-            pr.xBTC = 275800760;
-            pr.xCAD = 0;
-            pr.xCHF = 14464149948650;
-            pr.xCNY = 0;
-            pr.xEUR = 13059317798903;
-            pr.xGBP = 11162715471325;
-            pr.xJPY = 1690137827184892;
-            pr.xNOK = 0;
-            pr.xNZD = 0;
-            pr.xUSD = 15393775330000;
-            pr.unused1 = 16040600000000;
-            pr.unused2 = 16100600000000;
-            pr.unused3 = 15359200000000;
-            pr.timestamp = 0;
-            std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
-            int j=0;
-            for (unsigned int i = 0; i < sig.size(); i += 2) {
-              std::string byteString = sig.substr(i, 2);
-              pr.signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
-            }
-            
-            if (!pr.verifySignature()) {
-              MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
-              return false;
-            }
+            pr.set_for_block_821428();
           } else {
             // Get the correct pricing record here, given the height
             std::vector<std::pair<cryptonote::blobdata,block>> blocks_pr;

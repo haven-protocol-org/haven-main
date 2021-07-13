@@ -4720,7 +4720,7 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
 }
 
 //------------------------------------------------------------------
-bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest) const
+bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, offshore::pricing_record& pr, const std::string& source, const std::string& dest) const
 {
   const uint8_t version = get_current_hard_fork_version();
 
@@ -4771,7 +4771,7 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
     if (source != dest) {
       // get_xusd_amount()
       boost::multiprecision::uint128_t amount_128 = needed_fee;
-      boost::multiprecision::uint128_t exchange_128 = pr.unused1; // XHV value moving avg
+      boost::multiprecision::uint128_t exchange_128 = pr.get_unused1(); // XHV value moving avg
       boost::multiprecision::uint128_t result_128 = (amount_128 * exchange_128) / 1000000000000;
       needed_fee = (uint64_t)result_128;
 

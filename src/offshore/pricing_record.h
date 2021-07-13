@@ -77,11 +77,11 @@ namespace offshore
   };
 #pragma pack(pop)
 
+
+  class pricing_record_v1;
   class pricing_record
   {
-
   public:
-
     // Fields 
     uint64_t xAG;
     uint64_t xAU;
@@ -101,10 +101,13 @@ namespace offshore
     uint64_t unused3;
     uint64_t timestamp;
     unsigned char signature[64];
+    bool validated;
+
 
     // Default c'tor
     pricing_record() noexcept;
-    
+
+    void set_for_block_821428();
     //! Load from epee p2p format
     bool _load(epee::serialization::portable_storage& src, epee::serialization::section* hparent);
     
@@ -114,13 +117,39 @@ namespace offshore
     ~pricing_record() = default;
     pricing_record& operator=(const pricing_record& orig) noexcept;
 
-    uint64_t operator[](const std::string asset_type) const;
+    uint64_t operator[](const std::string asset_type);
     
     bool equal(const pricing_record& other) const noexcept;
 
     bool is_empty() const noexcept;
 
     bool verifySignature(EVP_PKEY* public_key = NULL) const noexcept;
+    bool verifySignature(EVP_PKEY* public_key = NULL) noexcept
+    {
+      const pricing_record* th = this;
+      validated = th->verifySignature(public_key);
+      return validated;
+    }
+    
+    uint64_t get_xAG();
+    uint64_t get_xAU();
+    uint64_t get_xAUD();
+    uint64_t get_xBTC();
+    uint64_t get_xCAD();
+    uint64_t get_xCHF();
+    uint64_t get_xCNY();
+    uint64_t get_xEUR();
+    uint64_t get_xGBP();
+    uint64_t get_xJPY();
+    uint64_t get_xNOK();
+    uint64_t get_xNZD();
+    uint64_t get_xUSD();
+    uint64_t get_unused1();
+    uint64_t get_unused2();
+    uint64_t get_unused3();
+    uint64_t get_timestamp();
+
+    void check_validation();
   };
 
   inline bool operator==(const pricing_record& a, const pricing_record& b) noexcept

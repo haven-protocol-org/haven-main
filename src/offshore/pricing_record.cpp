@@ -99,6 +99,7 @@ namespace offshore
     , unused2(0)
     , unused3(0)
     , timestamp(0)
+    , validated(false)
   {
     std::memset(signature, 0, sizeof(signature));
   }
@@ -171,6 +172,36 @@ namespace offshore
     std::memcpy(signature, orig.signature, sizeof(signature));
   }
 
+  void pricing_record::set_for_block_821428()
+  {
+    xAG = 614976143259;
+    xAU = 8892867133;
+    xAUD = 20156914758078;
+    xBTC = 275800760;
+    xCAD = 0;
+    xCHF = 14464149948650;
+    xCNY = 0;
+    xEUR = 13059317798903;
+    xGBP = 11162715471325;
+    xJPY = 1690137827184892;
+    xNOK = 0;
+    xNZD = 0;
+    xUSD = 15393775330000;
+    unused1 = 16040600000000;
+    unused2 = 16100600000000;
+    unused3 = 15359200000000;
+    timestamp = 0;
+    std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+    int j=0;
+    for (unsigned int i = 0; i < sig.size(); i += 2) {
+      std::string byteString = sig.substr(i, 2);
+      signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
+    }
+
+    // verify the pr
+    verifySignature();
+  }
+
   pricing_record& pricing_record::operator=(const pricing_record& orig) noexcept
   {
     xAG = orig.xAG;
@@ -194,8 +225,9 @@ namespace offshore
     return *this;
   }
 
-  uint64_t pricing_record::operator[](const std::string asset_type) const
+  uint64_t pricing_record::operator[](const std::string asset_type)
   {
+    check_validation();
     if (asset_type == "XHV") {
       return 1000000000000;
     } else if (asset_type == "XUSD") {
@@ -382,5 +414,114 @@ namespace offshore
     //ERR_print_errors_fp (stderr);
   
     return false;
+  }
+
+  void pricing_record::check_validation()
+  {
+    if(!validated)
+      verifySignature(NULL);
+    CHECK_AND_ASSERT_THROW_MES(validated, "Attempting to use unvalidated data");
+  }
+
+  uint64_t pricing_record::get_xAG()
+  {
+    check_validation();
+    return xAG;
+  }
+
+  uint64_t pricing_record::get_xAU()
+  {
+    check_validation();
+    return xAU;
+  }
+  
+  uint64_t pricing_record::get_xAUD()
+  {
+    check_validation();
+    return xAUD;
+  }
+
+  uint64_t pricing_record::get_xBTC()
+  {
+    check_validation();
+    return xBTC;
+  }
+
+  uint64_t pricing_record::get_xCAD()
+  {
+    check_validation();
+    return xCAD;
+  }
+
+  uint64_t pricing_record::get_xCHF()
+  {
+    check_validation();
+    return xCHF;
+  }
+
+  uint64_t pricing_record::get_xCNY()
+  {
+    check_validation();
+    return xCNY;
+  }
+
+  uint64_t pricing_record::get_xEUR()
+  {
+    check_validation();
+    return xEUR;
+  }
+
+  uint64_t pricing_record::get_xGBP()
+  {
+    check_validation();
+    return xGBP;
+  }
+
+  uint64_t pricing_record::get_xJPY()
+  {
+    check_validation();
+    return xJPY;
+  }
+
+  uint64_t pricing_record::get_xNOK()
+  {
+    check_validation();
+    return xNOK;
+  }
+
+  uint64_t pricing_record::get_xNZD()
+  {
+    check_validation();
+    return xNZD;
+  }
+
+  uint64_t pricing_record::get_xUSD()
+  {
+    check_validation();
+    return xUSD;
+  }
+
+  uint64_t pricing_record::get_unused1()
+  {
+    check_validation();
+    return unused1;
+  }
+
+  uint64_t pricing_record::get_unused2()
+  {
+    check_validation();
+    return unused2;
+  }
+
+  uint64_t pricing_record::get_unused3()
+  {
+    check_validation();
+    return unused3;
+  }
+
+  uint64_t pricing_record::get_timestamp()
+  {
+    check_validation();
+    return timestamp;
   }
 }

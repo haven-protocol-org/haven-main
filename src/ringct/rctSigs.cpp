@@ -1190,7 +1190,7 @@ namespace rct {
     ctkeyV &outSk, 
     const RCTConfig &rct_config, 
     hw::device &hwdev, 
-    const offshore::pricing_record pr
+    offshore::pricing_record& pr
   ){
 
     // Sanity checks
@@ -1403,7 +1403,7 @@ namespace rct {
     // do the output encryption and asset conversions
     key sumout = zero();
     key atomic = d2h(1000000000000);
-    key rate = d2h(pr.unused1); // MA in XHV - used to convert between XHV-XUSD
+    key rate = d2h(pr.get_unused1()); // MA in XHV - used to convert between XHV-XUSD
     key inverse_atomic = invert(atomic);
     key inverse_rate = invert(rate);
     for (i = 0; i < outSk.size(); ++i)
@@ -1537,7 +1537,7 @@ namespace rct {
     unsigned int mixin, 
     const RCTConfig &rct_config, 
     hw::device &hwdev, 
-    const offshore::pricing_record pr
+    offshore::pricing_record& pr
   ){
     std::vector<unsigned int> index;
     index.resize(inPk.size());
@@ -1632,7 +1632,7 @@ namespace rct {
     //
     //ver RingCT simple
     //assumes only post-rct style inputs (at least for max anonymity)
-  bool verRctSemanticsSimple(const std::vector<const rctSig*> & rvv, const offshore::pricing_record pr, const bool offshore, const bool onshore, const bool offshore_to_offshore, const bool xasset_to_xusd, const bool xusd_to_xasset, const bool xasset_transfer, const std::string strSource, const std::string strDest) {
+  bool verRctSemanticsSimple(const std::vector<const rctSig*> & rvv, offshore::pricing_record& pr, const bool offshore, const bool onshore, const bool offshore_to_offshore, const bool xasset_to_xusd, const bool xusd_to_xasset, const bool xasset_transfer, const std::string strSource, const std::string strDest) {
 try
   {
     PERF_TIMER(verRctSemanticsSimple);
@@ -1795,11 +1795,11 @@ try
 	// CALCULATE Zi
 	if (offshore) {
 	  key D_scaled = scalarmultKey(sumUSD, d2h(1000000000000));
-	  key yC_invert = invert(d2h(pr.unused1));
+	  key yC_invert = invert(d2h(pr.get_unused1()));
 	  key D_final = scalarmultKey(D_scaled, yC_invert);
 	  Zi = addKeys(sumXHV, D_final);
 	} else if (onshore) {
-	  key C_scaled = scalarmultKey(sumXHV, d2h(pr.unused1));
+	  key C_scaled = scalarmultKey(sumXHV, d2h(pr.get_unused1()));
 	  key yD_invert = invert(d2h(1000000000000));
 	  key C_final = scalarmultKey(C_scaled, yD_invert);
 	  Zi = addKeys(C_final, sumUSD);
@@ -1868,7 +1868,7 @@ try
    }
   }
 
-    bool verRctSemanticsSimple(const rctSig & rv, const offshore::pricing_record pr, const bool offshore, const bool onshore, const bool offshore_to_offshore, const bool xasset_to_xusd, const bool xusd_to_xasset, const bool xasset_transfer, const std::string strSource, const std::string strDest)
+    bool verRctSemanticsSimple(const rctSig & rv, offshore::pricing_record& pr, const bool offshore, const bool onshore, const bool offshore_to_offshore, const bool xasset_to_xusd, const bool xusd_to_xasset, const bool xasset_transfer, const std::string strSource, const std::string strDest)
     {
       return verRctSemanticsSimple(std::vector<const rctSig*>(1, &rv), pr, offshore, onshore, offshore_to_offshore, xasset_to_xusd, xusd_to_xasset, xasset_transfer, strSource, strDest);
     }
@@ -2063,11 +2063,11 @@ try
             return signMultisigMLSAG(rv, indices, k, msout, secret_key);
     }
 
-  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version) {
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, offshore::pricing_record& pr, const std::string& source, const std::string& destination, const uint8_t version) {
 
     if (source == "XHV" && destination == "XUSD") {
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+      boost::multiprecision::uint128_t exchange_128 = pr.get_unused1();
       boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
       xusd_128 /= 1000000000000;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
@@ -2077,7 +2077,7 @@ try
       }
     } else if (source == "XUSD" && destination == "XHV") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+      boost::multiprecision::uint128_t exchange_128 = pr.get_unused1();
       boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
       xhv_128 /= exchange_128;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
