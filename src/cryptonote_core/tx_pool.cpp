@@ -465,6 +465,13 @@ namespace cryptonote
           }
         }
       }
+    } else {
+      // make sure there is no burnt/mint set for transfers, since these numbers will affect circulating supply.
+      if (tx.amount_burnt || tx.amount_minted) {
+        LOG_ERROR("error: Invalid Tx found. Amount burnt/mint > 0 for a transfer tx.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
     }
 
     // check the std tx fee

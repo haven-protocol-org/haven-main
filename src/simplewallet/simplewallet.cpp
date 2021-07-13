@@ -6788,6 +6788,11 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     local_args.pop_back();
     strSource = local_args.back();
     local_args.pop_back();
+
+    if (strSource != strDest) {
+      fail_msg_writer() << tr("Asset conversions are disabled till next fork/update.");
+      return true;
+    }
     
     // Check for the type of offshore TX being done
 
@@ -6850,8 +6855,11 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     local_args.pop_back();
     strSource = local_args.back();
     local_args.pop_back();
-    
-    // Check for the type of xAsset TX being done
+
+    if (strSource != strDest) {
+      fail_msg_writer() << tr("Asset conversions are disabled till next fork/update.");
+      return true;
+    }
 
     // Populate the txextra to signify that this is an offshore / xAsset tx
     std::string offshore_data = strSource + "-" + strDest;
