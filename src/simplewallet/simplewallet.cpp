@@ -6789,7 +6789,7 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     strSource = local_args.back();
     local_args.pop_back();
 
-    if (strSource != strDest) {
+    if (strSource != strDest && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
       fail_msg_writer() << tr("Asset conversions are disabled till next fork/update.");
       return true;
     }
@@ -6856,7 +6856,7 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     strSource = local_args.back();
     local_args.pop_back();
 
-    if (strSource != strDest) {
+    if (strSource != strDest && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
       fail_msg_writer() << tr("Asset conversions are disabled till next fork/update.");
       return true;
     }

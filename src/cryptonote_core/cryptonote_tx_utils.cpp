@@ -667,7 +667,7 @@ namespace cryptonote
   /*
     Returns the input and output asset types for a given tx.
   */
-  bool get_tx_asset_types(const transaction& tx, std::string& source, std::string& destination, const bool is_miner_tx) {
+  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
 
     // Clear the source
     std::set<std::string> source_asset_types;
@@ -771,7 +771,7 @@ namespace cryptonote
     const std::vector<std::string> exploit_txs = {"4c87e7245142cb33a8ed4f039b7f33d4e4dd6b541a42a55992fd88efeefc40d1",
                                                   "7089a8faf5bddf8640a3cb41338f1ec2cdd063b1622e3b27923e2c1c31c55418",
                                                   "ad5d15085594b8f2643f058b05931c3e60966128b4c33298206e70bdf9d41c22"};
-    std::string tx_hash = epee::string_tools::pod_to_hex(tx.hash);
+    std::string tx_hash = epee::string_tools::pod_to_hex(txid);
     if (std::find(exploit_txs.begin(), exploit_txs.end(), tx_hash) != exploit_txs.end()) {
       destination = "XJPY";
     }
