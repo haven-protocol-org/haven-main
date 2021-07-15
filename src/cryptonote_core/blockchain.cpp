@@ -225,7 +225,10 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_ke
   {
     // Check for known invalid output IDs
     if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+      if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
       }
@@ -364,7 +367,10 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_offsh
   {
     // Check for known invalid output IDs
     if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+      if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
       }
@@ -503,7 +509,10 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_onsho
   {
     // Check for known invalid output IDs
     if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+      if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
       }
@@ -642,7 +651,10 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_xasse
   {
     // Check for known invalid output IDs
     if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      if ((i == 6832483) || (i == 6832485) || (i == 6834093) || (i == 6834095)) {
+      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+      if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
       }
