@@ -1152,16 +1152,16 @@ namespace cryptonote
      * @return false if any keys are not found or any inputs are not unlocked, otherwise true
      */
     template<class visitor_t>
-    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
+    inline bool scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
 
     template<class visitor_t>
-    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_onshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
+    inline bool scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_onshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
 
     template<class visitor_t>
-    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_offshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
+    inline bool scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_offshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
 
     template<class visitor_t>
-    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_xasset& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
+    inline bool scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_xasset& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
     
     /**
      * @brief collect output public keys of a transaction input set

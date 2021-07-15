@@ -8585,9 +8585,11 @@ bool wallet2::tx_add_fake_output(std::vector<std::vector<tools::wallet2::get_out
     return false;
   }
   // known invalid output IDs
-  std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
-                                              6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
-                                              6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+  std::vector<uint64_t> invalid_output_ids = {
+    6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+    6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+    6872564, 6872565, 6872566, 6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
+  };
   if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), global_index) != invalid_output_ids.end())
     return false;
 //  if (is_output_blackballed(output_public_key)) // don't add blackballed outputs

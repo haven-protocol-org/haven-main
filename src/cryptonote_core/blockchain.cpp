@@ -73,8 +73,6 @@
 
 #define FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE (100*1024*1024) // 100 MB
 
-#define MINER_TX_ADDITIONAL_VERIFICATION 883500
-
 using namespace crypto;
 
 //#include "serialization/json_archive.h"
@@ -144,7 +142,7 @@ bool Blockchain::have_tx_keyimg_as_spent(const crypto::key_image &key_im) const
 // and collects the public key for each from the transaction it was included in
 // via the visitor passed to it.
 template <class visitor_t>
-bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
+bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -224,10 +222,12 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_ke
   for (const uint64_t& i : absolute_offsets)
   {
     // Check for known invalid output IDs
-    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
-                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
-                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      std::vector<uint64_t> invalid_output_ids = {
+        6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+        6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+        6872564, 6872565, 6872566, 6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
+      };
       if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
@@ -286,7 +286,7 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_ke
 }
 //------------------------------------------------------------------
 template <class visitor_t>
-bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_offshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
+bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_offshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -366,10 +366,12 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_offsh
   for (const uint64_t& i : absolute_offsets)
   {
     // Check for known invalid output IDs
-    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
-                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
-                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      std::vector<uint64_t> invalid_output_ids = {
+        6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+        6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+        6872564, 6872565, 6872566, 6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
+      };
       if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
@@ -428,7 +430,7 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_offsh
 }
 //------------------------------------------------------------------
 template <class visitor_t>
-bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_onshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
+bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_onshore& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -508,10 +510,12 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_onsho
   for (const uint64_t& i : absolute_offsets)
   {
     // Check for known invalid output IDs
-    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
-                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
-                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      std::vector<uint64_t> invalid_output_ids = {
+        6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+        6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+        6872564, 6872565, 6872566, 6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
+      };
       if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
@@ -570,7 +574,7 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_onsho
 }
 //------------------------------------------------------------------
 template <class visitor_t>
-bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_xasset& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
+bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_xasset& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -650,10 +654,12 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_xasse
   for (const uint64_t& i : absolute_offsets)
   {
     // Check for known invalid output IDs
-    if ((m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION)) {
-      std::vector<uint64_t> invalid_output_ids = {6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
-                                                  6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
-                                                  6872564, 6872565, 6872566, 6872567, 6872568, 6872569};
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      std::vector<uint64_t> invalid_output_ids = {
+        6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
+        6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
+        6872564, 6872565, 6872566, 6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
+      };
       if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
         return false;
@@ -1732,9 +1738,6 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
 bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, std::map<std::string, uint64_t>& xasset_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
-
-  // Soft fork check here
-  bool additional_verification_checks = (m_db->height() >= MINER_TX_ADDITIONAL_VERIFICATION);
   
   //validate reward
   std::map<std::string, uint64_t> money_in_use_map;
@@ -1832,7 +1835,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
           std::string asset_type;
           if (b.miner_tx.vout[idx].target.type() == typeid(txout_offshore)) {
             asset_type = "XUSD";
-            if (additional_verification_checks) {
+            if (version >= HF_VERSION_XASSET_FEES_V2) {
               if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_offshore)) {
                 MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
                 return false;
@@ -1844,7 +1847,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
             }
           } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
             asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
-            if (additional_verification_checks) {
+            if (version >= HF_VERSION_XASSET_FEES_V2) {
               if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_xasset)) {
                 MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
                 return false;
@@ -1860,7 +1863,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
               }
             }
           } else {
-            if (additional_verification_checks) {
+            if (version >= HF_VERSION_XASSET_FEES_V2) {
               MERROR("tx.vout[" << idx << "] is not valid type");
               return false;
             } else {
@@ -1923,7 +1926,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
     if (version >= HF_VERSION_OFFSHORE_FULL) {
       // Check offshore / xAsset amounts as well
-      if (additional_verification_checks) {
+      if (version >= HF_VERSION_XASSET_FEES_V2) {
         for (auto &money_in_use_map_entry: money_in_use_map) {
           if (money_in_use_map_entry.first == "XHV") continue;
           if (money_in_use_map_entry.second > fee_map[money_in_use_map_entry.first] + offshore_fee_map[money_in_use_map_entry.first] + xasset_fee_map[money_in_use_map_entry.first]) {
@@ -4922,7 +4925,7 @@ bool Blockchain::check_tx_input(const uint8_t hf_version, size_t tx_version, con
 
   // collect output keys
   outputs_visitor vi(output_keys, *this, hf_version);
-  if (!scan_outputkeys_for_indexes(tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
+  if (!scan_outputkeys_for_indexes(hf_version, tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
   {
     MERROR_VER("Failed to get output keys for tx with amount = " << print_money(txin.amount) << " and count indexes " << txin.key_offsets.size());
     return false;
@@ -4988,7 +4991,7 @@ bool Blockchain::check_tx_input(const uint8_t hf_version, size_t tx_version, con
 
   // collect output keys
   outputs_visitor vi(output_keys, *this, hf_version);
-  if (!scan_outputkeys_for_indexes(tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
+  if (!scan_outputkeys_for_indexes(hf_version, tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
   {
     MERROR_VER("Failed to get output keys for tx with amount = " << print_money(txin.amount) << " and count indexes " << txin.key_offsets.size());
     return false;
@@ -5054,7 +5057,7 @@ bool Blockchain::check_tx_input(const uint8_t hf_version, size_t tx_version, con
 
   // collect output keys
   outputs_visitor vi(output_keys, *this, hf_version);
-  if (!scan_outputkeys_for_indexes(tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
+  if (!scan_outputkeys_for_indexes(hf_version, tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
   {
     MERROR_VER("Failed to get output keys for tx with amount = " << print_money(txin.amount) << " and count indexes " << txin.key_offsets.size());
     return false;
@@ -5121,7 +5124,7 @@ bool Blockchain::check_tx_input(const uint8_t hf_version, size_t tx_version, con
 
   // collect output keys
   outputs_visitor vi(output_keys, *this, txin.asset_type, hf_version);
-  if (!scan_outputkeys_for_indexes(tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
+  if (!scan_outputkeys_for_indexes(hf_version, tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
   {
     MERROR_VER("Failed to get output keys for tx with amount = " << print_money(txin.amount) << " and count indexes " << txin.key_offsets.size());
     return false;
