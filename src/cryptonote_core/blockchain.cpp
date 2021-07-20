@@ -1297,7 +1297,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   {
     return m_db->height() ? m_fixed_difficulty : 1;
   }
-
+  
 start:
   difficulty_type D = 0;
 
@@ -1330,7 +1330,12 @@ start:
   } else {
     difficulty_blocks_count = DIFFICULTY_BLOCKS_COUNT_V2;
   }
-
+  
+  if ((m_nettype == MAINNET) && (m_db->height() == 886575))
+  {
+    return 123456;
+  }
+  
   top_hash = get_tail_id(); // get it again now that we have the lock
   if (!(new_top_hash == top_hash)) D=0;
   ss << "Re-locked, height " << height << ", tail id " << new_top_hash << (new_top_hash == top_hash ? "" : " (different)") << std::endl;

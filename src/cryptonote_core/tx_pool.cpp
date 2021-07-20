@@ -155,7 +155,14 @@ namespace cryptonote
       return false;
     }
 
+    // Block the use of timestamps for unlock_time
     if(version >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+
+    // From HF17, only allow TX version 4+
+    if(version >= HF_VERSION_XASSET_FEES_V2 && tx.version < 4) {
       tvc.m_verifivation_failed = true;
       return false;
     }

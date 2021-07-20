@@ -159,6 +159,9 @@ namespace cryptonote
 
   bool checkpoints::init_default_checkpoints(network_type nettype)
   {
+    if (nettype == MAINNET) {
+      ADD_CHECKPOINT(886575, "9c3cffaf1b68fe64df5668ca966102a6b345bb82364305bd510fe75a566296fb");
+    }
     return true;
   }
 
