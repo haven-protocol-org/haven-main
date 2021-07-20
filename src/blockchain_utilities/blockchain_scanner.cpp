@@ -266,7 +266,7 @@ skip:
       std::string source;
       std::string dest;
       offshore::pricing_record pr;
-      if (!cryptonote::get_tx_asset_types(tx, source, dest, false)) {
+      if (!cryptonote::get_tx_asset_types(tx, tx.hash, source, dest, false)) {
         std::cout << timebuf << "" << delimiter << "" << h << "" << delimiter << "" << tx_id << "" << delimiter << "At least 1 input or 1 output of the tx was invalid" << delimiter << "get_tx_asset_types() failed : ";
         if (source.empty()) {
           std::cout << "source is empty" << std::endl;
