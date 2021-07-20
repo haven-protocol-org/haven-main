@@ -32,6 +32,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <array>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
@@ -44,7 +45,7 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
-#define CURRENT_TRANSACTION_VERSION                     3
+#define CURRENT_TRANSACTION_VERSION                     4
 #define OFFSHORE_TRANSACTION_VERSION                    3
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     1
@@ -82,6 +83,7 @@
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
 #define PRICING_RECORD_VALID_BLOCKS                     10
+#define PRICING_RECORD_VALID_TIME_DIFF_FROM_BLOCK       120  // seconds
 
 #define DIFFICULTY_TARGET_V2                            120  // seconds
 #define DIFFICULTY_TARGET_V1                            120  // seconds - before first fork
@@ -106,7 +108,7 @@
 #define BLOCKS_SYNCHRONIZING_DEFAULT_COUNT              20     //by default, blocks count in blocks downloading
 #define BLOCKS_SYNCHRONIZING_MAX_COUNT                  2048   //must be a power of 2, greater than 128, equal to SEEDHASH_EPOCH_BLOCKS
 
-#define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    86400 //seconds, one day
+#define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    86400  //seconds, one day
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
 
 #define CRYPTONOTE_DANDELIONPP_FLUSH_AVERAGE 5 // seconds
@@ -189,11 +191,11 @@
 #define HF_VERSION_OFFSHORE_PRICING             11
 #define HF_VERSION_OFFSHORE_FULL                13
 #define HF_VERSION_OFFSHORE_FEES_V2             14
-#define HF_VERSION_OFFSHORE_FEES_V3             16
 #define HF_VERSION_XASSET_FULL                  16
+#define HF_VERSION_XASSET_FEES_V2               17
 
-#define STAGENET_VERSION                        0x0c
-#define TESTNET_VERSION                         0x0c
+#define STAGENET_VERSION                        0x0d
+#define TESTNET_VERSION                         0x0d
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
@@ -249,6 +251,12 @@ namespace config
   std::string const GOVERNANCE_WALLET_ADDRESS_MULTI = "hvxy3f2PhAhimkeLf617BsbVn6UTbofVcMzofXGsSNLoMFr2SrSxRJ9f52Am1QLVddKetXPKHoTLbBaLNT1kMU6Q3kYRc3t6pF";
   std::string const GOVERNANCE_WALLET_ADDRESS_MULTI_NEW = "hvxyAvVZaz19FzURQfXHHpVqoJF7baXVm4A6FvqFm7wq95vveSitDGWWaxdxR5MFW6BPJDBgkYjp9aUuYurQWZHx2pL5jPTXgH";
 
+  std::array<std::string, 3> const ORACLE_URLS = {{"oracle.havenprotocol.org:443", "oracle2.havenprotocol.org:443", "oracle3.havenprotocol.org:443"}};
+  std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5YBxWx1AZCA9jTUk8Pr2uZ9jpfRt\n"
+    "KWv3Vo1/Gny+1vfaxsXhBQiG1KlHkafNGarzoL0WHW4ocqaaqF5iv8i35A==\n"
+    "-----END PUBLIC KEY-----\n";
+
   // Hash domain separators
   const unsigned char HASH_KEY_CLSAG_ROUND[] = "CLSAG_round";
   const unsigned char HASH_KEY_CLSAG_AGG_0[] = "CLSAG_agg_0";
@@ -270,6 +278,12 @@ namespace config
 
     std::string const GOVERNANCE_WALLET_ADDRESS = "hvta9gEeEpp8tWm4DK3gzZH5dsoAkbtwBL19EGnaYjApRoo8bXQg2GJPjBiji6NMbLDUUkfZw9Q4sh558r37Ucjb9ZHaDUns8N";
     std::string const GOVERNANCE_WALLET_ADDRESS_MULTI = "hvta9gEeEpp8tWm4DK3gzZH5dsoAkbtwBL19EGnaYjApRoo8bXQg2GJPjBiji6NMbLDUUkfZw9Q4sh558r37Ucjb9ZHaDUns8N";
+
+    std::array<std::string, 3> const ORACLE_URLS = {{"oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443"}};
+    std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
+      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
+      "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
+      "-----END PUBLIC KEY-----\n";
   }
 
   namespace stagenet
@@ -288,6 +302,12 @@ namespace config
     std::string const GOVERNANCE_WALLET_ADDRESS = "hvsaeLCg4ZkjLRQf8ciYSjHFX8y2CmrnibNBRDZiyyANTFtXQbxHy5PFD79MvmB9mtHeX8XLa36BJ33QoEDh8PH8hULLZnpdNx7";
     std::string const GOVERNANCE_WALLET_ADDRESS_MULTI = "hvsaeLCg4ZkjLRQf8ciYSjHFX8y2CmrnibNBRDZiyyANTFtXQbxHy5PFD79MvmB9mtHeX8XLa36BJ33QoEDh8PH8hULLZnpdNx7";
     uint32_t const GENESIS_NONCE = 10002;
+
+    std::array<std::string, 3> const ORACLE_URLS = {{"oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443"}};
+    std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
+      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
+      "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
+      "-----END PUBLIC KEY-----\n";
   }
 }
 
@@ -312,6 +332,8 @@ namespace cryptonote
     boost::uuids::uuid const NETWORK_ID;
     std::string const GENESIS_TX;
     uint32_t const GENESIS_NONCE;
+    std::array<std::string, 3> const ORACLE_URLS;
+    std::string const ORACLE_PUBLIC_KEY;
   };
   inline const config_t& get_config(network_type nettype)
   {
@@ -324,7 +346,9 @@ namespace cryptonote
       ::config::ZMQ_RPC_DEFAULT_PORT,
       ::config::NETWORK_ID,
       ::config::GENESIS_TX,
-      ::config::GENESIS_NONCE
+      ::config::GENESIS_NONCE,
+      ::config::ORACLE_URLS,
+      ::config::ORACLE_PUBLIC_KEY
     };
     static const config_t testnet = {
       ::config::testnet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
@@ -335,7 +359,9 @@ namespace cryptonote
       ::config::testnet::ZMQ_RPC_DEFAULT_PORT,
       ::config::testnet::NETWORK_ID,
       ::config::testnet::GENESIS_TX,
-      ::config::testnet::GENESIS_NONCE
+      ::config::testnet::GENESIS_NONCE,
+      ::config::testnet::ORACLE_URLS,
+      ::config::testnet::ORACLE_PUBLIC_KEY
     };
     static const config_t stagenet = {
       ::config::stagenet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
@@ -346,7 +372,9 @@ namespace cryptonote
       ::config::stagenet::ZMQ_RPC_DEFAULT_PORT,
       ::config::stagenet::NETWORK_ID,
       ::config::stagenet::GENESIS_TX,
-      ::config::stagenet::GENESIS_NONCE
+      ::config::stagenet::GENESIS_NONCE,
+      ::config::stagenet::ORACLE_URLS,
+      ::config::stagenet::ORACLE_PUBLIC_KEY
     };
     switch (nettype)
     {

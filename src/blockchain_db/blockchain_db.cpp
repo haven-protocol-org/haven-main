@@ -33,6 +33,7 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
+#include "offshore/asset_types.h"
 
 #include "lmdb/db_lmdb.h"
 
@@ -233,7 +234,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
 
   uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash);
 
-  std::vector<uint64_t> amount_output_indices(tx.vout.size());
+  std::vector<std::pair<uint64_t, uint64_t>> amount_output_indices(tx.vout.size());
 
   // iterate tx.vout using indices instead of C++11 foreach syntax because
   // we need the index
@@ -284,9 +285,23 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
   time1 = epee::misc_utils::get_tick_count();
 
   uint64_t num_rct_outs = 0;
+  offshore::asset_type_counts num_rct_outs_by_asset_type;
   add_transaction(blk_hash, std::make_pair(blk.miner_tx, tx_to_blob(blk.miner_tx)));
   if (blk.miner_tx.version >= 2)
+  {
     num_rct_outs += blk.miner_tx.vout.size();
+
+    // count the current block's rct outs by asset type
+    for (auto& vout: blk.miner_tx.vout) {
+      if (vout.target.type() == typeid(txout_offshore)) {
+        num_rct_outs_by_asset_type.add("XUSD", 1);
+      } else if (vout.target.type() == typeid(txout_xasset)) {
+        num_rct_outs_by_asset_type.add(boost::get<cryptonote::txout_xasset>(vout.target).asset_type, 1);
+      } else if (vout.target.type() == typeid(txout_to_key)) {
+        num_rct_outs_by_asset_type.add("XHV", 1);
+      }
+    }
+  }
   int tx_i = 0;
   crypto::hash tx_hash = crypto::null_hash;
   for (const std::pair<transaction, blobdata>& tx : txs)
@@ -296,7 +311,17 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
     for (const auto &vout: tx.first.vout)
     {
       if (vout.amount == 0)
+      {
         ++num_rct_outs;
+
+        if (vout.target.type() == typeid(txout_offshore)) {
+          num_rct_outs_by_asset_type.add("XUSD", 1);
+        } else if (vout.target.type() == typeid(txout_xasset)) {
+          num_rct_outs_by_asset_type.add(boost::get<cryptonote::txout_xasset>(vout.target).asset_type, 1);
+        } else if (vout.target.type() == typeid(txout_to_key)) {
+          num_rct_outs_by_asset_type.add("XHV", 1);
+        }
+      }
     }
     ++tx_i;
   }
@@ -305,7 +330,7 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
 
   // call out to subclass implementation to add the block & metadata
   time1 = epee::misc_utils::get_tick_count();
-  add_block(blk, block_weight, long_term_block_weight, cumulative_difficulty, coins_generated, num_rct_outs, blk_hash);
+  add_block(blk, block_weight, long_term_block_weight, cumulative_difficulty, coins_generated, num_rct_outs, num_rct_outs_by_asset_type, blk_hash);
   TIME_MEASURE_FINISH(time1);
   time_add_block1 += time1;
 

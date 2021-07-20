@@ -493,6 +493,7 @@ namespace boost
     a & x.unused1;
     a & x.unused2;
     a & x.unused3;
+    a & x.timestamp;
     a & x.signature;
   }
 

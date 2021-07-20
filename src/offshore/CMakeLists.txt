@@ -33,6 +33,7 @@ set(offshore_sources
 set(offshore_headers)
 
 set(offshore_private_headers
+  asset_types.h
   pricing_handler.h
   pricing_record.h)
 

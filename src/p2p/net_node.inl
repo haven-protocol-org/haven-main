@@ -603,24 +603,24 @@ namespace nodetool
     std::set<std::string> full_addrs;
     if (nettype == cryptonote::TESTNET)
     {
-      full_addrs.insert("seed01.testnet.havenprotocol.org:27749");
-      full_addrs.insert("seed02.testnet.havenprotocol.org:27749");
-      full_addrs.insert("seed03.testnet.havenprotocol.org:27749");
+      full_addrs.insert("seed01-testnet.havenprotocol.org:27749");
+      full_addrs.insert("seed02-testnet.havenprotocol.org:27749");
+      full_addrs.insert("seed03-testnet.havenprotocol.org:27749");
     }
     else if (nettype == cryptonote::STAGENET)
     {
-      full_addrs.insert("seed01.stagenet.havenprotocol.org:37749");
-      full_addrs.insert("seed02.stagenet.havenprotocol.org:37749");
-      full_addrs.insert("seed03.stagenet.havenprotocol.org:37749");
+      full_addrs.insert("seed01-stagenet.havenprotocol.org:37749");
+      full_addrs.insert("seed02-stagenet.havenprotocol.org:37749");
+      full_addrs.insert("seed03-stagenet.havenprotocol.org:37749");
     }
     else if (nettype == cryptonote::FAKECHAIN)
     {
     }
     else
     {
-      full_addrs.insert("seed01.mainnet.havenprotocol.org:17749");
-      full_addrs.insert("seed02.mainnet.havenprotocol.org:17749");
-      full_addrs.insert("seed03.mainnet.havenprotocol.org:17749");
+      full_addrs.insert("seed01-mainnet.havenprotocol.org:17749");
+      full_addrs.insert("seed02-mainnet.havenprotocol.org:17749");
+      full_addrs.insert("seed03-mainnet.havenprotocol.org:17749");
     }
     return full_addrs;
   }

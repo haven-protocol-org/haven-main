@@ -1197,6 +1197,7 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const offshore::pri
   INSERT_INTO_JSON_OBJECT(dest, unused1, pricing_record.unused1);
   INSERT_INTO_JSON_OBJECT(dest, unused2, pricing_record.unused2);
   INSERT_INTO_JSON_OBJECT(dest, unused3, pricing_record.unused3);
+  INSERT_INTO_JSON_OBJECT(dest, timestamp, pricing_record.timestamp);
   INSERT_INTO_JSON_OBJECT(dest, signature, pricing_record.signature);
 
   dest.EndObject();
@@ -1227,6 +1228,7 @@ void fromJsonValue(const rapidjson::Value& val, offshore::pricing_record& pricin
   GET_FROM_JSON_OBJECT(val, pricing_record.unused1, unused1);
   GET_FROM_JSON_OBJECT(val, pricing_record.unused2, unused2);
   GET_FROM_JSON_OBJECT(val, pricing_record.unused3, unused3);
+  GET_FROM_JSON_OBJECT(val, pricing_record.timestamp, timestamp);
   GET_FROM_JSON_OBJECT(val, boost::lexical_cast<std::string>(pricing_record.signature), signature);
 }
 
