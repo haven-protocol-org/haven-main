@@ -124,11 +124,11 @@ bool matches_category(relay_method method, relay_category category) noexcept;
  */
 struct output_data_t
 {
-  crypto::public_key pubkey;       //!< the output's public key (for spend verification)
-  uint64_t           unlock_time;  //!< the output's unlock time (or height)
-  uint64_t           height;       //!< the height of the block which created the output
-  std::string        asset_type;   //!< the asset type of the output
-  rct::key           commitment;   //!< the output's amount commitment (for spend verification)
+  crypto::public_key pubkey;          //!< the output's public key (for spend verification)
+  uint64_t           unlock_time;     //!< the output's unlock time (or height)
+  uint64_t           height;          //!< the height of the block which created the output
+  char               asset_type[8];   //!< the asset type of the output
+  rct::key           commitment;      //!< the output's amount commitment (for spend verification)
 };
 #pragma pack(pop)
 

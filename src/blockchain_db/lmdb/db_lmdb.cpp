@@ -56,7 +56,7 @@ using epee::string_tools::pod_to_hex;
 using namespace crypto;
 
 // Increase when the DB structure changes
-#define VERSION 7
+#define VERSION 8
 
 namespace
 {
@@ -65,10 +65,10 @@ namespace
 // This MUST be identical to output_data_t, without the extra rct data at the end
 struct pre_rct_output_data_t
 {
-  crypto::public_key pubkey;       //!< the output's public key (for spend verification)
-  uint64_t           unlock_time;  //!< the output's unlock time (or height)
-  uint64_t           height;       //!< the height of the block which created the output
-  std::string        asset_type;   //!< the asset type of the output
+  crypto::public_key pubkey;          //!< the output's public key (for spend verification)
+  uint64_t           unlock_time;     //!< the output's unlock time (or height)
+  uint64_t           height;          //!< the height of the block which created the output
+  char               asset_type[8];   //!< the asset type of the output
 };
 #pragma pack(pop)
 
@@ -1321,7 +1321,10 @@ std::pair<uint64_t, uint64_t> BlockchainLMDB::add_output(const crypto::hash& tx_
     : boost::get < txout_xasset > (tx_output.target).key;
   ok.data.unlock_time = unlock_time;
   ok.data.height = m_height;
-  ok.data.asset_type = output_asset_type;
+  if(output_asset_type.length() >= sizeof(ok.data.asset_type))
+    throw0(DB_ERROR(lmdb_error("Invalid asset_type " + output_asset_type, result).c_str()));
+  memset(ok.data.asset_type, 0, sizeof(ok.data.asset_type));
+  memcpy(ok.data.asset_type, output_asset_type.c_str(), output_asset_type.length());
   
   if (tx_output.amount == 0)
   {
@@ -6410,7 +6413,10 @@ void BlockchainLMDB::migrate_6_7()
             ok.data.pubkey = pubkey;
             ok.data.unlock_time = tx.unlock_time;
             ok.data.height = i;
-            ok.data.asset_type = asset_type;
+            if(asset_type.length() >= sizeof(ok.data.asset_type))
+              throw0(DB_ERROR(lmdb_error("Invalid asset_type " + asset_type, result).c_str()));
+            memset(ok.data.asset_type, 0, sizeof(ok.data.asset_type));
+            memcpy(ok.data.asset_type, asset_type.c_str(), asset_type.length());
             ok.data.commitment = commitment;
             ok_data.mv_size = sizeof(ok);
             ok_data.mv_data = &ok;
@@ -6542,7 +6548,146 @@ void BlockchainLMDB::migrate_6_7()
     txn.commit();
   } while(0);
 
-  uint32_t version = 7;
+  uint32_t version = VERSION;
+  v.mv_data = (void *)&version;
+  v.mv_size = sizeof(version);
+  MDB_val_str(vk, "version");
+  result = mdb_txn_begin(m_env, NULL, 0, txn);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+  result = mdb_put(txn, m_properties, &vk, &v, 0);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
+  txn.commit();
+}
+
+void BlockchainLMDB::migrate_7_8()
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  uint64_t i;
+  int result;
+  mdb_txn_safe txn(false);
+  MDB_val k, v;
+  char *ptr;
+  
+  do {
+    LOG_PRINT_L1("migrating block info:");
+
+    result = mdb_txn_begin(m_env, NULL, 0, txn);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+
+    MDB_stat db_stats;
+    if ((result = mdb_stat(txn, m_blocks, &db_stats)))
+      throw0(DB_ERROR(lmdb_error("Failed to query m_blocks: ", result).c_str()));
+    const uint64_t blockchain_height = db_stats.ms_entries;
+
+    /* Delete the old tables - we are recreating from scratch to avoid issues */
+    MDEBUG("dropping m_output_amounts table...");
+    result = mdb_drop(txn, m_output_amounts, 0);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to drop m_output_amounts: ", result).c_str()));
+    txn.commit();
+
+    // Create the new tables
+    result = mdb_txn_begin(m_env, NULL, 0, txn);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+    lmdb_db_open(txn, LMDB_OUTPUT_AMOUNTS, MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED | MDB_CREATE, m_output_amounts, "Failed to open db handle for m_output_amounts");
+    mdb_set_dupsort(txn, m_output_amounts, compare_uint64);
+    txn.commit();
+
+    MDB_cursor *c_output_amounts;
+    uint64_t num_outputs = 0;
+    uint64_t num_txs = 0;
+    i = 0;
+    while(i < blockchain_height) {
+
+      LOGIF(el::Level::Info) {
+	      std::cout << "Phase 1 of 2: " << i << " / " << blockchain_height << "  \r" << std::flush;
+      }
+      result = mdb_txn_begin(m_env, NULL, 0, txn);
+      if (result)
+	      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+      result = mdb_cursor_open(txn, m_output_amounts, &c_output_amounts);
+      
+      std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
+      bool r = get_blocks_from(i, 1, 1000, (1024*1024*1000), blocks, true, false, true);
+      if (!r)
+	      throw0(DB_ERROR("Failed to enumerate block information"));
+
+      for (auto&block: blocks)
+      {
+        for (auto&tx_pair: block.second)
+        {
+          transaction tx;
+          if (!parse_and_validate_tx_base_from_blob(tx_pair.second, tx))
+            throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+
+          bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
+          for (int idx=0; idx<tx.vout.size(); idx++) {
+            auto output = tx.vout[idx];
+            crypto::public_key pubkey = null_pkey;
+            rct::key commitment;
+            std::string asset_type = "";
+            if (output.target.type() == typeid(txout_to_key)) {
+              pubkey = boost::get<txout_to_key>(output.target).key;
+              if (output.amount == 0)
+                commitment = tx.rct_signatures.outPk[idx].mask;
+              else
+                commitment = rct::zeroCommit(output.amount);
+              asset_type = "XHV";
+            } else if (output.target.type() == typeid(txout_offshore)) {
+              pubkey = boost::get<txout_offshore>(output.target).key;
+              if (output.amount == 0)
+                commitment = tx.rct_signatures.outPk_usd[idx].mask;
+              else
+                commitment = rct::zeroCommit(output.amount);
+              asset_type = "XUSD";
+            } else if (output.target.type() == typeid(txout_xasset)) {
+              pubkey = boost::get<txout_xasset>(output.target).key;
+              if (output.amount == 0)
+                commitment = tx.rct_signatures.outPk_xasset[idx].mask;
+              else
+                commitment = rct::zeroCommit(output.amount);
+              asset_type = boost::get<txout_xasset>(output.target).asset_type;
+            } else 
+              continue;
+
+            // populate the amount_outputs table
+            outkey ok;
+            MDB_val ok_data;
+            ok.amount_index = num_outputs;
+            ok.output_id = num_outputs;
+            ok.data.pubkey = pubkey;
+            ok.data.unlock_time = tx.unlock_time;
+            ok.data.height = i;
+            if(asset_type.length() >= sizeof(ok.data.asset_type))
+              throw0(DB_ERROR(lmdb_error("Invalid asset_type " + asset_type, result).c_str()));
+            memset(ok.data.asset_type, 0, sizeof(ok.data.asset_type));
+            memcpy(ok.data.asset_type, asset_type.c_str(), asset_type.length());
+            ok.data.commitment = commitment;
+            ok_data.mv_size = sizeof(ok);
+            ok_data.mv_data = &ok;
+            
+            // Write this to the output_amounts table
+            MDB_val_copy<uint64_t> val_amount(0);
+            if ((result = mdb_cursor_put(c_output_amounts, &val_amount, &ok_data, MDB_APPENDDUP)))
+              throw0(DB_ERROR(lmdb_error("Failed to add output amount to db transaction: ", result).c_str()));
+            
+            // Increment the number of outputs (of any type) we have seen
+            num_outputs++;
+          }
+
+          num_txs++;          
+        }
+        i++;
+      }
+      txn.commit();
+    }
+  } while(0);
+
+  uint32_t version = VERSION;
   v.mv_data = (void *)&version;
   v.mv_size = sizeof(version);
   MDB_val_str(vk, "version");
@@ -6569,8 +6714,20 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
     migrate_4_5();
   if (oldversion < 6)
     migrate_5_6();
-  if (oldversion < 7)
+  
+  if (oldversion < 7){
+    // people that runs 1.4.1(this version of daemon) in the version 6 of db will run
+    // migrate_6_7() but without the problems in the version 1.4.0.
+    // this will set the db version 8 still.
     migrate_6_7();
+  } else if (oldversion < 8) {
+    // people that runs 1.4.1(this version of daemon) in the version 7 of db will run
+    // migrate_7_8() and fixes the problem with the migrate_6_7() function.
+    // this migration only contains the fix for problem in the previous migration.
+    // this will set the db version 8.
+    migrate_7_8();
+  }
+  // at the end data format and the db version will be the same.
 }
 
 }  // namespace cryptonote
