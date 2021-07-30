@@ -3803,16 +3803,14 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  // only accept rct::RCTTypeHaven2 txs after Haven2 fork.
   if (hf_version >= HF_VERSION_HAVEN2) {
+    // only accept rct::RCTTypeHaven2 txs after Haven2 fork.
     if (tx.rct_signatures.type != rct::RCTTypeHaven2) {
       tvc.m_verifivation_failed = true;
       return false;
     }
-  }
-  
-  // only accept rct::RCTTypeCLSAGN and rct::RCTTypeCLSAG txs after xassets fork.
-  if (hf_version >= HF_VERSION_XASSET_FULL) {
+  } else if (hf_version >= HF_VERSION_XASSET_FULL) {
+    // only accept rct::RCTTypeCLSAGN and rct::RCTTypeCLSAG txs after xassets fork.
     if (tx.rct_signatures.type != rct::RCTTypeCLSAGN && tx.rct_signatures.type != rct::RCTTypeCLSAG) {
       tvc.m_verifivation_failed = true;
       return false;

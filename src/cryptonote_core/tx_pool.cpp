@@ -315,7 +315,7 @@ namespace cryptonote
     if (source != dest) {
 
       // Block all conversions as of fork 17
-      if (version >= HF_VERSION_XASSET_FEES_V2) {
+      if (version >= HF_VERSION_XASSET_FEES_V2 && version < HF_VERSION_HAVEN2) {
         LOG_ERROR("Conversion TXs are not permitted as of fork" << HF_VERSION_XASSET_FEES_V2);
         tvc.m_verifivation_failed = true;
         return false;

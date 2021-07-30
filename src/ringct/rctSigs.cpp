@@ -1317,6 +1317,9 @@ namespace rct {
     memwipe(&zerokey, sizeof(key));
     key zeromask = rct::scalarmult8(zerokey);
     rv.p.bulletproofs.clear();
+    if (rv.type == RCTTypeHaven2) {
+      rv.maskSums.resize(2);
+    }
     if (bulletproof)
     {
       size_t n_amounts = outamounts.size();
@@ -1344,7 +1347,7 @@ namespace rct {
             rv.outPk[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = zeromask;
-            if (offshore) {
+            if (offshore && CURRENT_TRANSACTION_VERSION >= 5) {
               // we know that this is the change ouput
               rv.maskSums[1] = masks[i];
             }
@@ -1352,7 +1355,7 @@ namespace rct {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i].mask = zeromask;
-            if (onshore || xusd_to_xasset) {
+            if ((onshore || xusd_to_xasset)  && CURRENT_TRANSACTION_VERSION >= 5) {
               // we know that this is the change ouput
               rv.maskSums[1] = masks[i];
             }
@@ -1360,7 +1363,7 @@ namespace rct {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = rct::scalarmult8(C[i]);
-            if (xasset_to_xusd) {
+            if (xasset_to_xusd  && CURRENT_TRANSACTION_VERSION >= 5) {
               // we know that this is the change ouput
               rv.maskSums[1] = masks[i];
             }
@@ -1399,14 +1402,23 @@ namespace rct {
             rv.outPk[i + amounts_proved].mask = rct::scalarmult8(C[i]);
             rv.outPk_usd[i + amounts_proved].mask = zeromask;
             rv.outPk_xasset[i + amounts_proved].mask = zeromask;
+	    if (offshore && CURRENT_TRANSACTION_VERSION >= 5) {
+	      rv.maskSums[1] = masks[i];
+	    }
           } else if (outamounts[i + amounts_proved].first == "XUSD") {
             rv.outPk[i + amounts_proved].mask = zeromask;
             rv.outPk_usd[i + amounts_proved].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i + amounts_proved].mask = zeromask;
+	    if ((onshore || xusd_to_xasset) && CURRENT_TRANSACTION_VERSION >= 5) {
+	      rv.maskSums[1] = masks[i];
+	    }
           } else {
             rv.outPk[i + amounts_proved].mask = zeromask;
             rv.outPk_usd[i + amounts_proved].mask = zeromask;
             rv.outPk_xasset[i + amounts_proved].mask = rct::scalarmult8(C[i]);
+	    if (xasset_to_xusd && CURRENT_TRANSACTION_VERSION >= 5) {
+	      rv.maskSums[1] = masks[i];
+	    }
           }
           outSk[i + amounts_proved].mask = masks[i];
         }
@@ -1473,12 +1485,17 @@ namespace rct {
     }
             
     //set txn fee
-    rv.txnFee = txnFee + txnFee_usd + txnFee_xasset;
-    rv.txnOffshoreFee = txnOffshoreFee + txnOffshoreFee_usd + txnOffshoreFee_xasset;
-    // rv.txnFee_usd = txnFee_usd;
-    // rv.txnFee_xasset = txnFee_xasset;
-    // rv.txnOffshoreFee_usd = txnOffshoreFee_usd;
-    // rv.txnOffshoreFee_xasset = txnOffshoreFee_xasset;
+    if (CURRENT_TRANSACTION_VERSION >= 5) {
+      rv.txnFee = txnFee + txnFee_usd + txnFee_xasset;
+      rv.txnOffshoreFee = txnOffshoreFee + txnOffshoreFee_usd + txnOffshoreFee_xasset;
+    } else {
+      rv.txnFee = txnFee;
+      rv.txnOffshoreFee = txnOffshoreFee;
+      rv.txnFee_usd = txnFee_usd;
+      rv.txnFee_xasset = txnFee_xasset;
+      rv.txnOffshoreFee_usd = txnOffshoreFee_usd;
+      rv.txnOffshoreFee_xasset = txnOffshoreFee_xasset;
+    }
 
     // set the ring and pseudoOuts
     rv.mixRing = mixRing;
@@ -1507,7 +1524,9 @@ namespace rct {
     DP(pseudoOuts[i]);
 
     // set the sum of input blinding factors
-    sc_add(rv.maskSums[0].bytes, a[i].bytes, sumpouts.bytes);
+    if (CURRENT_TRANSACTION_VERSION >= 5) {
+      sc_add(rv.maskSums[0].bytes, a[i].bytes, sumpouts.bytes);
+    }
 
     key full_message = get_pre_mlsag_hash(rv,hwdev);
     if (msout)
