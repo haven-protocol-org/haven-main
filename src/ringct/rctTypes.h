@@ -258,6 +258,7 @@ namespace rct {
       RCTTypeBulletproof2 = 4,
       RCTTypeCLSAG = 5,
       RCTTypeCLSAGN = 6,
+      RCTTypeHaven2 = 7, // Add public mask sum terms, remove extraneous fields (txnFee_usd,txnFee_xasset,txnOffshoreFee_usd,txnOffshoreFee_xasset)
     };
     enum RangeProofType { RangeProofBorromean, RangeProofBulletproof, RangeProofMultiOutputBulletproof, RangeProofPaddedBulletproof };
     struct RCTConfig {
@@ -280,6 +281,7 @@ namespace rct {
       xmr_amount txnOffshoreFee = 0;
       xmr_amount txnOffshoreFee_usd = 0;
       xmr_amount txnOffshoreFee_xasset = 0;
+      std::pair<key, key> maskSums;
 
         template<bool W, template <bool> class Archive>
         bool serialize_rctsig_base(Archive<W> &ar, size_t inputs, size_t outputs)
@@ -287,11 +289,12 @@ namespace rct {
           FIELD(type)
           if (type == RCTTypeNull)
             return ar.stream().good();
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN)
+          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN && type != RCTTypeHaven2)
             return false;
           VARINT_FIELD(txnFee)
-	        if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN))
-          {
+          if (type == RCTTypeHaven2) {
+            VARINT_FIELD(txnOffshoreFee)
+          } else if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN)) {
             VARINT_FIELD(txnFee_usd)
             if (type == RCTTypeCLSAGN)
             {
@@ -310,7 +313,7 @@ namespace rct {
             txnOffshoreFee_usd = 0;
             txnOffshoreFee_xasset = 0;
           }
-              // inputs/outputs not saved, only here for serialization help
+          // inputs/outputs not saved, only here for serialization help
           // FIELD(message) - not serialized, it can be reconstructed
           // FIELD(mixRing) - not serialized, it can be reconstructed
           if (type == RCTTypeSimple) // moved to prunable with bulletproofs
@@ -336,7 +339,7 @@ namespace rct {
             return false;
           for (size_t i = 0; i < outputs; ++i)
           {
-            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN)
+            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2)
             {
               ar.begin_object();
               if (!typename Archive<W>::is_saving())
@@ -366,7 +369,7 @@ namespace rct {
               ar.delimit_array();
           }
           ar.end_array();
-          if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN))
+          if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN) || (type == RCTTypeHaven2))
           {
             ar.tag("outPk_usd");
             ar.begin_array();
@@ -381,7 +384,7 @@ namespace rct {
             }
             ar.end_array();
           }
-          if (type == RCTTypeCLSAGN)
+          if (type == RCTTypeCLSAGN || (type == RCTTypeHaven2))
           {
             ar.tag("outPk_xasset");
             ar.begin_array();
@@ -412,12 +415,12 @@ namespace rct {
         {
           if (type == RCTTypeNull)
             return ar.stream().good();
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN)
+          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN && type != RCTTypeHaven2)
             return false;
-          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN)
+          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2)
           {
             uint32_t nbp = bulletproofs.size();
-           if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN)
+           if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2)
               VARINT_FIELD(nbp)
             else
               FIELD(nbp)
@@ -452,7 +455,7 @@ namespace rct {
             ar.end_array();
           }
 
-          if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN))
+          if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN) || (type == RCTTypeHaven2))
           {
             ar.tag("CLSAGs");
             ar.begin_array();
@@ -543,7 +546,7 @@ namespace rct {
             }
             ar.end_array();
           }
-          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN)
+          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2)
           {
             ar.tag("pseudoOuts");
             ar.begin_array();
@@ -567,12 +570,12 @@ namespace rct {
 
         keyV& get_pseudo_outs()
         {
-          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN ? p.pseudoOuts : pseudoOuts;
+          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 ? p.pseudoOuts : pseudoOuts;
         }
 
         keyV const& get_pseudo_outs() const
         {
-          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN ? p.pseudoOuts : pseudoOuts;
+          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 ? p.pseudoOuts : pseudoOuts;
         }
     };
 

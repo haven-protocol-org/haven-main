@@ -663,7 +663,7 @@ namespace rct {
       hashes.push_back(hash2rct(h));
 
       keyV kv;
-      if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN)
+      if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2)
       {
         kv.reserve((6*2+9) * rv.p.bulletproofs.size());
         for (const auto &p: rv.p.bulletproofs)
@@ -1130,7 +1130,7 @@ namespace rct {
             //rv.ecdhInfo[i].amount = d2h(amounts[i]);
             rv.ecdhInfo[i].amount = d2h(amounts[i].first);
 	    // LAND AHOY!!!
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2);
         }
 
         //set txn fee
@@ -1224,8 +1224,8 @@ namespace rct {
       xasset_sent = true;
     }
 
-	  // NEAC: convert outgoing amount vector/pairs into discrete vectors
-	  bool xhv_received = false, usd_received = false, xasset_received = false; 
+    // NEAC: convert outgoing amount vector/pairs into discrete vectors
+    bool xhv_received = false, usd_received = false, xasset_received = false; 
     for (size_t i = 0 ; i < outamounts.size(); i++) {
       if (outamounts[i].first == "XHV") {
         outamounts_rangesig.push_back(outamounts[i].second);
@@ -1249,14 +1249,16 @@ namespace rct {
     bool xusd_to_xasset = (usd_sent && xasset_received && usd_received);
     bool xasset_transfer = (xasset_sent && xasset_received && !usd_received);
 
-    // Set the transaction type. Newest type that contains
-    // xAssets is the RCTTypeCLSAGN.
+    // Set the transaction type.
     rctSig rv;
     if (bulletproof)
     {
       switch (rct_config.bp_version)
       {
         case 0:
+        case 5:
+          rv.type = RCTTypeHaven2;
+          break;
         case 4:
           rv.type = RCTTypeCLSAGN;
           break;
@@ -1342,16 +1344,16 @@ namespace rct {
             rv.outPk[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = zeromask;
-		      } else if (outamounts[i].first == "XUSD") {
+          } else if (outamounts[i].first == "XUSD") {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i].mask = zeromask;
-		      } else {
+          } else {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = rct::scalarmult8(C[i]);
-		      }
-		      outSk[i].mask = masks[i];
+          }
+          outSk[i].mask = masks[i];
         }
       }
       else while (amounts_proved < n_amounts)
@@ -1455,7 +1457,7 @@ namespace rct {
       //mask amount and mask
       rv.ecdhInfo[i].mask = copy(outSk[i].mask);
       rv.ecdhInfo[i].amount = d2h(outamounts_flat_amounts[i]);
-      hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN);
+      hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2);
     }
             
     //set txn fee
@@ -1474,7 +1476,7 @@ namespace rct {
     pseudoOuts.resize(inamounts.size());
 
     // prepare CLSAGs or MLSAGs vectors
-    if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN))
+    if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2))
         rv.p.CLSAGs.resize(inamounts.size());
     else
         rv.p.MGs.resize(inamounts.size());
@@ -1498,13 +1500,13 @@ namespace rct {
     if (msout)
     {
       msout->c.resize(inamounts.size());
-      msout->mu_p.resize((rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN) ? inamounts.size() : 0);
+      msout->mu_p.resize((rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2) ? inamounts.size() : 0);
     }
 
     // do a CLSAG signing for each input
     for (i = 0 ; i < inamounts.size(); i++)
     {
-      if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN))
+      if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2))
       {
         rv.p.CLSAGs[i] = proveRctCLSAGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], kLRki ? &(*kLRki)[i]: NULL, msout ? &msout->c[i] : NULL, msout ? &msout->mu_p[i] : NULL, index[i], hwdev);
       }
@@ -1647,13 +1649,13 @@ try
       {
 	CHECK_AND_ASSERT_MES(rvp, false, "rctSig pointer is NULL");
 	const rctSig &rv = *rvp;
-	CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN,
+	CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2,
 			     false, "verRctSemanticsSimple called on non simple rctSig");
 	const bool bulletproof = is_rct_bulletproof(rv.type);
 	if (bulletproof)
 	  {
 	    CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
-	    if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN))
+	    if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2))
 	      {
 		CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
 		CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
@@ -1880,7 +1882,7 @@ try
       {
         PERF_TIMER(verRctNonSemanticsSimple);
 
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2,
             false, "verRctNonSemanticsSimple called on non simple rctSig");
         const bool bulletproof = is_rct_bulletproof(rv.type);
         // semantics check is early, and mixRing/MGs aren't resolved yet
@@ -1903,7 +1905,7 @@ try
         results.resize(rv.mixRing.size());
         for (size_t i = 0 ; i < rv.mixRing.size() ; i++) {
           tpool.submit(&waiter, [&, i] {
-				  if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN))
+				  if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2))
               {
                   results[i] = verRctCLSAGSimple(message, rv.p.CLSAGs[i], rv.mixRing[i], pseudoOuts[i]);
               }
@@ -1952,7 +1954,7 @@ try
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;
@@ -1976,13 +1978,13 @@ try
     }
 
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key &mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN, false, "decodeRct called on non simple rctSig");
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2, false, "decodeRct called on non simple rctSig");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C;
@@ -2035,7 +2037,7 @@ try
     }
 
     bool signMultisigCLSAG(rctSig &rv, const std::vector<unsigned int> &indices, const keyV &k, const multisig_out &msout, const key &secret_key) {
-      CHECK_AND_ASSERT_MES((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN), false, "unsupported rct type");
+      CHECK_AND_ASSERT_MES((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2), false, "unsupported rct type");
         CHECK_AND_ASSERT_MES(indices.size() == k.size(), false, "Mismatched k/indices sizes");
         CHECK_AND_ASSERT_MES(k.size() == rv.p.CLSAGs.size(), false, "Mismatched k/MGs size");
         CHECK_AND_ASSERT_MES(k.size() == msout.c.size(), false, "Mismatched k/msout.c size");
@@ -2057,7 +2059,7 @@ try
     }
 
     bool signMultisig(rctSig &rv, const std::vector<unsigned int> &indices, const keyV &k, const multisig_out &msout, const key &secret_key) {
-      if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN))
+      if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2))
             return signMultisigCLSAG(rv, indices, k, msout, secret_key);
         else
             return signMultisigMLSAG(rv, indices, k, msout, secret_key);

@@ -180,7 +180,7 @@ namespace cryptonote
           return false;
         }
       }
-      if ((tx.rct_signatures.type == rct::RCTTypeCLSAG) || (tx.rct_signatures.type == rct::RCTTypeCLSAGN)) {
+      if ((tx.rct_signatures.type == rct::RCTTypeCLSAG) || (tx.rct_signatures.type == rct::RCTTypeCLSAGN) || (tx.rct_signatures.type == rct::RCTTypeHaven2)) {
 	if (rv.outPk_usd.size() != tx.vout.size())
         {
 	  LOG_PRINT_L1("Failed to parse transaction from blob, bad outPk_usd size in tx " << get_transaction_hash(tx));
@@ -200,7 +200,7 @@ namespace cryptonote
 	  }
 	}
       }
-      if (tx.rct_signatures.type == rct::RCTTypeCLSAGN) {
+      if ((tx.rct_signatures.type == rct::RCTTypeCLSAGN) || (tx.rct_signatures.type == rct::RCTTypeHaven2)) {
 	if (rv.outPk_xasset.size() != tx.vout.size())
         {
 	  LOG_PRINT_L1("Failed to parse transaction from blob, bad outPk_xasset size in tx " << get_transaction_hash(tx));

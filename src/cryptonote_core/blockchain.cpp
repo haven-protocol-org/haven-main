@@ -3803,8 +3803,14 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  // only accept rct::RCTTypeCLSAGN and rct::RCTTypeCLSAG txs after xassets fork.
-  if (hf_version >= HF_VERSION_XASSET_FULL) {
+  if (hf_version >= HF_VERSION_HAVEN2) {
+    // only accept rct::RCTTypeHaven2 txs after xassets fork.
+    if (tx.rct_signatures.type != rct::RCTTypeHaven2) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_XASSET_FULL) {
+    // only accept rct::RCTTypeCLSAGN and rct::RCTTypeCLSAG txs after xassets fork.
     if (tx.rct_signatures.type != rct::RCTTypeCLSAGN && tx.rct_signatures.type != rct::RCTTypeCLSAG) {
       tvc.m_verifivation_failed = true;
       return false;
@@ -3872,7 +3878,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       }
     }
   }
-  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN)
+  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2)
   {
     CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
     rv.mixRing.resize(pubkeys.size());
@@ -3915,7 +3921,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       }
     }
   }
-  else if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN))
+  else if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2))
   {
     if (!tx.pruned)
     {
@@ -4483,6 +4489,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     case rct::RCTTypeBulletproof2:
     case rct::RCTTypeCLSAG:
     case rct::RCTTypeCLSAGN:
+    case rct::RCTTypeHaven2:
     {
       // check all this, either reconstructed (so should really pass), or not
       {
@@ -4518,7 +4525,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
       }
 
-      const size_t n_sigs = ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) ? rv.p.CLSAGs.size() : rv.p.MGs.size();
+      const size_t n_sigs = ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) ? rv.p.CLSAGs.size() : rv.p.MGs.size();
       if (n_sigs != tx.vin.size())
       {
         MERROR_VER("Failed to check ringct signatures: mismatched MGs/vin sizes");
@@ -4527,43 +4534,52 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       for (size_t n = 0; n < tx.vin.size(); ++n)
       {
         if (tx.vin[n].type() == typeid(txin_onshore)) {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_onshore>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
           } else {
+            // HERE BE DRAGONS!!!
+            // NEAC: this makes no sense - cannot have MLSAGs for onshore!
             if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_onshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
+            // LAND AHOY!!!
           }
         } else if (tx.vin[n].type() == typeid(txin_offshore)) {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
           } else {
+            // HERE BE DRAGONS!!!
+            // NEAC: this makes no sense - cannot have MLSAGs for offshore!
             if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
+            // LAND AHOY!!!
           }
         } else if (tx.vin[n].type() == typeid(txin_xasset)) {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_xasset>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
           } else {
-            if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
+            // HERE BE DRAGONS!!!
+            // NEAC: this makes no sense - cannot have MLSAGs for xasset!
+            if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_xasset>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
+            // LAND AHOY!!!
           }
         } else {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_to_key>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
