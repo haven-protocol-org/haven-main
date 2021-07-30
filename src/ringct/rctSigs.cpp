@@ -1344,14 +1344,26 @@ namespace rct {
             rv.outPk[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = zeromask;
+            if (offshore) {
+              // we know that this is the change ouput
+              rv.maskSums[1] = masks[i];
+            }
           } else if (outamounts[i].first == "XUSD") {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i].mask = zeromask;
+            if (onshore || xusd_to_xasset) {
+              // we know that this is the change ouput
+              rv.maskSums[1] = masks[i];
+            }
           } else {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = rct::scalarmult8(C[i]);
+            if (xasset_to_xusd) {
+              // we know that this is the change ouput
+              rv.maskSums[1] = masks[i];
+            }
           }
           outSk[i].mask = masks[i];
         }
@@ -1461,14 +1473,12 @@ namespace rct {
     }
             
     //set txn fee
-    rv.txnFee = txnFee;
-    rv.txnFee_usd = txnFee_usd;
-    rv.txnFee_xasset = txnFee_xasset;
-    rv.txnOffshoreFee = txnOffshoreFee;
-    rv.txnOffshoreFee_usd = txnOffshoreFee_usd;
-    rv.txnOffshoreFee_xasset = txnOffshoreFee_xasset;
-    // TODO: unused ??
-    // key txnFeeKey = scalarmultH(d2h(rv.txnFee));
+    rv.txnFee = txnFee + txnFee_usd + txnFee_xasset;
+    rv.txnOffshoreFee = txnOffshoreFee + txnOffshoreFee_usd + txnOffshoreFee_xasset;
+    // rv.txnFee_usd = txnFee_usd;
+    // rv.txnFee_xasset = txnFee_xasset;
+    // rv.txnOffshoreFee_usd = txnOffshoreFee_usd;
+    // rv.txnOffshoreFee_xasset = txnOffshoreFee_xasset;
 
     // set the ring and pseudoOuts
     rv.mixRing = mixRing;
@@ -1481,7 +1491,7 @@ namespace rct {
     else
         rv.p.MGs.resize(inamounts.size());
     
-    // generate fake commitments for the ring members?
+    // generate commitments per input
     key sumpouts = zero(); //sum pseudoOut masks
     keyV a(inamounts.size());
     for (i = 0 ; i < inamounts.size() - 1; i++) {
@@ -1495,6 +1505,9 @@ namespace rct {
     sc_sub(a[i].bytes, sumout.bytes, sumpouts.bytes);
     genC(pseudoOuts[i], a[i], inamounts[i]);
     DP(pseudoOuts[i]);
+
+    // set the sum of input blinding factors
+    sc_add(rv.maskSums[0].bytes, a[i].bytes, sumpouts.bytes);
 
     key full_message = get_pre_mlsag_hash(rv,hwdev);
     if (msout)

@@ -427,12 +427,12 @@ namespace boost
     } else if (ver >= 1u) {
       a & x.txnFee_usd;
       if (ver >= 2u) {
-	a & x.txnFee_xasset;
+	      a & x.txnFee_xasset;
       }
       a & x.txnOffshoreFee;
       a & x.txnOffshoreFee_usd;
       if (ver >= 2u) {
-	a & x.txnOffshoreFee_xasset;
+	      a & x.txnOffshoreFee_xasset;
       }
     }
     //--------------

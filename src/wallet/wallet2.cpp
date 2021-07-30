@@ -10678,7 +10678,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   const rct::RCTConfig rct_config {
     bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : (use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : (use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1))) : 0
+    bulletproof ? (use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
+                  use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : 
+                  use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : 
+                  use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0
   };
 
   // Check to make sure that only 1 destination is provided if memo data is specified.
