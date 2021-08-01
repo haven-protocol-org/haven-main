@@ -963,6 +963,7 @@ namespace cryptonote
 
       if (tx_info[n].tx->version < 2)
         continue;
+      uint8_t hf_version = m_blockchain_storage.get_current_hard_fork_version();
       const rct::rctSig &rv = tx_info[n].tx->rct_signatures;
       switch (rv.type) {
         case rct::RCTTypeNull:
@@ -973,7 +974,7 @@ namespace cryptonote
           tx_info[n].result = false;
           break;
         case rct::RCTTypeSimple:
-          if (!rct::verRctSemanticsSimple(rv, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest))
+          if (!rct::verRctSemanticsSimple(rv, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, hf_version))
           {
             MERROR_VER("rct signature semantics check failed");
             set_semantics_failed(tx_info[n].tx_hash);
@@ -1105,7 +1106,8 @@ namespace cryptonote
           continue;
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2)
           continue;
-        if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest))
+        uint8_t hf_version = m_blockchain_storage.get_current_hard_fork_version();
+        if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, hf_version))
         {
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;

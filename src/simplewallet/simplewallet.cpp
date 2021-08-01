@@ -7112,9 +7112,13 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       for (size_t n = 0; n < ptx_vector.size(); ++n)
       {
         total_fee += ptx_vector[n].fee;
-	      offshore_fee += (xasset_to_xusd || xasset_transfer) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_xasset :
-	                      (xusd_to_xasset || onshore || offshore_to_offshore) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_usd :
-	                      ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
+        if (m_wallet->use_fork_rules(HF_VERSION_HAVEN2, 0)) {
+          offshore_fee = ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
+        } else {
+          offshore_fee = (xasset_to_xusd || xasset_transfer) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_xasset :
+                          (xusd_to_xasset || onshore || offshore_to_offshore) ? ptx_vector[n].tx.rct_signatures.txnOffshoreFee_usd :
+                          ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
+        }
 
         for (auto i: ptx_vector[n].selected_transfers) {
 	        total_sent += m_wallet->get_transfer_details(strSource, i).amount();
