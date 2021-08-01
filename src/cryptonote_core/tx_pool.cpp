@@ -207,7 +207,7 @@ namespace cryptonote
     {
       fee = tx.rct_signatures.txnFee;
       offshore_fee = tx.rct_signatures.txnOffshoreFee;
-      if (version < HF_VERSION_XASSET_FULL) {
+      if (version < HF_VERSION_HAVEN2) {
         fee_usd = tx.rct_signatures.txnFee_usd;
         fee_xasset = tx.rct_signatures.txnFee_xasset;
         offshore_fee_usd = tx.rct_signatures.txnOffshoreFee_usd;
