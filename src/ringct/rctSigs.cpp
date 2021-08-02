@@ -1347,24 +1347,24 @@ namespace rct {
             rv.outPk[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = zeromask;
-            if (offshore && CURRENT_TRANSACTION_VERSION >= 5) {
-              // we know that this is the change ouput
+            if (offshore && rv.type == RCTTypeHaven2) {
+              // we know that this is the change output
               rv.maskSums[1] = masks[i];
             }
           } else if (outamounts[i].first == "XUSD") {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i].mask = zeromask;
-            if ((onshore || xusd_to_xasset)  && CURRENT_TRANSACTION_VERSION >= 5) {
-              // we know that this is the change ouput
+            if ((onshore || xusd_to_xasset) && rv.type == RCTTypeHaven2) {
+              // we know that this is the change output
               rv.maskSums[1] = masks[i];
             }
           } else {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = rct::scalarmult8(C[i]);
-            if (xasset_to_xusd  && CURRENT_TRANSACTION_VERSION >= 5) {
-              // we know that this is the change ouput
+            if (xasset_to_xusd  && rv.type == RCTTypeHaven2) {
+              // we know that this is the change output
               rv.maskSums[1] = masks[i];
             }
           }
@@ -1402,21 +1402,21 @@ namespace rct {
             rv.outPk[i + amounts_proved].mask = rct::scalarmult8(C[i]);
             rv.outPk_usd[i + amounts_proved].mask = zeromask;
             rv.outPk_xasset[i + amounts_proved].mask = zeromask;
-            if (offshore && CURRENT_TRANSACTION_VERSION >= 5) {
+            if (offshore && rv.type == RCTTypeHaven2) {
               rv.maskSums[1] = masks[i];
             }
           } else if (outamounts[i + amounts_proved].first == "XUSD") {
             rv.outPk[i + amounts_proved].mask = zeromask;
             rv.outPk_usd[i + amounts_proved].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i + amounts_proved].mask = zeromask;
-            if ((onshore || xusd_to_xasset) && CURRENT_TRANSACTION_VERSION >= 5) {
+            if ((onshore || xusd_to_xasset) && rv.type == RCTTypeHaven2) {
               rv.maskSums[1] = masks[i];
             }
           } else {
             rv.outPk[i + amounts_proved].mask = zeromask;
             rv.outPk_usd[i + amounts_proved].mask = zeromask;
             rv.outPk_xasset[i + amounts_proved].mask = rct::scalarmult8(C[i]);
-            if (xasset_to_xusd && CURRENT_TRANSACTION_VERSION >= 5) {
+            if (xasset_to_xusd && rv.type == RCTTypeHaven2) {
               rv.maskSums[1] = masks[i];
             }
           }
@@ -1485,7 +1485,7 @@ namespace rct {
     }
             
     //set txn fee
-    if (CURRENT_TRANSACTION_VERSION >= 5) {
+    if (rv.type == RCTTypeHaven2) {
       rv.txnFee = txnFee + txnFee_usd + txnFee_xasset;
       rv.txnOffshoreFee = txnOffshoreFee + txnOffshoreFee_usd + txnOffshoreFee_xasset;
     } else {
@@ -1524,7 +1524,7 @@ namespace rct {
     DP(pseudoOuts[i]);
 
     // set the sum of input blinding factors
-    if (CURRENT_TRANSACTION_VERSION >= 5) {
+    if (rv.type == RCTTypeHaven2) {
       sc_add(rv.maskSums[0].bytes, a[i].bytes, sumpouts.bytes);
     }
 
@@ -1544,7 +1544,7 @@ namespace rct {
       }
       else
       {
-          rv.p.MGs[i] = proveRctMGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], kLRki ? &(*kLRki)[i]: NULL, msout ? &msout->c[i] : NULL, index[i], hwdev);
+        rv.p.MGs[i] = proveRctMGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], kLRki ? &(*kLRki)[i]: NULL, msout ? &msout->c[i] : NULL, index[i], hwdev);
       }
     }
 
@@ -1678,8 +1678,7 @@ namespace rct {
     const std::string strSource, 
     const std::string strDest,
     uint64_t amount_burnt, // HERE BE DRAGONS!!! shouldn't these should be uint128
-    uint64_t amount_minted,
-    uint8_t  version
+    uint64_t amount_minted
   ){
 
     try
@@ -1722,7 +1721,7 @@ namespace rct {
           CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.empty(), false, "rv.p.pseudoOuts is not empty");
         }
         CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
-        CHECK_AND_ASSERT_MES(rv.maskSums.size() == 2, false, "maskSums size is not 2");
+        CHECK_AND_ASSERT_MES(rv.type != RCTTypeHaven2 || rv.maskSums.size() == 2, false, "maskSums size is not 2");
 
         if (!bulletproof)
           max_non_bp_proofs += rv.p.rangeSigs.size();
@@ -1731,10 +1730,10 @@ namespace rct {
       results.resize(max_non_bp_proofs);
       for (const rctSig *rvp: rvv)
       {
-	      const rctSig &rv = *rvp;
+        const rctSig &rv = *rvp;
 
-	      const bool bulletproof = is_rct_bulletproof(rv.type);
-	      const keyV &pseudoOuts = bulletproof ? rv.p.pseudoOuts : rv.pseudoOuts;
+        const bool bulletproof = is_rct_bulletproof(rv.type);
+        const keyV &pseudoOuts = bulletproof ? rv.p.pseudoOuts : rv.pseudoOuts;
 
         // OUTPUTS SUMMED FOR EACH COLOUR
         key zerokey = scalarmultH(d2h(0));
@@ -1766,43 +1765,31 @@ namespace rct {
 
         // FEES FOR EACH COLOUR
         // Calculate tx fee for C colour
-        key txnFeeKey;
+        key txnFeeKey = zerokey;
         // Calculate offshore conversion fee (also always in C colour)
-        key txnOffshoreFeeKey;
+        key txnOffshoreFeeKey = zerokey;
         // Calculate tx fee for D colour
-        key txnFeeKey_usd;
+        key txnFeeKey_usd = zerokey;
         // Calculate onshore conversion fee (also always in D colour)
-        key txnOffshoreFeeKey_usd;
+        key txnOffshoreFeeKey_usd = zerokey;
         // Calculate tx fee for D colour
-        key txnFeeKey_xasset;
+        key txnFeeKey_xasset = zerokey;
         // Calculate onshore conversion fee (also always in D colour)
-        key txnOffshoreFeeKey_xasset;
+        key txnOffshoreFeeKey_xasset = zerokey;
 
         // we only have txnFee and txnOffshoreFee on the tx after fork 18.
         // but still wanna keep the proof-of-value code same because it is nice.
         // so we populate the necessary variables for fees here.
-        if (version >= HF_VERSION_HAVEN2) {
+        if (rv.type == RCTTypeHaven2) {
           if (strSource == "XHV") {
             txnFeeKey = scalarmultH(d2h(rv.txnFee));
             txnOffshoreFeeKey = scalarmultH(d2h(rv.txnOffshoreFee));
-            txnFeeKey_usd = zerokey;
-            txnOffshoreFeeKey_usd = zerokey;
-            txnFeeKey_xasset = zerokey;
-            txnOffshoreFeeKey_xasset = zerokey;
           } else if (strSource == "XUSD") {
             txnFeeKey_usd = scalarmultH(d2h(rv.txnFee));
             txnOffshoreFeeKey_usd = scalarmultH(d2h(rv.txnOffshoreFee));
-            txnFeeKey = zerokey;
-            txnOffshoreFeeKey = zerokey;
-            txnFeeKey_xasset = zerokey;
-            txnOffshoreFeeKey_xasset = zerokey;
           } else {
             txnFeeKey_xasset = scalarmultH(d2h(rv.txnFee));
             txnOffshoreFeeKey_xasset = scalarmultH(d2h(rv.txnOffshoreFee));
-            txnFeeKey = zerokey;
-            txnOffshoreFeeKey = zerokey;
-            txnFeeKey_usd = zerokey;
-            txnOffshoreFeeKey_usd = zerokey;
           }
         } else {
           txnFeeKey = scalarmultH(d2h(rv.txnFee));
@@ -1908,7 +1895,7 @@ namespace rct {
         }
 
         // Validate TX amount burnt/mint for conversions
-        if (version >= HF_VERSION_HAVEN2 && strSource != strDest) {
+        if (rv.type == RCTTypeHaven2 && strSource != strDest) {
           
           if (xasset_to_xusd || xusd_to_xasset) {
             // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
@@ -1923,7 +1910,8 @@ namespace rct {
             amount_burnt -= (uint64_t)burnt_fee;
           }
 
-          // lets say m = sum of all masks of inputs, n = mask of change ouput
+          // lets say m = sum of all masks of inputs, n = mask of change outputs
+          // (we now create additional change commitments to prevent revealing of change amount)
           // rv.maskSums[0] = m
           // rv.maskSums[1] = n
           // The value the current sumXHV is C = xG + aH where 
@@ -1942,7 +1930,7 @@ namespace rct {
             C_burnt = addKeys(sumXASSET, C_n);
           }
 
-          // Now, x is actually should be rv.maskSums[0]
+          // Now, x actually should be rv.maskSums[0]
           // so if we calculate a C with rv.maskSums[0] and amount_burnt, C should be same as C_burnt
           key pseudoC_burnt;
           genC(pseudoC_burnt, rv.maskSums[0], amount_burnt);
@@ -1953,24 +1941,24 @@ namespace rct {
             return false;
           }
         }
-
-	      if (bulletproof)
-	      {
-	        for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
-	          proofs.push_back(&rv.p.bulletproofs[i]);
-	      }
-	      else
-	      {
-	        for (size_t i = 0; i < rv.p.rangeSigs.size(); i++)
-	        tpool.submit(&waiter, [&, i, offset] { results[i+offset] = verRange(rv.outPk[i].mask, rv.p.rangeSigs[i]); });
-	        offset += rv.p.rangeSigs.size();
-	      }
+        
+        if (bulletproof)
+        {
+          for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
+            proofs.push_back(&rv.p.bulletproofs[i]);
+        }
+        else
+        {
+          for (size_t i = 0; i < rv.p.rangeSigs.size(); i++)
+            tpool.submit(&waiter, [&, i, offset] { results[i+offset] = verRange(rv.outPk[i].mask, rv.p.rangeSigs[i]); });
+          offset += rv.p.rangeSigs.size();
+        }
       }
 
       if (!proofs.empty() && !verBulletproof(proofs))
       {
-	      LOG_PRINT_L1("Aggregate range proof verified failed");
-	      return false;
+        LOG_PRINT_L1("Aggregate range proof verified failed");
+        return false;
       }
       waiter.wait(&tpool);
 
@@ -2008,8 +1996,7 @@ namespace rct {
     const std::string strSource,
     const std::string strDest,
     uint64_t amount_burnt,
-    uint64_t amount_mint,
-    uint8_t  version
+    uint64_t amount_mint
   ){
     return verRctSemanticsSimple(
       std::vector<const rctSig*>(1, &rv),
@@ -2023,8 +2010,7 @@ namespace rct {
       strSource,
       strDest,
       amount_burnt,
-      amount_mint,
-      version
+      amount_mint
     );
   }
 

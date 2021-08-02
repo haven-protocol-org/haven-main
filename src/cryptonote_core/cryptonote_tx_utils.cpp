@@ -358,8 +358,12 @@ namespace cryptonote
       }
     }
     
-    if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
-      tx.version = CURRENT_TRANSACTION_VERSION;
+    if (hard_fork_version >= HF_VERSION_HAVEN2) {
+      tx.version = 5;
+    } else if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
+      tx.version = 4;
+    } else if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+      tx.version = 3;
     } else {
       tx.version = 2;
     }
@@ -855,7 +859,18 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    tx.version = use_offshore_tx_version ? CURRENT_TRANSACTION_VERSION : rct ? 2 : 1;
+    // HERE BE DRAGONS!!!
+    // NEAC: verify this is correct, because it introduces a relationship between bp_version and tx.version that isn't guaranteed
+    if (rct_config.bp_version >= 5) {
+      tx.version = 5;
+    } else if (rct_config.bp_version == 4) {
+      tx.version = 4;
+    } else if (rct_config.bp_version == 3) {
+      tx.version = 3;
+    } else {
+      tx.version = rct ? 2 : 1;
+    }
+    // LAND AHOY!!!
     tx.unlock_time = unlock_time;
 
     bool bOffshoreTx = false;
@@ -863,6 +878,11 @@ namespace cryptonote
     if (extra.size()) {
       // Check to see if this is an offshore tx
       bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
+      if (bOffshoreTx) {
+        if (rct_config.bp_version >= 5) {
+          remove_field_from_tx_extra(tx.extra, typeid(tx_extra_offshore));
+        }
+      }
     }
 
     tx.extra = extra;

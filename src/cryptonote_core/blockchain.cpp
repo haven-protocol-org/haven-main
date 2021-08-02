@@ -3753,6 +3753,8 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
+  // HERE BE DRAGONS!!!
+  // NEAC: All of the remaining code below should be moved to tx_memory_pool::add_tx() or removed entirely as appropriate
   // from v5, allow bulletproofs
   if (hf_version < 5) {
     if (tx.version >= 2) {
@@ -3816,6 +3818,7 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
       return false;
     }
   }
+  // LAND AHOY!!!
 
   return true;
 }

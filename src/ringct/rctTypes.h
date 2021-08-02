@@ -407,12 +407,9 @@ namespace rct {
           PREPARE_CUSTOM_VECTOR_SERIALIZATION(2, maskSums);
           if (maskSums.size() != 2)
             return false;
-          for (size_t i = 0; i < 2; ++i)
-          {
-            FIELDS(maskSums[i])
-            if (inputs - i > 1)
-              ar.delimit_array();
-          }
+          FIELDS(maskSums[0])
+          ar.delimit_array();
+          FIELDS(maskSums[1])
           ar.end_array();
         }
         return ar.stream().good();

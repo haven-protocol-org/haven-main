@@ -215,72 +215,74 @@ namespace cryptonote
       }
     }
 
-    //validate the offshore data
-    bool bOffshoreTx = false;
-    tx_extra_offshore offshore_data;
-    if (tx.extra.size()) {
-      bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
-    }
-    if (bOffshoreTx) {
-      if (version >= HF_VERSION_XASSET_FULL) {
-        int pos = offshore_data.data.find("-");
-        if (pos != std::string::npos) {
-          std::string source = offshore_data.data.substr(0,pos);
-          std::string dest = offshore_data.data.substr(pos+1);
-          // check both strSource and strDest are supported.
-          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
-            tvc.m_verifivation_failed = true;
-            LOG_PRINT_L1("Source Asset type " << source << " is not supported! Rejecting..");
-            return false;
-          }
-          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest) == offshore::ASSET_TYPES.end()) {
-            tvc.m_verifivation_failed = true;
-            LOG_PRINT_L1("Destination Asset type " << dest << " is not supported! Rejecting..");
-            return false;
-          }
-        } else {
-          LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
-          tvc.m_verifivation_failed = true;
-          return false;
-        }
-      } else if (version >= HF_VERSION_OFFSHORE_FULL) {
-        if (offshore_data.data.size() != 2 ||
-          (offshore_data.data.at(0) != 'A' && offshore_data.data.at(0) != 'N') || 
-          (offshore_data.data.at(1) != 'A' && offshore_data.data.at(1) != 'N')
-        ){
-          // old offshore data format suplied to tx extra
-          LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
-          tvc.m_verifivation_failed = true;
-          return false;
-        }
+    if (version < HF_VERSION_HAVEN2) {
+      //validate the offshore data
+      bool bOffshoreTx = false;
+      tx_extra_offshore offshore_data;
+      if (tx.extra.size()) {
+        bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
       }
-
-      std::string tx_offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
-      if(tx_offshore_data.empty()) {
+      if (bOffshoreTx) {
         if (version >= HF_VERSION_XASSET_FULL) {
-          // old offshore data format suplied to tx extra
-          LOG_PRINT_L1("Empty tx_offshore_data." << id);
-          tvc.m_verifivation_failed = true;
-          return false;
+          int pos = offshore_data.data.find("-");
+          if (pos != std::string::npos) {
+            std::string source = offshore_data.data.substr(0,pos);
+            std::string dest = offshore_data.data.substr(pos+1);
+            // check both strSource and strDest are supported.
+            if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+              tvc.m_verifivation_failed = true;
+              LOG_PRINT_L1("Source Asset type " << source << " is not supported! Rejecting..");
+              return false;
+            }
+            if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest) == offshore::ASSET_TYPES.end()) {
+              tvc.m_verifivation_failed = true;
+              LOG_PRINT_L1("Destination Asset type " << dest << " is not supported! Rejecting..");
+              return false;
+            }
+          } else {
+            LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
         } else if (version >= HF_VERSION_OFFSHORE_FULL) {
-          // offshore_data must be "NN"
-          if (offshore_data.data != "NN") {
+          if (offshore_data.data.size() != 2 ||
+              (offshore_data.data.at(0) != 'A' && offshore_data.data.at(0) != 'N') || 
+              (offshore_data.data.at(1) != 'A' && offshore_data.data.at(1) != 'N')
+              ){
             // old offshore data format suplied to tx extra
             LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
             tvc.m_verifivation_failed = true;
             return false;
           }
         }
-      } else {
-        if (tx_offshore_data != offshore_data.data) {
-          // old offshore data format suplied to tx extra
-          LOG_PRINT_L1("Tx offshore data doesn't match with the one from tx extra." << id);
-          tvc.m_verifivation_failed = true;
-          return false;
+
+        std::string tx_offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
+        if(tx_offshore_data.empty()) {
+          if (version >= HF_VERSION_XASSET_FULL) {
+            // old offshore data format suplied to tx extra
+            LOG_PRINT_L1("Empty tx_offshore_data." << id);
+            tvc.m_verifivation_failed = true;
+            return false;
+          } else if (version >= HF_VERSION_OFFSHORE_FULL) {
+            // offshore_data must be "NN"
+            if (offshore_data.data != "NN") {
+              // old offshore data format suplied to tx extra
+              LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          }
+        } else {
+          if (tx_offshore_data != offshore_data.data) {
+            // old offshore data format suplied to tx extra
+            LOG_PRINT_L1("Tx offshore data doesn't match with the one from tx extra." << id);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
         }
       }
     }
-
+    
     // Check to make sure that only 1 destination is provided if memo data is specified.
     // This is necessary because we shuffle outputs and there is no way to identify which memo data would relate to which destination if multiples were permitted.
     tx_extra_memo memo;
@@ -435,8 +437,11 @@ namespace cryptonote
           return false;
         }
 
+        // HERE BE DRAGONS!!!
+        // NEAC: verify whether this value of unlock time needs to use current_height instead of PR height
         // Verify the offshore conversion fee is present and correct here
         uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+        // LAND AHOY
         if (offshore || onshore) {
           if (unlock_time < 180) {
             LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
