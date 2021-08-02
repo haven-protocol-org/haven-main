@@ -1524,7 +1524,7 @@ namespace rct {
     DP(pseudoOuts[i]);
 
     // set the sum of input blinding factors
-    if (rv.type == RCTTypeHaven2) {
+    if ((offshore || onshore || xusd_to_xasset || xasset_to_xusd) && (rv.type == RCTTypeHaven2)) {
       sc_add(rv.maskSums[0].bytes, a[i].bytes, sumpouts.bytes);
     }
 
