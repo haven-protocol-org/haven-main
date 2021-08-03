@@ -1319,6 +1319,8 @@ namespace rct {
     rv.p.bulletproofs.clear();
     if (rv.type == RCTTypeHaven2) {
       rv.maskSums.resize(2);
+      rv.maskSums[0] = zero();
+      rv.maskSums[1] = zero();
     }
     if (bulletproof)
     {
@@ -1348,24 +1350,24 @@ namespace rct {
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = zeromask;
             if (offshore && rv.type == RCTTypeHaven2) {
-              // we know that this is the change output
-              rv.maskSums[1] = masks[i];
+              // we know these are change outputs
+              sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
             }
           } else if (outamounts[i].first == "XUSD") {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i].mask = zeromask;
             if ((onshore || xusd_to_xasset) && rv.type == RCTTypeHaven2) {
-              // we know that this is the change output
-              rv.maskSums[1] = masks[i];
+              // we know these are change outputs
+              sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
             }
           } else {
             rv.outPk[i].mask = zeromask;
             rv.outPk_usd[i].mask = zeromask;
             rv.outPk_xasset[i].mask = rct::scalarmult8(C[i]);
             if (xasset_to_xusd  && rv.type == RCTTypeHaven2) {
-              // we know that this is the change output
-              rv.maskSums[1] = masks[i];
+              // we know these are change outputs
+              sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
             }
           }
           outSk[i].mask = masks[i];
@@ -1403,21 +1405,24 @@ namespace rct {
             rv.outPk_usd[i + amounts_proved].mask = zeromask;
             rv.outPk_xasset[i + amounts_proved].mask = zeromask;
             if (offshore && rv.type == RCTTypeHaven2) {
-              rv.maskSums[1] = masks[i];
+              // we know these are change outputs
+              sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
             }
           } else if (outamounts[i + amounts_proved].first == "XUSD") {
             rv.outPk[i + amounts_proved].mask = zeromask;
             rv.outPk_usd[i + amounts_proved].mask = rct::scalarmult8(C[i]);
             rv.outPk_xasset[i + amounts_proved].mask = zeromask;
             if ((onshore || xusd_to_xasset) && rv.type == RCTTypeHaven2) {
-              rv.maskSums[1] = masks[i];
+              // we know these are change outputs
+              sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
             }
           } else {
             rv.outPk[i + amounts_proved].mask = zeromask;
             rv.outPk_usd[i + amounts_proved].mask = zeromask;
             rv.outPk_xasset[i + amounts_proved].mask = rct::scalarmult8(C[i]);
             if (xasset_to_xusd && rv.type == RCTTypeHaven2) {
-              rv.maskSums[1] = masks[i];
+              // we know these are change outputs
+              sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
             }
           }
           outSk[i + amounts_proved].mask = masks[i];

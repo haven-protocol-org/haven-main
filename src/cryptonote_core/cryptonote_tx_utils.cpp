@@ -406,13 +406,13 @@ namespace cryptonote
     // Calculate the amount being sent
     uint64_t amount = 0;
     for (auto dt: dsts) {
-      if (0 == dt.amount) {
-	MERROR("No XHV amount specified for destination");
-	return false;
-      }
+      // if (0 == dt.amount) {
+      //   MERROR("No XHV amount specified for destination");
+      //   return false;
+      // }
       // Filter out the change, which is never converted
       if (dt.amount_usd != 0) {
-	amount += dt.amount;
+        amount += dt.amount;
       }
     }
 
@@ -442,13 +442,13 @@ namespace cryptonote
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
     for (auto dt: dsts) {
-      if (0 == dt.amount_usd) {
-	MERROR("No USD amount specified for destination");
-	return false;
-      }
+      // if (0 == dt.amount_usd) {
+      //   MERROR("No USD amount specified for destination");
+      //   return false;
+      // }
       // Filter out the change, which is never converted
       if (dt.amount != 0) {
-	amount_usd += dt.amount_usd;
+        amount_usd += dt.amount_usd;
       }
     }
 
@@ -477,130 +477,21 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool get_offshore_to_offshore_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t current_height) {
 
-    // Calculate the amount being sent
-    auto dsts_copy = dsts;
-    // Exclude the change
-    dsts_copy.pop_back();
-    uint64_t amount_usd = 0;
-    for (auto dt: dsts_copy) {
-      if (0 == dt.amount_usd) {
-	MERROR("No USD amount specified for destination");
-	return false;
-      }
-      amount_usd += dt.amount_usd;
-    }
+    // // Calculate the amount being sent
+    // auto dsts_copy = dsts;
+    // // Exclude the change
+    // dsts_copy.pop_back();
+    // uint64_t amount_usd = 0;
+    // for (auto dt: dsts_copy) {
+    //   // if (0 == dt.amount_usd) {
+    //   //   MERROR("No USD amount specified for destination");
+    //   //   return false;
+    //   // }
+    //   amount_usd += dt.amount_usd;
+    // }
 
-    if (0/*fees_version >= 3*/) {
-
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Work out the priority 
-      uint32_t priority =
-	(unlock_time >= 7200) ? 1 :
-	(unlock_time >= 3600) ? 2 :
-	(unlock_time >= 1440) ? 3 :
-	4;
-
-      // NEAC: temporarily force the priority to 4 because we don't use it for faster unlocks yet
-      priority = 4;
-     
-      // Estimate the fee components
-      boost::multiprecision::uint128_t conversion_fee = amount_usd / 500;
-      conversion_fee *= priority;
-      boost::multiprecision::uint128_t conversion_extra = delta;
-      conversion_extra *= amount_usd;
-      uint64_t speed_fee = 0;
-      uint64_t speculation_fee = 0;
-      switch (priority) {
-      case 4:
-	conversion_extra *= 110;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 3:
-	conversion_extra /= 1000000000000;
-	conversion_fee += conversion_extra;
-	break;
-      case 2:
-	conversion_extra *= 75;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 1:
-      default:
-	conversion_extra *= 25;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      }
-
-      // Calculate the speed fee and speculation fee
-      if (sources.size() == 0) {
-	// Best-case estimates for now
-	speed_fee =
-	  (priority == 4) ? amount_usd / 50 :
-	  (priority == 3) ? amount_usd / 125 :
-	  0;
-      } else {
-
-	// Take a copy of the sources, so we can sort by age
-	auto sources_copy = sources;
-	std::sort(sources_copy.begin(), sources_copy.end(),
-		  [](const tx_source_entry &a, const tx_source_entry &b) { return a.height < b.height; });
-      
-	for (auto src: sources_copy) {
-
-	  // Only charge fees for first-generation offshore inputs
-	  if (!src.first_generation_input) {
-	    MINFO("Input was not created using XHV - no speculation fee applied");
-	    continue;
-	  }
-	  if (pr.unused1 < src.pr.unused1) {
-	    // current exchange rate less than when the input was created - how old is it?
-
-	    boost::multiprecision::uint128_t ma_diff = (src.pr.unused1 - pr.unused1);
-	    ma_diff *= src.amount;
-	    ma_diff /= 1000000000000;
-	      
-	    // Check the age of the input
-	    uint64_t age = current_height - src.height;
-	    uint64_t fee_addition = 0;
-	    if (priority == 4) {
-	      if (age < (30 * 24)) {
-		// Calculate the speculation fee
-		fee_addition = (uint64_t)ma_diff / 2;
-	      } else if (age < (30 * 48)) {
-		// Calculate the speculation fee
-		fee_addition = ((uint64_t)ma_diff * 4) / 10;
-	      } else if (age < (30 * 120)) {
-		// Calculate the speculation fee
-		fee_addition = (uint64_t)ma_diff / 10;
-	      }
-	    } else if (priority == 3) {
-	      if (age < (30 * 120)) {
-		// Calculate the speculation fee
-		fee_addition = (uint64_t)ma_diff / 10;
-	      }
-	    }
-	    MINFO("Input created using XHV - amount = " << print_money(src.amount) << ", age = " << age);
-	    MINFO("Original MA = " << print_money(src.pr.unused1) << ", speculation fee " << print_money(fee_addition) << " applied");
-	    speculation_fee += fee_addition;
-	  }
-	}
-      }
-    
-      // Return the fee
-      MINFO("Priority = " << priority << ", spot price = " << print_money((uint64_t)pr.xUSD) << ", MA = " << print_money(pr.unused1));
-      MINFO("Speculation fee = " << print_money(speculation_fee));
-      fee_estimate = speculation_fee;
-      
-    } else {
-
-      // Only conventional TX fees prior to fees v3
-      fee_estimate = 0;
-    }
+    // Only conventional TX fees prior to fees v3
+    fee_estimate = 0;
     
     // Return success
     return true;
@@ -609,16 +500,16 @@ namespace cryptonote
   bool get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
 
     // Calculate the amount being sent
-    auto dsts_copy = dsts;
-    // Exclude the change
-    dsts_copy.pop_back();
     uint64_t amount_xasset = 0;
-    for (auto dt: dsts_copy) {
-      if (0 == dt.amount_xasset) {
-        MERROR("No xAsset amount specified for destination");
-        return false;
+    for (auto dt: dsts) {
+      // if (0 == dt.amount_xasset) {
+      //   MERROR("No xAsset amount specified for destination");
+      //   return false;
+      // }
+      // Filter out the change, which is never converted
+      if (dt.amount_usd != 0) {
+        amount_xasset += dt.amount_xasset;
       }
-      amount_xasset += dt.amount_xasset;
     }
 
     if (fees_version >= 3) {
@@ -640,16 +531,18 @@ namespace cryptonote
   bool get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
 
     // Calculate the amount being sent
-    auto dsts_copy = dsts;
-    // Exclude the change
-    dsts_copy.pop_back();
     uint64_t amount_usd = 0;
-    for (auto dt: dsts_copy) {
-      if (0 == dt.amount_usd) {
-        MERROR("No USD amount specified for destination");
-        return false;
+    for (auto dt: dsts) {
+      // if (0 == dt.amount_usd) {
+      //   MERROR("No USD amount specified for destination");
+      //   return false;
+      // }
+      // Filter out the change, which is never converted
+      // All other destinations should have both pre and post converted amounts set so far except
+      // the change destinations.
+      if (dt.amount_xasset != 0) {
+        amount_usd += dt.amount_usd;
       }
-      amount_usd += dt.amount_usd;
     }
 
     if (fees_version >= 3) {
@@ -878,10 +771,8 @@ namespace cryptonote
     if (extra.size()) {
       // Check to see if this is an offshore tx
       bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
-      if (bOffshoreTx) {
-        if (rct_config.bp_version >= 5) {
-          remove_field_from_tx_extra(tx.extra, typeid(tx_extra_offshore));
-        }
+      if (bOffshoreTx && rct_config.bp_version >= 5) { // this is kinda a fork check
+        remove_field_from_tx_extra(tx.extra, typeid(tx_extra_offshore));
       }
     }
 
@@ -931,8 +822,8 @@ namespace cryptonote
           strSource = "XHV";
           strDest = "XUSD";
         } else {
-	  LOG_ERROR("Invalid offshore data");
-	  return false;
+          LOG_ERROR("Invalid offshore data");
+          return false;
         }
       }
     }
@@ -956,6 +847,7 @@ namespace cryptonote
       } else {
         tx.pricing_record_height = 0;
       }
+      // this is only included into serialized tx prior to tx version 5.
       tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
     }
 
@@ -1266,11 +1158,11 @@ namespace cryptonote
         tk.key = out_eph_public_key;
         out.target = tk;
         out.amount = dst_entr_clone.amount_usd;
-         outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", dst_entr_clone.amount_usd));
+        outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", dst_entr_clone.amount_usd));
       } else {
         txout_xasset tk;
         tk.key = out_eph_public_key;
-	tk.asset_type = dst_entr_clone.asset_type;
+	      tk.asset_type = dst_entr_clone.asset_type;
         out.target = tk;
         out.amount = dst_entr_clone.amount_xasset;
         outamounts.push_back(std::pair<std::string, uint64_t>(dst_entr_clone.asset_type, dst_entr_clone.amount_xasset));

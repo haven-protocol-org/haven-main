@@ -9608,14 +9608,27 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   LOG_PRINT_L2("transfer_selected done");
 }
 
-void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry> dsts, const std::vector<size_t>& selected_transfers, size_t fake_outputs_count,
-				    std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
-				    uint64_t unlock_time, uint64_t fee, const std::vector<uint8_t>& extra, cryptonote::transaction& tx,
-				    pending_tx &ptx, const rct::RCTConfig &rct_config,
-				    bool offshore, bool onshore, bool offshore_to_offshore,
-				    bool xasset_transfer, bool xasset_to_xusd, bool xusd_to_xasset,
-				    const std::string strSource, const std::string strDest)
-{
+void wallet2::transfer_selected_rct(
+  std::vector<cryptonote::tx_destination_entry> dsts,
+  const std::vector<size_t>& selected_transfers,
+  size_t fake_outputs_count,
+  std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
+  uint64_t unlock_time,
+  uint64_t fee,
+  const std::vector<uint8_t>& extra,
+  cryptonote::transaction& tx,
+  pending_tx &ptx,
+  const rct::RCTConfig &rct_config,
+  bool offshore,
+  bool onshore,
+  bool offshore_to_offshore,
+  bool xasset_transfer,
+  bool xasset_to_xusd,
+  bool xusd_to_xasset,
+  const std::string strSource,
+  const std::string strDest
+){
+
   using namespace cryptonote;
   // throw if attempting a transaction with no destinations
   THROW_WALLET_EXCEPTION_IF(dsts.empty(), error::zero_destination);
@@ -9846,6 +9859,21 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
     change_dts.addr = get_subaddress({subaddr_account, 0});
     change_dts.is_subaddress = subaddr_account != 0;
     splitted_dsts.push_back(change_dts);
+
+    // add a dummy 0 change to a random address, so that we can use sum of masks
+    // of change outputs in the amount burnt verification instead of using only
+    // the real change mask. To prevent someone guesssing the indiviaul masks of outputs.
+    if (use_fork_rules(HF_VERSION_HAVEN2, 0) && strSource != strDest) {
+      LOG_PRINT_L2("generating dummy address for 0 change");
+      cryptonote::tx_destination_entry change_dts_2 = AUTO_VAL_INIT(change_dts_2);
+      cryptonote::account_base dummy;
+      dummy.generate();
+      change_dts_2.amount = change_dts_2.amount_usd = change_dts_2.amount_xasset = 0;
+      change_dts_2.asset_type = strSource;
+      change_dts_2.addr = dummy.get_keys().m_account_address;
+      LOG_PRINT_L2("generated dummy address for 0 change");
+      splitted_dsts.push_back(change_dts_2);
+    }
   }
 
   crypto::secret_key tx_key;
@@ -9906,14 +9934,14 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
         LOG_PRINT_L2("Creating supplementary multisig transaction");
         cryptonote::transaction ms_tx;
         auto sources_copy_copy = sources_copy;
-	uint64_t current_height = get_blockchain_current_height()-1;
-	offshore::pricing_record pr;
-	if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
-	  bool b = get_pricing_record(pr, current_height);
-	  THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
-	}
-	uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
-	bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
+        uint64_t current_height = get_blockchain_current_height()-1;
+        offshore::pricing_record pr;
+        if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
+          bool b = get_pricing_record(pr, current_height);
+          THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+        }
+        uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+        bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
         bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts.addr, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, true, rct_config, &msout, false);
         LOG_PRINT_L2("constructed tx, r="<<r);
         THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
@@ -9930,28 +9958,28 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   LOG_PRINT_L2("gathering key images");
   std::string key_images;
   bool correct_txin_type = std::all_of(tx.vin.begin(), tx.vin.end(), [&](const txin_v& s_e) -> bool
-								     {
-								       if (s_e.type() == typeid(txin_xasset)) {
-									 CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_xasset, in, false);
-									 key_images += boost::to_string(in.k_image) + " ";
-									 return true;
-								       }
-								       else if (s_e.type() == typeid(txin_offshore)) {
-									 CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_offshore, in, false);
-									 key_images += boost::to_string(in.k_image) + " ";
-									 return true;
-								       }
-								       else if (s_e.type() == typeid(txin_onshore)) {
-									 CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_onshore, in, false);
-									 key_images += boost::to_string(in.k_image) + " ";
-									 return true;
-								       }
-								       else {
-									 CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
-									 key_images += boost::to_string(in.k_image) + " ";
-									 return true;
-								       }
-								     });
+  {
+    if (s_e.type() == typeid(txin_xasset)) {
+      CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_xasset, in, false);
+      key_images += boost::to_string(in.k_image) + " ";
+      return true;
+    }
+    else if (s_e.type() == typeid(txin_offshore)) {
+      CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_offshore, in, false);
+      key_images += boost::to_string(in.k_image) + " ";
+      return true;
+    }
+    else if (s_e.type() == typeid(txin_onshore)) {
+      CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_onshore, in, false);
+      key_images += boost::to_string(in.k_image) + " ";
+      return true;
+    }
+    else {
+      CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
+      key_images += boost::to_string(in.k_image) + " ";
+      return true;
+    }
+  });
 
   THROW_WALLET_EXCEPTION_IF(!correct_txin_type, error::unexpected_txin_type, tx);
   LOG_PRINT_L2("gathered key images");
