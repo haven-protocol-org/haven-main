@@ -314,6 +314,9 @@ namespace cryptonote
         tvc.m_invalid_output = true;
       }
       return false;
+    } else {
+      tvc.m_source_asset = source;
+      tvc.m_dest_asset = dest;
     }
     if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
       LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
