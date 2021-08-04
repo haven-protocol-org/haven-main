@@ -366,42 +366,13 @@ namespace rct {
         for (size_t i = 0; i < outputs; ++i)
         {
           FIELDS(outPk[i].mask)
-          if (outputs - i > 1)
-            ar.delimit_array();
-        }
-        ar.end_array();
-        if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN) || (type == RCTTypeHaven2))
-        {
-          ar.tag("outPk_usd");
-          ar.begin_array();
-          PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, outPk_usd);
-          if (outPk_usd.size() != outputs)
-            return false;
-          for (size_t i = 0; i < outputs; ++i)
-          {
-            FIELDS(outPk_usd[i].mask)
-            if (outputs - i > 1)
-            ar.delimit_array();
-          }
-          ar.end_array();
-        }
-        if (type == RCTTypeCLSAGN || (type == RCTTypeHaven2))
-        {
-          ar.tag("outPk_xasset");
-          ar.begin_array();
-          PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, outPk_xasset);
-          if (outPk_xasset.size() != outputs)
-            return false;
-          for (size_t i = 0; i < outputs; ++i)
-          {
-            FIELDS(outPk_xasset[i].mask)
             if (outputs - i > 1)
               ar.delimit_array();
-          }
-          ar.end_array();
         }
-
+        ar.end_array();
+        
         if (type == RCTTypeHaven2) {
+
           ar.tag("maskSums");
           ar.begin_array();
           PREPARE_CUSTOM_VECTOR_SERIALIZATION(2, maskSums);
@@ -411,6 +382,39 @@ namespace rct {
           ar.delimit_array();
           FIELDS(maskSums[1])
           ar.end_array();
+
+        } else {
+
+          if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN))
+          {
+            ar.tag("outPk_usd");
+            ar.begin_array();
+            PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, outPk_usd);
+            if (outPk_usd.size() != outputs)
+              return false;
+            for (size_t i = 0; i < outputs; ++i)
+            {
+              FIELDS(outPk_usd[i].mask)
+                if (outputs - i > 1)
+                  ar.delimit_array();
+            }
+            ar.end_array();
+          }
+          if (type == RCTTypeCLSAGN)
+          {
+            ar.tag("outPk_xasset");
+            ar.begin_array();
+            PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, outPk_xasset);
+            if (outPk_xasset.size() != outputs)
+              return false;
+            for (size_t i = 0; i < outputs; ++i)
+            {
+              FIELDS(outPk_xasset[i].mask)
+                if (outputs - i > 1)
+                  ar.delimit_array();
+            }
+            ar.end_array();
+          }
         }
         return ar.stream().good();
       }

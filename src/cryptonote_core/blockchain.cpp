@@ -3766,6 +3766,10 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
               asset = "XUSD";
             } else if (o.target.type() == typeid(txout_xasset)) {
               asset = boost::get<txout_xasset>(o.target).asset_type;
+            } else {
+              MERROR_VER("Invalid output type detected in conversion TX.");
+              tvc.m_invalid_output = true;
+              return false;
             }
             asset_counter[asset]++;
           }
@@ -3988,7 +3992,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   PERF_TIMER(check_tx_inputs);
   LOG_PRINT_L3("Blockchain::" << __func__);
   size_t sig_index = 0;
-  bool bOffshore = false;
   if(pmax_used_block_height)
     *pmax_used_block_height = 0;
 
@@ -4052,7 +4055,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
       else if (txin.type() == typeid(txin_offshore)) {
         const txin_offshore& in_to_key = boost::get<txin_offshore>(txin);
-        bOffshore = true;
         if (in_to_key.amount == 0)
         {
           // always consider rct inputs mixable. Even if there's not enough rct
@@ -4078,7 +4080,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
       else if (txin.type() == typeid(txin_onshore)) {
         const txin_onshore& in_to_key = boost::get<txin_onshore>(txin);
-        bOffshore = true;
         if (in_to_key.amount == 0)
         {
           // always consider rct inputs mixable. Even if there's not enough rct
@@ -4104,7 +4105,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
       else if (txin.type() == typeid(txin_xasset)) {
         const txin_xasset& in_to_key = boost::get<txin_xasset>(txin);
-        bOffshore = true;
         if (in_to_key.amount == 0)
         {
           // always consider rct inputs mixable. Even if there's not enough rct

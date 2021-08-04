@@ -368,9 +368,9 @@ namespace boost
       a & x.pseudoOuts;
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
-    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN) || (x.type == rct::RCTTypeHaven2))
+    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN))
       serializeOutPk(a, x.outPk_usd, ver);
-    if ((x.type == rct::RCTTypeCLSAGN) || (x.type == rct::RCTTypeHaven2))
+    if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
     if (ver >= 4u) {
@@ -416,9 +416,9 @@ namespace boost
       a & x.pseudoOuts;
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
-    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN) || (x.type == rct::RCTTypeHaven2))
+    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN))
       serializeOutPk(a, x.outPk_usd, ver);
-    if ((x.type == rct::RCTTypeCLSAGN) || (x.type == rct::RCTTypeHaven2))
+    if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
     if (ver >= 4u) {
