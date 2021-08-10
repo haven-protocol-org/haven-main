@@ -1417,7 +1417,7 @@ PendingTransaction* WalletImpl::restoreMultisigTransaction(const string& signDat
 //    - unconfirmed_transfer_details;
 //    - confirmed_transfer_details)
 
-PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, optional<std::vector<uint64_t>> amount, uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, optional<std::vector<uint64_t>> amount, uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices, const string &str_source = "XHV", const string &str_dest = "XHV")
 
 {
     clearStatus();
@@ -1497,6 +1497,9 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
             setStatusError(tr("failed to set up payment id, though it was decoded correctly"));
             break;
         }
+
+        // TODO consider various tx types for create_transactions and add it into extra like in wallet-rpc and simple wallet
+        // based on str_source and str_dest
         try {
             if (amount) {
                 transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, fake_outs_count, 0 /* unlock_time */,
@@ -1505,7 +1508,7 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
             } else {
                 transaction->m_pending_tx = m_wallet->create_transactions_all(0, info.address, info.is_subaddress, 1, fake_outs_count, 0 /* unlock_time */,
                                                                               adjusted_priority,
-                                                                              extra, subaddr_account, subaddr_indices);
+                                                                              extra, subaddr_account, subaddr_indices, str_source);
             }
             pendingTxPostProcess(transaction);
 
@@ -1584,10 +1587,10 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
 }
 
 PendingTransaction *WalletImpl::createTransaction(const string &dst_addr, const string &payment_id, optional<uint64_t> amount, uint32_t mixin_count,
-                                                  PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+                                                  PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices, const string &str_source, const string &str_dest)
 
 {
-    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), mixin_count, priority, subaddr_account, subaddr_indices);
+    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), mixin_count, priority, subaddr_account, subaddr_indices, str_source, str_dest);
 }
 
 PendingTransaction *WalletImpl::createSweepUnmixableTransaction()
