@@ -1806,7 +1806,7 @@ std::string WalletImpl::getTxKey(const std::string &txid_str) const
     }
 }
 
-bool WalletImpl::checkTxKey(const std::string &txid_str, std::string tx_key_str, const std::string &address_str, uint64_t &received, bool &in_pool, uint64_t &confirmations)
+bool WalletImpl::checkTxKey(const std::string &txid_str, std::string tx_key_str, const std::string &address_str, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations)
 {
     crypto::hash txid;
     if (!epee::string_tools::hex_to_pod(txid_str, txid))
@@ -1882,7 +1882,7 @@ std::string WalletImpl::getTxProof(const std::string &txid_str, const std::strin
     }
 }
 
-bool WalletImpl::checkTxProof(const std::string &txid_str, const std::string &address_str, const std::string &message, const std::string &signature, bool &good, uint64_t &received, bool &in_pool, uint64_t &confirmations)
+bool WalletImpl::checkTxProof(const std::string &txid_str, const std::string &address_str, const std::string &message, const std::string &signature, bool &good, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations)
 {
     crypto::hash txid;
     if (!epee::string_tools::hex_to_pod(txid_str, txid))
