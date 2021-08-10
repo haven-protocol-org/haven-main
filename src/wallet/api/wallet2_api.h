@@ -597,15 +597,15 @@ struct Wallet
     virtual std::map<uint32_t, std::map<std::string, uint64_t>> balance(uint32_t accountIndex = 0) const = 0;
     uint64_t balanceAll() const {
         uint64_t result = 0;
-        for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
-            result += balance(i);
+       // for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
+       //     result += balance(i);
         return result;
     }
     virtual std::map<uint32_t, std::map<std::string, uint64_t>> unlockedBalance(uint32_t accountIndex = 0) const = 0;
     uint64_t unlockedBalanceAll() const {
         uint64_t result = 0;
-        for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
-            result += unlockedBalance(i);
+        //for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
+        //    result += unlockedBalance(i);
         return result;
     }
 
