@@ -1686,6 +1686,7 @@ uint64_t WalletImpl::estimateTransactionFee(const std::vector<std::pair<std::str
     const size_t pubkey_size = 33;
     const size_t encrypted_paymentid_size = 11;
     const size_t extra_size = pubkey_size + encrypted_paymentid_size;
+    const bool clsag = m_wallet->use_fork_rules(HF_VERSION_CLSAG, 0);
 
     return m_wallet->estimate_fee(
         m_wallet->use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0),
@@ -1695,6 +1696,7 @@ uint64_t WalletImpl::estimateTransactionFee(const std::vector<std::pair<std::str
         destinations.size() + 1,
         extra_size,
         m_wallet->use_fork_rules(8, 0),
+        clsag,
         m_wallet->get_base_fee(),
         m_wallet->get_fee_multiplier(m_wallet->adjust_priority(static_cast<uint32_t>(priority))),
         m_wallet->get_fee_quantization_mask());
