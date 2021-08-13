@@ -1493,16 +1493,95 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
         if (error) {
             break;
         }
+
+        std::string err;
+        uint64_t bc_height, unlock_block, locked_blocks = 0;
+
+        // non sweep transfer/offshore/onshore/xasset convversion
+        if (amount) {
+
+            //determine type of tx
+            bool isOnOffshore = (str_source == "XHV" && str_dest == "XUSD") || (str_source == "XUSD" && str_dest == "XHV");
+            bool isTransfer = str_dest == str_source;
+            bool isOffshoreTransfer = isTransfer && str_dest == "XUSD";
+            bool isXHVTransfer = isTransfer && str_dest == "XHV";
+            bool isxAssetTX = !isOffshoreTransfer && !isXHVTransfer && !isOnOffshore;
+            bool isXassetExchange = isxAssetTX && !isTransfer;
+            bool isXassetTransfer = isxAssetTX && isTransfer;
+
+                // Populate txextra for all non xhv tranfers
+                if (!isXHVTransfer) {
+                
+                    std::string offshore_data;
+                    // Support new xAsset-style offshore_data
+                    offshore_data = str_source + "-" + str_dest;
+                    cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
+                }
+
+                //set unlock time for onshore/offshore
+                if (isOnOffshore) {
+
+                    if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
+                        locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+                    } else {
+                        locked_blocks = 60 * pow(3, std::max((uint32_t)0, 4-adjusted_priority));
+                    }
+
+                }
+
+                // set unlock for xasset exchange
+                if (isXassetExchange) {
+
+                    if (m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
+                        locked_blocks = 1440; // ~48 hours
+                    } else {
+                        locked_blocks = 10;
+                    }
+                } 
+               
+                //adjust prio
+                if (isOffshoreTransfer || isXassetTransfer) {
+
+                      if (adjusted_priority > 1) {
+                        adjusted_priority = 1;
+                      }
+
+                }
+            }
+            // sweep transfer 
+            else {
+
+
+                if (str_source != "XHV") {
+                
+                    // Populate the txextra to signify that this is an offshore or xasset tx
+                    std::string offshore_data;
+                    offshore_data = str_source + "-" + str_source;
+                    cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
+                }
+
+            }
+
+        bc_height = m_wallet->get_daemon_blockchain_height(err);
+
+        if (!err.empty())
+        {
+          setStatusError(tr("failed to get blockchain height: "));
+            error = true;
+            break;
+        }
+
+        // set unlock
+        unlock_block = bc_height + locked_blocks;
+
         if (!extra_nonce.empty() && !add_extra_nonce_to_tx_extra(extra, extra_nonce)) {
             setStatusError(tr("failed to set up payment id, though it was decoded correctly"));
             break;
         }
 
-        // TODO consider various tx types for create_transactions and add it into extra like in wallet-rpc and simple wallet
-        // based on str_source and str_dest
         try {
             if (amount) {
-                transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, fake_outs_count, 0 /* unlock_time */,
+                transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, fake_outs_count, unlock_block /* unlock_time */,
                                                                             adjusted_priority,
                                                                             extra, subaddr_account, subaddr_indices);
             } else {
