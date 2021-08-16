@@ -973,7 +973,7 @@ namespace cryptonote
           tx_info[n].result = false;
           break;
         case rct::RCTTypeSimple:
-          if (!rct::verRctSemanticsSimple(rv, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest))
+          if (!rct::verRctSemanticsSimple(rv, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted))
           {
             MERROR_VER("rct signature semantics check failed");
             set_semantics_failed(tx_info[n].tx_hash);
@@ -996,6 +996,7 @@ namespace cryptonote
         case rct::RCTTypeBulletproof2:
         case rct::RCTTypeCLSAG:
         case rct::RCTTypeCLSAGN:
+        case rct::RCTTypeHaven2:
           if (!is_canonical_bulletproof_layout(rv.p.bulletproofs))
           {
             MERROR_VER("Bulletproof does not have canonical form");
@@ -1015,7 +1016,7 @@ namespace cryptonote
       }
     }
 
-    if (!rvv.empty()/* && !rct::verRctSemanticsSimple(rvv, pr, offshore, onshore, offshore_to_offshore)*/)
+    if (!rvv.empty())
     {
       LOG_PRINT_L1("Verifying one transaction at a time");
       ret = false;
@@ -1102,13 +1103,22 @@ namespace cryptonote
 
         if (!tx_info[n].result)
           continue;
-        if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN)
+        if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2)
           continue;
-        if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest))
-        {
-          set_semantics_failed(tx_info[n].tx_hash);
-          tx_info[n].tvc.m_verifivation_failed = true;
-          tx_info[n].result = false;
+        if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2) {
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, tx_info[n].tx->vout))
+          {
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+          }
+        } else {
+          if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted))
+          {
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+          }
         }
       }
     }
@@ -1499,8 +1509,11 @@ namespace cryptonote
       return true;
     }
 
+    // HERE BE DRAGONS!!!
+    // NEAC: invoke the new add_tx() function to remove all the legacy cruft
     uint8_t version = m_blockchain_storage.get_current_hard_fork_version();
     return m_mempool.add_tx(tx, tx_hash, blob, tx_weight, tvc, tx_relay, relayed, version);
+    // LAND AHOY!!!
   }
   //-----------------------------------------------------------------------------------------------
   bool core::relay_txpool_transactions()

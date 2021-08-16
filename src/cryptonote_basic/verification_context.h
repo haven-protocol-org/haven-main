@@ -53,6 +53,8 @@ namespace cryptonote
     bool m_overspend;
     bool m_fee_too_low;
     bool m_too_few_outputs;
+    std::string m_source_asset;
+    std::string m_dest_asset;
   };
 
   struct block_verification_context

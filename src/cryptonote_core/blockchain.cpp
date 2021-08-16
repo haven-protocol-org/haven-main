@@ -3753,6 +3753,42 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
+  // enforce the dummy change output for conversions after Haven2 fork.
+  if (hf_version >= HF_VERSION_HAVEN2) {
+      if (tvc.m_source_asset != tvc.m_dest_asset) {
+        if (tx.vout.size() >= 3) {
+          std::map<std::string, uint32_t> asset_counter;
+          std::string asset;
+          for (const auto &o: tx.vout) {
+            if (o.target.type() == typeid(txout_to_key)) {
+              asset = "XHV";
+            } else if (o.target.type() == typeid(txout_offshore)) {
+              asset = "XUSD";
+            } else if (o.target.type() == typeid(txout_xasset)) {
+              asset = boost::get<txout_xasset>(o.target).asset_type;
+            } else {
+              MERROR_VER("Invalid output type detected in conversion TX.");
+              tvc.m_invalid_output = true;
+              return false;
+            }
+            asset_counter[asset]++;
+          }
+
+          if (asset_counter[tvc.m_source_asset] < 2) {
+            MERROR_VER("Conversion Txs should have at least 2 output that is same asset type as converted asset after Haven2 fork.");
+            tvc.m_invalid_output = true;
+            return false;
+          }
+        } else {
+          MERROR_VER("Conversion Txs should have at least 3 output after Haven2 fork.");
+          tvc.m_invalid_output = true;
+          return false;
+        }
+      }
+  }
+
+  // HERE BE DRAGONS!!!
+  // NEAC: All of the remaining code below should be moved to tx_memory_pool::add_tx() or removed entirely as appropriate
   // from v5, allow bulletproofs
   if (hf_version < 5) {
     if (tx.version >= 2) {
@@ -3803,13 +3839,20 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  // only accept rct::RCTTypeCLSAGN and rct::RCTTypeCLSAG txs after xassets fork.
-  if (hf_version >= HF_VERSION_XASSET_FULL) {
+  if (hf_version >= HF_VERSION_HAVEN2) {
+    // only accept rct::RCTTypeHaven2 txs after Haven2 fork.
+    if (tx.rct_signatures.type != rct::RCTTypeHaven2) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_XASSET_FULL) {
+    // only accept rct::RCTTypeCLSAGN and rct::RCTTypeCLSAG txs after xassets fork.
     if (tx.rct_signatures.type != rct::RCTTypeCLSAGN && tx.rct_signatures.type != rct::RCTTypeCLSAG) {
       tvc.m_verifivation_failed = true;
       return false;
     }
   }
+  // LAND AHOY!!!
 
   return true;
 }
@@ -3872,7 +3915,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       }
     }
   }
-  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN)
+  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2)
   {
     CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
     rv.mixRing.resize(pubkeys.size());
@@ -3915,7 +3958,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       }
     }
   }
-  else if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN))
+  else if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2))
   {
     if (!tx.pruned)
     {
@@ -3949,7 +3992,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   PERF_TIMER(check_tx_inputs);
   LOG_PRINT_L3("Blockchain::" << __func__);
   size_t sig_index = 0;
-  bool bOffshore = false;
   if(pmax_used_block_height)
     *pmax_used_block_height = 0;
 
@@ -4013,7 +4055,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
       else if (txin.type() == typeid(txin_offshore)) {
         const txin_offshore& in_to_key = boost::get<txin_offshore>(txin);
-        bOffshore = true;
         if (in_to_key.amount == 0)
         {
           // always consider rct inputs mixable. Even if there's not enough rct
@@ -4039,7 +4080,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
       else if (txin.type() == typeid(txin_onshore)) {
         const txin_onshore& in_to_key = boost::get<txin_onshore>(txin);
-        bOffshore = true;
         if (in_to_key.amount == 0)
         {
           // always consider rct inputs mixable. Even if there's not enough rct
@@ -4065,7 +4105,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
       else if (txin.type() == typeid(txin_xasset)) {
         const txin_xasset& in_to_key = boost::get<txin_xasset>(txin);
-        bOffshore = true;
         if (in_to_key.amount == 0)
         {
           // always consider rct inputs mixable. Even if there's not enough rct
@@ -4483,6 +4522,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     case rct::RCTTypeBulletproof2:
     case rct::RCTTypeCLSAG:
     case rct::RCTTypeCLSAGN:
+    case rct::RCTTypeHaven2:
     {
       // check all this, either reconstructed (so should really pass), or not
       {
@@ -4518,7 +4558,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
       }
 
-      const size_t n_sigs = ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) ? rv.p.CLSAGs.size() : rv.p.MGs.size();
+      const size_t n_sigs = ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) ? rv.p.CLSAGs.size() : rv.p.MGs.size();
       if (n_sigs != tx.vin.size())
       {
         MERROR_VER("Failed to check ringct signatures: mismatched MGs/vin sizes");
@@ -4527,43 +4567,52 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       for (size_t n = 0; n < tx.vin.size(); ++n)
       {
         if (tx.vin[n].type() == typeid(txin_onshore)) {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_onshore>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
           } else {
+            // HERE BE DRAGONS!!!
+            // NEAC: this makes no sense - cannot have MLSAGs for onshore!
             if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_onshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
+            // LAND AHOY!!!
           }
         } else if (tx.vin[n].type() == typeid(txin_offshore)) {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
           } else {
+            // HERE BE DRAGONS!!!
+            // NEAC: this makes no sense - cannot have MLSAGs for offshore!
             if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
+            // LAND AHOY!!!
           }
         } else if (tx.vin[n].type() == typeid(txin_xasset)) {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_xasset>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
           } else {
-            if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
+            // HERE BE DRAGONS!!!
+            // NEAC: this makes no sense - cannot have MLSAGs for xasset!
+            if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_xasset>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;
             }
+            // LAND AHOY!!!
           }
         } else {
-          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN)) {
+          if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
             if (memcmp(&boost::get<txin_to_key>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
               MERROR_VER("Failed to check ringct signatures: mismatched key image");
               return false;

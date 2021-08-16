@@ -360,7 +360,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -373,7 +373,10 @@ namespace boost
     if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
-    if (ver >= 1u) {
+    if (ver >= 4u) {
+      a & x.txnOffshoreFee;
+      a & x.maskSums;
+    } else if (ver >= 1u) {
       a & x.txnFee_usd;
       if (ver >= 2u) {
 	a & x.txnFee_xasset;
@@ -405,7 +408,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -418,15 +421,18 @@ namespace boost
     if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
-    if (ver >= 1u) {
+    if (ver >= 4u) {
+      a & x.txnOffshoreFee;
+      a & x.maskSums;
+    } else if (ver >= 1u) {
       a & x.txnFee_usd;
       if (ver >= 2u) {
-	a & x.txnFee_xasset;
+	      a & x.txnFee_xasset;
       }
       a & x.txnOffshoreFee;
       a & x.txnOffshoreFee_usd;
       if (ver >= 2u) {
-	a & x.txnOffshoreFee_xasset;
+	      a & x.txnOffshoreFee_xasset;
       }
     }
     //--------------
@@ -434,9 +440,9 @@ namespace boost
     if (x.p.rangeSigs.empty())
       a & x.p.bulletproofs;
     a & x.p.MGs;
-    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN))
+    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN) || (x.type == rct::RCTTypeHaven2))
       a & x.p.CLSAGs;
-    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN)
+    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN || x.type == rct::RCTTypeHaven2)
       a & x.p.pseudoOuts;
   }
 
@@ -502,8 +508,8 @@ namespace boost
 
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 2)
-BOOST_CLASS_VERSION(rct::rctSigBase, 3)
-BOOST_CLASS_VERSION(rct::rctSig, 3)
+BOOST_CLASS_VERSION(rct::rctSigBase, 4)
+BOOST_CLASS_VERSION(rct::rctSig, 4)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)
 
 //}

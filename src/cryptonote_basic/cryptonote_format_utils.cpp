@@ -174,7 +174,7 @@ namespace cryptonote
 	} else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
 	  rv.outPk[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
 	} else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
-	  rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
+	  rv.outPk[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
 	} else {
           LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
           return false;
@@ -193,7 +193,7 @@ namespace cryptonote
 	  } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
 	    rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
 	  } else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
-	    rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
+	    rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
 	  } else {
 	    LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
 	    return false;
@@ -245,14 +245,19 @@ namespace cryptonote
           const size_t n_amounts = tx.vout.size();
           CHECK_AND_ASSERT_MES(n_amounts == rv.outPk.size(), false, "Internal error filling out V");
           rv.p.bulletproofs[0].V.resize(n_amounts);
-          for (size_t i = 0; i < n_amounts; ++i)
-	    if (tx.vout[i].target.type() == typeid(txout_to_key)) {
-	      rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
-	    } else if (tx.vout[i].target.type() == typeid(txout_offshore)) {
-	      rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_usd[i].mask, rct::INV_EIGHT);
-	    } else {
-	      rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_xasset[i].mask, rct::INV_EIGHT);
-	    }
+          for (size_t i = 0; i < n_amounts; ++i) {
+            if (rv.type == rct::RCTTypeHaven2) {
+              rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
+            } else {
+              if (tx.vout[i].target.type() == typeid(txout_to_key)) {
+                rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
+              } else if (tx.vout[i].target.type() == typeid(txout_offshore)) {
+                rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_usd[i].mask, rct::INV_EIGHT);
+              } else {
+                rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_xasset[i].mask, rct::INV_EIGHT);
+              }
+            }
+          }
         }
       }
     }
