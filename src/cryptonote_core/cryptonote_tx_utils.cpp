@@ -676,10 +676,7 @@ namespace cryptonote
   }
 
   //---------------------------------------------------------------
-  bool get_tx_type(const std::string& source, const std::string& destination, bool& offshore, bool& onshore, bool& offshore_transfer, bool& xusd_to_xasset, bool& xasset_to_xusd, bool& xasset_transfer) {
-
-    // Clear all the flags
-    offshore = onshore = offshore_transfer = xusd_to_xasset = xasset_to_xusd = xasset_transfer = false;
+  bool get_tx_type(const std::string& source, const std::string& destination, conversion_type& type) {
 
     // check both source and destination are supported.
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
@@ -692,21 +689,25 @@ namespace cryptonote
     }
 
     // Find the tx type
-    if (source != "XHV" || destination != "XHV") {
-      if (source == "XHV" && destination == "XUSD") {
-	      offshore = true;
-      } else if (destination == "XHV" && source == "XUSD") {
-	      onshore = true;
-      } else if ((source == "XUSD") && (destination == "XUSD")) {
-	      offshore_transfer = true;
-      } else if ((source != "XUSD") && (destination != "XUSD") && source == destination) {
-	      xasset_transfer = true;
-      } else if (source == "XUSD" && destination != "XHV" && destination != "XUSD") {
-	      xusd_to_xasset = true;
-      } else if (destination == "XUSD" && source != "XHV" && source != "XUSD") {
-	      xasset_to_xusd = true;
+    if (source == destination) {
+      if (source == "XHV") {
+        type = TRANSFER;
+      } else if (source == "XUSD") {
+        type = OFFSHORE_TRANSFER;
       } else {
-        LOG_ERROR("Destination Asset type " << destination << " is not same as Source Asset type " << source << "! Rejecting..");
+        type = XASSET_TRANSFER;
+      }
+    } else {
+      if (source == "XHV" && destination == "XUSD") {
+        type = OFFSHORE;
+      } else if (source == "XUSD" && destination == "XHV") {
+        type = ONSHORE;
+      } else if (source == "XUSD" && destination != "XHV") {
+        type = XUSD_TO_XASSET;
+      } else if (destination == "XUSD" && source != "XHV") {
+        type = XASSET_TO_XUSD;
+      } else {
+        LOG_ERROR("Invalid conversion from " << source << "to" << destination << ". Rejecting..");
         return false;
       }
     }

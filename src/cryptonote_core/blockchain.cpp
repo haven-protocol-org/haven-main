@@ -3755,36 +3755,41 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
 
   // enforce the dummy change output for conversions after Haven2 fork.
   if (hf_version >= HF_VERSION_HAVEN2) {
-      if (tvc.m_source_asset != tvc.m_dest_asset) {
-        if (tx.vout.size() >= 3) {
-          std::map<std::string, uint32_t> asset_counter;
-          std::string asset;
-          for (const auto &o: tx.vout) {
-            if (o.target.type() == typeid(txout_to_key)) {
-              asset = "XHV";
-            } else if (o.target.type() == typeid(txout_offshore)) {
-              asset = "XUSD";
-            } else if (o.target.type() == typeid(txout_xasset)) {
-              asset = boost::get<txout_xasset>(o.target).asset_type;
-            } else {
-              MERROR_VER("Invalid output type detected in conversion TX.");
-              tvc.m_invalid_output = true;
-              return false;
-            }
-            asset_counter[asset]++;
-          }
-
-          if (asset_counter[tvc.m_source_asset] < 2) {
-            MERROR_VER("Conversion Txs should have at least 2 output that is same asset type as converted asset after Haven2 fork.");
+    if (tvc.m_source_asset != tvc.m_dest_asset) {
+      if (tx.vout.size() >= 3) {
+        std::map<std::string, uint32_t> asset_counter;
+        std::string asset;
+        for (const auto &o: tx.vout) {
+          if (o.target.type() == typeid(txout_to_key)) {
+            asset = "XHV";
+          } else if (o.target.type() == typeid(txout_offshore)) {
+            asset = "XUSD";
+          } else if (o.target.type() == typeid(txout_xasset)) {
+            asset = boost::get<txout_xasset>(o.target).asset_type;
+          } else {
+            MERROR_VER("Invalid output type detected in conversion TX.");
             tvc.m_invalid_output = true;
             return false;
           }
-        } else {
-          MERROR_VER("Conversion Txs should have at least 3 output after Haven2 fork.");
+          asset_counter[asset]++;
+        }
+
+        if (asset_counter.size() > 2) {
+          MERROR_VER("TX has more than 2 different asset types in the outputs.");
           tvc.m_invalid_output = true;
           return false;
         }
+        if (asset_counter[tvc.m_source_asset] < 2) {
+          MERROR_VER("Conversion Txs should have at least 2 output that is same asset type as converted asset after Haven2 fork.");
+          tvc.m_invalid_output = true;
+          return false;
+        }
+      } else {
+        MERROR_VER("Conversion Txs should have at least 3 output after Haven2 fork.");
+        tvc.m_invalid_output = true;
+        return false;
       }
+    }
   }
 
   // HERE BE DRAGONS!!!
@@ -5269,9 +5274,16 @@ void Blockchain::return_tx_to_pool(std::vector<std::pair<transaction, blobdata>>
     // all the transactions in a popped block when a reorg happens.
     const size_t weight = get_transaction_weight(tx.first, tx.second.size());
     const crypto::hash tx_hash = get_transaction_hash(tx.first);
-    if (!m_tx_pool.add_tx(tx.first, tx_hash, tx.second, weight, tvc, relay_method::block, true, version))
-    {
-      MERROR("Failed to return taken transaction with hash: " << get_transaction_hash(tx.first) << " to tx_pool");
+    if (version >= HF_VERSION_HAVEN2) {
+      if (!m_tx_pool.add_tx2(tx.first, tx_hash, tx.second, weight, tvc, relay_method::block, true, version))
+      {
+        MERROR("Failed to return taken transaction with hash: " << get_transaction_hash(tx.first) << " to tx_pool");
+      }
+    } else {
+      if (!m_tx_pool.add_tx(tx.first, tx_hash, tx.second, weight, tvc, relay_method::block, true, version))
+      {
+        MERROR("Failed to return taken transaction with hash: " << get_transaction_hash(tx.first) << " to tx_pool");
+      }
     }
   }
 }

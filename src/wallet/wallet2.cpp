@@ -2166,19 +2166,12 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   // In this function, tx (probably) only contains the base information
   // (that is, the prunable stuff may or may not be included)
 
-  // Flags to track offshore TX direction
-  bool offshore = false;
-  bool onshore = false;
-  bool offshore_transfer = false;
-  bool xasset_transfer = false;
-  bool xasset_to_xusd = false;
-  bool xusd_to_xasset = false;
   std::string source;
   std::string dest;
-
+  cryptonote::conversion_type tx_type;
   bool r = cryptonote::get_tx_asset_types(tx, txid, source, dest, miner_tx);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get TX asset types");
-  r = cryptonote::get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer);
+  r = cryptonote::get_tx_type(source, dest, tx_type);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get TX type");
   
   if (!miner_tx && !pool) {

@@ -873,41 +873,32 @@ namespace cryptonote
     std::vector<const rct::rctSig*> rvv;
     for (size_t n = 0; n < tx_info.size(); ++n)
     {
-      // Set the offshore TX type flags
-      bool offshore = false;
-      bool onshore = false;
-      bool offshore_transfer = false;
-      bool xasset_transfer = false;
-      bool xasset_to_xusd = false;
-      bool xusd_to_xasset = false;
-      std::string source;
-      std::string dest;
-      offshore::pricing_record pr;
-      
+
       // Get the pricing_record_height for any offshore TX
+      offshore::pricing_record pr;      
       uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
     
       // Get the TX asset types
-      if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx->hash, source, dest, false)) {
+      if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx->hash, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, false)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
         tx_info[n].tvc.m_verifivation_failed = true;
-        if (source.empty()) {
+        if (tx_info[n].tvc.m_source_asset.empty()) {
           tx_info[n].tvc.m_invalid_input = true;
         }
-        if (dest.empty()) {
+        if (tx_info[n].tvc.m_dest_asset.empty()) {
           tx_info[n].tvc.m_invalid_output = true;
         }
         continue;
       }
 
       // Get the TX type flags
-      if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
+      if (!get_tx_type(tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tvc.m_type)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
         tx_info[n].tvc.m_verifivation_failed = true;
 	      continue;
       }
       
-      if (source != dest) {
+      if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
         
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
         if (pricing_record_height == 821428 && m_nettype == MAINNET) {
@@ -973,7 +964,7 @@ namespace cryptonote
           tx_info[n].result = false;
           break;
         case rct::RCTTypeSimple:
-          if (!rct::verRctSemanticsSimple(rv, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted))
+          if (!rct::verRctSemanticsSimple(rv, pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset))
           {
             MERROR_VER("rct signature semantics check failed");
             set_semantics_failed(tx_info[n].tx_hash);
@@ -1022,41 +1013,32 @@ namespace cryptonote
       ret = false;
       for (size_t n = 0; n < tx_info.size(); ++n)
       {
-        // Set the offshore TX type flags
-        bool offshore = false;
-        bool onshore = false;
-        bool offshore_transfer = false;
-        bool xasset_transfer = false;
-        bool xasset_to_xusd = false;
-        bool xusd_to_xasset = false;
-        std::string source;
-        std::string dest;
-        offshore::pricing_record pr;
-      
+
         // Get the pricing_record_height for any offshore TX
+        offshore::pricing_record pr;      
         uint64_t pricing_record_height = tx_info[n].tx->pricing_record_height;
 
         // get the tx asset types
-        if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx->hash, source, dest, false)) {
+        if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx->hash, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, false)) {
           MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
-          if (source.empty()) {
+          if (tx_info[n].tvc.m_source_asset.empty()) {
           tx_info[n].tvc.m_invalid_input = true;
           }
-          if (dest.empty()) {
+          if (tx_info[n].tvc.m_dest_asset.empty()) {
             tx_info[n].tvc.m_invalid_output = true;
           }
           continue;
         }
 
         // Get the TX type flags
-        if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
+        if (!get_tx_type(tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tvc.m_type)) {
           MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
           continue;
         }
       
-        if (source != dest) {
+        if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
 
           // NEAC: recover from the reorg during Oracle switch - 1 TX affected
           if (pricing_record_height == 821428 && m_nettype == MAINNET) {
@@ -1106,14 +1088,14 @@ namespace cryptonote
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2)
           continue;
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2) {
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, tx_info[n].tx->vout))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, tx_info[n].tx->vout))
           {
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
             tx_info[n].result = false;
           }
         } else {
-          if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, offshore, onshore, offshore_transfer, xasset_to_xusd, xusd_to_xasset, xasset_transfer, source, dest, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted))
+          if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset))
           {
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
@@ -1509,11 +1491,12 @@ namespace cryptonote
       return true;
     }
 
-    // HERE BE DRAGONS!!!
-    // NEAC: invoke the new add_tx() function to remove all the legacy cruft
     uint8_t version = m_blockchain_storage.get_current_hard_fork_version();
-    return m_mempool.add_tx(tx, tx_hash, blob, tx_weight, tvc, tx_relay, relayed, version);
-    // LAND AHOY!!!
+    if (version >= HF_VERSION_HAVEN2) {
+      return m_mempool.add_tx2(tx, tx_hash, blob, tx_weight, tvc, tx_relay, relayed, version);
+    } else {
+      return m_mempool.add_tx(tx, tx_hash, blob, tx_weight, tvc, tx_relay, relayed, version);
+    }
   }
   //-----------------------------------------------------------------------------------------------
   bool core::relay_txpool_transactions()

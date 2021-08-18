@@ -41,4 +41,14 @@ namespace cryptonote
     fluff,    //!< Received/sent over network using Dandelion++ fluff
     block     //!< Received in block, takes precedence over others
   };
+
+  enum conversion_type {
+    TRANSFER = 0,
+    OFFSHORE,
+    ONSHORE,
+    OFFSHORE_TRANSFER,
+    XUSD_TO_XASSET,
+    XASSET_TO_XUSD,
+    XASSET_TRANSFER
+  };
 }

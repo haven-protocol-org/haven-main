@@ -1440,7 +1440,7 @@ namespace rct {
     
     // do the output encryption and asset conversions
     key sumout = zero();
-    key atomic = d2h(1000000000000);
+    key atomic = d2h(COIN);
     key rate = d2h(pr.unused1); // MA in XHV - used to convert between XHV-XUSD
     key inverse_atomic = invert(atomic);
     key inverse_rate = invert(rate);
@@ -1680,15 +1680,10 @@ namespace rct {
   //assumes only post-rct style inputs (at least for max anonymity)
   bool verRctSemanticsSimple2(
     const rctSig& rv, 
-    const offshore::pricing_record pr, 
-    const bool offshore, 
-    const bool onshore, 
-    const bool offshore_to_offshore, 
-    const bool xasset_to_xusd, 
-    const bool xusd_to_xasset, 
-    const bool xasset_transfer, 
-    const std::string strSource, 
-    const std::string strDest,
+    const offshore::pricing_record& pr,
+    const cryptonote::conversion_type& type,
+    const std::string& strSource, 
+    const std::string& strDest,
     uint64_t amount_burnt, // HERE BE DRAGONS!!! shouldn't these should be uint128
     uint64_t amount_minted,
     const std::vector<cryptonote::tx_out> &vout
@@ -1803,29 +1798,29 @@ namespace rct {
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
-      if (offshore) {
-        key D_scaled = scalarmultKey(sumD, d2h(1000000000000));
+      if (type == cryptonote::OFFSHORE) {
+        key D_scaled = scalarmultKey(sumD, d2h(COIN));
         key yC_invert = invert(d2h(pr.unused1));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (onshore) {
+      } else if (type == cryptonote::ONSHORE) {
         key D_scaled = scalarmultKey(sumD, d2h(pr.unused1));
-        key yC_invert = invert(d2h(1000000000000));
+        key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (offshore_to_offshore) {
+      } else if (type == cryptonote::OFFSHORE_TRANSFER) {
         Zi = addKeys(sumC, sumD);
-      } else if (xusd_to_xasset) {
-        key D_scaled = scalarmultKey(sumD, d2h(1000000000000));
+      } else if (type == cryptonote::XUSD_TO_XASSET) {
+        key D_scaled = scalarmultKey(sumD, d2h(COIN));
         key yC_invert = invert(d2h(pr[strDest]));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (xasset_to_xusd) {  // NEEDS xasset_transfer here because the fees are converted
+      } else if (type == cryptonote::XASSET_TO_XUSD) {
         key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
-        key yC_invert = invert(d2h(1000000000000));
+        key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (xasset_transfer) {
+      } else if (type == cryptonote::XASSET_TRANSFER) {
         Zi = addKeys(sumC, sumD);
       } else {
         Zi = addKeys(sumC, sumD);
@@ -1840,7 +1835,7 @@ namespace rct {
       // Validate TX amount burnt/mint for conversions
       if (strSource != strDest) {
           
-        if (xasset_to_xusd || xusd_to_xasset) {
+        if (type == cryptonote::XASSET_TO_XUSD || type == cryptonote::XUSD_TO_XASSET) {
           // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
           // So we subtract that from amount_burnt and validate only the actual coversion amount because
           // fees are not converted. They are just burned.
@@ -1915,17 +1910,10 @@ namespace rct {
   //assumes only post-rct style inputs (at least for max anonymity)
   bool verRctSemanticsSimple(
     const rctSig& rv, 
-    const offshore::pricing_record pr, 
-    const bool offshore, 
-    const bool onshore, 
-    const bool offshore_to_offshore, 
-    const bool xasset_to_xusd, 
-    const bool xusd_to_xasset, 
-    const bool xasset_transfer, 
-    const std::string strSource, 
-    const std::string strDest,
-    uint64_t amount_burnt, // HERE BE DRAGONS!!! shouldn't these should be uint128
-    uint64_t amount_minted
+    const offshore::pricing_record& pr, 
+    const cryptonote::conversion_type& type,
+    const std::string& strSource, 
+    const std::string& strDest
   ){
 
     try
@@ -2036,10 +2024,9 @@ namespace rct {
         Zi = sumUSD + D_final = 0
       */
 
-      key sumPseudoOuts = offshore ||
-        (!onshore && !offshore_to_offshore && !xusd_to_xasset && !xasset_to_xusd && !xasset_transfer) ? addKeys(pseudoOuts) : zerokey;
-      key sumPseudoOuts_usd = (onshore || offshore_to_offshore || xusd_to_xasset) ? addKeys(pseudoOuts) : zerokey;
-      key sumPseudoOuts_xasset = (xasset_transfer || xasset_to_xusd) ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts = type == cryptonote::OFFSHORE ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts_usd = (type == cryptonote::ONSHORE || type == cryptonote::OFFSHORE_TRANSFER || type == cryptonote::XUSD_TO_XASSET) ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts_xasset = (type == cryptonote::XASSET_TO_XUSD || type == cryptonote::XASSET_TRANSFER) ? addKeys(pseudoOuts) : zerokey;
         
       DP(sumPseudoOuts);
       DP(sumPseudoOuts_usd);
@@ -2068,29 +2055,29 @@ namespace rct {
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
-      if (offshore) {
-        key D_scaled = scalarmultKey(sumUSD, d2h(1000000000000));
+      if (type == cryptonote::OFFSHORE) {
+        key D_scaled = scalarmultKey(sumUSD, d2h(COIN));
         key yC_invert = invert(d2h(pr.unused1));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumXHV, D_final);
-      } else if (onshore) {
+      } else if (type == cryptonote::ONSHORE) {
         key C_scaled = scalarmultKey(sumXHV, d2h(pr.unused1));
-        key yD_invert = invert(d2h(1000000000000));
+        key yD_invert = invert(d2h(COIN));
         key C_final = scalarmultKey(C_scaled, yD_invert);
         Zi = addKeys(C_final, sumUSD);
-      } else if (offshore_to_offshore) {
+      } else if (type == cryptonote::OFFSHORE_TRANSFER) {
         Zi = addKeys(sumXHV, sumUSD);
-      } else if (xusd_to_xasset) {
-        key D_scaled = scalarmultKey(sumXASSET, d2h(1000000000000));
+      } else if (type == cryptonote::XUSD_TO_XASSET) {
+        key D_scaled = scalarmultKey(sumXASSET, d2h(COIN));
         key yC_invert = invert(d2h(pr[strDest]));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumUSD, D_final);
-      } else if (xasset_to_xusd) {  // NEEDS xasset_transfer here because the fees are converted
+      } else if (type == cryptonote::XASSET_TO_XUSD) {
         key C_scaled = scalarmultKey(sumUSD, d2h(pr[strSource]));
-        key yD_invert = invert(d2h(1000000000000));
+        key yD_invert = invert(d2h(COIN));
         key C_final = scalarmultKey(C_scaled, yD_invert);
         Zi = addKeys(C_final, sumXASSET);
-      } else if (xasset_transfer) {
+      } else if (type == cryptonote::XASSET_TRANSFER) {
         Zi = addKeys(sumUSD, sumXASSET);
       } else {
         Zi = addKeys(sumXHV, sumUSD);
@@ -2344,7 +2331,7 @@ namespace rct {
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
       boost::multiprecision::uint128_t exchange_128 = pr.unused1;
       boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
-      xusd_128 /= 1000000000000;
+      xusd_128 /= COIN;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
       if (xusd_128 != minted_128) {
         LOG_PRINT_L1("Minted/burnt verification failed (offshore)");
@@ -2353,7 +2340,7 @@ namespace rct {
     } else if (source == "XUSD" && destination == "XHV") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
       boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-      boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
+      boost::multiprecision::uint128_t xhv_128 = xusd_128 * COIN;
       xhv_128 /= exchange_128;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
       if ((uint64_t)xhv_128 != minted_128) {
@@ -2369,7 +2356,7 @@ namespace rct {
       }
       boost::multiprecision::uint128_t exchange_128 = pr[destination];
       boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
-      xasset_128 /= 1000000000000;
+      xasset_128 /= COIN;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
       if (xasset_128 != minted_128) {
         LOG_PRINT_L1("Minted/burnt verification failed (xusd_to_xasset)");
@@ -2383,7 +2370,7 @@ namespace rct {
 	      xasset_128 -= ((rv.txnOffshoreFee_xasset * 80) / 100);
       }
       boost::multiprecision::uint128_t exchange_128 = pr[source];
-      boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
+      boost::multiprecision::uint128_t xusd_128 = xasset_128 * COIN;
       xusd_128 /= exchange_128;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
       if ((uint64_t)xusd_128 != minted_128) {

@@ -122,6 +122,370 @@ namespace cryptonote
 
   }
   //---------------------------------------------------------------------------------
+  bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
+  {
+    const bool kept_by_block = (tx_relay == relay_method::block);
+
+    // this should already be called with that lock, but let's make it explicit for clarity
+    CRITICAL_REGION_LOCAL(m_transactions_lock);
+
+    PERF_TIMER(add_tx);
+
+    // we do not accept transactions that timed out before, unless they're
+    // kept_by_block
+    if (!kept_by_block && m_timed_out_transactions.find(id) != m_timed_out_transactions.end())
+    {
+      // not clear if we should set that, since verifivation (sic) did not fail before, since
+      // the tx was accepted before timing out.
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+
+    if(!check_inputs_types_supported(tx))
+    {
+      tvc.m_verifivation_failed = true;
+      tvc.m_invalid_input = true;
+      return false;
+    }
+
+    // Block the use of timestamps for unlock_time
+    if(tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+
+    // From HF18, only allow TX version 5+
+    if (tx.version < 5) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+
+    // fees
+    uint64_t fee = tx.rct_signatures.txnFee;
+    uint64_t offshore_fee = tx.rct_signatures.txnOffshoreFee;
+    
+    // Check to make sure that only 1 destination is provided if memo data is specified.
+    // This is necessary because we shuffle outputs and there is no way to identify which memo data would relate to which destination if multiples were permitted.
+    tx_extra_memo memo;
+    if (get_memo_from_tx_extra(tx.extra, memo)) {
+      if (tx.vout.size() > 2) {
+        LOG_PRINT_L1("transaction has memo data and multiple destinations specified - this is not permitted, rejecting.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+    }
+
+    // get vars we need from tvc
+    std::string source = tvc.m_source_asset;
+    std::string dest = tvc.m_dest_asset;
+    conversion_type tx_type = tvc.m_type;
+    offshore::pricing_record pr;
+    // since tvc can be empty for some situations such as "popping blocks",
+    // we make sure those vars are populated.
+    if (source.empty() || dest.empty()) {
+      if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
+        LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
+        tvc.m_verifivation_failed = true;
+        if (source.empty()) {
+          tvc.m_invalid_input = true;
+        }
+        if (dest.empty()) {
+          tvc.m_invalid_output = true;
+        }
+        return false;
+      }
+      if (!get_tx_type(source, dest, tx_type)) {
+        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      // now populate the tvc
+      tvc.m_source_asset = source;
+      tvc.m_dest_asset = dest;
+      tvc.m_type = tx_type;
+    }
+
+    // check whether this is a conversion tx.
+    if (source != dest) {
+      
+      // Validate that pricing record is not too old
+      uint64_t current_height = m_blockchain.get_current_blockchain_height();
+      if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+
+      // Get the pricing record that was used for conversion
+      block bl;
+      bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
+      if (!r) {
+        LOG_ERROR("error: failed to get block containing pricing record");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      pr = bl.pricing_record;
+
+      // check whether we have a valid exchange rate
+      if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+        if (!pr.unused1) { // using 24 hr MA in unused1
+          LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      } else {
+        if (tx_type == XUSD_TO_XASSET) {
+          if (!pr[dest]) {
+            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        } else { // should be xasset_to_xusd
+          if (!pr[source]) {
+            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        }
+      }
+      
+      // check whether we have empty amount burnt/mint. Actual validation happens in verRctSemanticsSimple2()
+      if (!tx.amount_burnt || !tx.amount_minted) {
+        LOG_ERROR("error: Invalid Tx found. 0 burnt/minted for a conversion tx.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+
+      // Check the amount burnt and minted
+      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest, version)) {
+        LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+
+      // HERE BE DRAGONS!!!
+      // NEAC: verify whether this value of unlock time needs to use current_height instead of PR height
+      // Verify the offshore conversion fee is present and correct here
+      uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+      // LAND AHOY
+      if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+        if (unlock_time < 180) {
+          LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
+        if (unlock_time < 1440) {
+          LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      }
+
+      // validate conversion fees
+      uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
+      uint64_t conversion_fee_check = 0;
+      if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+        conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
+      } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
+        // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
+        // for the tx.amount_burnt containing the 80% burnt fee proportion as well
+        boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+        amount_128 = (amount_128 * 10) / (2000 + 8);
+        conversion_fee_check = (uint64_t)amount_128;
+      }
+
+      if (conversion_fee_check != tx.rct_signatures.txnOffshoreFee) {
+        LOG_PRINT_L1("conversion fee is incorrect - rejecting");
+        tvc.m_verifivation_failed = true;
+        tvc.m_fee_too_low = true;
+        return false;
+      }
+    } else {
+      // make sure there is no burnt/mint set for transfers, since these numbers will affect circulating supply.
+      if (tx.amount_burnt || tx.amount_minted) {
+        LOG_ERROR("error: Invalid Tx found. Amount burnt/mint > 0 for a transfer tx.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+    }
+
+    // check the std tx fee
+    if (!kept_by_block) {
+      if (!fee || !m_blockchain.check_fee(tx_weight, fee, pr, source, dest)){
+        tvc.m_verifivation_failed = true;
+        tvc.m_fee_too_low = true;
+        return false;
+      }
+    }
+    
+    size_t tx_weight_limit = get_transaction_weight_limit(version);
+    if ((!kept_by_block || version >= HF_VERSION_PER_BYTE_FEE) && tx_weight > tx_weight_limit)
+    {
+      LOG_PRINT_L1("transaction is too heavy: " << tx_weight << " bytes, maximum weight: " << tx_weight_limit);
+      tvc.m_verifivation_failed = true;
+      tvc.m_too_big = true;
+      return false;
+    }
+
+    // if the transaction came from a block popped from the chain,
+    // don't check if we have its key images as spent.
+    // TODO: Investigate why not?
+    if(!kept_by_block)
+    {
+      if(have_tx_keyimges_as_spent(tx, id))
+      {
+        mark_double_spend(tx);
+        LOG_PRINT_L1("Transaction with id= "<< id << " used already spent key images");
+        tvc.m_verifivation_failed = true;
+        tvc.m_double_spend = true;
+        return false;
+      }
+    }
+
+    if (!m_blockchain.check_tx_outputs(tx, tvc))
+    {
+      LOG_PRINT_L1("Transaction with id= "<< id << " has at least one invalid output");
+      tvc.m_verifivation_failed = true;
+      tvc.m_invalid_output = true;
+      return false;
+    }
+
+    // assume failure during verification steps until success is certain
+    tvc.m_verifivation_failed = true;
+
+    time_t receive_time = time(nullptr);
+
+    crypto::hash max_used_block_id = null_hash;
+    uint64_t max_used_block_height = 0;
+    cryptonote::txpool_tx_meta_t meta{};
+    strcpy(meta.fee_asset_type, source.c_str());
+    bool ch_inp_res = check_tx_inputs([&tx]()->cryptonote::transaction&{ return tx; }, id, max_used_block_height, max_used_block_id, tvc, kept_by_block);
+    if(!ch_inp_res)
+    {
+      // if the transaction was valid before (kept_by_block), then it
+      // may become valid again, so ignore the failed inputs check.
+      if(kept_by_block)
+      {
+        meta.weight = tx_weight;
+        meta.fee = fee;
+        meta.offshore_fee = offshore_fee;
+        meta.max_used_block_id = null_hash;
+        meta.max_used_block_height = 0;
+        meta.last_failed_height = 0;
+        meta.last_failed_id = null_hash;
+        meta.receive_time = receive_time;
+        meta.last_relayed_time = time(NULL);
+        meta.relayed = relayed;
+        meta.set_relay_method(tx_relay);
+        meta.double_spend_seen = have_tx_keyimges_as_spent(tx, id);
+        meta.pruned = tx.pruned;
+        meta.bf_padding = 0;
+        memset(meta.padding1, 0, sizeof(meta.padding1));
+        memset(meta.padding, 0, sizeof(meta.padding));
+        try
+        {
+          if (kept_by_block)
+            m_parsed_tx_cache.insert(std::make_pair(id, tx));
+          CRITICAL_REGION_LOCAL1(m_blockchain);
+          LockedTXN lock(m_blockchain.get_db());
+          if (!insert_key_images(tx, id, tx_relay))
+            return false;
+
+          m_blockchain.add_txpool_tx(id, blob, meta);
+          m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(meta.fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
+          lock.commit();
+        }
+        catch (const std::exception &e)
+        {
+          MERROR("Error adding transaction to txpool: " << e.what());
+          return false;
+        }
+        tvc.m_verifivation_impossible = true;
+        tvc.m_added_to_pool = true;
+      }else
+      {
+        LOG_PRINT_L1("tx used wrong inputs, rejected");
+        tvc.m_verifivation_failed = true;
+        tvc.m_invalid_input = true;
+        return false;
+      }
+    }else
+    {
+      try
+      {
+        if (kept_by_block)
+          m_parsed_tx_cache.insert(std::make_pair(id, tx));
+        CRITICAL_REGION_LOCAL1(m_blockchain);
+        LockedTXN lock(m_blockchain.get_db());
+
+        const bool existing_tx = m_blockchain.get_txpool_tx_meta(id, meta);
+        if (existing_tx)
+        {
+          /* If Dandelion++ loop. Do not use txes in the `local` state in the
+             loop detection - txes in that state should be outgoing over i2p/tor
+             then routed back via public dandelion++ stem. Pretend to be
+             another stem node in that situation, a loop over the public
+             network hasn't been hit yet. */
+          if (tx_relay == relay_method::stem && meta.dandelionpp_stem)
+            tx_relay = relay_method::fluff;
+        }
+        else
+          meta.set_relay_method(relay_method::none);
+
+        if (meta.upgrade_relay_method(tx_relay) || !existing_tx) // synchronize with embargo timer or stem/fluff out-of-order messages
+        {
+          //update transactions container
+          meta.last_relayed_time = std::numeric_limits<decltype(meta.last_relayed_time)>::max();
+          meta.receive_time = receive_time;
+          meta.weight = tx_weight;
+          meta.fee = fee;
+          meta.offshore_fee = offshore_fee;
+          meta.max_used_block_id = max_used_block_id;
+          meta.max_used_block_height = max_used_block_height;
+          meta.last_failed_height = 0;
+          meta.last_failed_id = null_hash;
+          meta.relayed = relayed;
+          meta.double_spend_seen = false;
+          meta.pruned = tx.pruned;
+          meta.bf_padding = 0;
+	        memset(meta.padding1, 0, sizeof(meta.padding1));
+          memset(meta.padding, 0, sizeof(meta.padding));
+
+          if (!insert_key_images(tx, id, tx_relay))
+            return false;
+
+          m_blockchain.remove_txpool_tx(id);
+          m_blockchain.add_txpool_tx(id, blob, meta);
+          m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(meta.fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
+        }
+        lock.commit();
+      }
+      catch (const std::exception &e)
+      {
+        MERROR("internal error: error adding transaction to txpool: " << e.what());
+        return false;
+      }
+      tvc.m_added_to_pool = true;
+
+      static_assert(unsigned(relay_method::none) == 0, "expected relay_method::none value to be zero");
+      if(meta.fee > 0){
+        tvc.m_relay = tx_relay;
+      }
+    }
+
+    tvc.m_verifivation_failed = false;
+    m_txpool_weight += tx_weight;
+
+    ++m_cookie;
+
+    MINFO("Transaction added to pool: txid " << id << " weight: " << tx_weight << " fee/byte: " << (meta.fee / (double)(tx_weight ? tx_weight : 1)) << " " << source);
+
+    prune(m_txpool_max_weight);
+
+    return true;
+  }
+  //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx(transaction &tx, /*const crypto::hash& tx_prefix_hash,*/ const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {
     const bool kept_by_block = (tx_relay == relay_method::block);
@@ -167,12 +531,6 @@ namespace cryptonote
       return false;
     }
 
-    // From HF18, only allow TX version 5+
-    if(version >= HF_VERSION_HAVEN2 && tx.version < 5) {
-      tvc.m_verifivation_failed = true;
-      return false;
-    }
-
     // fee per kilobyte, size rounded up.
     uint64_t fee = 0, fee_usd = 0, fee_xasset = 0, offshore_fee = 0, offshore_fee_usd = 0, offshore_fee_xasset = 0;
 
@@ -207,81 +565,79 @@ namespace cryptonote
     {
       fee = tx.rct_signatures.txnFee;
       offshore_fee = tx.rct_signatures.txnOffshoreFee;
-      if (version < HF_VERSION_HAVEN2) {
-        fee_usd = tx.rct_signatures.txnFee_usd;
-        fee_xasset = tx.rct_signatures.txnFee_xasset;
-        offshore_fee_usd = tx.rct_signatures.txnOffshoreFee_usd;
-        offshore_fee_xasset = tx.rct_signatures.txnOffshoreFee_xasset;
-      }
+      fee_usd = tx.rct_signatures.txnFee_usd;
+      fee_xasset = tx.rct_signatures.txnFee_xasset;
+      offshore_fee_usd = tx.rct_signatures.txnOffshoreFee_usd;
+      offshore_fee_xasset = tx.rct_signatures.txnOffshoreFee_xasset;
     }
 
-    if (version < HF_VERSION_HAVEN2) {
-      //validate the offshore data
-      bool bOffshoreTx = false;
-      tx_extra_offshore offshore_data;
-      if (tx.extra.size()) {
-        bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
-      }
-      if (bOffshoreTx) {
-        if (version >= HF_VERSION_XASSET_FULL) {
-          int pos = offshore_data.data.find("-");
-          if (pos != std::string::npos) {
-            std::string source = offshore_data.data.substr(0,pos);
-            std::string dest = offshore_data.data.substr(pos+1);
-            // check both strSource and strDest are supported.
-            if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
-              tvc.m_verifivation_failed = true;
-              LOG_PRINT_L1("Source Asset type " << source << " is not supported! Rejecting..");
-              return false;
-            }
-            if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest) == offshore::ASSET_TYPES.end()) {
-              tvc.m_verifivation_failed = true;
-              LOG_PRINT_L1("Destination Asset type " << dest << " is not supported! Rejecting..");
-              return false;
-            }
-          } else {
-            LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-        } else if (version >= HF_VERSION_OFFSHORE_FULL) {
-          if (offshore_data.data.size() != 2 ||
-              (offshore_data.data.at(0) != 'A' && offshore_data.data.at(0) != 'N') || 
-              (offshore_data.data.at(1) != 'A' && offshore_data.data.at(1) != 'N')
-              ){
-            // old offshore data format suplied to tx extra
-            LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-        }
 
-        std::string tx_offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
-        if(tx_offshore_data.empty()) {
-          if (version >= HF_VERSION_XASSET_FULL) {
-            // old offshore data format suplied to tx extra
-            LOG_PRINT_L1("Empty tx_offshore_data." << id);
+    //validate the offshore data
+    bool bOffshoreTx = false;
+    tx_extra_offshore offshore_data;
+    if (tx.extra.size()) {
+      bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
+    }
+    if (bOffshoreTx) {
+      if (version >= HF_VERSION_XASSET_FULL) {
+        int pos = offshore_data.data.find("-");
+        if (pos != std::string::npos) {
+          std::string source = offshore_data.data.substr(0,pos);
+          std::string dest = offshore_data.data.substr(pos+1);
+          // check both strSource and strDest are supported.
+          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
             tvc.m_verifivation_failed = true;
+            LOG_PRINT_L1("Source Asset type " << source << " is not supported! Rejecting..");
             return false;
-          } else if (version >= HF_VERSION_OFFSHORE_FULL) {
-            // offshore_data must be "NN"
-            if (offshore_data.data != "NN") {
-              // old offshore data format suplied to tx extra
-              LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
+          }
+          if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest) == offshore::ASSET_TYPES.end()) {
+            tvc.m_verifivation_failed = true;
+            LOG_PRINT_L1("Destination Asset type " << dest << " is not supported! Rejecting..");
+            return false;
           }
         } else {
-          if (tx_offshore_data != offshore_data.data) {
+          LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      } else if (version >= HF_VERSION_OFFSHORE_FULL) {
+        if (offshore_data.data.size() != 2 ||
+            (offshore_data.data.at(0) != 'A' && offshore_data.data.at(0) != 'N') || 
+            (offshore_data.data.at(1) != 'A' && offshore_data.data.at(1) != 'N')
+            ){
+          // old offshore data format suplied to tx extra
+          LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      }
+
+      std::string tx_offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
+      if(tx_offshore_data.empty()) {
+        if (version >= HF_VERSION_XASSET_FULL) {
+          // old offshore data format suplied to tx extra
+          LOG_PRINT_L1("Empty tx_offshore_data." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        } else if (version >= HF_VERSION_OFFSHORE_FULL) {
+          // offshore_data must be "NN"
+          if (offshore_data.data != "NN") {
             // old offshore data format suplied to tx extra
-            LOG_PRINT_L1("Tx offshore data doesn't match with the one from tx extra." << id);
+            LOG_PRINT_L1("Invalid offshore data format was supplied to tx." << id);
             tvc.m_verifivation_failed = true;
             return false;
           }
         }
+      } else {
+        if (tx_offshore_data != offshore_data.data) {
+          // old offshore data format suplied to tx extra
+          LOG_PRINT_L1("Tx offshore data doesn't match with the one from tx extra." << id);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
       }
     }
+    
     
     // Check to make sure that only 1 destination is provided if memo data is specified.
     // This is necessary because we shuffle outputs and there is no way to identify which memo data would relate to which destination if multiples were permitted.
@@ -295,40 +651,40 @@ namespace cryptonote
     }
 
     // Set the offshore TX type flags
-    bool offshore = false;
-    bool onshore = false;
-    bool offshore_transfer = false;
-    bool xasset_transfer = false;
-    bool xasset_to_xusd = false;
-    bool xusd_to_xasset = false;
-    std::string source;
-    std::string dest;
+    std::string source = tvc.m_source_asset;
+    std::string dest = tvc.m_dest_asset;
+    conversion_type tx_type = tvc.m_type;
     offshore::pricing_record pr;
-    if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
-      LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
-      tvc.m_verifivation_failed = true;
-      if (source.empty()) {
-        tvc.m_invalid_input = true;
+    // since tvc can be empty for some situations such as "popping blocks",
+    // we make sure those vars are populated.
+    if (source.empty() || dest.empty()) {
+      if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
+        LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
+        tvc.m_verifivation_failed = true;
+        if (source.empty()) {
+          tvc.m_invalid_input = true;
+        }
+        if (dest.empty()) {
+          tvc.m_invalid_output = true;
+        }
+        return false;
       }
-      if (dest.empty()) {
-        tvc.m_invalid_output = true;
+      if (!get_tx_type(source, dest, tx_type)) {
+        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
+        tvc.m_verifivation_failed = true;
+        return false;
       }
-      return false;
-    } else {
+      // now populate the tvc
       tvc.m_source_asset = source;
       tvc.m_dest_asset = dest;
-    }
-    if (!get_tx_type(source, dest, offshore, onshore, offshore_transfer, xusd_to_xasset, xasset_to_xusd, xasset_transfer)) {
-      LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
-      tvc.m_verifivation_failed = true;
-      return false;
+      tvc.m_type = tx_type;
     }
 
     // check whether this is a conversion tx.
     if (source != dest) {
 
       // Block all conversions as of fork 17 till HAVEN2
-      if (version >= HF_VERSION_XASSET_FEES_V2 && version < HF_VERSION_HAVEN2) {
+      if (version >= HF_VERSION_XASSET_FEES_V2) {
         LOG_ERROR("Conversion TXs are not permitted as of fork" << HF_VERSION_XASSET_FEES_V2);
         tvc.m_verifivation_failed = true;
         return false;
@@ -404,14 +760,14 @@ namespace cryptonote
         ////// recover ends //////////
 
         // check whether we have a valid exchange rate
-        if (offshore || onshore) {
+        if (tx_type == OFFSHORE || tx_type == ONSHORE) {
           if (!pr.unused1) { // using 24 hr MA in unused1
             LOG_ERROR("error: empty exchange rate. Conversion not possible.");
             tvc.m_verifivation_failed = true;
             return false;
           }
         } else {
-          if (xusd_to_xasset) {
+          if (tx_type == XUSD_TO_XASSET) {
             if (!pr[dest]) {
               LOG_ERROR("error: empty exchange rate. Conversion not possible.");
               tvc.m_verifivation_failed = true;
@@ -445,13 +801,13 @@ namespace cryptonote
         // Verify the offshore conversion fee is present and correct here
         uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
         // LAND AHOY
-        if (offshore || onshore) {
+        if (tx_type == OFFSHORE || tx_type == ONSHORE) {
           if (unlock_time < 180) {
             LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
             tvc.m_verifivation_failed = true;
             return false;
           }
-        } else if (xasset_to_xusd || xusd_to_xasset) {
+        } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             if (unlock_time < 1440) {
               LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
@@ -464,9 +820,9 @@ namespace cryptonote
         // validate conversion fees
         uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
         uint64_t conversion_fee_check = 0;
-        if (offshore || onshore) {
+        if (tx_type == OFFSHORE || tx_type == ONSHORE) {
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
-        } else if (xusd_to_xasset || xasset_to_xusd) {
+        } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
             // for the tx.amount_burnt containing the 80% burnt fee proportion as well
@@ -481,28 +837,19 @@ namespace cryptonote
           }
         }
 
-        if (version >= HF_VERSION_HAVEN2) {
-          if (conversion_fee_check != tx.rct_signatures.txnOffshoreFee) {
+        if (
+          ((tx_type == OFFSHORE) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
+          ((tx_type == ONSHORE || tx_type == XUSD_TO_XASSET) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
+          ((tx_type == XASSET_TO_XUSD) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
+        ){
+          // Check for 2 known overflow TXs
+          if ((epee::string_tools::pod_to_hex(tx.hash) != "5cdd9be420bd9034e2ff83a04cd22978c163a5263f8e7a0577f46ec762a21da6") &&
+              (epee::string_tools::pod_to_hex(tx.hash) != "b5cd616fc1b64a04750f890e466663ee3308c07846a174daf4d64c111f2de052")) {
+          
             LOG_PRINT_L1("conversion fee is incorrect - rejecting");
             tvc.m_verifivation_failed = true;
             tvc.m_fee_too_low = true;
             return false;
-          }
-        } else {
-          if (
-            (offshore && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
-            ((onshore || xusd_to_xasset) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
-            (xasset_to_xusd && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
-          ){
-            // Check for 2 known overflow TXs
-            if ((epee::string_tools::pod_to_hex(tx.hash) != "5cdd9be420bd9034e2ff83a04cd22978c163a5263f8e7a0577f46ec762a21da6") &&
-                (epee::string_tools::pod_to_hex(tx.hash) != "b5cd616fc1b64a04750f890e466663ee3308c07846a174daf4d64c111f2de052")) {
-            
-              LOG_PRINT_L1("conversion fee is incorrect - rejecting");
-              tvc.m_verifivation_failed = true;
-              tvc.m_fee_too_low = true;
-              return false;
-            }
           }
         }
       }
@@ -517,18 +864,10 @@ namespace cryptonote
 
     // check the std tx fee
     if (!kept_by_block) {
-      if (version >= HF_VERSION_HAVEN2) {
-        if (!fee || !m_blockchain.check_fee(tx_weight, fee, pr, source, dest)){
-          tvc.m_verifivation_failed = true;
-          tvc.m_fee_too_low = true;
-          return false;
-        }
-      } else {
-        if ((!fee && !fee_usd && !fee_xasset) || !m_blockchain.check_fee(tx_weight, source == "XHV" ? fee : source == "XUSD" ? fee_usd : fee_xasset, pr, source, dest)){
-          tvc.m_verifivation_failed = true;
-          tvc.m_fee_too_low = true;
-          return false;
-        }
+      if ((!fee && !fee_usd && !fee_xasset) || !m_blockchain.check_fee(tx_weight, source == "XHV" ? fee : source == "XUSD" ? fee_usd : fee_xasset, pr, source, dest)){
+        tvc.m_verifivation_failed = true;
+        tvc.m_fee_too_low = true;
+        return false;
       }
     }
     
@@ -581,16 +920,15 @@ namespace cryptonote
       if(kept_by_block)
       {
         meta.weight = tx_weight;
-        meta.fee = fee;
-        meta.offshore_fee = offshore_fee;
-        if (version < HF_VERSION_HAVEN2) {
-          if (source == "XUSD") {
-            meta.fee = fee_usd;
-            meta.offshore_fee = offshore_fee_usd;
-          } else if (source != "XHV") {
-            meta.fee = fee_xasset;
-            meta.offshore_fee = offshore_fee_xasset;
-          }
+        if (source == "XHV") {
+          meta.fee = fee;
+          meta.offshore_fee = offshore_fee;
+        } else if (source == "XUSD") {
+          meta.fee = fee_usd;
+          meta.offshore_fee = offshore_fee_usd;
+        } else {
+          meta.fee = fee_xasset;
+          meta.offshore_fee = offshore_fee_xasset;
         }
         meta.max_used_block_id = null_hash;
         meta.max_used_block_height = 0;
@@ -661,16 +999,15 @@ namespace cryptonote
           meta.last_relayed_time = std::numeric_limits<decltype(meta.last_relayed_time)>::max();
           meta.receive_time = receive_time;
           meta.weight = tx_weight;
-          meta.fee = fee;
-          meta.offshore_fee = offshore_fee;
-          if (version < HF_VERSION_HAVEN2) {
-            if (source == "XUSD") {
-              meta.fee = fee_usd;
-              meta.offshore_fee = offshore_fee_usd;
-            } else if (source != "XHV") {
-              meta.fee = fee_xasset;
-              meta.offshore_fee = offshore_fee_xasset;
-            }
+          if (source == "XHV") {
+            meta.fee = fee;
+            meta.offshore_fee = offshore_fee;
+          } else if (source == "XUSD") {
+            meta.fee = fee_usd;
+            meta.offshore_fee = offshore_fee_usd;
+          } else {
+            meta.fee = fee_xasset;
+            meta.offshore_fee = offshore_fee_xasset;
           }
           meta.max_used_block_id = max_used_block_id;
           meta.max_used_block_height = max_used_block_height;
@@ -725,7 +1062,11 @@ namespace cryptonote
     t_serializable_object_to_blob(tx, bl);
     if (bl.size() == 0 || !get_transaction_hash(tx, h))
       return false;
-    return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    if (version >= HF_VERSION_HAVEN2) {
+      return add_tx2(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    } else {
+      return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    }
   }
   //---------------------------------------------------------------------------------
   size_t tx_memory_pool::get_txpool_weight() const
