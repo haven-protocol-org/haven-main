@@ -881,20 +881,24 @@ namespace cryptonote
       // Get the TX asset types
       if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx->hash, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, false)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
-        tx_info[n].tvc.m_verifivation_failed = true;
         if (tx_info[n].tvc.m_source_asset.empty()) {
           tx_info[n].tvc.m_invalid_input = true;
         }
         if (tx_info[n].tvc.m_dest_asset.empty()) {
           tx_info[n].tvc.m_invalid_output = true;
         }
+        set_semantics_failed(tx_info[n].tx_hash);
+        tx_info[n].tvc.m_verifivation_failed = true;
+        tx_info[n].result = false;
         continue;
       }
 
       // Get the TX type flags
       if (!get_tx_type(tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tvc.m_type)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
+        set_semantics_failed(tx_info[n].tx_hash);
         tx_info[n].tvc.m_verifivation_failed = true;
+        tx_info[n].result = false;
 	      continue;
       }
       
@@ -929,7 +933,9 @@ namespace cryptonote
           
           if (!pr.verifySignature()) {
             MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
-            return false;
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
           }
         } else {
           // Get the correct pricing record here, given the height
@@ -937,7 +943,9 @@ namespace cryptonote
           bool b = m_blockchain_storage.get_blocks(pricing_record_height, 1, blocks_pr);
           if (!b) {
             MERROR_VER("Failed to obtain pricing record for block: " << pricing_record_height);
-            return false;
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
           }
           pr = blocks_pr[0].second.pricing_record;
         }
@@ -1021,20 +1029,24 @@ namespace cryptonote
         // get the tx asset types
         if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx->hash, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, false)) {
           MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
-          tx_info[n].tvc.m_verifivation_failed = true;
           if (tx_info[n].tvc.m_source_asset.empty()) {
           tx_info[n].tvc.m_invalid_input = true;
           }
           if (tx_info[n].tvc.m_dest_asset.empty()) {
             tx_info[n].tvc.m_invalid_output = true;
           }
+          set_semantics_failed(tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
           continue;
         }
 
         // Get the TX type flags
         if (!get_tx_type(tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tvc.m_type)) {
           MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
+          set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
           continue;
         }
       
@@ -1069,7 +1081,9 @@ namespace cryptonote
             
             if (!pr.verifySignature()) {
               MERROR_VER("Failed to set correct PR for block: " << pricing_record_height);
-              return false;
+              set_semantics_failed(tx_info[n].tx_hash);
+              tx_info[n].tvc.m_verifivation_failed = true;
+              tx_info[n].result = false;
             }
           } else {
             // Get the correct pricing record here, given the height
@@ -1077,7 +1091,9 @@ namespace cryptonote
             bool b = m_blockchain_storage.get_blocks(pricing_record_height, 1, blocks_pr);
             if (!b) {
               MERROR_VER("Failed to obtain pricing record for block: " << pricing_record_height);
-              return false;
+              set_semantics_failed(tx_info[n].tx_hash);
+              tx_info[n].tvc.m_verifivation_failed = true;
+              tx_info[n].result = false;
             }
             pr = blocks_pr[0].second.pricing_record;
           }
