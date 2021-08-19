@@ -266,7 +266,7 @@ skip:
       std::string source;
       std::string dest;
       offshore::pricing_record pr;
-      cryptonote::conversion_type tx_type;
+      cryptonote::transaction_type tx_type;
       if (!cryptonote::get_tx_asset_types(tx, tx.hash, source, dest, false)) {
         std::cout << timebuf << "" << delimiter << "" << h << "" << delimiter << "" << tx_id << "" << delimiter << "At least 1 input or 1 output of the tx was invalid" << delimiter << "get_tx_asset_types() failed : ";
         if (source.empty()) {
@@ -279,18 +279,19 @@ skip:
       if (!cryptonote::get_tx_type(source, dest, tx_type)) {
         std::cout << timebuf << "" << delimiter << "" << h << "" << delimiter << "" << tx_id << "" << delimiter << "At least 1 input or 1 output of the tx was invalid" << delimiter << "get_tx_type() failed" << std::endl;
       }
-
-      if (tx_type == cryptonote::OFFSHORE) {
+      
+      using t_type = cryptonote::transaction_type;
+      if (tx_type == t_type::OFFSHORE) {
         offshore = true;
-      } else if (tx_type == cryptonote::ONSHORE) {
+      } else if (tx_type == t_type::ONSHORE) {
         onshore = true;
-      } else if (tx_type == cryptonote::OFFSHORE_TRANSFER) {
+      } else if (tx_type == t_type::OFFSHORE_TRANSFER) {
         offshore_transfer = true;
-      } else if (tx_type == cryptonote::XUSD_TO_XASSET) {
+      } else if (tx_type == t_type::XUSD_TO_XASSET) {
         xusd_to_xasset = true;
-      } else if (tx_type == cryptonote::XASSET_TO_XUSD) {
+      } else if (tx_type == t_type::XASSET_TO_XUSD) {
         xasset_to_xusd = true;
-      } else if (tx_type == cryptonote::XASSET_TRANSFER) {
+      } else if (tx_type == t_type::XASSET_TRANSFER) {
         xasset_transfer = true;
       }
 

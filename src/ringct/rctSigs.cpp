@@ -1681,7 +1681,7 @@ namespace rct {
   bool verRctSemanticsSimple2(
     const rctSig& rv, 
     const offshore::pricing_record& pr,
-    const cryptonote::conversion_type& type,
+    const cryptonote::transaction_type& type,
     const std::string& strSource, 
     const std::string& strDest,
     uint64_t amount_burnt, // HERE BE DRAGONS!!! shouldn't these should be uint128
@@ -1798,29 +1798,30 @@ namespace rct {
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
-      if (type == cryptonote::OFFSHORE) {
+      using tx_type = cryptonote::transaction_type;
+      if (type == tx_type::OFFSHORE) {
         key D_scaled = scalarmultKey(sumD, d2h(COIN));
         key yC_invert = invert(d2h(pr.unused1));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (type == cryptonote::ONSHORE) {
+      } else if (type == tx_type::ONSHORE) {
         key D_scaled = scalarmultKey(sumD, d2h(pr.unused1));
         key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (type == cryptonote::OFFSHORE_TRANSFER) {
+      } else if (type == tx_type::OFFSHORE_TRANSFER) {
         Zi = addKeys(sumC, sumD);
-      } else if (type == cryptonote::XUSD_TO_XASSET) {
+      } else if (type == tx_type::XUSD_TO_XASSET) {
         key D_scaled = scalarmultKey(sumD, d2h(COIN));
         key yC_invert = invert(d2h(pr[strDest]));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (type == cryptonote::XASSET_TO_XUSD) {
+      } else if (type == tx_type::XASSET_TO_XUSD) {
         key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
         key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-      } else if (type == cryptonote::XASSET_TRANSFER) {
+      } else if (type == tx_type::XASSET_TRANSFER) {
         Zi = addKeys(sumC, sumD);
       } else {
         Zi = addKeys(sumC, sumD);
@@ -1835,7 +1836,7 @@ namespace rct {
       // Validate TX amount burnt/mint for conversions
       if (strSource != strDest) {
           
-        if (type == cryptonote::XASSET_TO_XUSD || type == cryptonote::XUSD_TO_XASSET) {
+        if (type == tx_type::XASSET_TO_XUSD || type == tx_type::XUSD_TO_XASSET) {
           // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
           // So we subtract that from amount_burnt and validate only the actual coversion amount because
           // fees are not converted. They are just burned.
@@ -1911,7 +1912,7 @@ namespace rct {
   bool verRctSemanticsSimple(
     const rctSig& rv, 
     const offshore::pricing_record& pr, 
-    const cryptonote::conversion_type& type,
+    const cryptonote::transaction_type& type,
     const std::string& strSource, 
     const std::string& strDest
   ){
@@ -2023,10 +2024,10 @@ namespace rct {
         D_final = sumXASSET * 1/ exchange_rate_in_usd = -total_output_value_in_USD
         Zi = sumUSD + D_final = 0
       */
-
-      key sumPseudoOuts = type == cryptonote::OFFSHORE ? addKeys(pseudoOuts) : zerokey;
-      key sumPseudoOuts_usd = (type == cryptonote::ONSHORE || type == cryptonote::OFFSHORE_TRANSFER || type == cryptonote::XUSD_TO_XASSET) ? addKeys(pseudoOuts) : zerokey;
-      key sumPseudoOuts_xasset = (type == cryptonote::XASSET_TO_XUSD || type == cryptonote::XASSET_TRANSFER) ? addKeys(pseudoOuts) : zerokey;
+      using tx_type = cryptonote::transaction_type;
+      key sumPseudoOuts = type == tx_type::OFFSHORE ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts_usd = (type == tx_type::ONSHORE || type == tx_type::OFFSHORE_TRANSFER || type == tx_type::XUSD_TO_XASSET) ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts_xasset = (type == tx_type::XASSET_TO_XUSD || type == tx_type::XASSET_TRANSFER) ? addKeys(pseudoOuts) : zerokey;
         
       DP(sumPseudoOuts);
       DP(sumPseudoOuts_usd);
@@ -2055,29 +2056,29 @@ namespace rct {
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
-      if (type == cryptonote::OFFSHORE) {
+      if (type == tx_type::OFFSHORE) {
         key D_scaled = scalarmultKey(sumUSD, d2h(COIN));
         key yC_invert = invert(d2h(pr.unused1));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumXHV, D_final);
-      } else if (type == cryptonote::ONSHORE) {
+      } else if (type == tx_type::ONSHORE) {
         key C_scaled = scalarmultKey(sumXHV, d2h(pr.unused1));
         key yD_invert = invert(d2h(COIN));
         key C_final = scalarmultKey(C_scaled, yD_invert);
         Zi = addKeys(C_final, sumUSD);
-      } else if (type == cryptonote::OFFSHORE_TRANSFER) {
+      } else if (type == tx_type::OFFSHORE_TRANSFER) {
         Zi = addKeys(sumXHV, sumUSD);
-      } else if (type == cryptonote::XUSD_TO_XASSET) {
+      } else if (type == tx_type::XUSD_TO_XASSET) {
         key D_scaled = scalarmultKey(sumXASSET, d2h(COIN));
         key yC_invert = invert(d2h(pr[strDest]));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumUSD, D_final);
-      } else if (type == cryptonote::XASSET_TO_XUSD) {
+      } else if (type == tx_type::XASSET_TO_XUSD) {
         key C_scaled = scalarmultKey(sumUSD, d2h(pr[strSource]));
         key yD_invert = invert(d2h(COIN));
         key C_final = scalarmultKey(C_scaled, yD_invert);
         Zi = addKeys(C_final, sumXASSET);
-      } else if (type == cryptonote::XASSET_TRANSFER) {
+      } else if (type == tx_type::XASSET_TRANSFER) {
         Zi = addKeys(sumUSD, sumXASSET);
       } else {
         Zi = addKeys(sumXHV, sumUSD);

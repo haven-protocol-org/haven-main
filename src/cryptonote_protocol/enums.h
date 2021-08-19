@@ -42,8 +42,9 @@ namespace cryptonote
     block     //!< Received in block, takes precedence over others
   };
 
-  enum conversion_type {
-    TRANSFER = 0,
+  enum class transaction_type {
+    UNSET = 0,
+    TRANSFER,
     OFFSHORE,
     ONSHORE,
     OFFSHORE_TRANSFER,

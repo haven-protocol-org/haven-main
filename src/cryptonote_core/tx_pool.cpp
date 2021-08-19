@@ -178,11 +178,11 @@ namespace cryptonote
     // get vars we need from tvc
     std::string source = tvc.m_source_asset;
     std::string dest = tvc.m_dest_asset;
-    conversion_type tx_type = tvc.m_type;
+    transaction_type tx_type = tvc.m_type;
     offshore::pricing_record pr;
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
-    if (source.empty() || dest.empty()) {
+    if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
       if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
         LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
         tvc.m_verifivation_failed = true;
@@ -227,14 +227,14 @@ namespace cryptonote
       pr = bl.pricing_record;
 
       // check whether we have a valid exchange rate
-      if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         if (!pr.unused1) { // using 24 hr MA in unused1
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
         }
       } else {
-        if (tx_type == XUSD_TO_XASSET) {
+        if (tx_type == transaction_type::XUSD_TO_XASSET) {
           if (!pr[dest]) {
             LOG_ERROR("error: empty exchange rate. Conversion not possible.");
             tvc.m_verifivation_failed = true;
@@ -268,13 +268,13 @@ namespace cryptonote
       // Verify the offshore conversion fee is present and correct here
       uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
       // LAND AHOY
-      if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         if (unlock_time < 180) {
           LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
           tvc.m_verifivation_failed = true;
           return false;
         }
-      } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
         if (unlock_time < 1440) {
           LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
           tvc.m_verifivation_failed = true;
@@ -285,9 +285,9 @@ namespace cryptonote
       // validate conversion fees
       uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;
-      if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
-      } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
         // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
         // for the tx.amount_burnt containing the 80% burnt fee proportion as well
         boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
@@ -653,11 +653,11 @@ namespace cryptonote
     // Set the offshore TX type flags
     std::string source = tvc.m_source_asset;
     std::string dest = tvc.m_dest_asset;
-    conversion_type tx_type = tvc.m_type;
+    transaction_type tx_type = tvc.m_type;
     offshore::pricing_record pr;
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
-    if (source.empty() || dest.empty()) {
+    if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
       if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
         LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
         tvc.m_verifivation_failed = true;
@@ -760,14 +760,14 @@ namespace cryptonote
         ////// recover ends //////////
 
         // check whether we have a valid exchange rate
-        if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+        if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
           if (!pr.unused1) { // using 24 hr MA in unused1
             LOG_ERROR("error: empty exchange rate. Conversion not possible.");
             tvc.m_verifivation_failed = true;
             return false;
           }
         } else {
-          if (tx_type == XUSD_TO_XASSET) {
+          if (tx_type == transaction_type::XUSD_TO_XASSET) {
             if (!pr[dest]) {
               LOG_ERROR("error: empty exchange rate. Conversion not possible.");
               tvc.m_verifivation_failed = true;
@@ -801,13 +801,13 @@ namespace cryptonote
         // Verify the offshore conversion fee is present and correct here
         uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
         // LAND AHOY
-        if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+        if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
           if (unlock_time < 180) {
             LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
             tvc.m_verifivation_failed = true;
             return false;
           }
-        } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
+        } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             if (unlock_time < 1440) {
               LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
@@ -820,9 +820,9 @@ namespace cryptonote
         // validate conversion fees
         uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
         uint64_t conversion_fee_check = 0;
-        if (tx_type == OFFSHORE || tx_type == ONSHORE) {
+        if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
-        } else if (tx_type == XASSET_TO_XUSD || tx_type == XUSD_TO_XASSET) {
+        } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
             // for the tx.amount_burnt containing the 80% burnt fee proportion as well
@@ -838,9 +838,9 @@ namespace cryptonote
         }
 
         if (
-          ((tx_type == OFFSHORE) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
-          ((tx_type == ONSHORE || tx_type == XUSD_TO_XASSET) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
-          ((tx_type == XASSET_TO_XUSD) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
+          ((tx_type == transaction_type::OFFSHORE) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee)) ||
+          ((tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_usd)) ||
+          ((tx_type == transaction_type::XASSET_TO_XUSD) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
         ){
           // Check for 2 known overflow TXs
           if ((epee::string_tools::pod_to_hex(tx.hash) != "5cdd9be420bd9034e2ff83a04cd22978c163a5263f8e7a0577f46ec762a21da6") &&

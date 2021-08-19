@@ -55,7 +55,7 @@ namespace cryptonote
     bool m_too_few_outputs;
     std::string m_source_asset;
     std::string m_dest_asset;
-    conversion_type m_type;
+    transaction_type m_type;
   };
 
   struct block_verification_context

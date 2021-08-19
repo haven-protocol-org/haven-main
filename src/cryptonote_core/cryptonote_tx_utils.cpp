@@ -676,7 +676,7 @@ namespace cryptonote
   }
 
   //---------------------------------------------------------------
-  bool get_tx_type(const std::string& source, const std::string& destination, conversion_type& type) {
+  bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type) {
 
     // check both source and destination are supported.
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
@@ -691,21 +691,21 @@ namespace cryptonote
     // Find the tx type
     if (source == destination) {
       if (source == "XHV") {
-        type = TRANSFER;
+        type = transaction_type::TRANSFER;
       } else if (source == "XUSD") {
-        type = OFFSHORE_TRANSFER;
+        type = transaction_type::OFFSHORE_TRANSFER;
       } else {
-        type = XASSET_TRANSFER;
+        type = transaction_type::XASSET_TRANSFER;
       }
     } else {
       if (source == "XHV" && destination == "XUSD") {
-        type = OFFSHORE;
+        type = transaction_type::OFFSHORE;
       } else if (source == "XUSD" && destination == "XHV") {
-        type = ONSHORE;
+        type = transaction_type::ONSHORE;
       } else if (source == "XUSD" && destination != "XHV") {
-        type = XUSD_TO_XASSET;
+        type = transaction_type::XUSD_TO_XASSET;
       } else if (destination == "XUSD" && source != "XHV") {
-        type = XASSET_TO_XUSD;
+        type = transaction_type::XASSET_TO_XUSD;
       } else {
         LOG_ERROR("Invalid conversion from " << source << "to" << destination << ". Rejecting..");
         return false;

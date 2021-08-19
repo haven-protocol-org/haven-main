@@ -2168,7 +2168,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
   std::string source;
   std::string dest;
-  cryptonote::conversion_type tx_type;
+  cryptonote::transaction_type tx_type;
   bool r = cryptonote::get_tx_asset_types(tx, txid, source, dest, miner_tx);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get TX asset types");
   r = cryptonote::get_tx_type(source, dest, tx_type);
