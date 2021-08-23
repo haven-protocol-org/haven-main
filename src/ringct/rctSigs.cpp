@@ -38,6 +38,7 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 #include <boost/multiprecision/cpp_int.hpp>
+#include "offshore/asset_types.h"
 
 using namespace crypto;
 using namespace std;
@@ -1703,13 +1704,20 @@ namespace rct {
         
       const bool bulletproof = is_rct_bulletproof(rv.type);
       CHECK_AND_ASSERT_MES(bulletproof, false, "Only bulletproofs supported for Haven2");
-
       CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
       CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
       CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
       CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
       CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
       CHECK_AND_ASSERT_MES(rv.maskSums.size() == 2, false, "maskSums size is not 2");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
+      CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
+      if (strSource != strDest) {
+        CHECK_AND_ASSERT_MES(!pr.is_empty(), false, "Empty pr found for a conversion tx");
+        CHECK_AND_ASSERT_MES(amount_burnt, false, "Empty amount_burnt found for a conversion tx");
+        CHECK_AND_ASSERT_MES(amount_minted, false, "Empty amount_minted found for a conversion tx");
+      }
       
       // OUTPUTS SUMMED FOR EACH COLOUR
       key zerokey = scalarmultH(d2h(0));
@@ -1953,6 +1961,12 @@ namespace rct {
         CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.empty(), false, "rv.p.pseudoOuts is not empty");
       }
       CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
+      CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
+      if (strSource != strDest) {
+        CHECK_AND_ASSERT_MES(!pr.is_empty(), false, "Empty pr found for a conversion tx");
+      }
       
       if (!bulletproof)
         max_non_bp_proofs += rv.p.rangeSigs.size();

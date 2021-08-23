@@ -7311,31 +7311,54 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     rct::multisig_out msout;
     uint64_t current_height = get_blockchain_current_height()-1;
     offshore::pricing_record pr;
-    /*
-    if (ptx.tx.offshore_data.size()) {
-      // Get the 2 currencies
-      std::string offshore_data(ptx.tx.offshore_data.begin(),ptx.tx.offshore_data.end());
-      int pos = offshore_data.find("-");
-      if (pos != std::string::npos) {
-	std::string strSource = offshore_data.substr(0,pos);
-	std::string strDest = offshore_data.substr(pos+1);
-	if (strSource != strDest) {
-	  bool b = get_pricing_record(pr, current_height);
-	  THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
-	}
-      } else {
-	if (offshore_data[0] != offshore_data[1]) {
-	  bool b = get_pricing_record(pr, current_height);
-	  THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
-	}
+    std::string strSource;
+    std::string strDest;
+    cryptonote::transaction_type tx_type;
+
+    // figure out strSource & strDest
+    strSource = sd.sources[0].asset_type;
+    for (const auto& dt: sd.splitted_dsts) {
+      if (dt.asset_type != strSource) {
+        strDest = dt.asset_type;
+        break;
       }
     }
-    */
-    bool b = get_pricing_record(pr, current_height);
-    THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+    if (strDest.empty()) { // this is a transfer rather than a conversion
+      strDest = strSource;
+    }
+
+    // figure out the tx type & pr
+    if (!get_tx_type(strSource, strDest, tx_type)) {
+      LOG_ERROR("At least 1 input or 1 output of the tx was invalid.");
+      return false;
+    }
+    if (strSource != strDest) {
+      bool b = get_pricing_record(pr, current_height);
+      THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+    }
+
     uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
-    bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
-    bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sd.sources, sd.splitted_dsts, sd.change_dts.addr, sd.extra, ptx.tx, sd.unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, sd.use_rct, rct_config, m_multisig ? &msout : NULL);
+    bool r = cryptonote::construct_tx_and_get_tx_key(
+      m_account.get_keys(),
+      m_subaddresses,
+      sd.sources,
+      sd.splitted_dsts,
+      sd.change_dts.addr,
+      sd.extra,
+      ptx.tx,
+      tx_type,
+      strSource,
+      strDest,
+      sd.unlock_time,
+      tx_key,
+      additional_tx_keys,
+      current_height,
+      pr,
+      fees_version,
+      sd.use_rct,
+      rct_config,
+      m_multisig ? &msout : NULL
+    );
     THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sd.sources, sd.splitted_dsts, sd.unlock_time, m_nettype);
     // we don't test tx size, because we don't know the current limit, due to not having a blockchain,
     // and it's a bit pointless to fail there anyway, since it'd be a (good) guess only. We sign anyway,
@@ -7356,24 +7379,24 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     bool all_are_txin_to_key = std::all_of(ptx.tx.vin.begin(), ptx.tx.vin.end(), [&](const txin_v& s_e) -> bool
     {
       if (s_e.type() == typeid(txin_xasset)) {
-	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_xasset, in, false);
-	key_images += boost::to_string(in.k_image) + " ";
-	return true;
+        CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_xasset, in, false);
+        key_images += boost::to_string(in.k_image) + " ";
+        return true;
       }
       else if (s_e.type() == typeid(txin_offshore)) {
-	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_offshore, in, false);
-	key_images += boost::to_string(in.k_image) + " ";
-	return true;
+        CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_offshore, in, false);
+        key_images += boost::to_string(in.k_image) + " ";
+        return true;
       }
       else if (s_e.type() == typeid(txin_onshore)) {
-	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_onshore, in, false);
-	key_images += boost::to_string(in.k_image) + " ";
-	return true;
+        CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_onshore, in, false);
+        key_images += boost::to_string(in.k_image) + " ";
+        return true;
       }
       else {
-	CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
-	key_images += boost::to_string(in.k_image) + " ";
-	return true;
+        CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
+        key_images += boost::to_string(in.k_image) + " ";
+        return true;
       }
     });
     THROW_WALLET_EXCEPTION_IF(!all_are_txin_to_key, error::unexpected_txin_type, ptx.tx);
@@ -7842,81 +7865,58 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
     auto sources = sd.sources;
     rct::RCTConfig rct_config = sd.rct_config;
     uint64_t current_height = get_blockchain_current_height()-1;
-
-    bool bOffshoreTx = false;
-    tx_extra_offshore offshore_data;
-    if (sd.extra.size()) {
-      // Check to see if this is an offshore tx
-      bOffshoreTx = get_offshore_from_tx_extra(sd.extra, offshore_data);
-    }
-
-    bool offshore = false;
-    bool onshore = false;
-    bool offshore_transfer = false;
-    bool xasset_transfer = false;
-    bool xasset_to_xusd = false;
-    bool xusd_to_xasset = false;
-    std::string strSource = "XHV";
-    std::string strDest = "XHV";
-    if (bOffshoreTx) {
-      // New xAsset-style of offshore_data
-      int pos = offshore_data.data.find("-");
-      if (pos != std::string::npos) {
-	strSource = offshore_data.data.substr(0,pos);
-	strDest = offshore_data.data.substr(pos+1);
-	if (strSource == "XHV") {
-	  offshore = true;
-	} else if (strDest == "XHV") {
-	  onshore = true;
-	} else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-	  offshore_transfer = true;
-	} else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-	  xasset_transfer = true;
-	} else if (strSource == "XUSD") {
-	  xusd_to_xasset = true;
-	} else {
-	  xasset_to_xusd = true;
-	}
-      } else {
-	// Pre-xAsset format of offshore_data
-	// Set the bool flags
-	if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
-	  offshore_transfer = true;
-	  strSource = "XUSD";
-	  strDest = "XUSD";
-	} else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
-	  onshore = true;
-	  strSource = "XUSD";
-	  strDest = "XHV";
-	} else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
-	  offshore = true;
-	  strSource = "XHV";
-	  strDest = "XUSD";
-	} else {
-	  THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
-	}
+    std::string strSource;
+    std::string strDest;
+    cryptonote::transaction_type tx_type;
+    
+    // figure out strSource & strDest
+    strSource = sd.sources[0].asset_type;
+    for (const auto& dt: sd.splitted_dsts) {
+      if (dt.asset_type != strSource) {
+        strDest = dt.asset_type;
+        break;
       }
     }
-
-    // check both strSource and strDest are supported.
-    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
-      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
+    if (strDest.empty()) { // this is a transfer rather than a conversion
+      strDest = strSource;
     }
-    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
-      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
+    if (!get_tx_type(strSource, strDest, tx_type)) {
+      LOG_ERROR("At least 1 input or 1 output of the tx was invalid.");
+      return false;
     }
-
-    const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
-    const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
-    transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
+    transfer_container &specific_transfers = (strSource != "XHV" && strSource != "XUSD") ? (m_xasset_transfers[strSource]) : 
+                                              (strSource == "XUSD") ? m_offshore_transfers : 
+                                              m_transfers;
     
 
     offshore::pricing_record pr;
-    bool b = get_pricing_record(pr, current_height);
-    THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+    if (strSource != strDest) {
+      bool b = get_pricing_record(pr, current_height);
+      THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+    }
     uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
-    bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
-    bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources, sd.splitted_dsts, ptx.change_dts.addr, sd.extra, tx, sd.unlock_time, ptx.tx_key, ptx.additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, sd.use_rct, rct_config, &msout, false);
+
+    bool r = cryptonote::construct_tx_with_tx_key(
+      m_account.get_keys(),
+      m_subaddresses,
+      sources,
+      sd.splitted_dsts,
+      ptx.change_dts.addr,
+      sd.extra,
+      tx,
+      tx_type,
+      strSource,
+      strDest,
+      sd.unlock_time,
+      ptx.tx_key,
+      ptx.additional_tx_keys,
+      current_height,
+      pr,
+      fees_version,
+      sd.use_rct,
+      rct_config,
+      &msout
+    );
     THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sd.sources, sd.splitted_dsts, sd.unlock_time, m_nettype);
 
     THROW_WALLET_EXCEPTION_IF(get_transaction_prefix_hash (tx) != get_transaction_prefix_hash(ptx.tx),
@@ -7938,7 +7938,7 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
         auto wiper = epee::misc_utils::create_scope_leave_handler([&](){ memwipe(k.data(), k.size() * sizeof(k[0])); memwipe(&skey, sizeof(skey)); });
 
         for (size_t idx: sd.selected_transfers)
-          k.push_back(get_multisig_k((xasset_transfer || xasset_to_xusd) ? m_xasset_transfers[strSource] : (offshore_transfer || onshore || xusd_to_xasset) ? m_offshore_transfers : m_transfers, idx, sig.used_L));
+          k.push_back(get_multisig_k((strSource != "XHV" && strSource != "XUSD") ? m_xasset_transfers[strSource] : (strSource == "XUSD") ? m_offshore_transfers : m_transfers, idx, sig.used_L));
 
         for (const auto &msk: get_account().get_multisig_keys())
         {
@@ -7989,21 +7989,20 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
     for (size_t idx: exported_txs.m_ptx[n].construction_data.selected_transfers) {
 
       if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_to_key)) {
-	memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
+	      memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
       } else if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_onshore)) {
-	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+	      memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
       } else if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_offshore)) {
-	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+	      memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
       } else if (exported_txs.m_ptx[n].tx.vin[0].type() == typeid(txin_xasset)) {
-	// Get the asset type
-	std::string asset_type = boost::get<txin_xasset>(exported_txs.m_ptx[n].tx.vin[0]).asset_type;
-	memwipe(m_xasset_transfers[asset_type][idx].m_multisig_k.data(), m_xasset_transfers[asset_type][idx].m_multisig_k.size() * sizeof(m_xasset_transfers[asset_type][idx].m_multisig_k[0]));
+        // Get the asset type
+        std::string asset_type = boost::get<txin_xasset>(exported_txs.m_ptx[n].tx.vin[0]).asset_type;
+        memwipe(m_xasset_transfers[asset_type][idx].m_multisig_k.data(), m_xasset_transfers[asset_type][idx].m_multisig_k.size() * sizeof(m_xasset_transfers[asset_type][idx].m_multisig_k[0]));
       }	else {
-	THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "invalid VIN type");
+	      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "invalid VIN type");
       }
     }
   }
-  
   exported_txs.m_signers.insert(get_multisig_signer_public_key());
 
   return true;
@@ -9553,8 +9552,29 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   bool b = get_pricing_record(pr, current_height);
   THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
   uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
-  bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, false, {}, m_multisig ? &msout : NULL);
+  std::string strDest = "XHV";
+  cryptonote::transaction_type tx_type = cryptonote::transaction_type::TRANSFER;
+  bool r = cryptonote::construct_tx_and_get_tx_key(
+    m_account.get_keys(),
+    m_subaddresses,
+    sources,
+    splitted_dsts,
+    change_dts.addr,
+    extra,
+    tx,
+    tx_type,
+    strSource,
+    strDest,
+    unlock_time,
+    tx_key,
+    additional_tx_keys,
+    current_height,
+    pr,
+    fees_version,
+    false,
+    {},
+    m_multisig ? &msout : NULL
+  );
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -9612,12 +9632,7 @@ void wallet2::transfer_selected_rct(
   cryptonote::transaction& tx,
   pending_tx &ptx,
   const rct::RCTConfig &rct_config,
-  bool offshore,
-  bool onshore,
-  bool offshore_to_offshore,
-  bool xasset_transfer,
-  bool xasset_to_xusd,
-  bool xusd_to_xasset,
+  const cryptonote::transaction_type tx_type,
   const std::string strSource,
   const std::string strDest
 ){
@@ -9626,8 +9641,8 @@ void wallet2::transfer_selected_rct(
   // throw if attempting a transaction with no destinations
   THROW_WALLET_EXCEPTION_IF(dsts.empty(), error::zero_destination);
 
-  const bool use_offshore_outputs = onshore || offshore_to_offshore || xusd_to_xasset;
-  const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
+  const bool use_offshore_outputs = (strSource == "XUSD");
+  const bool use_xasset_outputs = (strSource != "XHV" && strSource != "XUSD");
   transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
 
   // Get the current blockchain height - needed to convert currency amounts
@@ -9803,12 +9818,12 @@ void wallet2::transfer_selected_rct(
   // Put the destinations into the correct currencies
   for(auto& dt: dsts)
   {
-    if ((dt.amount_usd == 0) && (offshore || offshore_to_offshore)) {
+    if ((dt.amount_usd == 0) && (strDest == "XUSD")) {
       // The amount in the dst entry is actually USD, not XHV
       dt.amount_usd = dt.amount;
       dt.amount = 0;
       dt.amount_xasset = 0;
-    } else if ((dt.amount_xasset == 0) && (xusd_to_xasset || xasset_transfer)) {
+    } else if ((dt.amount_xasset == 0) && (strSource != "XHV" && strSource != "XUSD")) {
       dt.amount_xasset = dt.amount;
       dt.amount = 0;
       dt.amount_usd = 0;
@@ -9875,14 +9890,32 @@ void wallet2::transfer_selected_rct(
   LOG_PRINT_L2("constructing tx");
   auto sources_copy = sources;
   offshore::pricing_record pr;
-  if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
+  if (strSource != strDest) {
     bool b = get_pricing_record(pr, current_height);
     THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
   }
   uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
-  bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
-  
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, true, rct_config, m_multisig ? &msout : NULL);
+  bool r = cryptonote::construct_tx_and_get_tx_key(
+    m_account.get_keys(),
+    m_subaddresses,
+    sources,
+    splitted_dsts,
+    change_dts.addr,
+    extra,
+    tx,
+    tx_type,
+    strSource,
+    strDest,
+    unlock_time,
+    tx_key,
+    additional_tx_keys,
+    current_height,
+    pr,
+    fees_version,
+    true,
+    rct_config,
+    m_multisig ? &msout : NULL
+  );
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -9929,13 +9962,32 @@ void wallet2::transfer_selected_rct(
         auto sources_copy_copy = sources_copy;
         uint64_t current_height = get_blockchain_current_height()-1;
         offshore::pricing_record pr;
-        if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
+        if (strSource != strDest) {
           bool b = get_pricing_record(pr, current_height);
           THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
         }
         uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
-        bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
-        bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts.addr, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, true, rct_config, &msout, false);
+        bool r = cryptonote::construct_tx_with_tx_key(
+          m_account.get_keys(),
+          m_subaddresses,
+          sources_copy_copy,
+          splitted_dsts,
+          change_dts.addr,
+          extra,
+          ms_tx,
+          tx_type,
+          strSource,
+          strDest,
+          unlock_time,
+          tx_key,
+          additional_tx_keys,
+          current_height,
+          pr,
+          fees_version, 
+          true,
+          rct_config,
+          &msout
+        );
         LOG_PRINT_L2("constructed tx, r="<<r);
         THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
         THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -10626,8 +10678,19 @@ bool wallet2::light_wallet_key_image_is_ours(const crypto::key_image& key_image,
 // This system allows for sending (almost) the entire balance, since it does
 // not generate spurious change in all txes, thus decreasing the instantaneous
 // usable balance.
-std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
-{
+std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
+  std::vector<cryptonote::tx_destination_entry> dsts,
+  const size_t fake_outs_count,
+  const std::string strSource,
+  const std::string strDest,
+  const cryptonote::transaction_type tx_type,
+  const uint64_t unlock_time,
+  uint32_t priority,
+  const std::vector<uint8_t>& extra,
+  uint32_t subaddr_account,
+  std::set<uint32_t> subaddr_indices
+){
+
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
   boost::unique_lock<hw::device> hwdev_lock (hwdev);
@@ -10665,7 +10728,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
           i = dsts.end() - 1;
           i->amount = 0;
           i->amount_usd = 0;
-	  i->amount_xasset = 0;
+	        i->amount_xasset = 0;
         }
         i->amount += amount;
         i->amount_usd += amount_usd;
@@ -10711,76 +10774,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   if (get_memo_from_tx_extra(extra, memo)) {
     THROW_WALLET_EXCEPTION_IF(dsts.size() > 1, error::wallet_internal_error, "Only 1 destination permitted if memo data is provided");
   }
-  
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (extra.size()) {
-    // Check to see if this is an offshore tx
-    bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
-  }
-
-  bool offshore = false;
-  bool onshore = false;
-  bool offshore_transfer = false;
-  bool xasset_transfer = false;
-  bool xasset_to_xusd = false;
-  bool xusd_to_xasset = false;
-  std::string strSource = "XHV";
-  std::string strDest = "XHV";
-  if (bOffshoreTx) {
-    // New xAsset-style of offshore_data
-    int pos = offshore_data.data.find("-");
-    if (pos != std::string::npos) {
-      strSource = offshore_data.data.substr(0,pos);
-      strDest = offshore_data.data.substr(pos+1);
-      if (strSource == "XHV") {
-        offshore = true;
-      } else if (strDest == "XHV") {
-        onshore = true;
-      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-        offshore_transfer = true;
-        if (priority > 1) {
-          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-          priority = 1;
-        }
-      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-        xasset_transfer = true;
-        if (priority > 1) {
-          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xAsset transfers locked to low priority");
-          priority = 1;
-        }
-      } else if (strSource == "XUSD") {
-        xusd_to_xasset = true;
-      } else {
-        xasset_to_xusd = true;
-      }
-    } else {
-      // Pre-xAsset format of offshore_data
-      // Set the bool flags
-      if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
-        offshore_transfer = true;
-        if (priority > 1) {
-          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-          priority = 1;
-        }
-        strSource = "XUSD";
-        strDest = "XUSD";
-      } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
-        onshore = true;
-        strSource = "XUSD";
-        strDest = "XHV";
-      } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
-        offshore = true;
-        strSource = "XHV";
-        strDest = "XUSD";
-      } else {
-        THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
-      }
-    }
-  }
 
   // check both strSource and strDest are supported.
   if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
@@ -10789,9 +10782,21 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
     THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
   }
+  // check we have a valid tx type
+  using tt = cryptonote::transaction_type;
+  THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
 
-  const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
-  const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
+  if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+    if (priority > 1) {
+      // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+      LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - transfers locked to low priority");
+      priority = 1;
+    }
+  }
+
+
+  const bool use_offshore_outputs = (strSource == "XUSD");
+  const bool use_xasset_outputs = (strSource != "XHV" && strSource != "XUSD");
   transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
   uint64_t current_height = get_blockchain_current_height()-1;
   
@@ -10825,12 +10830,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   for(auto& dt: dsts)
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_destination);
-    if (offshore || onshore || xusd_to_xasset || xasset_to_xusd) {
+    if (strSource != strDest) {
       // Only permit input amounts to 4 decimal places, to avoid precision / truncation errors
       THROW_WALLET_EXCEPTION_IF(dt.amount % 100000000, error::wallet_internal_error, "Offshore/xAsset TX amounts permit at most 4 decimal places");
     }
     
-    if (offshore) {
+    if (tx_type == tt::OFFSHORE) {
       // Input amount is in XHV - convert so we have both
       dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height);
       THROW_WALLET_EXCEPTION_IF(dt.amount_usd == 0, error::wallet_internal_error, "Failed to convert needed_money to xUSD");
@@ -10838,7 +10843,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       dt.asset_type = "XUSD";
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, 0, m_nettype);
-    } else if (onshore) {
+    } else if (tx_type == tt::ONSHORE) {
       // Input amount is in XHV - convert so we have both
       dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height);
       THROW_WALLET_EXCEPTION_IF(dt.amount_usd == 0, error::wallet_internal_error, "Failed to convert needed_money back to xUSD");
@@ -10846,7 +10851,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       dt.asset_type = "XHV";
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_usd) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_usd, error::tx_sum_overflow, dsts, 0, m_nettype);
-    } else if (offshore_transfer) {
+    } else if (tx_type == tt::OFFSHORE_TRANSFER) {
       // Input amount is in USD
       dt.amount_usd = dt.amount;
       dt.amount = 0;
@@ -10854,7 +10859,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       dt.asset_type = "XUSD";
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_usd) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_usd, error::tx_sum_overflow, dsts, 0, m_nettype);
-    } else if (xusd_to_xasset) {
+    } else if (tx_type == tt::XUSD_TO_XASSET) {
       // Input amount is in XUSD - convert so we have xasset_amount
       dt.amount_usd = dt.amount;
       dt.amount = 0;
@@ -10864,7 +10869,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       dt.asset_type = strDest;
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_usd) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_usd, error::tx_sum_overflow, dsts, 0, m_nettype);
-    } else if (xasset_to_xusd) {
+    } else if (tx_type == tt::XASSET_TO_XUSD) {
       // Input amount is in XUSD - convert so we have xasset_amount
       dt.amount_usd = dt.amount;
       dt.amount = 0;
@@ -10874,7 +10879,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       dt.asset_type = "XUSD";
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_xasset) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_xasset, error::tx_sum_overflow, dsts, 0, m_nettype);
-    } else if (xasset_transfer) {
+    } else if (tx_type == tt::XASSET_TRANSFER) {
       // Input amount is in USD
       dt.amount_xasset = dt.amount;
       dt.amount = dt.amount_usd = 0;
@@ -10896,12 +10901,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
 
   // Calculate the offshore fee
   std::vector<transfer_details> empty;
-  uint64_t offshore_fee = (offshore) ? get_offshore_fee(dsts, priority, empty)
-    : (onshore) ? get_onshore_fee(dsts, priority, empty)
-    : (offshore_transfer) ? get_offshore_to_offshore_fee(dsts, 4, empty)
-    : (xusd_to_xasset) ? get_xusd_to_xasset_fee(dsts, priority, empty)
-    : (xasset_to_xusd) ? get_xasset_to_xusd_fee(dsts, priority, empty)
-    : (xasset_transfer) ? get_xasset_transfer_fee(dsts, priority, empty)
+  uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(dsts, priority, empty)
+    : (tx_type == tt::ONSHORE) ? get_onshore_fee(dsts, priority, empty)
+    : (tx_type == tt::OFFSHORE_TRANSFER) ? get_offshore_to_offshore_fee(dsts, 4, empty)
+    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(dsts, priority, empty)
+    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(dsts, priority, empty)
+    : (tx_type == tt::XASSET_TRANSFER) ? get_xasset_transfer_fee(dsts, priority, empty)
     : 0;
   
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr ;
@@ -11155,36 +11160,40 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
         LOG_PRINT_L2("We can fully pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
 		     " for " << print_money((use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount)));
         tx.add(dsts[0], dsts[0].amount, dsts[0].amount_usd, dsts[0].amount_xasset, original_output_index, m_merge_destinations);
-	available_amount -= (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount);
+
+	      available_amount -= (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount);
         (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) = 0;
-	if (offshore) {
-	  tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height);
-	} else if (onshore) {
-	  tx.dsts.back().amount = get_xhv_amount(tx.dsts.back().amount_usd, current_height);
-	} else if (xusd_to_xasset) {
-	  tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, strDest, current_height);
-	} else if (xasset_to_xusd) {
-	  tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height);
-	}
-	tx.dsts.back().asset_type = strDest;
+
+        if (tx_type == tt::OFFSHORE) {
+          tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height);
+        } else if (tx_type == tt::ONSHORE) {
+          tx.dsts.back().amount = get_xhv_amount(tx.dsts.back().amount_usd, current_height);
+        } else if (tx_type == tt::XUSD_TO_XASSET) {
+          tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, strDest, current_height);
+        } else if (tx_type == tt::XASSET_TO_XUSD) {
+          tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height);
+        }
+        tx.dsts.back().asset_type = strDest;
         pop_index(dsts, 0);
         ++original_output_index;
       }
 
       if (available_amount > 0 && !dsts.empty() && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag) < TX_WEIGHT_TARGET(upper_transaction_weight_limit)) {
         // we can partially fill that destination
-	// HERE BE DRAGONS!!!
-	// NEAC: This log output is BROKEN and doesn't account for xAssets
+	      // HERE BE DRAGONS!!!
+	      // NEAC: This log output is BROKEN and doesn't account for xAssets
         LOG_PRINT_L2("We can partially pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
           " for " << print_money(available_amount) << "/" << print_money((dsts[0].amount > 0) ? dsts[0].amount : dsts[0].amount_usd));
-	// LAND AHOY!!!
+	      // LAND AHOY!!!
         tx.add(dsts[0],
 	       (use_xasset_outputs || use_offshore_outputs ? 0 : available_amount),
 	       (use_offshore_outputs ? available_amount : 0),
 	       (use_xasset_outputs ? available_amount : 0),
 	       original_output_index,
-	       m_merge_destinations);
-	(use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) -= available_amount;
+	       m_merge_destinations
+        );
+
+	      (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) -= available_amount;
         available_amount = 0;
       }
     }
@@ -11218,20 +11227,18 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       uint64_t outputs = 0;
       std::vector<transfer_details> fee_sources;
       for (size_t idx: tx.selected_transfers) {
-	inputs += specific_transfers[idx].amount();
-	fee_sources.push_back(specific_transfers[idx]);
+	      inputs += specific_transfers[idx].amount();
+	      fee_sources.push_back(specific_transfers[idx]);
       }
-      for (const auto &o: tx.dsts) outputs +=
-				     (xasset_transfer || xasset_to_xusd) ? o.amount_xasset :
-				     (onshore || offshore_transfer || xusd_to_xasset) ? o.amount_usd :
-				     o.amount;
+      for (const auto &o: tx.dsts) 
+        outputs += (strSource != "XHV" && strSource != "XUSD") ? o.amount_xasset : (strSource == "XUSD") ? o.amount_usd : o.amount;
 
-      offshore_fee = (offshore) ? get_offshore_fee(tx.dsts, priority, fee_sources)
-                    : (onshore) ? get_onshore_fee(tx.dsts, priority, fee_sources)
-                    : (offshore_transfer) ? get_offshore_to_offshore_fee(tx.dsts, 4, fee_sources)
-                    : (xusd_to_xasset) ? get_xusd_to_xasset_fee(tx.dsts, priority, fee_sources)
-                    : (xasset_to_xusd) ? get_xasset_to_xusd_fee(tx.dsts, priority, fee_sources)
-                    : (xasset_transfer) ? get_xasset_transfer_fee(tx.dsts, priority, fee_sources)
+      offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(tx.dsts, priority, fee_sources)
+                    : (tx_type == tt::ONSHORE) ? get_onshore_fee(tx.dsts, priority, fee_sources)
+                    : (tx_type == tt::OFFSHORE_TRANSFER) ? get_offshore_to_offshore_fee(tx.dsts, 4, fee_sources)
+                    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(tx.dsts, priority, fee_sources)
+                    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(tx.dsts, priority, fee_sources)
+                    : (tx_type == tt::XASSET_TRANSFER) ? get_xasset_transfer_fee(tx.dsts, priority, fee_sources)
                     : 0;
       needed_fee += offshore_fee;
 
@@ -11243,30 +11250,33 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       }
 
       LOG_PRINT_L1("inputs = " << inputs << ", outputs = " << outputs);
-      if (offshore || onshore) {
+      if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
         uint64_t adjustment = (tx.dsts.back().amount % 100000000);
         tx.dsts.back().amount -= adjustment;
         tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, "XHV", current_height);
         dsts[0].amount += adjustment;
         outputs -= adjustment;
-      } else if (xusd_to_xasset || xasset_to_xusd) {
+      } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
         uint64_t adjustment = (tx.dsts.back().amount_usd % 100000000);
         tx.dsts.back().amount_usd -= adjustment;
-        tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, xusd_to_xasset ? strDest : strSource, current_height);
+        tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, tx_type == tt::XUSD_TO_XASSET ? strDest : strSource, current_height);
         dsts[0].amount_usd += adjustment;
         outputs -= adjustment;
       }
-      if (offshore || xusd_to_xasset) {
+      if (tx_type == tt::OFFSHORE || tx_type == tt::XUSD_TO_XASSET) {
 	      THROW_WALLET_EXCEPTION_IF(outputs % 100000000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
-      } else if (onshore) {
+      } else if (tx_type == tt::ONSHORE) {
 	      THROW_WALLET_EXCEPTION_IF(outputs % 10000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
       }
+      // HERE BE DRAGONS!!!
+      // why there is no xasset_to_xusd above else if??
+      // LAND AHOY!!!
       
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
         tx.selected_transfers.size() << " inputs");
       if (use_rct) {
         transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
-			      test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
+			      test_tx, test_ptx, rct_config, tx_type, strSource, strDest);
       } else
         transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx);
@@ -11274,7 +11284,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_multiplier, fee_quantization_mask);
       // add back the offshore fee
       needed_fee += offshore_fee;
-      available_for_fee = test_ptx.fee + ((xasset_transfer || xasset_to_xusd) ? test_ptx.change_dts.amount_xasset : (onshore || offshore_transfer || xusd_to_xasset) ? test_ptx.change_dts.amount_usd : test_ptx.change_dts.amount) + (!test_ptx.dust_added_to_fee ? test_ptx.dust : 0);
+      available_for_fee = test_ptx.fee + ((strSource != "XHV" && strSource != "XUSD")? test_ptx.change_dts.amount_xasset : (strSource == "XUSD") ? test_ptx.change_dts.amount_usd : test_ptx.change_dts.amount) + (!test_ptx.dust_added_to_fee ? test_ptx.dust : 0);
       LOG_PRINT_L2("Made a " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(available_for_fee) << " available for fee (" <<
         print_money(needed_fee + offshore_fee) << " needed)");
 
@@ -11311,7 +11321,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
         while (needed_fee > test_ptx.fee) {
           if (use_rct) {
             transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
-                test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
+                test_tx, test_ptx, rct_config, tx_type, strSource, strDest);
           } else
             transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
               detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx);
@@ -11383,30 +11393,35 @@ skip_tx:
     pending_tx test_ptx;
 
     if (use_rct) {
-      transfer_selected_rct(tx.dsts,                    /* NOMOD std::vector<cryptonote::tx_destination_entry> dsts,*/
-                            tx.selected_transfers,      /* const std::list<size_t> selected_transfers */
-                            fake_outs_count,            /* CONST size_t fake_outputs_count, */
-                            tx.outs,                    /* MOD   std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, */
-                            unlock_time,                /* CONST uint64_t unlock_time,  */
-                            tx.needed_fee,              /* CONST uint64_t fee, */
-                            extra,                      /* const std::vector<uint8_t>& extra, */
-                            test_tx,                    /* OUT   cryptonote::transaction& tx, */
-                            test_ptx,                   /* OUT   cryptonote::transaction& tx, */
-                            rct_config,
-			    offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
-
+      transfer_selected_rct(
+        tx.dsts,                    /* NOMOD std::vector<cryptonote::tx_destination_entry> dsts,*/
+        tx.selected_transfers,      /* const std::list<size_t> selected_transfers */
+        fake_outs_count,            /* CONST size_t fake_outputs_count, */
+        tx.outs,                    /* MOD   std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, */
+        unlock_time,                /* CONST uint64_t unlock_time,  */
+        tx.needed_fee,              /* CONST uint64_t fee, */
+        extra,                      /* const std::vector<uint8_t>& extra, */
+        test_tx,                    /* OUT   cryptonote::transaction& tx, */
+        test_ptx,                   /* OUT   cryptonote::transaction& tx, */
+        rct_config,
+        tx_type,
+        strSource,
+        strDest
+      );
     } else {
-      transfer_selected(tx.dsts,
-                        tx.selected_transfers,
-                        fake_outs_count,
-                        tx.outs,
-                        unlock_time,
-                        tx.needed_fee,
-                        extra,
-                        detail::digit_split_strategy,
-                        tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD),
-                        test_tx,
-                        test_ptx);
+      transfer_selected(
+        tx.dsts,
+        tx.selected_transfers,
+        fake_outs_count,
+        tx.outs,
+        unlock_time,
+        tx.needed_fee,
+        extra,
+        detail::digit_split_strategy,
+        tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD),
+        test_tx,
+        test_ptx
+      );
     }
     auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
     tx.tx = test_tx;
@@ -11522,8 +11537,20 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
   return true;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices, const std::string &asset_type)
-{
+std::vector<wallet2::pending_tx> wallet2::create_transactions_all(
+  uint64_t below,
+  const cryptonote::account_public_address &address,
+  bool is_subaddress,
+  const size_t outputs,
+  const size_t fake_outs_count,
+  const uint64_t unlock_time,
+  uint32_t priority,
+  const std::vector<uint8_t>& extra,
+  uint32_t subaddr_account,
+  std::set<uint32_t> subaddr_indices,
+  const std::string &asset_type,
+  const cryptonote::transaction_type tx_type
+){
   std::vector<size_t> unused_transfers_indices;
   std::vector<size_t> unused_dust_indices;
   const bool use_rct = use_fork_rules(4, 0);
@@ -11542,77 +11569,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
 
   std::map<uint32_t, std::pair<std::vector<size_t>, std::vector<size_t>>> unused_transfer_dust_indices_per_subaddr;
 
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (extra.size()) {
-    // Check to see if this is an offshore tx
-    bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
-  }
-
-  bool offshore = false;
-  bool onshore = false;
-  bool offshore_transfer = false;
-  bool xasset_transfer = false;
-  bool xasset_to_xusd = false;
-  bool xusd_to_xasset = false;
-  std::string strSource = "XHV";
-  std::string strDest = "XHV";
-  if (bOffshoreTx) {
-    // New xAsset-style of offshore_data
-    int pos = offshore_data.data.find("-");
-    if (pos != std::string::npos) {
-      strSource = offshore_data.data.substr(0,pos);
-      strDest = offshore_data.data.substr(pos+1);
-      if (strSource == "XHV") {
-        offshore = true;
-      } else if (strDest == "XHV") {
-        onshore = true;
-      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-        offshore_transfer = true;
-      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-        xasset_transfer = true;
-      } else if (strSource == "XUSD") {
-        xusd_to_xasset = true;
-      } else {
-        xasset_to_xusd = true;
-      }
-    } else {
-      if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
-        offshore_transfer = true;
-        if (priority > 1) {
-          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-          priority = 1;
-        }
-        strSource = "XUSD";
-        strDest = "XUSD";
-      } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
-        onshore = true;
-        strSource = "XUSD";
-        strDest = "XHV";
-      } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
-        offshore = true;
-        strSource = "XHV";
-        strDest = "XUSD";
-      } else {
-        THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
-      }
-    }
-  }
-
-  // check both strSource and strDest are supported.
-  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
-    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
-  }
-  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
-    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
-  }
-
-  const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
-  const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
-  transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
+  const bool use_offshore_outputs = (asset_type == "XUSD");
+  const bool use_xasset_outputs = (asset_type != "XHV" && asset_type != "XUSD");
+  transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[asset_type]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
   
-  THROW_WALLET_EXCEPTION_IF(unlocked_balance(strSource, subaddr_account, false) == 0, error::wallet_internal_error, "No unlocked balance in the entire wallet");
+  THROW_WALLET_EXCEPTION_IF(unlocked_balance(asset_type, subaddr_account, false) == 0, error::wallet_internal_error, "No unlocked balance in the entire wallet");
 
   // gather all dust and non-dust outputs of specified subaddress (if any) and below specified threshold (if any)
   bool fund_found = false;
@@ -11660,7 +11621,19 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
     }
   }
 
-  return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, fake_outs_count, unlock_time, priority, extra);
+  return create_transactions_from(
+          address,
+          is_subaddress,
+          outputs,
+          unused_transfers_indices,
+          unused_dust_indices,
+          asset_type,
+          tx_type,
+          fake_outs_count,
+          unlock_time,
+          priority,
+          extra
+        );
 }
 
 std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypto::key_image &ki, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra)
@@ -11685,7 +11658,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
   }
   // Check for offshore TX support
   if (bFound || !use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0)) {
-    return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, fake_outs_count, unlock_time, priority, extra);
+    return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices,"XHV", cryptonote::transaction_type::TRANSFER, fake_outs_count, unlock_time, priority, extra);
   }
 
   for (size_t i = 0; i < m_offshore_transfers.size(); ++i)
@@ -11703,7 +11676,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
   }
   // Check for xAsset TX support
   if (bFound || !use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-    return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, fake_outs_count, unlock_time, priority, extra);
+    return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices,"XHV", cryptonote::transaction_type::TRANSFER, fake_outs_count, unlock_time, priority, extra);
   }
 
   for (auto &entry: m_xasset_transfers) {
@@ -11711,23 +11684,46 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
       const transfer_details &td = entry.second[idx];
       if (td.m_key_image_known && td.m_key_image == ki && !is_spent(td, false) && !td.m_frozen && (use_rct ? true : !td.is_rct()) && is_transfer_unlocked(td))
       {
-	bFound = true;
-	if (td.is_rct() || is_valid_decomposed_amount(td.amount()))
-	  unused_transfers_indices.push_back(idx);
-	else
-	  unused_dust_indices.push_back(idx);
-	break;
+        bFound = true;
+        if (td.is_rct() || is_valid_decomposed_amount(td.amount()))
+          unused_transfers_indices.push_back(idx);
+        else
+          unused_dust_indices.push_back(idx);
+        break;
       }
     }
     if (bFound) break;
   }
   
-  return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, fake_outs_count, unlock_time, priority, extra);
+  return create_transactions_from(
+    address,
+    is_subaddress,
+    outputs,
+    unused_transfers_indices,
+    unused_dust_indices,
+    "XHV",
+    cryptonote::transaction_type::TRANSFER,
+    fake_outs_count,
+    unlock_time,
+    priority,
+    extra
+  );
 }
 
 
-std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, std::vector<size_t> unused_transfers_indices, std::vector<size_t> unused_dust_indices, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra)
-{
+std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
+  const cryptonote::account_public_address &address,
+  bool is_subaddress,
+  const size_t outputs,
+  std::vector<size_t> unused_transfers_indices,
+  std::vector<size_t> unused_dust_indices,
+  const std::string& asset_type,
+  cryptonote::transaction_type tx_type,
+  const size_t fake_outs_count,
+  const uint64_t unlock_time,
+  uint32_t priority,
+  const std::vector<uint8_t>& extra
+){
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
   boost::unique_lock<hw::device> hwdev_lock (hwdev);
@@ -11774,75 +11770,26 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
   accumulated_change = 0;
   needed_fee = 0;
 
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (extra.size()) {
-    // Check to see if this is an offshore tx
-    bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
+  // check both strSource and strDest are supported.
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
   }
 
-  bool offshore = false;
-  bool onshore = false;
-  bool offshore_transfer = false;
-  bool xasset_transfer = false;
-  bool xasset_to_xusd = false;
-  bool xusd_to_xasset = false;
-  std::string strSource = "XHV";
-  std::string strDest = "XHV";
-  if (bOffshoreTx) {
-    // New xAsset-style of offshore_data
-    int pos = offshore_data.data.find("-");
-    if (pos != std::string::npos) {
-      strSource = offshore_data.data.substr(0,pos);
-      strDest = offshore_data.data.substr(pos+1);
-      if (strSource == "XHV") {
-        offshore = true;
-      } else if (strDest == "XHV") {
-        onshore = true;
-      } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-        offshore_transfer = true;
-      } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-        xasset_transfer = true;
-      } else if (strSource == "XUSD") {
-        xusd_to_xasset = true;
-      } else {
-        xasset_to_xusd = true;
-      }
-    } else {
-      if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
-        offshore_transfer = true;
-        if (priority > 1) {
-          // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
-          LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - xUSD transfers locked to low priority");
-          priority = 1;
-        }
-        strSource = "XUSD";
-        strDest = "XUSD";
-      } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
-        onshore = true;
-        strSource = "XUSD";
-        strDest = "XHV";
-      } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
-        offshore = true;
-        strSource = "XHV";
-        strDest = "XUSD";
-      } else {
-        THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Inalid offshore data!");
-      }
+  // check we have a valid tx type
+  using tt = cryptonote::transaction_type;
+  THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
+
+  if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+    if (priority > 1) {
+      // NEAC: force priority of transfers to be low to mitigate the problem from being unable to convert
+      LOG_PRINT_L1("transfer: forcing priority from " << priority << " to LOW - transfers locked to low priority");
+      priority = 1;
     }
   }
 
-  // check both strSource and strDest are supported.
-  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
-    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Source Asset Type!");
-  }
-  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
-    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
-  }
-
-  const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
-  const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
-  transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
+  const bool use_offshore_outputs = (asset_type == "XUSD");
+  const bool use_xasset_outputs = (asset_type != "XHV" && asset_type != "XUSD");
+  transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[asset_type]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
   
   // while we have something to send
   hwdev.set_mode(hw::device::TRANSACTION_CREATE_FAKE);
@@ -11898,42 +11845,42 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 
       // add N - 1 outputs for correct initial fee estimation
       for (size_t i = 0; i < ((outputs > 1) ? outputs - 1 : outputs); ++i)
-	if (use_xasset_outputs) 
-	  tx.dsts.push_back(tx_destination_entry(0, 0, 1, address, is_subaddress, strDest));
-	else if (use_offshore_outputs) 
-	  tx.dsts.push_back(tx_destination_entry(0, 1, 0, address, is_subaddress, strDest));
-	else
-	  tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));	  
+        if (use_xasset_outputs) 
+          tx.dsts.push_back(tx_destination_entry(0, 0, 1, address, is_subaddress, asset_type));
+        else if (use_offshore_outputs) 
+          tx.dsts.push_back(tx_destination_entry(0, 1, 0, address, is_subaddress, asset_type));
+        else
+          tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));	  
 
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " destinations and " <<
         tx.selected_transfers.size() << " outputs");
       if (use_rct)
         transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
-			      test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
+			      test_tx, test_ptx, rct_config, tx_type, asset_type, asset_type);
       else
         transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx);
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
       needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_multiplier, fee_quantization_mask);
-      available_for_fee = test_ptx.fee + ((xasset_transfer || xasset_to_xusd) ? test_ptx.change_dts.amount_xasset : (onshore || offshore_transfer || xusd_to_xasset) ? test_ptx.change_dts.amount_usd : test_ptx.change_dts.amount) + (!test_ptx.dust_added_to_fee ? test_ptx.dust : 0);
+      available_for_fee = test_ptx.fee + ((use_xasset_outputs) ? test_ptx.change_dts.amount_xasset : (use_offshore_outputs) ? test_ptx.change_dts.amount_usd : test_ptx.change_dts.amount) + (!test_ptx.dust_added_to_fee ? test_ptx.dust : 0);
       for (auto &dt: test_ptx.dests)
-	if (use_xasset_outputs) 
-	  available_for_fee += dt.amount_xasset;
-	else if (use_offshore_outputs) 
-	  available_for_fee += dt.amount_usd;
-	else
-	  available_for_fee += dt.amount;
+        if (use_xasset_outputs) 
+          available_for_fee += dt.amount_xasset;
+        else if (use_offshore_outputs) 
+          available_for_fee += dt.amount_usd;
+        else
+	        available_for_fee += dt.amount;
       LOG_PRINT_L2("Made a " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(available_for_fee) << " available for fee (" <<
-        print_money(needed_fee) << " needed)");
+      print_money(needed_fee) << " needed)");
 
       // add last output, missed for fee estimation
       if (outputs > 1) {
-	if (use_xasset_outputs) 
-	  tx.dsts.push_back(tx_destination_entry(0, 0, 1, address, is_subaddress, strDest));
-	else if (use_offshore_outputs) 
-	  tx.dsts.push_back(tx_destination_entry(0, 1, 0, address, is_subaddress, strDest));
-	else
-	  tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));	  
+        if (use_xasset_outputs) 
+          tx.dsts.push_back(tx_destination_entry(0, 0, 1, address, is_subaddress, asset_type));
+        else if (use_offshore_outputs) 
+          tx.dsts.push_back(tx_destination_entry(0, 1, 0, address, is_subaddress, asset_type));
+        else
+          tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress)); 
       }
       THROW_WALLET_EXCEPTION_IF(needed_fee > available_for_fee, error::wallet_internal_error, "Transaction cannot pay for itself");
 
@@ -11952,16 +11899,16 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
             dt_residue = 1;
             residue -= 1;
           }
-	  if (use_xasset_outputs)
-	    dt.amount_xasset = dt_amount + dt_residue;
-	  if (use_offshore_outputs) 
-	    dt.amount_usd = dt_amount + dt_residue;
-	  else
-	    dt.amount = dt_amount + dt_residue;
+          if (use_xasset_outputs)
+            dt.amount_xasset = dt_amount + dt_residue;
+          if (use_offshore_outputs) 
+            dt.amount_usd = dt_amount + dt_residue;
+          else
+            dt.amount = dt_amount + dt_residue;
         }
         if (use_rct)
           transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra, 
-				test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
+				test_tx, test_ptx, rct_config, tx_type, asset_type, asset_type);
         else
           transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, unlock_time, needed_fee, extra,
             detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx);
@@ -12000,7 +11947,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
     pending_tx test_ptx;
     if (use_rct) {
       transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, unlock_time, tx.needed_fee, extra,
-			    test_tx, test_ptx, rct_config, offshore, onshore, offshore_transfer, xasset_transfer, xasset_to_xusd, xusd_to_xasset, strSource, strDest);
+			    test_tx, test_ptx, rct_config, tx_type, asset_type, asset_type);
     } else {
       transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, unlock_time, tx.needed_fee, extra,
         detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx);
@@ -12035,10 +11982,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
     a -= tx.ptx.fee;
   }
   if (use_xasset_outputs) {
-    std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", 0, 0, a, address, is_subaddress, strDest));
+    std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", 0, 0, a, address, is_subaddress, asset_type));
     THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, synthetic_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
   } else if (use_offshore_outputs) {
-    std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", 0, a, 0, address, is_subaddress, strDest));
+    std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", 0, a, 0, address, is_subaddress, asset_type));
     THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, synthetic_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
   } else {
     std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", a, address, is_subaddress));
@@ -12338,7 +12285,19 @@ std::vector<wallet2::pending_tx> wallet2::create_unmixable_sweep_transactions()
       unmixable_transfer_outputs.push_back(n);
   }
 
-  return create_transactions_from(m_account_public_address, false, 1, unmixable_transfer_outputs, unmixable_dust_outputs, 0 /*fake_outs_count */, 0 /* unlock_time */, 1 /*priority */, std::vector<uint8_t>());
+  return create_transactions_from(
+            m_account_public_address,
+            false,
+            1,
+            unmixable_transfer_outputs,
+            unmixable_dust_outputs,
+            "XHV",
+            cryptonote::transaction_type::TRANSFER,
+            0 /*fake_outs_count */, 
+            0 /* unlock_time */,
+            1 /*priority */,
+            std::vector<uint8_t>()
+          );
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::discard_unmixable_outputs()

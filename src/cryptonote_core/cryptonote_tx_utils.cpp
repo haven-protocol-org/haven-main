@@ -724,13 +724,16 @@ namespace cryptonote
     std::vector<tx_destination_entry>& destinations, 
     const boost::optional<cryptonote::account_public_address>& change_addr, 
     const std::vector<uint8_t> &extra, 
-    transaction& tx, uint64_t unlock_time, 
+    transaction& tx,
+    transaction_type tx_type,
+    const std::string strSource,
+    const std::string strDest,
+    uint64_t unlock_time, 
     const crypto::secret_key &tx_key, 
     const std::vector<crypto::secret_key> &additional_tx_keys, 
     uint64_t current_height, 
     offshore::pricing_record pr, 
-    uint32_t fees_version, 
-    bool use_offshore_tx_version, 
+    uint32_t fees_version,
     bool rct, 
     const rct::RCTConfig &rct_config, 
     rct::multisig_out *msout, 
@@ -766,68 +769,7 @@ namespace cryptonote
     }
     // LAND AHOY!!!
     tx.unlock_time = unlock_time;
-
-    bool bOffshoreTx = false;
-    tx_extra_offshore offshore_data;
-    if (extra.size()) {
-      // Check to see if this is an offshore tx
-      bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
-      if (bOffshoreTx && rct_config.bp_version >= 5) { // this is kinda a fork check
-        remove_field_from_tx_extra(tx.extra, typeid(tx_extra_offshore));
-      }
-    }
-
     tx.extra = extra;
-    crypto::public_key txkey_pub;
-
-    bool offshore = false;
-    bool onshore = false;
-    bool offshore_transfer = false;
-    bool xasset_transfer = false;
-    bool xasset_to_xusd = false;
-    bool xusd_to_xasset = false;
-    std::string strSource = "XHV"; // Default value is needed for non-offshore TXs
-    std::string strDest = "XHV"; // Default value is needed for non-offshore TXs
-    if (bOffshoreTx) {
-      int pos = offshore_data.data.find("-");
-      if (pos != std::string::npos) {
-        // New xAsset-style of offshore_data
-        strSource = offshore_data.data.substr(0,pos);
-        strDest = offshore_data.data.substr(pos+1);
-        if (strSource == "XHV") {
-          offshore = true;
-        } else if (strDest == "XHV") {
-          onshore = true;
-        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-          offshore_transfer = true;
-        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-          xasset_transfer = true;
-        } else if (strSource == "XUSD") {
-          xusd_to_xasset = true;
-        } else {
-          xasset_to_xusd = true;
-        }
-      } else {
-        // Pre-xAsset format of offshore_data
-        // Set the bool flags
-        if ((offshore_data.data.at(0) == 'N') && (offshore_data.data.at(1) == 'N')) {
-          offshore_transfer = true;
-          strSource = "XUSD";
-          strDest = "XUSD";
-        } else if (offshore_data.data.at(0) == 'N' && offshore_data.data.at(1) == 'A') {
-          onshore = true;
-          strSource = "XUSD";
-          strDest = "XHV";
-        } else if (offshore_data.data.at(0) == 'A' && offshore_data.data.at(1) == 'N') {
-          offshore = true;
-          strSource = "XHV";
-          strDest = "XUSD";
-        } else {
-          LOG_ERROR("Invalid offshore data");
-          return false;
-        }
-      }
-    }
 
     // check both strSource and strDest are supported.
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
@@ -838,18 +780,17 @@ namespace cryptonote
       LOG_ERROR("Unsupported destination asset type " << strDest);
       return false;
     }
+    if (tx_type == transaction_type::UNSET) {
+      LOG_ERROR("Invalid TX Type!");
+      return false;
+    }
 
-    const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
-    const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
-
-    if (bOffshoreTx) {
-      if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
-        tx.pricing_record_height = current_height;
-      } else {
-        tx.pricing_record_height = 0;
-      }
-      // this is only included into serialized tx prior to tx version 5.
-      tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
+    const bool use_offshore_outputs = (strSource == "XUSD");
+    const bool use_xasset_outputs = (strSource != "XHV" && strSource != "XUSD");
+    if (strSource != strDest) {
+      tx.pricing_record_height = current_height;
+    } else {
+      tx.pricing_record_height = 0;
     }
 
     // if we have a stealth payment id, find it and encrypt it with the tx key now
@@ -977,7 +918,7 @@ namespace cryptonote
       }
 
       //put key image into tx input
-      if (offshore_transfer || xusd_to_xasset) {  // input is xUSD
+      if (tx_type == transaction_type::OFFSHORE_TRANSFER || tx_type == transaction_type::XUSD_TO_XASSET) { // input is xUSD
 
         // In-wallet swap
         txin_offshore input_to_key;
@@ -991,7 +932,7 @@ namespace cryptonote
         input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
         tx.vin.push_back(input_to_key);
 	
-      } else if (onshore) {   // input is xUSD
+      } else if (tx_type == transaction_type::ONSHORE) {   // input is xUSD
 
         // Onshoring
         txin_onshore input_to_key;
@@ -1005,7 +946,7 @@ namespace cryptonote
         input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
         tx.vin.push_back(input_to_key);
         
-      } else if (xasset_to_xusd || xasset_transfer) {  // input is xAsset
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {  // input is xAsset
 
         // xAsset to xUSD
         txin_xasset input_to_key;
@@ -1044,12 +985,12 @@ namespace cryptonote
     uint64_t offshore_fee_usd = 0;
     uint64_t offshore_fee_xasset = 0;
     bool r =
-      (offshore) ? get_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee, sources, current_height) :
-            (onshore) ? get_onshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (offshore_transfer) ? get_offshore_to_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (xusd_to_xasset) ? get_xusd_to_xasset_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (xasset_to_xusd) ? get_xasset_to_xusd_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_xasset, sources, current_height) :
-      (xasset_transfer) ? true :
+      (tx_type == transaction_type::OFFSHORE) ? get_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee, sources, current_height) :
+      (tx_type == transaction_type::ONSHORE) ? get_onshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (tx_type == transaction_type::OFFSHORE_TRANSFER) ? get_offshore_to_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (tx_type == transaction_type::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (tx_type == transaction_type::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_xasset, sources, current_height) :
+      (tx_type == transaction_type::XASSET_TRANSFER) ? true :
       true;
     if (!r) {
       LOG_ERROR("failed to get offshore fee - aborting");
@@ -1066,15 +1007,15 @@ namespace cryptonote
     for (size_t n = 0; n < sources.size(); ++n)
       ins_order[n] = n;
     std::sort(ins_order.begin(), ins_order.end(), [&](const size_t i0, const size_t i1) {
-      if (offshore_transfer || xusd_to_xasset) {
+      if (tx_type == transaction_type::OFFSHORE_TRANSFER || tx_type == transaction_type::XUSD_TO_XASSET) {
         const txin_offshore &tk0 = boost::get<txin_offshore>(tx.vin[i0]);
         const txin_offshore &tk1 = boost::get<txin_offshore>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
-      } else if (onshore) {
+      } else if (tx_type == transaction_type::ONSHORE) {
         const txin_onshore &tk0 = boost::get<txin_onshore>(tx.vin[i0]);
         const txin_onshore &tk1 = boost::get<txin_onshore>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
-      } else if (xasset_to_xusd || xasset_transfer) {
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {
         const txin_xasset &tk0 = boost::get<txin_xasset>(tx.vin[i0]);
         const txin_xasset &tk1 = boost::get<txin_xasset>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
@@ -1097,6 +1038,7 @@ namespace cryptonote
     classify_addresses(destinations, change_addr, num_stdaddresses, num_subaddresses, single_dest_subaddress);
 
     // if this is a single-destination transfer to a subaddress, we set the tx pubkey to R=s*D
+    crypto::public_key txkey_pub;
     if (num_stdaddresses == 0 && num_subaddresses == 1)
     {
       txkey_pub = rct::rct2pk(hwdev.scalarmultKey(rct::pk2rct(single_dest_subaddress.m_spend_public_key), rct::sk2rct(tx_key)));
@@ -1371,62 +1313,58 @@ namespace cryptonote
       // zero out destination amounts
       for (size_t i = 0; i < tx.vout.size(); ++i) {
         // fill the amount minted before amounts go encrypted if it is a conversion
-        if (bOffshoreTx) {
-          if (offshore && tx.vout[i].target.type() == typeid(txout_offshore))
-            tx.amount_minted += tx.vout[i].amount;
-          else if (onshore && tx.vout[i].target.type() == typeid(txout_to_key))
-            tx.amount_minted += tx.vout[i].amount;
-          else if (xusd_to_xasset && tx.vout[i].target.type() == typeid(txout_xasset))
-            tx.amount_minted += tx.vout[i].amount;
-          else if (xasset_to_xusd && tx.vout[i].target.type() == typeid(txout_offshore))
-            tx.amount_minted += tx.vout[i].amount;
-        }
+        if (tx_type == transaction_type::OFFSHORE && tx.vout[i].target.type() == typeid(txout_offshore))
+          tx.amount_minted += tx.vout[i].amount;
+        else if (tx_type == transaction_type::ONSHORE && tx.vout[i].target.type() == typeid(txout_to_key))
+          tx.amount_minted += tx.vout[i].amount;
+        else if (tx_type == transaction_type::XUSD_TO_XASSET && tx.vout[i].target.type() == typeid(txout_xasset))
+          tx.amount_minted += tx.vout[i].amount;
+        else if (tx_type == transaction_type::XASSET_TO_XUSD && tx.vout[i].target.type() == typeid(txout_offshore))
+          tx.amount_minted += tx.vout[i].amount;
         tx.vout[i].amount = 0;
       }
 
       // Calculate amount_burnt from the amount_minted
-      if (bOffshoreTx) {
-        if (offshore) {
-          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-          boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-          amount_128 *= 1000000000000;
-          amount_128 /= exchange_128;
-          tx.amount_burnt = (uint64_t)(amount_128);
-        } else if (onshore) {
-          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-          boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-          amount_128 *= exchange_128;
-          amount_128 /= 1000000000000;
-          tx.amount_burnt = (uint64_t)(amount_128);
-        } else if (offshore_transfer) {
-          tx.amount_burnt = tx.amount_minted = 0;
-        } else if (xusd_to_xasset) {
-          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-          boost::multiprecision::uint128_t exchange_128 = pr[strDest];
-          amount_128 *= 1000000000000;
-          amount_128 /= exchange_128;
-          tx.amount_burnt = (uint64_t)(amount_128);
-          if (fees_version >= 3) {
-            // Add the burnt part of the fee
-            tx.amount_burnt += (uint64_t)((offshore_fee_usd * 80) / 100);
-          }
-        } else if (xasset_to_xusd) {
-          boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-          boost::multiprecision::uint128_t exchange_128 = pr[strSource];
-          amount_128 *= exchange_128;
-          amount_128 /= 1000000000000;
-          tx.amount_burnt = (uint64_t)(amount_128);
-          if (fees_version >= 3) {
-            // Add the burnt part of the fee
-            tx.amount_burnt += (uint64_t)((offshore_fee_xasset * 80) / 100);
-          }
-        } else if (xasset_transfer) {
-          tx.amount_burnt = tx.amount_minted = 0;
+      if (tx_type == transaction_type::OFFSHORE) {
+        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+        boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+        amount_128 *= 1000000000000;
+        amount_128 /= exchange_128;
+        tx.amount_burnt = (uint64_t)(amount_128);
+      } else if (tx_type == transaction_type::ONSHORE) {
+        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+        boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+        amount_128 *= exchange_128;
+        amount_128 /= 1000000000000;
+        tx.amount_burnt = (uint64_t)(amount_128);
+      } else if (tx_type == transaction_type::OFFSHORE_TRANSFER) {
+        tx.amount_burnt = tx.amount_minted = 0;
+      } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+        boost::multiprecision::uint128_t exchange_128 = pr[strDest];
+        amount_128 *= 1000000000000;
+        amount_128 /= exchange_128;
+        tx.amount_burnt = (uint64_t)(amount_128);
+        if (fees_version >= 3) {
+          // Add the burnt part of the fee
+          tx.amount_burnt += (uint64_t)((offshore_fee_usd * 80) / 100);
         }
-        if ((offshore || onshore || xasset_to_xusd || xusd_to_xasset) && (!tx.amount_burnt || !tx.amount_minted)) {
-          LOG_ERROR("Invalid offshore TX - amount too small (<1 ATOMIC_UNIT)");
-          return false;
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+        boost::multiprecision::uint128_t exchange_128 = pr[strSource];
+        amount_128 *= exchange_128;
+        amount_128 /= 1000000000000;
+        tx.amount_burnt = (uint64_t)(amount_128);
+        if (fees_version >= 3) {
+          // Add the burnt part of the fee
+          tx.amount_burnt += (uint64_t)((offshore_fee_xasset * 80) / 100);
         }
+      } else if (tx_type == transaction_type::XASSET_TRANSFER) {
+        tx.amount_burnt = tx.amount_minted = 0;
+      }
+      if ((strSource != strDest) && (!tx.amount_burnt || !tx.amount_minted)) {
+        LOG_ERROR("Invalid offshore TX - amount too small (<1 ATOMIC_UNIT)");
+        return false;
       }
       
       crypto::hash tx_prefix_hash;
@@ -1450,8 +1388,28 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, uint64_t current_height, offshore::pricing_record pr, uint32_t fees_version, bool use_offshore_tx_version, bool rct, const rct::RCTConfig &rct_config, rct::multisig_out *msout)
-  {
+  bool construct_tx_and_get_tx_key(
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    transaction_type tx_type,
+    const std::string strSource,
+    const std::string strDest,
+    uint64_t unlock_time,
+    crypto::secret_key &tx_key,
+    std::vector<crypto::secret_key> &additional_tx_keys,
+    uint64_t current_height,
+    offshore::pricing_record pr,
+    uint32_t fees_version,
+    bool rct,
+    const rct::RCTConfig &rct_config,
+    rct::multisig_out *msout
+  ){
+
     hw::device &hwdev = sender_account_keys.get_device();
     hwdev.open_tx(tx_key);
     try {
@@ -1468,24 +1426,33 @@ namespace cryptonote
           additional_tx_keys.push_back(keypair::generate(sender_account_keys.get_device()).sec);
       }
 
-      bool r = construct_tx_with_tx_key(sender_account_keys, subaddresses, sources, destinations, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, rct, rct_config, msout);
+      bool r = construct_tx_with_tx_key(
+        sender_account_keys,
+        subaddresses,
+        sources,
+        destinations,
+        change_addr,
+        extra, 
+        tx,
+        tx_type,
+        strSource,
+        strDest,
+        unlock_time,
+        tx_key,
+        additional_tx_keys,
+        current_height,
+        pr,
+        fees_version,
+        rct,
+        rct_config,
+        msout
+      );
       hwdev.close_tx();
       return r;
     } catch(...) {
       hwdev.close_tx();
       throw;
     }
-  }
-  //---------------------------------------------------------------
-  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time)
-  {
-     std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
-     subaddresses[sender_account_keys.m_account_address.m_spend_public_key] = {0,0};
-     crypto::secret_key tx_key;
-     offshore::pricing_record pr;
-     std::vector<crypto::secret_key> additional_tx_keys;
-     std::vector<tx_destination_entry> destinations_copy = destinations;
-     return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, 0, pr, 1, false, false, { rct::RangeProofBorromean, 0}, NULL);
   }
   //---------------------------------------------------------------
   bool generate_genesis_block(
