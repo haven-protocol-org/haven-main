@@ -1194,36 +1194,11 @@ namespace cryptonote
     {
       size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
 
-      // the non-simple version is slightly smaller, but assumes all real inputs
-      // are on the same index, so can only be used if there just one ring.
-      bool use_simple_rct = sources.size() > 1 || rct_config.range_proof_type != rct::RangeProofBorromean;
-
-      if (!use_simple_rct)
-      {
-        // non simple ringct requires all real inputs to be at the same index for all inputs
-        for(const tx_source_entry& src_entr:  sources)
-        {
-          if(src_entr.real_output != sources.begin()->real_output)
-          {
-            LOG_ERROR("All inputs must have the same index for non-simple ringct");
-            return false;
-          }
-        }
-
-        // enforce same mixin for all outputs
-        for (size_t i = 1; i < sources.size(); ++i) {
-          if (n_total_outs != sources[i].outputs.size()) {
-            LOG_ERROR("Non-simple ringct transaction has varying ring size");
-            return false;
-          }
-        }
-      }
-
       uint64_t amount_in = 0;
       rct::ctkeyV inSk;
       inSk.reserve(sources.size());
       // mixRing indexing is done the other way round for simple
-      rct::ctkeyM mixRing(use_simple_rct ? sources.size() : n_total_outs);
+      rct::ctkeyM mixRing(sources.size());
       std::vector<uint64_t> inamounts;
       std::vector<unsigned int> index;
       std::vector<rct::multisig_kLRki> kLRki;
@@ -1247,46 +1222,23 @@ namespace cryptonote
           kLRki.push_back(sources[i].multisig_kLRki);
         }
       }
-      
-      if (use_simple_rct)
+
+      // mixRing indexing is done the other way round for simple
+      for (size_t i = 0; i < sources.size(); ++i)
       {
-        // mixRing indexing is done the other way round for simple
-        for (size_t i = 0; i < sources.size(); ++i)
+        mixRing[i].resize(sources[i].outputs.size());
+        for (size_t n = 0; n < sources[i].outputs.size(); ++n)
         {
-          mixRing[i].resize(sources[i].outputs.size());
-          for (size_t n = 0; n < sources[i].outputs.size(); ++n)
-          {
-            mixRing[i][n] = sources[i].outputs[n].second;
-          }
-        }
-      }
-      else
-      {
-        for (size_t i = 0; i < n_total_outs; ++i) // same index assumption
-        {
-          mixRing[i].resize(sources.size());
-          for (size_t n = 0; n < sources.size(); ++n)
-          {
-            mixRing[i][n] = sources[n].outputs[i].second;
-          }
+          mixRing[i][n] = sources[i].outputs[n].second;
         }
       }
 
       if (summary_inputs_money > summary_outs_money) {
         fee = summary_inputs_money - summary_outs_money - offshore_fee;
-        if (!use_simple_rct) {
-          outamounts.push_back(std::pair<std::string, uint64_t>("XHV", fee));
-        }
       } else if (summary_inputs_money_usd > summary_outs_money_usd) {
         fee_usd = summary_inputs_money_usd - summary_outs_money_usd - offshore_fee_usd;
-        if (!use_simple_rct) {
-          outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", fee_usd));
-        }
       } else if (summary_inputs_money_xasset > summary_outs_money_xasset) {
 	      fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
-        if (!use_simple_rct) {
-          outamounts.push_back(std::pair<std::string, uint64_t>(strSource, fee_xasset));
-        }
       }
 
       // zero out all amounts to mask rct outputs, real amounts are now encrypted
@@ -1368,10 +1320,29 @@ namespace cryptonote
       crypto::hash tx_prefix_hash;
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;
-      if (use_simple_rct)
-        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destination_keys, inamounts, strSource, outamounts, fee, fee_usd, fee_xasset, offshore_fee, offshore_fee_usd, offshore_fee_xasset, mixRing, amount_keys, msout ? &kLRki : NULL, msout, index, outSk, rct_config, hwdev, pr);
-      else
-        tx.rct_signatures = rct::genRct(rct::hash2rct(tx_prefix_hash), inSk, strSource, destination_keys, outamounts, mixRing, amount_keys, msout ? &kLRki[0] : NULL, msout, sources[0].real_output, outSk, rct_config, hwdev); // same index assumption
+      tx.rct_signatures = rct::genRctSimple(
+        rct::hash2rct(tx_prefix_hash),
+        inSk,
+        destination_keys,
+        inamounts,
+        strSource,
+        outamounts,
+        fee,
+        fee_usd,
+        fee_xasset,
+        offshore_fee,
+        offshore_fee_usd,
+        offshore_fee_xasset,
+        mixRing,
+        amount_keys,
+        msout ? &kLRki : NULL,
+        msout,
+        index,
+        outSk,
+        rct_config,
+        hwdev,
+        pr
+      );
       for (size_t i=0; i<inSk.size(); i++) {
       	memwipe(&inSk[i], sizeof(rct::ctkeyV));
       }
