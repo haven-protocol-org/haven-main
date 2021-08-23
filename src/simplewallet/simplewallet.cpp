@@ -6754,9 +6754,6 @@ bool simple_wallet::transfer_main(
     locked_blocks = 1440; // ~48 hours
     transfer_type = TransferLocked;
   }
-  // HERE BE DRAGONS!!!
-  // Will other transfer types than TransferLocked, be auto 10 block lock??
-  // LAND AHOY!!!
   if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
     if (priority > 1) {
       message_writer() << boost::format(tr("Reducing priority from %d to 1 - Transfers do not permit other priorities\n")) % priority;

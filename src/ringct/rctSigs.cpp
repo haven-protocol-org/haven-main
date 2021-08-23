@@ -1094,69 +1094,6 @@ namespace rct {
         rv.p.rangeSigs.resize(destinations.size());
         rv.ecdhInfo.resize(destinations.size());
 
-	/*
-	// HERE BE DRAGONS!!!
-	// NEAC: convert incoming amount vector/pairs into discrete vectors
-	std::vector<xmr_amount> amounts_xhv, amounts_usd;
-        for (size_t i = 0 ; i < amounts.size() - 1; i++) {
-	  amounts_xhv.push_back(amounts[i].first);
-	  amounts_usd.push_back(amounts[i].second);
-	}
-	ctkeyV inSk_xhv, inSk_usd;
-	for (size_t i=0; i<inSk.size(); i++) {
-	  inSk_xhv.push_back(inSk[i].front());
-	  inSk_usd.push_back(inSk[i].back());
-	}
-	// LAND AHOY!!!
-	
-        size_t i = 0;
-        keyV masks(destinations.size()); //sk mask..
-        outSk.resize(destinations.size());
-        for (i = 0; i < destinations.size(); i++) {
-            //add destination to sig
-            rv.outPk[i].dest = copy(destinations[i]);
-            //compute range proof
-	    // HERE BE DRAGONS!!!
-	    // NEAC: need to change the type to accommodate multiple amounts - one for each currency
-            //rv.p.rangeSigs[i] = proveRange(rv.outPk[i].mask, outSk[i].mask, amounts[i]);
-            rv.p.rangeSigs[i] = proveRange(rv.outPk[i].mask, outSk[i].mask, amounts[i].first);
-	    // LAND AHOY!!!
-            #ifdef DBG
-            CHECK_AND_ASSERT_THROW_MES(verRange(rv.outPk[i].mask, rv.p.rangeSigs[i]), "verRange failed on newly created proof");
-            #endif
-            //mask amount and mask
-            rv.ecdhInfo[i].mask = copy(outSk[i].mask);
-	    // HERE BE DRAGONS!!!
-	    // NEAC: need to change the type to accommodate multiple amounts - one for each currency
-            //rv.ecdhInfo[i].amount = d2h(amounts[i]);
-            rv.ecdhInfo[i].amount = d2h(amounts[i].first);
-	    // LAND AHOY!!!
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2);
-        }
-
-        //set txn fee
-        if (amounts.size() > destinations.size())
-        {
-	  // NEAC: need to change the type to accommodate multiple amounts - one for each currency
-	  //rv.ecdhInfo[i].amount = d2h(amounts[i]);
-          //rv.txnFee = amounts[destinations.size()];
-          rv.txnFee = amounts[destinations.size()].first;
-	  // LAND AHOY!!!
-        }
-        else
-        {
-          rv.txnFee = 0;
-        }
-        key txnFeeKey = scalarmultH(d2h(rv.txnFee));
-
-        rv.mixRing = mixRing;
-        if (msout)
-          msout->c.resize(1);
-	// HERE BE DRAGONS!!!
-	// NEAC: call this twice - once for each currency
-        rv.p.MGs.push_back(proveRctMG(get_pre_mlsag_hash(rv, hwdev), rv.mixRing, inSk_xhv, outSk, rv.outPk, kLRki, msout ? &msout->c[0] : NULL, index, txnFeeKey,hwdev));
-	// LAND AHOY!!!
-	*/
         return rv;
     }
 
@@ -1298,17 +1235,11 @@ namespace rct {
       rv.outPk[i].dest = rv.outPk_usd[i].dest = rv.outPk_xasset[i].dest = copy(destinations[i]);
       //compute range proof
       if (!bulletproof) {
-        // HERE BE DRAGONS!!!
-        // NEAC: need to change the type to accommodate multiple rangeSigs - one for each currency
         rv.p.rangeSigs[i] = proveRange(rv.outPk[i].mask, outSk[i].mask, outamounts_rangesig[i]);
-        // LAND AHOY!!!
-	    }
+      }
       #ifdef DBG
       if (!bulletproof) {
-        // HERE BE DRAGONS!!!
-        // NEAC: need to change the type to accommodate multiple rangeSigs - one for each currency
         CHECK_AND_ASSERT_THROW_MES(verRange(rv.outPk[i].mask, rv.p.rangeSigs[i]), "verRange failed on newly created proof");
-        // LAND AHOY!!!
       }
       #endif
     }
@@ -1685,7 +1616,7 @@ namespace rct {
     const cryptonote::transaction_type& type,
     const std::string& strSource, 
     const std::string& strDest,
-    uint64_t amount_burnt, // HERE BE DRAGONS!!! shouldn't these should be uint128
+    uint64_t amount_burnt,
     uint64_t amount_minted,
     const std::vector<cryptonote::tx_out> &vout
   ){

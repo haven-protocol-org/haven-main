@@ -2772,11 +2772,9 @@ namespace cryptonote
       return true;
     }
 
-    // HERE BE DRAGONS!!!
     // Haven does not support the update mechanism as yet
     res.status = "Haven Daemon does not support update method yet";
     return true;
-    // LAND AHOY!!!
     
     static const char software[] = "monero";
 #ifdef BUILD_TAG

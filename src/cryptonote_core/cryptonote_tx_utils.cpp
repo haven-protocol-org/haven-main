@@ -170,11 +170,11 @@ namespace cryptonote
     }
 
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-    // HERE BE DRAGONS!!!
     // NEAC: need to iterate over the currency maps to output all fees
-    //LOG_PRINT_L1("Creating block template: reward " << block_reward <<
-    //  ", fee " << fee);
-    // LAND AHOY!!!
+    LOG_PRINT_L1("Creating block template: block reward " << block_reward);
+    for (const auto &fee: fee_map) {
+      LOG_PRINT_L1("\t" << fee.first << " fee " << fee);
+    }
 #endif
 
     uint64_t governance_reward = 0;
@@ -756,7 +756,6 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    // HERE BE DRAGONS!!!
     // NEAC: verify this is correct, because it introduces a relationship between bp_version and tx.version that isn't guaranteed
     if (rct_config.bp_version >= 5) {
       tx.version = 5;
@@ -767,7 +766,6 @@ namespace cryptonote
     } else {
       tx.version = rct ? 2 : 1;
     }
-    // LAND AHOY!!!
     tx.unlock_time = unlock_time;
     tx.extra = extra;
 

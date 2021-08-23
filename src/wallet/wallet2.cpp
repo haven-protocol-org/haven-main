@@ -9464,12 +9464,10 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   for (auto i = ++selected_transfers.begin(); i != selected_transfers.end(); ++i)
     THROW_WALLET_EXCEPTION_IF(subaddr_account != m_transfers[*i].m_subaddr_index.major, error::wallet_internal_error, "the tx uses funds from multiple accounts");
 
-  // HERE BE DRAGONS!!!
-  // JB: fix this code to use the correct type of inputs
+  // NEAC: this function is only ever used for pre-offshore TXs, and therefore can only work with XHV inputs/outputs
   std::string strSource = "XHV";
   if (outs.empty())
     get_outs(m_transfers, strSource, outs, selected_transfers, fake_outputs_count); // may throw
-  // LAND AHOY!!!
 
   //prepare inputs
   LOG_PRINT_L2("preparing outputs");
@@ -9506,10 +9504,7 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
 
     tx_output_entry real_oe;
     real_oe.first = td.m_global_output_index;
-    // HERE BE DRAGONS!!!
-    // NEAC: fix this code to get the correct type for the vout entry
     real_oe.second.dest = rct::pk2rct(boost::get<txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key);
-    // LAND AHOY!!!
     real_oe.second.mask = rct::commit(td.amount(), td.m_mask);
     *it_to_replace = real_oe;
     src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
@@ -9758,12 +9753,6 @@ void wallet2::transfer_selected_rct(
     cryptonote::tx_source_entry& src = sources.back();
     const transfer_details& td = specific_transfers[idx];
 
-    // HERE BE DRAGONS!!!
-    // NEAC: this was only used for fees v3
-    //bool b = get_pricing_record(src.pr, td.m_block_height);
-    //THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
-    //src.first_generation_input = (td.m_tx.vin[0].type() == typeid(txin_to_key));
-    // LAND AHOY!!!
     src.amount = td.amount();
     src.mask = td.m_mask;
     src.asset_type = strSource;
@@ -11180,11 +11169,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       if (available_amount > 0 && !dsts.empty() && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag) < TX_WEIGHT_TARGET(upper_transaction_weight_limit)) {
         // we can partially fill that destination
-	      // HERE BE DRAGONS!!!
-	      // NEAC: This log output is BROKEN and doesn't account for xAssets
         LOG_PRINT_L2("We can partially pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
-          " for " << print_money(available_amount) << "/" << print_money((dsts[0].amount > 0) ? dsts[0].amount : dsts[0].amount_usd));
-	      // LAND AHOY!!!
+                     " for " << print_money(available_amount) << "/" << print_money((strSource != "XHV" && strSource != "XUSD") ? dsts[0].amount_xasset : strSource == "XHV" ? dsts[0].amount : dsts[0].amount_usd));
         tx.add(dsts[0],
 	       (use_xasset_outputs || use_offshore_outputs ? 0 : available_amount),
 	       (use_offshore_outputs ? available_amount : 0),
@@ -11265,12 +11251,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       }
       if (tx_type == tt::OFFSHORE || tx_type == tt::XUSD_TO_XASSET) {
 	      THROW_WALLET_EXCEPTION_IF(outputs % 100000000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
-      } else if (tx_type == tt::ONSHORE) {
+      } else if (tx_type == tt::ONSHORE || tx_type == tt::XASSET_TO_XUSD) {
 	      THROW_WALLET_EXCEPTION_IF(outputs % 10000, error::wallet_internal_error, "This transaction will fail because the amounts are incorrect!");
       }
-      // HERE BE DRAGONS!!!
-      // why there is no xasset_to_xusd above else if??
-      // LAND AHOY!!!
       
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
         tx.selected_transfers.size() << " inputs");

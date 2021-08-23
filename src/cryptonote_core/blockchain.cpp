@@ -2182,12 +2182,6 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     tx_memory_pool::tx_details &cur_tx = cur_res->second;
     real_txs_weight += cur_tx.weight;
     real_fee += cur_tx.fee;
-    if ((cur_tx.tx.version >= OFFSHORE_TRANSACTION_VERSION) && (cur_tx.pricing_record_height != 0)) {
-      // HERE BE DRAGONS!!!
-      // This is an offshore TX, so get the offshore fee amount as a separate number
-      
-      // LAND AHOY!!!
-    }
     if (cur_tx.weight != get_transaction_weight(cur_tx.tx))
     {
       LOG_ERROR("Creating block template: error: invalid transaction weight");
@@ -3632,12 +3626,10 @@ void Blockchain::on_new_tx_from_block(const cryptonote::transaction &tx)
     TIME_MEASURE_FINISH(a);
     if(m_show_time_stats)
     {
-      // NEAC - HERE BE DRAGONS!!!
-      // This should be able to be simplified down to using the tx_in_v VARIANT
       size_t ring_size = !tx.vin.empty() && tx.vin[0].type() == typeid(txin_to_key) ? boost::get<txin_to_key>(tx.vin[0]).key_offsets.size() :
 	!tx.vin.empty() && tx.vin[0].type() == typeid(txin_offshore) ? boost::get<txin_offshore>(tx.vin[0]).key_offsets.size() :
-	!tx.vin.empty() && tx.vin[0].type() == typeid(txin_onshore) ? boost::get<txin_onshore>(tx.vin[0]).key_offsets.size() : 0;
-      // LAND AHOY!!!
+	!tx.vin.empty() && tx.vin[0].type() == typeid(txin_onshore) ? boost::get<txin_onshore>(tx.vin[0]).key_offsets.size()  :
+	!tx.vin.empty() && tx.vin[0].type() == typeid(txin_xasset) ? boost::get<txin_xasset>(tx.vin[0]).key_offsets.size() : 0;
       MINFO("HASH: " << "-" << " I/M/O: " << tx.vin.size() << "/" << ring_size << "/" << tx.vout.size() << " H: " << 0 << " chcktx: " << a);
     }
   }
@@ -3672,12 +3664,10 @@ bool Blockchain::check_tx_inputs(transaction& tx, uint64_t& max_used_block_heigh
   TIME_MEASURE_FINISH(a);
   if(m_show_time_stats)
   {
-    // NEAC - HERE BE DRAGONS!!!
-    // This should be able to be simplified down to using the tx_in_v VARIANT
     size_t ring_size = !tx.vin.empty() && tx.vin[0].type() == typeid(txin_to_key) ? boost::get<txin_to_key>(tx.vin[0]).key_offsets.size() :
       !tx.vin.empty() && tx.vin[0].type() == typeid(txin_offshore) ? boost::get<txin_offshore>(tx.vin[0]).key_offsets.size() :
-      !tx.vin.empty() && tx.vin[0].type() == typeid(txin_onshore) ? boost::get<txin_onshore>(tx.vin[0]).key_offsets.size() : 0;
-    // LAND AHOY!!!
+      !tx.vin.empty() && tx.vin[0].type() == typeid(txin_onshore) ? boost::get<txin_onshore>(tx.vin[0]).key_offsets.size()  :
+      !tx.vin.empty() && tx.vin[0].type() == typeid(txin_xasset) ? boost::get<txin_xasset>(tx.vin[0]).key_offsets.size() : 0;
     MINFO("HASH: " <<  get_transaction_hash(tx) << " I/M/O: " << tx.vin.size() << "/" << ring_size << "/" << tx.vout.size() << " H: " << max_used_block_height << " ms: " << a + m_fake_scan_time << " B: " << get_object_blobsize(tx) << " W: " << get_transaction_weight(tx));
   }
   if (!res)
@@ -3792,7 +3782,6 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  // HERE BE DRAGONS!!!
   // NEAC: All of the remaining code below should be moved to tx_memory_pool::add_tx() or removed entirely as appropriate
   // from v5, allow bulletproofs
   if (hf_version < 5) {
@@ -3857,7 +3846,6 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
       return false;
     }
   }
-  // LAND AHOY!!!
 
   return true;
 }
@@ -4578,13 +4566,8 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
               return false;
             }
           } else {
-            // HERE BE DRAGONS!!!
-            // NEAC: this makes no sense - cannot have MLSAGs for onshore!
-            if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_onshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
-              MERROR_VER("Failed to check ringct signatures: mismatched key image");
-              return false;
-            }
-            // LAND AHOY!!!
+            MERROR_VER("Failed to check ringct signatures: Onshore TXs do not support MLSAGs");
+            return false;
           }
         } else if (tx.vin[n].type() == typeid(txin_offshore)) {
           if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
@@ -4593,13 +4576,8 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
               return false;
             }
           } else {
-            // HERE BE DRAGONS!!!
-            // NEAC: this makes no sense - cannot have MLSAGs for offshore!
-            if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
-              MERROR_VER("Failed to check ringct signatures: mismatched key image");
-              return false;
-            }
-            // LAND AHOY!!!
+            MERROR_VER("Failed to check ringct signatures: Offshore TXs do not support MLSAGs");
+            return false;
           }
         } else if (tx.vin[n].type() == typeid(txin_xasset)) {
           if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
@@ -4608,13 +4586,8 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
               return false;
             }
           } else {
-            // HERE BE DRAGONS!!!
-            // NEAC: this makes no sense - cannot have MLSAGs for xasset!
-            if (rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_xasset>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32)) {
-              MERROR_VER("Failed to check ringct signatures: mismatched key image");
-              return false;
-            }
-            // LAND AHOY!!!
+            MERROR_VER("Failed to check ringct signatures: xAsset TXs do not support MLSAGs");
+            return false;
           }
         } else {
           if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
@@ -5786,10 +5759,8 @@ leave: {
     return false;
   }
 
-  // HERE BE DRAGONS!!!
   // NEAC: need to output all fees that the miner receives in all currencies for block reward
   MINFO("+++++ BLOCK SUCCESSFULLY ADDED" << std::endl << "id:\t" << id << std::endl << "PoW:\t" << proof_of_work << std::endl << "HEIGHT " << new_height-1 << ", difficulty:\t" << current_diffic << std::endl << "block reward: " << print_money(fee_map["XHV"] + base_reward) << "(" << print_money(base_reward) << " + " << print_money(fee_map["XHV"]) << "), coinbase_weight: " << coinbase_weight << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "(" << target_calculating_time << "/" << longhash_calculating_time << ")ms");
-  // LAND AHOY!!!
   if(m_show_time_stats)
   {
     MINFO("Height: " << new_height << " coinbase weight: " << coinbase_weight << " cumm: "
