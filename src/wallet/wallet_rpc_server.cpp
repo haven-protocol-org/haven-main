@@ -2267,17 +2267,18 @@ namespace tools
       bool bMatched = false;
       std::vector<std::string> types = req.types;
       if (!types.size())
-	types.push_back("xhv");
+      types.push_back("xhv");
 
       for (auto type: types) {
-	if (boost::algorithm::to_lower_copy(type) == boost::algorithm::to_lower_copy(payment.m_asset_type)) {
-	  bMatched = true;
-	} else if (boost::algorithm::to_lower_copy(type) == "all") {
-	  bMatched = true;
-	}
+        if (boost::algorithm::to_lower_copy(type) == boost::algorithm::to_lower_copy(payment.m_asset_type)) {
+          bMatched = true;
+        } else if (boost::algorithm::to_lower_copy(type) == "all") {
+          bMatched = true;
+        }
       }
       if (!bMatched)
-	continue;
+	      continue; 
+      
       wallet_rpc::payment_details rpc_payment;
       rpc_payment.payment_id    = req.payment_id;
       rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.m_tx_hash);
@@ -2302,26 +2303,26 @@ namespace tools
     /* If the payment ID list is empty, we get payments to any payment ID (or lack thereof) */
     if (req.payment_ids.empty())
     {
-      std::list<std::pair<crypto::hash,wallet2::payment_details>> payment_list;
+      std::list<std::pair<crypto::hash, wallet2::payment_details>> payment_list;
       m_wallet->get_payments(payment_list, req.min_block_height);
 
       for (auto & payment : payment_list)
       {
-	// Iterate over our vector to see which currencies are requested
-	bool bMatched = false;
-	std::vector<std::string> types = req.types;
-	if (!types.size())
-	  types.push_back("xhv");
+        // Iterate over our vector to see which currencies are requested
+        bool bMatched = false;
+        std::vector<std::string> types = req.types;
+        if (!types.size())
+          types.push_back("xhv");
 
-	for (auto type: types) {
-	  if (boost::algorithm::to_lower_copy(type) == boost::algorithm::to_lower_copy(payment.second.m_asset_type)) {
-	    bMatched = true;
-	  } else if (boost::algorithm::to_lower_copy(type) == "all") {
-	    bMatched = true;
-	  }
-	}
-	if (!bMatched)
-	  continue;
+        for (auto type: types) {
+          if (boost::algorithm::to_lower_copy(type) == boost::algorithm::to_lower_copy(payment.second.m_asset_type)) {
+            bMatched = true;
+          } else if (boost::algorithm::to_lower_copy(type) == "all") {
+            bMatched = true;
+          }
+        }
+        if (!bMatched)
+          continue;
         wallet_rpc::payment_details rpc_payment;
         rpc_payment.payment_id    = epee::string_tools::pod_to_hex(payment.first);
         rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.second.m_tx_hash);

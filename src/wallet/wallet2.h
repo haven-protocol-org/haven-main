@@ -337,19 +337,18 @@ private:
 
       bool is_rct() const { return m_rct; }
       uint64_t amount() const { return m_amount; }
+
       const crypto::public_key &get_public_key() const {
-	if (m_tx.vout[m_internal_output_index].target.type() == typeid(cryptonote::txout_to_key))
-	  return boost::get<const cryptonote::txout_to_key>(m_tx.vout[m_internal_output_index].target).key;
-	else if (m_tx.vout[m_internal_output_index].target.type() == typeid(cryptonote::txout_offshore))
-	  return boost::get<const cryptonote::txout_offshore>(m_tx.vout[m_internal_output_index].target).key;
-	else if (m_tx.vout[m_internal_output_index].target.type() == typeid(cryptonote::txout_xasset))
-	  return boost::get<const cryptonote::txout_xasset>(m_tx.vout[m_internal_output_index].target).key;
-	else {
-	  // HERE BE DRAGONS!!!
-	  // NEAC - This will probably never occur, but if it does it'll crash
-	  return boost::get<const cryptonote::txout_to_key>(m_tx.vout[m_internal_output_index].target).key;
-	  // LAND AHOY!!!
-	}
+        if (m_tx.vout[m_internal_output_index].target.type() == typeid(cryptonote::txout_to_key))
+          return boost::get<const cryptonote::txout_to_key>(m_tx.vout[m_internal_output_index].target).key;
+        else if (m_tx.vout[m_internal_output_index].target.type() == typeid(cryptonote::txout_offshore))
+          return boost::get<const cryptonote::txout_offshore>(m_tx.vout[m_internal_output_index].target).key;
+        else if (m_tx.vout[m_internal_output_index].target.type() == typeid(cryptonote::txout_xasset))
+          return boost::get<const cryptonote::txout_xasset>(m_tx.vout[m_internal_output_index].target).key;
+        else {
+          // NEAC - This will probably never occur, but if it does it'll crash
+          return boost::get<const cryptonote::txout_to_key>(m_tx.vout[m_internal_output_index].target).key;
+        }
       }
 
       BEGIN_SERIALIZE_OBJECT()

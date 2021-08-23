@@ -11619,8 +11619,17 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(
         );
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypto::key_image &ki, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra)
-{
+std::vector<wallet2::pending_tx>
+wallet2::create_transactions_single(
+  const crypto::key_image &ki,
+  const cryptonote::account_public_address &address,
+  bool is_subaddress,
+  const size_t outputs,
+  const size_t fake_outs_count,
+  const uint64_t unlock_time,
+  uint32_t priority,
+  const std::vector<uint8_t>& extra
+){
   std::vector<size_t> unused_transfers_indices;
   std::vector<size_t> unused_dust_indices;
   const bool use_rct = use_fork_rules(4, 0);
@@ -11639,9 +11648,22 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
       break;
     }
   }
-  // Check for offshore TX support
-  if (bFound || !use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0)) {
-    return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices,"XHV", cryptonote::transaction_type::TRANSFER, fake_outs_count, unlock_time, priority, extra);
+  
+  // Create the tx imemdiately if we found the input.
+  if (bFound) {
+    return create_transactions_from(
+      address, 
+      is_subaddress,
+      outputs,
+      unused_transfers_indices,
+      unused_dust_indices,
+      "XHV",
+      cryptonote::transaction_type::TRANSFER,
+      fake_outs_count,
+      unlock_time,
+      priority,
+      extra
+    );
   }
 
   for (size_t i = 0; i < m_offshore_transfers.size(); ++i)
@@ -11657,17 +11679,31 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
       break;
     }
   }
-  // Check for xAsset TX support
-  if (bFound || !use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-    return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices,"XHV", cryptonote::transaction_type::TRANSFER, fake_outs_count, unlock_time, priority, extra);
+
+  if (bFound) {
+    return create_transactions_from(
+      address,
+      is_subaddress,
+      outputs,
+      unused_transfers_indices,
+      unused_dust_indices,
+      "XUSD",
+      cryptonote::transaction_type::OFFSHORE_TRANSFER,
+      fake_outs_count,
+      unlock_time,
+      priority,
+      extra
+    );
   }
 
+  std::string asset_type;
   for (auto &entry: m_xasset_transfers) {
     for (size_t idx = 0; idx < entry.second.size(); ++idx) {
       const transfer_details &td = entry.second[idx];
       if (td.m_key_image_known && td.m_key_image == ki && !is_spent(td, false) && !td.m_frozen && (use_rct ? true : !td.is_rct()) && is_transfer_unlocked(td))
       {
         bFound = true;
+        asset_type = entry.first;
         if (td.is_rct() || is_valid_decomposed_amount(td.amount()))
           unused_transfers_indices.push_back(idx);
         else
@@ -11677,20 +11713,25 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
     }
     if (bFound) break;
   }
+
+  if (bFound) {
+    return create_transactions_from(
+      address,
+      is_subaddress,
+      outputs,
+      unused_transfers_indices,
+      unused_dust_indices,
+      asset_type,
+      cryptonote::transaction_type::XASSET_TRANSFER,
+      fake_outs_count,
+      unlock_time,
+      priority,
+      extra
+    );
+  } else {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Specified key image could not be found!");
+  }
   
-  return create_transactions_from(
-    address,
-    is_subaddress,
-    outputs,
-    unused_transfers_indices,
-    unused_dust_indices,
-    "XHV",
-    cryptonote::transaction_type::TRANSFER,
-    fake_outs_count,
-    unlock_time,
-    priority,
-    extra
-  );
 }
 
 
