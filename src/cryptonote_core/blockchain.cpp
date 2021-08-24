@@ -1743,6 +1743,14 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
 bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, std::map<std::string, uint64_t>& xasset_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
+
+  // check output size
+  // it must be an even number greater than or equal to 2.
+  const size_t output_size = b.miner_tx.vout.size();
+  if (output_size < 2 || (output_size  % 2) != 0) {
+    MERROR("Miner tx has invalid output size!");
+    return false;
+  }
   
   //validate reward
   std::map<std::string, uint64_t> money_in_use_map;
@@ -1759,7 +1767,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     }
   }
   partial_block_reward = false;
-  /*
+
   if (version == 3) {
     for (auto &o: b.miner_tx.vout) {
       if (!is_valid_decomposed_amount(o.amount)) {
@@ -1768,7 +1776,6 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       }
     }
   }
-  */
 
   uint64_t median_weight;
   if (version >= HF_VERSION_EFFECTIVE_SHORT_TERM_MEDIAN_IN_PENALTY)
@@ -1797,9 +1804,9 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
         MERROR("Governance reward amount incorrect.  Should be: " << print_money(governance_reward) << ", is: " << print_money(b.miner_tx.vout[1].amount));
         return false;
       }
-
+      
+      // get the governance wallet address
       std::string governance_wallet_address_str;
-
       if (version >= HF_VERSION_XASSET_FULL) {
         if (m_nettype == TESTNET) {
           governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
@@ -1835,8 +1842,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       // Check for presence of xUSD or xAsset fees
       if (b.miner_tx.vout.size() > 2) {
 
-        for (uint64_t idx = 2; idx < b.miner_tx.vout.size(); idx += 2) {
-
+        for (uint64_t idx = 2; idx < output_size; idx += 2) {
           std::string asset_type;
           if (b.miner_tx.vout[idx].target.type() == typeid(txout_offshore)) {
             asset_type = "XUSD";
@@ -1884,7 +1890,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             uint64_t fee =  xasset_fee_map[asset_type];  
             // burn 80%
-            fee -= (fee * 80) / 100;
+            fee -= (fee * 4) / 5;
             // split the rest
             miner_reward_xasset += fee / 2;
             governance_reward_xasset += fee / 2;
@@ -1905,7 +1911,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     }
   }
 
-  if(base_reward + fee_map["XHV"] + offshore_fee_map["XHV"] < money_in_use_map["XHV"])
+  if(money_in_use_map["XHV"] > (base_reward + fee_map["XHV"] + offshore_fee_map["XHV"]))
   {
     MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use_map["XHV"]) << "). Block reward is " << print_money(base_reward + fee_map["XHV"]) << "(" << print_money(base_reward) << "+" << print_money(fee_map["XHV"]) << ") plus offshore fee (" << print_money(offshore_fee_map["XHV"]) << ")");
     return false;
@@ -1932,12 +1938,23 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     if (version >= HF_VERSION_OFFSHORE_FULL) {
       // Check offshore / xAsset amounts as well
       if (version >= HF_VERSION_XASSET_FEES_V2) {
-        for (auto &money_in_use_map_entry: money_in_use_map) {
-          if (money_in_use_map_entry.first == "XHV") continue;
-          if (money_in_use_map_entry.second > fee_map[money_in_use_map_entry.first] + offshore_fee_map[money_in_use_map_entry.first] + xasset_fee_map[money_in_use_map_entry.first]) {
-            MDEBUG("miner transaction is spending too much money in " << money_in_use_map_entry.first << ":  spent: " << money_in_use_map_entry.first << ",  fees " << fee_map[money_in_use_map_entry.first] << ", conversion fees " << offshore_fee_map[money_in_use_map_entry.first]);
-            return false;
+        try { 
+          for (auto &money_in_use_map_entry: money_in_use_map) {
+            const std::string& asset = money_in_use_map_entry.first;
+            if (asset == "XHV") continue;
+            if (money_in_use_map_entry.second > fee_map.at(asset) + offshore_fee_map.at(asset) + xasset_fee_map.at(asset)) {
+              MDEBUG("miner transaction is spending too much money in " << asset << ":  spent: " << money_in_use_map_entry.second << ",  fees "
+               << fee_map[asset] << ", conversion fees " << offshore_fee_map[asset]);
+              return false;
+            }
           }
+        } catch (const std::out_of_range& e) {
+          // At least one of the miner tx outputs has an invalid asset type
+          MDEBUG("At least one of the miner tx outputs has an invalid asset type: " << e.what());
+          return false;
+        } catch (const std::exception& e) {
+          MDEBUG("Error when checking the miner tx outputs: " << e.what());
+          return false;
         }
       } else {
         for (auto &fee_map_entry: fee_map) {
@@ -5352,33 +5369,6 @@ leave: {
     
     TIME_MEASURE_START(pricing_record);
 
-    // Do we have a public key for verification yet?
-    if (!m_oracle_public_key) {
-
-      if (0/*m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_FEES_V3*/) {
-      
-	bool r = false;
-
-	epee::net_utils::http::http_simple_client http_client;
-	COMMAND_RPC_GET_PUBLIC_KEY::request req_key = AUTO_VAL_INIT(req_key);
-	COMMAND_RPC_GET_PUBLIC_KEY::response res_key = AUTO_VAL_INIT(res_key);
-      
-	// Attempt to get the public key for signature verifications
-	http_client.set_server("keys.havenprotocol.org:443", boost::none, epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
-	std::string url = "/get_public_key.php";
-	r = epee::net_utils::invoke_http_json(url, req_key, res_key, http_client, std::chrono::seconds(10), "GET");
-	if (r) {
-	
-	  // Create key from the returned string if possible
-	  BIO* bio = BIO_new_mem_buf(res_key.str_ec_public_key.c_str(), res_key.str_ec_public_key.size());
-	  if (bio) {
-	    m_oracle_public_key = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
-	    BIO_free(bio);
-	  }
-	}
-      }
-    }
-
     if (!bl.pricing_record.is_empty()) {
       if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
         // protects chain from the oracle providing a timestamp too far in the future
@@ -5664,10 +5654,13 @@ leave: {
     TIME_MEASURE_FINISH(cc);
     t_checktx += cc;
     fee_map[fee_asset_type] += fee;
-    if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != dest && source != "XHV" && dest != "XHV") {
-      xasset_fee_map[fee_asset_type] += offshore_fee;
-    } else {
-      offshore_fee_map[fee_asset_type] += offshore_fee;
+    if (source != dest) {
+      if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
+        // xasset conversion
+        xasset_fee_map[fee_asset_type] += offshore_fee;
+      } else {
+        offshore_fee_map[fee_asset_type] += offshore_fee;
+      }
     }
     cumulative_block_weight += tx_weight;
   }
@@ -5914,34 +5907,33 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc)
   try
   {
 
-  LOG_PRINT_L3("Blockchain::" << __func__);
-  crypto::hash id = get_block_hash(bl);
-  CRITICAL_REGION_LOCAL(m_tx_pool);//to avoid deadlock lets lock tx_pool for whole add/reorganize process
-  CRITICAL_REGION_LOCAL1(m_blockchain_lock);
-  db_rtxn_guard rtxn_guard(m_db);
-  if(have_block(id))
-  {
-    LOG_PRINT_L3("block with id = " << id << " already exists");
-    bvc.m_already_exists = true;
-    m_blocks_txs_check.clear();
-    return false;
-  }
+    LOG_PRINT_L3("Blockchain::" << __func__);
+    crypto::hash id = get_block_hash(bl);
+    CRITICAL_REGION_LOCAL(m_tx_pool);//to avoid deadlock lets lock tx_pool for whole add/reorganize process
+    CRITICAL_REGION_LOCAL1(m_blockchain_lock);
+    db_rtxn_guard rtxn_guard(m_db);
+    if(have_block(id))
+    {
+      LOG_PRINT_L3("block with id = " << id << " already exists");
+      bvc.m_already_exists = true;
+      m_blocks_txs_check.clear();
+      return false;
+    }
 
-  //check that block refers to chain tail
-  if(!(bl.prev_id == get_tail_id()))
-  {
-    //chain switching or wrong block
-    bvc.m_added_to_main_chain = false;
+    //check that block refers to chain tail
+    if(!(bl.prev_id == get_tail_id()))
+    {
+      //chain switching or wrong block
+      bvc.m_added_to_main_chain = false;
+      rtxn_guard.stop();
+      bool r = handle_alternative_block(bl, id, bvc);
+      m_blocks_txs_check.clear();
+      return r;
+      //never relay alternative blocks
+    }
+
     rtxn_guard.stop();
-    bool r = handle_alternative_block(bl, id, bvc);
-    m_blocks_txs_check.clear();
-    return r;
-    //never relay alternative blocks
-  }
-
-  rtxn_guard.stop();
-  return handle_block_to_main_chain(bl, id, bvc);
-
+    return handle_block_to_main_chain(bl, id, bvc);
   }
   catch (const std::exception &e)
   {
@@ -6489,36 +6481,43 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
       // get all amounts from tx.vin(s)
       for (const auto &txin : tx.vin)
       {
-	if (txin.type() == typeid(cryptonote::txin_to_key)) {
-	  const txin_to_key &in_to_key = boost::get < txin_to_key > (txin);
+        if (txin.type() == typeid(cryptonote::txin_to_key)) {
+          const txin_to_key &in_to_key = boost::get < txin_to_key > (txin);
 
-	  // check for duplicate
-	  auto it = its->second.find(in_to_key.k_image);
-	  if (it != its->second.end())
-	    SCAN_TABLE_QUIT("Duplicate key_image found from incoming blocks.");
-	  
-	  amounts.push_back(in_to_key.amount);
-	}
-	else if (txin.type() == typeid(cryptonote::txin_offshore)) {
-	  const txin_offshore &in_to_key = boost::get < txin_offshore > (txin);
+          // check for duplicate
+          auto it = its->second.find(in_to_key.k_image);
+          if (it != its->second.end())
+            SCAN_TABLE_QUIT("Duplicate key_image found from incoming blocks.");
+          
+          amounts.push_back(in_to_key.amount);
+        } else if (txin.type() == typeid(cryptonote::txin_offshore)) {
+          const txin_offshore &in_to_key = boost::get < txin_offshore > (txin);
 
-	  // check for duplicate
-	  auto it = its->second.find(in_to_key.k_image);
-	  if (it != its->second.end())
-	    SCAN_TABLE_QUIT("Duplicate key_image found from incoming blocks.");
-	  
-	  amounts.push_back(in_to_key.amount);
-	}
-	else if (txin.type() == typeid(cryptonote::txin_onshore)) {
-	  const txin_onshore &in_to_key = boost::get < txin_onshore > (txin);
+          // check for duplicate
+          auto it = its->second.find(in_to_key.k_image);
+          if (it != its->second.end())
+            SCAN_TABLE_QUIT("Duplicate key_image found from incoming blocks.");
+          
+          amounts.push_back(in_to_key.amount);
+        } else if (txin.type() == typeid(cryptonote::txin_onshore)) {
+          const txin_onshore &in_to_key = boost::get < txin_onshore > (txin);
 
-	  // check for duplicate
-	  auto it = its->second.find(in_to_key.k_image);
-	  if (it != its->second.end())
-	    SCAN_TABLE_QUIT("Duplicate key_image found from incoming blocks.");
-	  
-	  amounts.push_back(in_to_key.amount);
-	}
+          // check for duplicate
+          auto it = its->second.find(in_to_key.k_image);
+          if (it != its->second.end())
+            SCAN_TABLE_QUIT("Duplicate key_image found from incoming blocks.");
+          
+          amounts.push_back(in_to_key.amount);
+        } else if (txin.type() == typeid(cryptonote::txin_xasset)) {
+          const txin_xasset &in_to_key = boost::get < txin_xasset > (txin);
+
+          // check for duplicate
+          auto it = its->second.find(in_to_key.k_image);
+          if (it != its->second.end())
+            SCAN_TABLE_QUIT("Duplicate key_image found from incoming blocks.");
+          
+          amounts.push_back(in_to_key.amount);
+        }
       }
 
       // sort and remove duplicate amounts from amounts list
@@ -6539,27 +6538,31 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
       // add new absolute_offsets to offset_map
       for (const auto &txin : tx.vin)
       {
-	if (txin.type() == typeid(cryptonote::txin_to_key)) {
-	  const txin_to_key &in_to_key = boost::get < txin_to_key > (txin);
-	  // no need to check for duplicate here.
-	  auto absolute_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
-	  for (const auto & offset : absolute_offsets)
-	    offset_map[in_to_key.amount].push_back(offset);
-	}
-	else if (txin.type() == typeid(cryptonote::txin_offshore)) {
-	  const txin_offshore &in_to_key = boost::get < txin_offshore > (txin);
-	  // no need to check for duplicate here.
-	  auto absolute_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
-	  for (const auto & offset : absolute_offsets)
-	    offset_map[in_to_key.amount].push_back(offset);
-	}
-	else if (txin.type() == typeid(cryptonote::txin_onshore)) {
-	  const txin_onshore &in_to_key = boost::get < txin_onshore > (txin);
-	  // no need to check for duplicate here.
-	  auto absolute_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
-	  for (const auto & offset : absolute_offsets)
-	    offset_map[in_to_key.amount].push_back(offset);
-	}
+        if (txin.type() == typeid(cryptonote::txin_to_key)) {
+          const txin_to_key &in_to_key = boost::get < txin_to_key > (txin);
+          // no need to check for duplicate here.
+          auto absolute_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          for (const auto & offset : absolute_offsets)
+            offset_map[in_to_key.amount].push_back(offset);
+        } else if (txin.type() == typeid(cryptonote::txin_offshore)) {
+          const txin_offshore &in_to_key = boost::get < txin_offshore > (txin);
+          // no need to check for duplicate here.
+          auto absolute_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          for (const auto & offset : absolute_offsets)
+            offset_map[in_to_key.amount].push_back(offset);
+        } else if (txin.type() == typeid(cryptonote::txin_onshore)) {
+          const txin_onshore &in_to_key = boost::get < txin_onshore > (txin);
+          // no need to check for duplicate here.
+          auto absolute_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          for (const auto & offset : absolute_offsets)
+            offset_map[in_to_key.amount].push_back(offset);
+        } else if (txin.type() == typeid(cryptonote::txin_xasset)) {
+          const txin_xasset &in_to_key = boost::get < txin_xasset > (txin);
+          // no need to check for duplicate here.
+          auto absolute_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          for (const auto & offset : absolute_offsets)
+            offset_map[in_to_key.amount].push_back(offset);
+        }
       }
     }
     ++block_index;
@@ -6619,93 +6622,103 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
 
       for (const auto &txin : tx.vin)
       {
-	if (txin.type() == typeid(cryptonote::txin_to_key)) {
-	  const txin_to_key &in_to_key = boost::get < txin_to_key > (txin);
-	  auto needed_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
-
-	  std::vector<output_data_t> outputs;
-	  for (const uint64_t & offset_needed : needed_offsets)
-	  {
-	    size_t pos = 0;
-	    bool found = false;
-	    
-	    for (const uint64_t &offset_found : offset_map[in_to_key.amount])
-	    {
-	      if (offset_needed == offset_found)
-	      {
-		found = true;
-		break;
-	      }
-	      
-	      ++pos;
-	    }
-	    
-	    if (found && pos < tx_map[in_to_key.amount].size())
-	      outputs.push_back(tx_map[in_to_key.amount].at(pos));
-	    else
-	      break;
-	  }
-	  
-	  its->second.emplace(in_to_key.k_image, outputs);
-	}
-	else if (txin.type() == typeid(cryptonote::txin_offshore)) {
-	  const txin_offshore &in_to_key = boost::get < txin_offshore > (txin);
-	  auto needed_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
-
-	  std::vector<output_data_t> outputs;
-	  for (const uint64_t & offset_needed : needed_offsets)
-	  {
-	    size_t pos = 0;
-	    bool found = false;
-	    
-	    for (const uint64_t &offset_found : offset_map[in_to_key.amount])
-	    {
-	      if (offset_needed == offset_found)
-	      {
-		found = true;
-		break;
-	      }
-	      
-	      ++pos;
-	    }
-	    
-	    if (found && pos < tx_map[in_to_key.amount].size())
-	      outputs.push_back(tx_map[in_to_key.amount].at(pos));
-	    else
-	      break;
-	  }
-	  
-	  its->second.emplace(in_to_key.k_image, outputs);
-	}
-	else if (txin.type() == typeid(cryptonote::txin_onshore)) {
-	  const txin_onshore &in_to_key = boost::get < txin_onshore > (txin);
-	  auto needed_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
-
-	  std::vector<output_data_t> outputs;
-	  for (const uint64_t & offset_needed : needed_offsets)
-	  {
-	    size_t pos = 0;
-	    bool found = false;
-	    
-	    for (const uint64_t &offset_found : offset_map[in_to_key.amount])
-	    {
-	      if (offset_needed == offset_found)
-	      {
-		found = true;
-		break;
-	      }
-	      
-	      ++pos;
-	    }
-	    
-	    if (found && pos < tx_map[in_to_key.amount].size())
-	      outputs.push_back(tx_map[in_to_key.amount].at(pos));
-	    else
-	      break;
-	  }
-	  
-	  its->second.emplace(in_to_key.k_image, outputs);
-	}
+        if (txin.type() == typeid(cryptonote::txin_to_key)) {
+          const txin_to_key &in_to_key = boost::get < txin_to_key > (txin);
+          auto needed_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          std::vector<output_data_t> outputs;
+          for (const uint64_t & offset_needed : needed_offsets)
+          {
+            size_t pos = 0;
+            bool found = false;
+            for (const uint64_t &offset_found : offset_map[in_to_key.amount])
+            {
+              if (offset_needed == offset_found)
+              {
+                found = true;
+                break;
+              }
+              ++pos;
+            }
+            
+            if (found && pos < tx_map[in_to_key.amount].size())
+              outputs.push_back(tx_map[in_to_key.amount].at(pos));
+            else
+              break;
+          }
+          its->second.emplace(in_to_key.k_image, outputs);
+        } else if (txin.type() == typeid(cryptonote::txin_offshore)) {
+          const txin_offshore &in_to_key = boost::get < txin_offshore > (txin);
+          auto needed_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          std::vector<output_data_t> outputs;
+          for (const uint64_t & offset_needed : needed_offsets)
+          {
+            size_t pos = 0;
+            bool found = false;
+            for (const uint64_t &offset_found : offset_map[in_to_key.amount])
+            {
+              if (offset_needed == offset_found)
+              {
+                found = true;
+                break;
+              }
+              ++pos;
+            }
+            
+            if (found && pos < tx_map[in_to_key.amount].size())
+              outputs.push_back(tx_map[in_to_key.amount].at(pos));
+            else
+              break;
+          }
+          its->second.emplace(in_to_key.k_image, outputs);
+        } else if (txin.type() == typeid(cryptonote::txin_onshore)) {
+          const txin_onshore &in_to_key = boost::get < txin_onshore > (txin);
+          auto needed_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          std::vector<output_data_t> outputs;
+          for (const uint64_t & offset_needed : needed_offsets)
+          {
+            size_t pos = 0;
+            bool found = false;
+            for (const uint64_t &offset_found : offset_map[in_to_key.amount])
+            {
+              if (offset_needed == offset_found)
+              {
+                found = true;
+                break;
+              }
+              ++pos;
+            }
+            
+            if (found && pos < tx_map[in_to_key.amount].size())
+              outputs.push_back(tx_map[in_to_key.amount].at(pos));
+            else
+              break;
+          }
+          its->second.emplace(in_to_key.k_image, outputs);
+        } else if (txin.type() == typeid(cryptonote::txin_xasset)) {
+          const txin_xasset &in_to_key = boost::get < txin_xasset > (txin);
+          auto needed_offsets = relative_output_offsets_to_absolute(in_to_key.key_offsets);
+          std::vector<output_data_t> outputs;
+          for (const uint64_t & offset_needed : needed_offsets)
+          {
+            size_t pos = 0;
+            bool found = false;
+            for (const uint64_t &offset_found : offset_map[in_to_key.amount])
+            {
+              if (offset_needed == offset_found)
+              {
+                found = true;
+                break;
+              }
+              ++pos;
+            }
+            
+            if (found && pos < tx_map[in_to_key.amount].size())
+              outputs.push_back(tx_map[in_to_key.amount].at(pos));
+            else
+              break;
+          }
+          its->second.emplace(in_to_key.k_image, outputs);
+        }
       }
     }
   }

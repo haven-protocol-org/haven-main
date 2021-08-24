@@ -266,7 +266,7 @@ namespace cryptonote
       // HERE BE DRAGONS!!!
       // NEAC: verify whether this value of unlock time needs to use current_height instead of PR height
       // Verify the offshore conversion fee is present and correct here
-      uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+      uint64_t unlock_time = tx.unlock_time - current_height;
       // LAND AHOY
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         if (unlock_time < 180) {
@@ -2405,9 +2405,6 @@ namespace cryptonote
         }
       }
 
-      if(version >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER)
-        continue;
-
       // get the asset types
       std::string source;
       std::string dest;
@@ -2419,12 +2416,14 @@ namespace cryptonote
       bl.tx_hashes.push_back(sorted_it->second);
       total_weight += meta.weight;
       fee_map[meta.fee_asset_type] += meta.fee;
-      if (version >= HF_VERSION_XASSET_FEES_V2 && source != dest && source != "XHV" && dest != "XHV") {
-        // xAsset converison
-        xasset_fee_map[meta.fee_asset_type] += meta.offshore_fee;
-      } else {
-        // offshore/onshore
-        offshore_fee_map[meta.fee_asset_type] += meta.offshore_fee;
+      if (source != dest) {
+        if (version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
+          // xAsset converison
+          xasset_fee_map[meta.fee_asset_type] += meta.offshore_fee;
+        } else {
+          // offshore/onshore
+          offshore_fee_map[meta.fee_asset_type] += meta.offshore_fee;
+        }
       }
       best_coinbase = coinbase;
       append_key_images(k_images, tx);

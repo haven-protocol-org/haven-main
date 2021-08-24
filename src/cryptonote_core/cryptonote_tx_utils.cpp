@@ -292,7 +292,7 @@ namespace cryptonote
             if (xasset_fee_map[fee_map_entry.first] != 0) {
               uint64_t fee = xasset_fee_map[fee_map_entry.first];
               // burn 80%
-              fee -= (fee * 80) / 100;
+              fee -= (fee * 4) / 5;
               // split the rest
               block_reward_xasset += fee / 2;
               governance_reward_xasset += fee / 2;

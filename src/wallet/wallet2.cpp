@@ -6796,8 +6796,7 @@ bool wallet2::is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_heig
       return true;
     else
       return false;
-  }else
-  {
+  } else {
     // //interpret as time
     // uint64_t current_time = static_cast<uint64_t>(time(NULL));
     // // XXX: this needs to be fast, so we'd need to get the starting heights
