@@ -1509,14 +1509,6 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
             bool isXassetExchange = isxAssetTX && !isTransfer;
             bool isXassetTransfer = isxAssetTX && isTransfer;
 
-                // Populate txextra for all non xhv tranfers
-                if (!isXHVTransfer) {
-                
-                    std::string offshore_data;
-                    // Support new xAsset-style offshore_data
-                    offshore_data = str_source + "-" + str_dest;
-                    cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
-                }
 
                 //set unlock time for onshore/offshore
                 if (isOnOffshore) {
@@ -1534,8 +1526,6 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
 
                     if (m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
                         locked_blocks = 1440; // ~48 hours
-                    } else {
-                        locked_blocks = 10;
                     }
                 } 
                
@@ -1547,19 +1537,6 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
                       }
 
                 }
-            }
-            // sweep transfer 
-            else {
-
-
-                if (str_source != "XHV") {
-                
-                    // Populate the txextra to signify that this is an offshore or xasset tx
-                    std::string offshore_data;
-                    offshore_data = str_source + "-" + str_source;
-                    cryptonote::add_offshore_to_tx_extra(extra, offshore_data);
-                }
-
             }
 
         bc_height = m_wallet->get_daemon_blockchain_height(err);
