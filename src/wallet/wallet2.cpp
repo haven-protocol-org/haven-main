@@ -2705,12 +2705,16 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   }
   
   // set the fee
-  uint64_t fee = miner_tx ? 0 :
-    // if the tx version is 1, the asset_type must be XHV
-    tx.version == 1 ? tx_money_spent_in_ins - get_outs_money_amount(tx)["XHV"] :
-    source == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
-    source == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd :
-    tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset;
+  uint64_t fee = 0;
+  if (!miner_tx) {
+    if (use_fork_rules(HF_VERSION_HAVEN2)) {
+      fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
+    } else {
+      fee = (source == "XHV") ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
+            (source == "XUSD") ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd :
+            tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset;
+    }
+  }
 
   if (tx_money_spent_in_ins > 0 && !pool)
   {
@@ -2883,11 +2887,7 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
     // we only see 0 input amounts, so have to deduce amount out from other parameters.
     entry.first->second.m_amount_in = spent;
     entry.first->second.m_source_currency_type = strSource;
-    if (tx.version == 1)
-      entry.first->second.m_amount_out = get_outs_money_amount(tx)["XHV"]; // strSource should do the same thing.
-    else {
-	      entry.first->second.m_amount_out = spent - entry.first->second.m_fee;
-    }
+    entry.first->second.m_amount_out = spent - entry.first->second.m_fee;
     entry.first->second.m_change = received[strSource];
     
     std::vector<tx_extra_field> tx_extra_fields;
@@ -12654,7 +12654,7 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
     if (found)
     {
       uint64_t amount;
-      if (tx.version == 1 || tx.rct_signatures.type == rct::RCTTypeNull)
+      if (tx.rct_signatures.type == rct::RCTTypeNull)
       {
         amount = tx.vout[n].amount;
       }

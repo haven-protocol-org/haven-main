@@ -969,11 +969,6 @@ namespace cryptonote
 			   << "or " << typeid(txout_xasset).name()
 			   << ", in transaction id=" << get_transaction_hash(tx));
 
-      if (tx.version == 1)
-      {
-        CHECK_AND_NO_ASSERT_MES(0 < out.amount, false, "zero amount output in transaction id=" << get_transaction_hash(tx));
-      }
-
       if(!check_key(out.target.type() == typeid(txout_to_key) ? boost::get<txout_to_key>(out.target).key :
 		    out.target.type() == typeid(txout_offshore) ? boost::get<txout_offshore>(out.target).key :
 		    boost::get<txout_xasset>(out.target).key))

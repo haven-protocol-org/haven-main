@@ -1567,8 +1567,8 @@ namespace rct {
         CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.empty(), false, "rv.p.pseudoOuts is not empty");
       }
       CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
-      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
-      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
       CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
       if (strSource != strDest) {
         CHECK_AND_ASSERT_MES(!pr.is_empty(), false, "Empty pr found for a conversion tx");
@@ -1645,9 +1645,9 @@ namespace rct {
         Zi = sumUSD + D_final = 0
       */
       using tx_type = cryptonote::transaction_type;
-      key sumPseudoOuts = type == tx_type::OFFSHORE ? addKeys(pseudoOuts) : zerokey;
-      key sumPseudoOuts_usd = (type == tx_type::ONSHORE || type == tx_type::OFFSHORE_TRANSFER || type == tx_type::XUSD_TO_XASSET) ? addKeys(pseudoOuts) : zerokey;
-      key sumPseudoOuts_xasset = (type == tx_type::XASSET_TO_XUSD || type == tx_type::XASSET_TRANSFER) ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts = (strSource == "XHV") ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts_usd = (strSource == "XUSD") ? addKeys(pseudoOuts) : zerokey;
+      key sumPseudoOuts_xasset = (strSource != "XHV" && strSource != "XUSD") ? addKeys(pseudoOuts) : zerokey;
         
       DP(sumPseudoOuts);
       DP(sumPseudoOuts_usd);

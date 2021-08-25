@@ -532,45 +532,12 @@ namespace cryptonote
     }
 
     // fee per kilobyte, size rounded up.
-    uint64_t fee = 0, fee_usd = 0, fee_xasset = 0, offshore_fee = 0, offshore_fee_usd = 0, offshore_fee_xasset = 0;
-
-    if (tx.version == 1)
-    {
-      uint64_t inputs_amount = 0;
-      if(!get_inputs_money_amount(tx, inputs_amount))
-      {
-        tvc.m_verifivation_failed = true;
-        return false;
-      }
-
-      uint64_t outputs_amount = get_outs_money_amount(tx)["XHV"];
-      if(outputs_amount > inputs_amount)
-      {
-        LOG_PRINT_L1("transaction use more money than it has: use " << print_money(outputs_amount) << ", have " << print_money(inputs_amount));
-        tvc.m_verifivation_failed = true;
-        tvc.m_overspend = true;
-        return false;
-      }
-      else if(outputs_amount == inputs_amount)
-      {
-        LOG_PRINT_L1("transaction fee is zero: outputs_amount == inputs_amount, rejecting.");
-        tvc.m_verifivation_failed = true;
-        tvc.m_fee_too_low = true;
-        return false;
-      }
-
-      fee = inputs_amount - outputs_amount;
-    }
-    else
-    {
-      fee = tx.rct_signatures.txnFee;
-      offshore_fee = tx.rct_signatures.txnOffshoreFee;
-      fee_usd = tx.rct_signatures.txnFee_usd;
-      fee_xasset = tx.rct_signatures.txnFee_xasset;
-      offshore_fee_usd = tx.rct_signatures.txnOffshoreFee_usd;
-      offshore_fee_xasset = tx.rct_signatures.txnOffshoreFee_xasset;
-    }
-
+    uint64_t fee = tx.rct_signatures.txnFee;
+    uint64_t offshore_fee = tx.rct_signatures.txnOffshoreFee;
+    uint64_t fee_usd = tx.rct_signatures.txnFee_usd;
+    uint64_t fee_xasset = tx.rct_signatures.txnFee_xasset;
+    uint64_t offshore_fee_usd = tx.rct_signatures.txnOffshoreFee_usd;
+    uint64_t offshore_fee_xasset = tx.rct_signatures.txnOffshoreFee_xasset;
 
     //validate the offshore data
     bool bOffshoreTx = false;

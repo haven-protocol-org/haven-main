@@ -1155,203 +1155,163 @@ namespace cryptonote
       MDEBUG("Null secret key, skipping signatures");
     }
 
-    if (tx.version == 1)
+    size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
+
+    uint64_t amount_in = 0;
+    rct::ctkeyV inSk;
+    inSk.reserve(sources.size());
+    // mixRing indexing is done the other way round for simple
+    rct::ctkeyM mixRing(sources.size());
+    std::vector<uint64_t> inamounts;
+    std::vector<unsigned int> index;
+    std::vector<rct::multisig_kLRki> kLRki;
+    for (size_t i = 0; i < sources.size(); ++i)
     {
-      //generate ring signatures
-      crypto::hash tx_prefix_hash;
-      get_transaction_prefix_hash(tx, tx_prefix_hash);
-
-      std::stringstream ss_ring_s;
-      size_t i = 0;
-      for(const tx_source_entry& src_entr:  sources)
-      {
-        ss_ring_s << "pub_keys:" << ENDL;
-        std::vector<const crypto::public_key*> keys_ptrs;
-        std::vector<crypto::public_key> keys(src_entr.outputs.size());
-        size_t ii = 0;
-        for(const tx_source_entry::output_entry& o: src_entr.outputs)
-        {
-          keys[ii] = rct2pk(o.second.dest);
-          keys_ptrs.push_back(&keys[ii]);
-          ss_ring_s << o.second.dest << ENDL;
-          ++ii;
-        }
-
-        tx.signatures.push_back(std::vector<crypto::signature>());
-        std::vector<crypto::signature>& sigs = tx.signatures.back();
-        sigs.resize(src_entr.outputs.size());
-        if (!zero_secret_key)
-          crypto::generate_ring_signature(tx_prefix_hash, boost::get<txin_to_key>(tx.vin[i]).k_image, keys_ptrs, in_contexts[i].in_ephemeral.sec, src_entr.real_output, sigs.data());
-        ss_ring_s << "signatures:" << ENDL;
-        std::for_each(sigs.begin(), sigs.end(), [&](const crypto::signature& s){ss_ring_s << s << ENDL;});
-        ss_ring_s << "prefix_hash:" << tx_prefix_hash << ENDL << "in_ephemeral_key: " << in_contexts[i].in_ephemeral.sec << ENDL << "real_output: " << src_entr.real_output << ENDL;
-        i++;
-      }
-
-      MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL << ss_ring_s.str());
-    }
-    else
-    {
-      size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
-
-      uint64_t amount_in = 0;
-      rct::ctkeyV inSk;
-      inSk.reserve(sources.size());
-      // mixRing indexing is done the other way round for simple
-      rct::ctkeyM mixRing(sources.size());
-      std::vector<uint64_t> inamounts;
-      std::vector<unsigned int> index;
-      std::vector<rct::multisig_kLRki> kLRki;
-      for (size_t i = 0; i < sources.size(); ++i)
-      {
-	      rct::ctkey ctkey;
-        rct::ctkeyV ctkeyV; // LA
-        
-        inamounts.push_back(sources[i].amount);
-        index.push_back(sources[i].real_output);
-        // inSk: (secret key, mask)
-        ctkey.dest = rct::sk2rct(in_contexts[i].in_ephemeral.sec);
-        ctkey.mask = sources[i].mask;
-	      ctkeyV.push_back(ctkey);
-        inSk.push_back(ctkey);
-        memwipe(&ctkey, sizeof(rct::ctkey));
-        // inPk: (public key, commitment)
-        // will be done when filling in mixRing
-        if (msout)
-        {
-          kLRki.push_back(sources[i].multisig_kLRki);
-        }
-      }
-
-      // mixRing indexing is done the other way round for simple
-      for (size_t i = 0; i < sources.size(); ++i)
-      {
-        mixRing[i].resize(sources[i].outputs.size());
-        for (size_t n = 0; n < sources[i].outputs.size(); ++n)
-        {
-          mixRing[i][n] = sources[i].outputs[n].second;
-        }
-      }
-
-      if (summary_inputs_money > summary_outs_money) {
-        fee = summary_inputs_money - summary_outs_money - offshore_fee;
-      } else if (summary_inputs_money_usd > summary_outs_money_usd) {
-        fee_usd = summary_inputs_money_usd - summary_outs_money_usd - offshore_fee_usd;
-      } else if (summary_inputs_money_xasset > summary_outs_money_xasset) {
-	      fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
-      }
-
-      // zero out all amounts to mask rct outputs, real amounts are now encrypted
-      for (size_t i = 0; i < tx.vin.size(); ++i)
-      {
-        if (sources[i].rct) {
-          if (tx.vin[i].type() == typeid(txin_offshore)) {
-	          boost::get<txin_offshore>(tx.vin[i]).amount = 0;
-	        }
-          else if (tx.vin[i].type() == typeid(txin_onshore)) {
-            boost::get<txin_onshore>(tx.vin[i]).amount = 0;
-          }
-          else if (tx.vin[i].type() == typeid(txin_xasset)) {
-            boost::get<txin_xasset>(tx.vin[i]).amount = 0;
-          }
-          else {
-            boost::get<txin_to_key>(tx.vin[i]).amount = 0;
-          }
-        }
-      }
-
-      // zero out destination amounts
-      for (size_t i = 0; i < tx.vout.size(); ++i) {
-        // fill the amount minted before amounts go encrypted if it is a conversion
-        if (tx_type == transaction_type::OFFSHORE && tx.vout[i].target.type() == typeid(txout_offshore))
-          tx.amount_minted += tx.vout[i].amount;
-        else if (tx_type == transaction_type::ONSHORE && tx.vout[i].target.type() == typeid(txout_to_key))
-          tx.amount_minted += tx.vout[i].amount;
-        else if (tx_type == transaction_type::XUSD_TO_XASSET && tx.vout[i].target.type() == typeid(txout_xasset))
-          tx.amount_minted += tx.vout[i].amount;
-        else if (tx_type == transaction_type::XASSET_TO_XUSD && tx.vout[i].target.type() == typeid(txout_offshore))
-          tx.amount_minted += tx.vout[i].amount;
-        tx.vout[i].amount = 0;
-      }
-
-      // Calculate amount_burnt from the amount_minted
-      if (tx_type == transaction_type::OFFSHORE) {
-        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-        boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-        amount_128 *= 1000000000000;
-        amount_128 /= exchange_128;
-        tx.amount_burnt = (uint64_t)(amount_128);
-      } else if (tx_type == transaction_type::ONSHORE) {
-        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-        boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-        amount_128 *= exchange_128;
-        amount_128 /= 1000000000000;
-        tx.amount_burnt = (uint64_t)(amount_128);
-      } else if (tx_type == transaction_type::OFFSHORE_TRANSFER) {
-        tx.amount_burnt = tx.amount_minted = 0;
-      } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
-        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-        boost::multiprecision::uint128_t exchange_128 = pr[strDest];
-        amount_128 *= 1000000000000;
-        amount_128 /= exchange_128;
-        tx.amount_burnt = (uint64_t)(amount_128);
-        if (fees_version >= 3) {
-          // Add the burnt part of the fee
-          tx.amount_burnt += (uint64_t)((offshore_fee_usd * 80) / 100);
-        }
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
-        boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-        boost::multiprecision::uint128_t exchange_128 = pr[strSource];
-        amount_128 *= exchange_128;
-        amount_128 /= 1000000000000;
-        tx.amount_burnt = (uint64_t)(amount_128);
-        if (fees_version >= 3) {
-          // Add the burnt part of the fee
-          tx.amount_burnt += (uint64_t)((offshore_fee_xasset * 80) / 100);
-        }
-      } else if (tx_type == transaction_type::XASSET_TRANSFER) {
-        tx.amount_burnt = tx.amount_minted = 0;
-      }
-      if ((strSource != strDest) && (!tx.amount_burnt || !tx.amount_minted)) {
-        LOG_ERROR("Invalid offshore TX - amount too small (<1 ATOMIC_UNIT)");
-        return false;
-      }
+      rct::ctkey ctkey;
+      rct::ctkeyV ctkeyV; // LA
       
-      crypto::hash tx_prefix_hash;
-      get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
-      rct::ctkeyV outSk;
-      tx.rct_signatures = rct::genRctSimple(
-        rct::hash2rct(tx_prefix_hash),
-        inSk,
-        destination_keys,
-        inamounts,
-        strSource,
-        outamounts,
-        fee,
-        fee_usd,
-        fee_xasset,
-        offshore_fee,
-        offshore_fee_usd,
-        offshore_fee_xasset,
-        mixRing,
-        amount_keys,
-        msout ? &kLRki : NULL,
-        msout,
-        index,
-        outSk,
-        rct_config,
-        hwdev,
-        pr
-      );
-      for (size_t i=0; i<inSk.size(); i++) {
-      	memwipe(&inSk[i], sizeof(rct::ctkeyV));
+      inamounts.push_back(sources[i].amount);
+      index.push_back(sources[i].real_output);
+      // inSk: (secret key, mask)
+      ctkey.dest = rct::sk2rct(in_contexts[i].in_ephemeral.sec);
+      ctkey.mask = sources[i].mask;
+      ctkeyV.push_back(ctkey);
+      inSk.push_back(ctkey);
+      memwipe(&ctkey, sizeof(rct::ctkey));
+      // inPk: (public key, commitment)
+      // will be done when filling in mixRing
+      if (msout)
+      {
+        kLRki.push_back(sources[i].multisig_kLRki);
       }
-
-      CHECK_AND_ASSERT_MES(tx.vout.size() == outSk.size(), false, "outSk size does not match vout");
-
-      MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL);
     }
 
+    // mixRing indexing is done the other way round for simple
+    for (size_t i = 0; i < sources.size(); ++i)
+    {
+      mixRing[i].resize(sources[i].outputs.size());
+      for (size_t n = 0; n < sources[i].outputs.size(); ++n)
+      {
+        mixRing[i][n] = sources[i].outputs[n].second;
+      }
+    }
+
+    if (summary_inputs_money > summary_outs_money) {
+      fee = summary_inputs_money - summary_outs_money - offshore_fee;
+    } else if (summary_inputs_money_usd > summary_outs_money_usd) {
+      fee_usd = summary_inputs_money_usd - summary_outs_money_usd - offshore_fee_usd;
+    } else if (summary_inputs_money_xasset > summary_outs_money_xasset) {
+      fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
+    }
+
+    // zero out all amounts to mask rct outputs, real amounts are now encrypted
+    for (size_t i = 0; i < tx.vin.size(); ++i)
+    {
+      if (sources[i].rct) {
+        if (tx.vin[i].type() == typeid(txin_offshore)) {
+          boost::get<txin_offshore>(tx.vin[i]).amount = 0;
+        }
+        else if (tx.vin[i].type() == typeid(txin_onshore)) {
+          boost::get<txin_onshore>(tx.vin[i]).amount = 0;
+        }
+        else if (tx.vin[i].type() == typeid(txin_xasset)) {
+          boost::get<txin_xasset>(tx.vin[i]).amount = 0;
+        }
+        else {
+          boost::get<txin_to_key>(tx.vin[i]).amount = 0;
+        }
+      }
+    }
+
+    // zero out destination amounts
+    for (size_t i = 0; i < tx.vout.size(); ++i) {
+      // fill the amount minted before amounts go encrypted if it is a conversion
+      if (tx_type == transaction_type::OFFSHORE && tx.vout[i].target.type() == typeid(txout_offshore))
+        tx.amount_minted += tx.vout[i].amount;
+      else if (tx_type == transaction_type::ONSHORE && tx.vout[i].target.type() == typeid(txout_to_key))
+        tx.amount_minted += tx.vout[i].amount;
+      else if (tx_type == transaction_type::XUSD_TO_XASSET && tx.vout[i].target.type() == typeid(txout_xasset))
+        tx.amount_minted += tx.vout[i].amount;
+      else if (tx_type == transaction_type::XASSET_TO_XUSD && tx.vout[i].target.type() == typeid(txout_offshore))
+        tx.amount_minted += tx.vout[i].amount;
+      tx.vout[i].amount = 0;
+    }
+
+    // Calculate amount_burnt from the amount_minted
+    if (tx_type == transaction_type::OFFSHORE) {
+      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+      boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+      amount_128 *= 1000000000000;
+      amount_128 /= exchange_128;
+      tx.amount_burnt = (uint64_t)(amount_128);
+    } else if (tx_type == transaction_type::ONSHORE) {
+      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+      boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+      amount_128 *= exchange_128;
+      amount_128 /= 1000000000000;
+      tx.amount_burnt = (uint64_t)(amount_128);
+    } else if (tx_type == transaction_type::OFFSHORE_TRANSFER) {
+      tx.amount_burnt = tx.amount_minted = 0;
+    } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+      boost::multiprecision::uint128_t exchange_128 = pr[strDest];
+      amount_128 *= 1000000000000;
+      amount_128 /= exchange_128;
+      tx.amount_burnt = (uint64_t)(amount_128);
+      if (fees_version >= 3) {
+        // Add the burnt part of the fee
+        tx.amount_burnt += (uint64_t)((offshore_fee_usd * 80) / 100);
+      }
+    } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
+      boost::multiprecision::uint128_t exchange_128 = pr[strSource];
+      amount_128 *= exchange_128;
+      amount_128 /= 1000000000000;
+      tx.amount_burnt = (uint64_t)(amount_128);
+      if (fees_version >= 3) {
+        // Add the burnt part of the fee
+        tx.amount_burnt += (uint64_t)((offshore_fee_xasset * 80) / 100);
+      }
+    } else if (tx_type == transaction_type::XASSET_TRANSFER) {
+      tx.amount_burnt = tx.amount_minted = 0;
+    }
+    if ((strSource != strDest) && (!tx.amount_burnt || !tx.amount_minted)) {
+      LOG_ERROR("Invalid offshore TX - amount too small (<1 ATOMIC_UNIT)");
+      return false;
+    }
+    
+    crypto::hash tx_prefix_hash;
+    get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
+    rct::ctkeyV outSk;
+    tx.rct_signatures = rct::genRctSimple(
+      rct::hash2rct(tx_prefix_hash),
+      inSk,
+      destination_keys,
+      inamounts,
+      strSource,
+      outamounts,
+      fee,
+      fee_usd,
+      fee_xasset,
+      offshore_fee,
+      offshore_fee_usd,
+      offshore_fee_xasset,
+      mixRing,
+      amount_keys,
+      msout ? &kLRki : NULL,
+      msout,
+      index,
+      outSk,
+      rct_config,
+      hwdev,
+      pr
+    );
+    for (size_t i=0; i<inSk.size(); i++) {
+      memwipe(&inSk[i], sizeof(rct::ctkeyV));
+    }
+
+    CHECK_AND_ASSERT_MES(tx.vout.size() == outSk.size(), false, "outSk size does not match vout");
+    MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL);
     tx.invalidate_hashes();
 
     return true;
