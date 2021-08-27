@@ -7381,18 +7381,15 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
         CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_xasset, in, false);
         key_images += boost::to_string(in.k_image) + " ";
         return true;
-      }
-      else if (s_e.type() == typeid(txin_offshore)) {
+      } else if (s_e.type() == typeid(txin_offshore)) {
         CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_offshore, in, false);
         key_images += boost::to_string(in.k_image) + " ";
         return true;
-      }
-      else if (s_e.type() == typeid(txin_onshore)) {
+      } else if (s_e.type() == typeid(txin_onshore)) {
         CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_onshore, in, false);
         key_images += boost::to_string(in.k_image) + " ";
         return true;
-      }
-      else {
+      } else {
         CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
         key_images += boost::to_string(in.k_image) + " ";
         return true;
@@ -7458,28 +7455,57 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
 
     for (size_t i = 0; i < tx.vout.size(); ++i)
     {
-      if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
-        continue;
-      const cryptonote::txout_to_key &out = boost::get<cryptonote::txout_to_key>(tx.vout[i].target);
+
+      crypto::public_key pubkey;
+      if (tx.vout[i].target.type() == typeid(cryptonote::txout_to_key)) {
+        pubkey = boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key;
+      } else if (tx.vout[i].target.type() == typeid(cryptonote::txout_offshore)) {
+        pubkey = boost::get<cryptonote::txout_offshore>(tx.vout[i].target).key;
+      } else {
+        pubkey = boost::get<cryptonote::txout_xasset>(tx.vout[i].target).key;
+      }
+
       // if this output is back to this wallet, we can calculate its key image already
-      if (!is_out_to_acc_precomp(m_subaddresses, out.key, derivation, additional_derivations, i, hwdev))
+      if (!is_out_to_acc_precomp(m_subaddresses, pubkey, derivation, additional_derivations, i, hwdev))
         continue;
       crypto::key_image ki;
       cryptonote::keypair in_ephemeral;
-      if (generate_key_image_helper(keys, m_subaddresses, out.key, tx_pub_key, additional_tx_pub_keys, i, in_ephemeral, ki, hwdev))
-        signed_txes.tx_key_images[out.key] = ki;
+      if (generate_key_image_helper(keys, m_subaddresses, pubkey, tx_pub_key, additional_tx_pub_keys, i, in_ephemeral, ki, hwdev))
+        signed_txes.tx_key_images[pubkey] = ki;
       else
         MERROR("Failed to calculate key image");
     }
   }
 
   // add key images
-  signed_txes.key_images.resize(m_transfers.size());
+  std::vector<crypto::key_image> kis;
   for (size_t i = 0; i < m_transfers.size(); ++i)
   {
     if (!m_transfers[i].m_key_image_known || m_transfers[i].m_key_image_partial)
       LOG_PRINT_L0("WARNING: key image not known in signing wallet at index " << i);
-    signed_txes.key_images[i] = m_transfers[i].m_key_image;
+    kis.push_back(m_transfers[i].m_key_image);
+  }
+  signed_txes.key_images["XHV"] = kis;
+  kis.clear();
+
+  for (size_t i = 0; i < m_offshore_transfers.size(); ++i)
+  {
+    if (!m_offshore_transfers[i].m_key_image_known || m_offshore_transfers[i].m_key_image_partial)
+      LOG_PRINT_L0("WARNING: key image not known in signing wallet at index " << i);
+    kis.push_back(m_offshore_transfers[i].m_key_image);
+  }
+  signed_txes.key_images["XUSD"] = kis;
+  kis.clear();
+
+  for (const auto& xasset: m_xasset_transfers) {
+    for (size_t i = 0; i < xasset.second.size(); ++i)
+    {
+      if (!xasset.second[i].m_key_image_known || xasset.second[i].m_key_image_partial)
+        LOG_PRINT_L0("WARNING: key image not known in signing wallet at index " << i);
+      kis.push_back(xasset.second[i].m_key_image);
+    }
+    signed_txes.key_images[xasset.first] = kis;
+    kis.clear();
   }
 
   return true;
@@ -7652,17 +7678,17 @@ std::string wallet2::save_multisig_tx(multisig_tx_set txs)
   for (size_t n = 0; n < txs.m_ptx.size(); ++n) {
     for (size_t idx: txs.m_ptx[n].construction_data.selected_transfers) {
       if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_to_key)) {
-	memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
+	      memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
       } else if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_onshore)) {
-	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+	      memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
       } else if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_offshore)) {
-	memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
+	      memwipe(m_offshore_transfers[idx].m_multisig_k.data(), m_offshore_transfers[idx].m_multisig_k.size() * sizeof(m_offshore_transfers[idx].m_multisig_k[0]));
       } else if (txs.m_ptx[n].tx.vin[0].type() == typeid(txin_xasset)) {
-	// Get the asset type
-	std::string asset_type = boost::get<txin_xasset>(txs.m_ptx[n].tx.vin[0]).asset_type;
-	memwipe(m_xasset_transfers[asset_type][idx].m_multisig_k.data(), m_xasset_transfers[asset_type][idx].m_multisig_k.size() * sizeof(m_xasset_transfers[asset_type][idx].m_multisig_k[0]));
+        // Get the asset type
+        std::string asset_type = boost::get<txin_xasset>(txs.m_ptx[n].tx.vin[0]).asset_type;
+        memwipe(m_xasset_transfers[asset_type][idx].m_multisig_k.data(), m_xasset_transfers[asset_type][idx].m_multisig_k.size() * sizeof(m_xasset_transfers[asset_type][idx].m_multisig_k[0]));
       }	else {
-	THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "invalid VIN type");
+	      THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "invalid VIN type");
       }
     }
   }
@@ -11877,7 +11903,7 @@ void wallet2::cold_sign_tx(const std::vector<pending_tx>& ptx_vector, signed_tx_
   {
     txs.txes.push_back(get_construction_data_with_decrypted_short_payment_id(tx, m_account.get_device()));
   }
-  txs.transfers = std::make_pair(0, m_transfers);
+  txs.transfers["XHV"] = std::make_pair(0, m_transfers);
 
   auto dev_cold = dynamic_cast<::hw::device_cold*>(&hwdev);
   CHECK_AND_ASSERT_THROW_MES(dev_cold, "Device does not implement cold signing interface");
@@ -14032,28 +14058,37 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
   return m_transfers[signed_key_images.size() + offset - 1].m_block_height;
 }
 
-bool wallet2::import_key_images(std::vector<crypto::key_image> key_images, size_t offset, boost::optional<std::unordered_set<size_t>> selected_transfers)
-{
-  if (key_images.size() + offset > m_transfers.size())
-  {
-    LOG_PRINT_L1("More key images returned that we know outputs for");
-    return false;
-  }
-  for (size_t ki_idx = 0; ki_idx < key_images.size(); ++ki_idx)
-  {
-    const size_t transfer_idx = ki_idx + offset;
-    if (selected_transfers && selected_transfers.get().find(transfer_idx) == selected_transfers.get().end())
-      continue;
+bool wallet2::import_key_images(std::map<std::string, std::vector<crypto::key_image>>& key_images_pairs, size_t offset, boost::optional<std::unordered_set<size_t>> selected_transfers)
+{ 
 
-    transfer_details &td = m_transfers[transfer_idx];
-    if (td.m_key_image_known && !td.m_key_image_partial && td.m_key_image != key_images[ki_idx])
-      LOG_PRINT_L0("WARNING: imported key image differs from previously known key image at index " << ki_idx << ": trusting imported one");
-    td.m_key_image = key_images[ki_idx];
-    m_key_images[td.m_key_image] = transfer_idx;
-    td.m_key_image_known = true;
-    td.m_key_image_request = false;
-    td.m_key_image_partial = false;
-    m_pub_keys[td.get_public_key()] = transfer_idx;
+  for (const auto& pair: key_images_pairs) {
+    const std::vector<crypto::key_image>& key_images = pair.second;
+    transfer_container& specific_transfers = (pair.first == "XHV") ? m_transfers : 
+                                          (pair.first == "XUSD") ? m_offshore_transfers : 
+                                          m_xasset_transfers[pair.first];
+
+
+    if (key_images.size() + offset > specific_transfers.size())
+    {
+      LOG_PRINT_L1("More key images returned that we know outputs for");
+      return false;
+    }
+    for (size_t ki_idx = 0; ki_idx < key_images.size(); ++ki_idx)
+    {
+      const size_t transfer_idx = ki_idx + offset;
+      if (selected_transfers && selected_transfers.get().find(transfer_idx) == selected_transfers.get().end())
+        continue;
+
+      transfer_details &td = specific_transfers[transfer_idx];
+      if (td.m_key_image_known && !td.m_key_image_partial && td.m_key_image != key_images[ki_idx])
+        LOG_PRINT_L0("WARNING: imported key image differs from previously known key image at index " << ki_idx << ": trusting imported one");
+      td.m_key_image = key_images[ki_idx];
+      m_key_images[td.m_key_image] = transfer_idx;
+      td.m_key_image_known = true;
+      td.m_key_image_request = false;
+      td.m_key_image_partial = false;
+      m_pub_keys[td.get_public_key()] = transfer_idx;
+    }
   }
 
   return true;
@@ -14132,25 +14167,60 @@ void wallet2::import_blockchain(const std::tuple<size_t, crypto::hash, std::vect
   m_last_block_reward = cryptonote::get_outs_money_amount(genesis.miner_tx)["XHV"];
 }
 //----------------------------------------------------------------------------------------------------
-std::pair<size_t, std::vector<tools::wallet2::transfer_details>> wallet2::export_outputs(bool all) const
+std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>>
+wallet2::export_outputs(bool all) const
 {
   PERF_TIMER(export_outputs);
+  std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> all_outs;
+  
   std::vector<tools::wallet2::transfer_details> outs;
-
   size_t offset = 0;
+  
   if (!all)
     while (offset < m_transfers.size() && (m_transfers[offset].m_key_image_known && !m_transfers[offset].m_key_image_request))
       ++offset;
-
-  outs.reserve(m_transfers.size() - offset);
+  
   for (size_t n = offset; n < m_transfers.size(); ++n)
   {
     const transfer_details &td = m_transfers[n];
-
     outs.push_back(td);
   }
+  all_outs["XHV"] = std::make_pair(offset, outs);
 
-  return std::make_pair(offset, outs);
+  //clear 
+  outs.clear();
+  offset = 0;
+
+  if (!all)
+  while (offset < m_offshore_transfers.size() && (m_offshore_transfers[offset].m_key_image_known && !m_offshore_transfers[offset].m_key_image_request))
+    ++offset;
+  
+  for (size_t n = offset; n < m_offshore_transfers.size(); ++n)
+  {
+    const transfer_details &td = m_offshore_transfers[n];
+    outs.push_back(td);
+  }
+  all_outs["XUSD"] = std::make_pair(offset, outs);
+
+  // add rest of the assets
+  for (const auto& entry: m_xasset_transfers) {
+    //clear 
+    outs.clear();
+    offset = 0;
+
+    if (!all)
+    while (offset < entry.second.size() && (entry.second[offset].m_key_image_known && !entry.second[offset].m_key_image_request))
+      ++offset;
+    
+    for (size_t n = offset; n < entry.second.size(); ++n)
+    {
+      const transfer_details &td = entry.second[n];
+      outs.push_back(td);
+    }
+    all_outs[entry.first] = std::make_pair(offset, outs);
+  }
+
+  return all_outs;
 }
 //----------------------------------------------------------------------------------------------------
 std::string wallet2::export_outputs_to_str(bool all) const
@@ -14172,70 +14242,85 @@ std::string wallet2::export_outputs_to_str(bool all) const
   return magic + ciphertext;
 }
 //----------------------------------------------------------------------------------------------------
-size_t wallet2::import_outputs(const std::pair<size_t, std::vector<tools::wallet2::transfer_details>> &outputs)
+size_t wallet2::import_outputs(const std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> &outputs)
 {
   PERF_TIMER(import_outputs);
+  for (const auto& entry: outputs) {
 
-  THROW_WALLET_EXCEPTION_IF(outputs.first > m_transfers.size(), error::wallet_internal_error,
-      "Imported outputs omit more outputs that we know of");
+    transfer_container& specific_transfers = (entry.first == "XHV") ? m_transfers : 
+                                             (entry.first == "XUSD") ? m_offshore_transfers : 
+                                             m_xasset_transfers[entry.first]; 
 
-  const size_t offset = outputs.first;
-  const size_t original_size = m_transfers.size();
-  m_transfers.resize(offset + outputs.second.size());
-  for (size_t i = 0; i < offset; ++i)
-    m_transfers[i].m_key_image_request = false;
-  for (size_t i = 0; i < outputs.second.size(); ++i)
-  {
-    transfer_details td = outputs.second[i];
+    THROW_WALLET_EXCEPTION_IF(entry.second.first > specific_transfers.size(), error::wallet_internal_error,
+        "Imported outputs omit more outputs that we know of");
 
-    // skip those we've already imported, or which have different data
-    if (i + offset < original_size)
+    const size_t offset = entry.second.first;
+    const size_t original_size = specific_transfers.size();
+    specific_transfers.resize(offset + entry.second.second.size());
+    for (size_t i = 0; i < offset; ++i)
+      specific_transfers[i].m_key_image_request = false;
+    
+    for (size_t i = 0; i < entry.second.second.size(); ++i)
     {
-      // compare the data used to create the key image below
-      const transfer_details &org_td = m_transfers[i + offset];
-      if (!org_td.m_key_image_known)
-        goto process;
+      transfer_details td = entry.second.second[i];
+
+      // skip those we've already imported, or which have different data
+      if (i + offset < original_size)
+      {
+        // compare the data used to create the key image below
+        const transfer_details &org_td = specific_transfers[i + offset];
+        if (!org_td.m_key_image_known)
+          goto process;
 #define CMPF(f) if (!(td.f == org_td.f)) goto process
-      CMPF(m_txid);
-      CMPF(m_key_image);
-      CMPF(m_internal_output_index);
+        CMPF(m_txid);
+        CMPF(m_key_image);
+        CMPF(m_internal_output_index);
 #undef CMPF
-      if (!(get_transaction_prefix_hash(td.m_tx) == get_transaction_prefix_hash(org_td.m_tx)))
-        goto process;
+        if (!(get_transaction_prefix_hash(td.m_tx) == get_transaction_prefix_hash(org_td.m_tx)))
+          goto process;
 
-      // copy anyway, since the comparison does not include ancillary fields which may have changed
-      m_transfers[i + offset] = std::move(td);
-      continue;
-    }
-
+        // copy anyway, since the comparison does not include ancillary fields which may have changed
+        specific_transfers[i + offset] = std::move(td);
+        continue;
+      }
 process:
+      // the hot wallet wouldn't have known about key images (except if we already exported them)
+      cryptonote::keypair in_ephemeral;
 
-    // the hot wallet wouldn't have known about key images (except if we already exported them)
-    cryptonote::keypair in_ephemeral;
+      THROW_WALLET_EXCEPTION_IF(td.m_tx.vout.empty(), error::wallet_internal_error, "tx with no outputs at index " + boost::lexical_cast<std::string>(i + offset));
+      crypto::public_key tx_pub_key = get_tx_pub_key_from_received_outs(td);
+      const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
+      THROW_WALLET_EXCEPTION_IF(td.m_tx.vout[td.m_internal_output_index].target.type() != typeid(cryptonote::txout_to_key) &&
+                                td.m_tx.vout[td.m_internal_output_index].target.type() != typeid(cryptonote::txout_offshore) && 
+                                td.m_tx.vout[td.m_internal_output_index].target.type() != typeid(cryptonote::txout_xasset),
+          error::wallet_internal_error, "Unsupported output type");
+      
+      crypto::public_key out_key;
+      if (td.m_tx.vout[td.m_internal_output_index].target.type() == typeid(cryptonote::txout_to_key)) {
+        out_key =  boost::get<cryptonote::txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key;
+      } else if (td.m_tx.vout[td.m_internal_output_index].target.type() == typeid(cryptonote::txout_offshore)) {
+        out_key =  boost::get<cryptonote::txout_offshore>(td.m_tx.vout[td.m_internal_output_index].target).key;
+      } else {
+        out_key =  boost::get<cryptonote::txout_xasset>(td.m_tx.vout[td.m_internal_output_index].target).key;
+      }
+      bool r = cryptonote::generate_key_image_helper(m_account.get_keys(), m_subaddresses, out_key, tx_pub_key, additional_tx_pub_keys, td.m_internal_output_index, in_ephemeral, td.m_key_image, m_account.get_device());
+      THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key image");
+      if (should_expand(td.m_subaddr_index))
+        expand_subaddresses(td.m_subaddr_index);
+      td.m_key_image_known = true;
+      td.m_key_image_request = true;
+      td.m_key_image_partial = false;
+      THROW_WALLET_EXCEPTION_IF(in_ephemeral.pub != out_key,
+          error::wallet_internal_error, "key_image generated ephemeral public key not matched with output_key at index " + boost::lexical_cast<std::string>(i + offset));
 
-    THROW_WALLET_EXCEPTION_IF(td.m_tx.vout.empty(), error::wallet_internal_error, "tx with no outputs at index " + boost::lexical_cast<std::string>(i + offset));
-    crypto::public_key tx_pub_key = get_tx_pub_key_from_received_outs(td);
-    const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
-
-    THROW_WALLET_EXCEPTION_IF(td.m_tx.vout[td.m_internal_output_index].target.type() != typeid(cryptonote::txout_to_key),
-        error::wallet_internal_error, "Unsupported output type");
-    const crypto::public_key& out_key = boost::get<cryptonote::txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key;
-    bool r = cryptonote::generate_key_image_helper(m_account.get_keys(), m_subaddresses, out_key, tx_pub_key, additional_tx_pub_keys, td.m_internal_output_index, in_ephemeral, td.m_key_image, m_account.get_device());
-    THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key image");
-    if (should_expand(td.m_subaddr_index))
-      expand_subaddresses(td.m_subaddr_index);
-    td.m_key_image_known = true;
-    td.m_key_image_request = true;
-    td.m_key_image_partial = false;
-    THROW_WALLET_EXCEPTION_IF(in_ephemeral.pub != out_key,
-        error::wallet_internal_error, "key_image generated ephemeral public key not matched with output_key at index " + boost::lexical_cast<std::string>(i + offset));
-
-    m_key_images[td.m_key_image] = i + offset;
-    m_pub_keys[td.get_public_key()] = i + offset;
-    m_transfers[i + offset] = std::move(td);
+      m_key_images[td.m_key_image] = i + offset;
+      m_pub_keys[td.get_public_key()] = i + offset;
+      specific_transfers[i + offset] = std::move(td);
+    }
   }
 
-  return m_transfers.size();
+
+  return outputs.size();
 }
 //----------------------------------------------------------------------------------------------------
 size_t wallet2::import_outputs_from_str(const std::string &outputs_st)
@@ -14277,7 +14362,7 @@ size_t wallet2::import_outputs_from_str(const std::string &outputs_st)
     std::string body(data, headerlen);
     std::stringstream iss;
     iss << body;
-    std::pair<size_t, std::vector<tools::wallet2::transfer_details>> outputs;
+    std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> outputs;
     try
     {
       boost::archive::portable_binary_iarchive ar(iss);

@@ -547,13 +547,13 @@ private:
     struct unsigned_tx_set
     {
       std::vector<tx_construction_data> txes;
-      std::pair<size_t, wallet2::transfer_container> transfers;
+      std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> transfers;
     };
 
     struct signed_tx_set
     {
       std::vector<pending_tx> ptx;
-      std::vector<crypto::key_image> key_images;
+      std::map<std::string, std::vector<crypto::key_image>> key_images;
       std::unordered_map<crypto::public_key, crypto::key_image> tx_key_images;
     };
 
@@ -1321,9 +1321,9 @@ private:
     bool verify_with_public_key(const std::string &data, const crypto::public_key &public_key, const std::string &signature) const;
 
     // Import/Export wallet data
-    std::pair<size_t, std::vector<tools::wallet2::transfer_details>> export_outputs(bool all = false) const;
+    std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> export_outputs(bool all = false) const;
     std::string export_outputs_to_str(bool all = false) const;
-    size_t import_outputs(const std::pair<size_t, std::vector<tools::wallet2::transfer_details>> &outputs);
+    size_t import_outputs(const std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> &outputs);
     size_t import_outputs_from_str(const std::string &outputs_st);
     payment_container export_payments() const;
     void import_payments(const payment_container &payments);
@@ -1334,7 +1334,7 @@ private:
     std::pair<size_t, std::vector<std::pair<crypto::key_image, crypto::signature>>> export_key_images(bool all = false) const;
     uint64_t import_key_images(const std::vector<std::pair<crypto::key_image, crypto::signature>> &signed_key_images, size_t offset, uint64_t &spent, uint64_t &unspent, bool check_spent = true);
     uint64_t import_key_images(const std::string &filename, uint64_t &spent, uint64_t &unspent);
-    bool import_key_images(std::vector<crypto::key_image> key_images, size_t offset=0, boost::optional<std::unordered_set<size_t>> selected_transfers=boost::none);
+    bool import_key_images(std::map<std::string, std::vector<crypto::key_image>>& key_images, size_t offset=0, boost::optional<std::unordered_set<size_t>> selected_transfers=boost::none);
     bool import_key_images(signed_tx_set & signed_tx, size_t offset=0, bool only_selected_transfers=false);
     crypto::public_key get_tx_pub_key_from_received_outs(const tools::wallet2::transfer_details &td) const;
 
