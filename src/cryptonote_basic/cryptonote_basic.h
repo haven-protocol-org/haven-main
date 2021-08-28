@@ -234,6 +234,7 @@ namespace cryptonote
     std::vector<uint8_t> offshore_data;
     uint64_t amount_burnt;
     uint64_t amount_minted;
+    std::vector<uint64_t> output_unlock_times;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
@@ -247,10 +248,31 @@ namespace cryptonote
       FIELD(offshore_data)
       VARINT_FIELD(amount_burnt)
       VARINT_FIELD(amount_minted)
+      if (version > 2)
+      {
+        FIELD(output_unlock_times)
+      }
+      if (version >= 4 && vout.size() != output_unlock_times.size()) return false;
     END_SERIALIZE()
 
   public:
     transaction_prefix(){ set_null(); }
+
+    uint64_t get_unlock_time(size_t out_index) const
+   {
+     if (version >= 4)
+     {
+       if (out_index >= output_unlock_times.size())
+       {
+         LOG_ERROR("Tried to get unlock time of a v3 transaction with missing output unlock time");
+         return unlock_time;
+       }
+       return output_unlock_times[out_index];
+     }
+     return unlock_time;
+   }
+
+
     void set_null()
     {
       version = 1;
@@ -262,6 +284,7 @@ namespace cryptonote
       offshore_data.clear();
       amount_burnt = 0;
       amount_minted = 0;
+      output_unlock_times.clear();
     }
   };
 

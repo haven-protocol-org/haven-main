@@ -201,6 +201,10 @@ namespace boost
       a & x.amount_burnt;
       a & x.amount_minted;
     }
+
+    if (x.version >= PER_OUTPUT_UNLOCK_VERSION) {
+        a & x.output_unlock_times;
+    }
   }
 
   template <class Archive>
@@ -216,6 +220,9 @@ namespace boost
       a & x.offshore_data;
       a & x.amount_burnt;
       a & x.amount_minted;
+    }
+    if (x.version >= PER_OUTPUT_UNLOCK_VERSION) {
+        a & x.output_unlock_times;
     }
     if (x.version == 1)
     {
