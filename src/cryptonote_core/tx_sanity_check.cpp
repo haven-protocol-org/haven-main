@@ -110,12 +110,19 @@ bool tx_sanity_check(const std::set<uint64_t> &rct_indices, size_t n_indices, ui
 
   if (rct_outs_available < 10000)
     return true;
-
-  if (rct_indices.size() < n_indices * 8 / 10)
-  {
-    MERROR("amount of unique indices is too low (amount of rct indices is " << rct_indices.size() << ", out of total " << n_indices << "indices.");
-    return false;
-  }
+  /*
+    This check is failing regularly for offshore/xasset txs that uses too many inputs.
+    The reason for that is that, we still don't have enough outputs for non-xhv assets.
+    When the tx has too many inputs it has to construct too many rings. Which increases the probability
+    of 2 input using the same ring rember significantly giving that we don't have much outputs for those assets.
+    Therefore, the number of unique indices are usually < 80% of the total usable outputs.
+    We disable the check for now(to be actitaved later in the future), since there is no solution till we have enough outputs in the chain.
+  */
+  // if (rct_indices.size() < n_indices * 8 / 10)
+  // {
+  //   MERROR("amount of unique indices is too low (amount of rct indices is " << rct_indices.size() << ", out of total " << n_indices << "indices.");
+  //   return false;
+  // }
 
   std::vector<uint64_t> offsets(rct_indices.begin(), rct_indices.end());
   uint64_t median = epee::misc_utils::median(offsets);

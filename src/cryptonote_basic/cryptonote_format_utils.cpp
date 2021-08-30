@@ -1343,13 +1343,6 @@ namespace cryptonote
   {
     CHECK_AND_ASSERT_MES(!t.pruned, false, "Cannot calculate the hash of a pruned transaction");
 
-    // v1 transactions hash the entire blob
-    if (t.version == 1)
-    {
-      size_t ignored_blob_size, &blob_size_ref = blob_size ? *blob_size : ignored_blob_size;
-      return get_object_hash(t, res, blob_size_ref);
-    }
-
     // v2 transactions hash different parts together, than hash the set of those hashes
     crypto::hash hashes[3];
 

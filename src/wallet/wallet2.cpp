@@ -7909,10 +7909,6 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
       LOG_ERROR("At least 1 input or 1 output of the tx was invalid.");
       return false;
     }
-    transfer_container &specific_transfers = (strSource != "XHV" && strSource != "XUSD") ? (m_xasset_transfers[strSource]) : 
-                                              (strSource == "XUSD") ? m_offshore_transfers : 
-                                              m_transfers;
-    
 
     offshore::pricing_record pr;
     if (strSource != strDest) {
@@ -7940,7 +7936,8 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
       fees_version,
       sd.use_rct,
       rct_config,
-      &msout
+      &msout,
+      false
     );
     THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sd.sources, sd.splitted_dsts, sd.unlock_time, m_nettype);
 
@@ -8744,22 +8741,17 @@ std::pair<std::set<uint64_t>, size_t> outs_unique(const std::vector<std::vector<
 
 void wallet2::get_outs(const transfer_container &specific_transfers, const std::string rct_asset_type, std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count)
 {
-  uint64_t num_spendable_global_outs;
+  uint64_t num_outs_per_asset = 0;
+  uint64_t num_spendable_global_outs = 0;
   for (size_t attempts = 3; attempts > 0; --attempts)
   {
-    get_outs(specific_transfers, rct_asset_type, outs, selected_transfers, fake_outputs_count, num_spendable_global_outs);
+    get_outs(specific_transfers, rct_asset_type, outs, selected_transfers, fake_outputs_count, num_spendable_global_outs, num_outs_per_asset);
 
     const auto unique = outs_unique(outs);
-    // HERE BE DRAGONS!!!
-    // JB: in order to match node-side's tx sanity check, using num_spendable_global_outs instead of rct_offsets.back()
-    // because rct_offsets.back() is the number of outputs particular to an asset type. In the future, when all nodes
-    // stop allowing rings constructed using mixed asset types, need to pass in rct_offsets.back() here instead of
-    // num_spendable_global_outs. More specifcally: `rct_offsets.empty() ? 0 : rct_offsets.back()`
-    if (tx_sanity_check(unique.first, unique.second, num_spendable_global_outs))
+    if (tx_sanity_check(unique.first, unique.second, num_outs_per_asset))
     {
       return;
     }
-    // LAND AHOY!!!
 
     std::vector<crypto::key_image> key_images;
     key_images.reserve(selected_transfers.size());
@@ -8772,7 +8764,7 @@ void wallet2::get_outs(const transfer_container &specific_transfers, const std::
   THROW_WALLET_EXCEPTION(error::wallet_internal_error, tr("Transaction sanity check failed"));
 }
 
-void wallet2::get_outs(const transfer_container &specific_transfers, const std::string rct_asset_type, std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count, uint64_t &num_spendable_global_outs)
+void wallet2::get_outs(const transfer_container &specific_transfers, const std::string rct_asset_type, std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count,  uint64_t &num_spendable_global_outs, uint64_t &num_outs)
 {
   LOG_PRINT_L2("fake_outputs_count: " << fake_outputs_count);
   outs.clear();
@@ -8953,7 +8945,7 @@ void wallet2::get_outs(const transfer_container &specific_transfers, const std::
       bool use_histogram = amount != 0 || !has_rct_distribution;
 
       const bool output_is_pre_fork = td.m_block_height < segregation_fork_height;
-      uint64_t num_outs = 0, num_recent_outs = 0;
+      uint64_t num_recent_outs = 0;
       uint64_t num_post_fork_outs = 0;
       float pre_fork_num_out_ratio = 0.0f;
       float post_fork_num_out_ratio = 0.0f;
@@ -14527,10 +14519,10 @@ cryptonote::blobdata wallet2::export_multisig()
       
       for (size_t m = 0; m < get_account().get_multisig_keys().size(); ++m)
       {
-	// we want to export the partial key image, not the full one, so we can't use td.m_key_image
-	bool r = generate_multisig_key_image(get_account().get_keys(), m, td.get_public_key(), ki);
-	CHECK_AND_ASSERT_THROW_MES(r, "Failed to generate key image");
-	info[n].m_partial_key_images.push_back(ki);
+        // we want to export the partial key image, not the full one, so we can't use td.m_key_image
+        bool r = generate_multisig_key_image(get_account().get_keys(), m, td.get_public_key(), ki);
+        CHECK_AND_ASSERT_THROW_MES(r, "Failed to generate key image");
+        info[n].m_partial_key_images.push_back(ki);
       }
       
       // Wallet tries to create as many transactions as many signers combinations. We calculate the maximum number here as follows:
@@ -14539,9 +14531,9 @@ cryptonote::blobdata wallet2::export_multisig()
       size_t nlr = tools::combinations_count(m_multisig_signers.size() - m_multisig_threshold, m_multisig_signers.size() - 1);
       for (size_t m = 0; m < nlr; ++m)
       {
-	td.m_multisig_k.push_back(rct::skGen());
-	const rct::multisig_kLRki kLRki = get_multisig_kLRki(specific_transfers, n, td.m_multisig_k.back());
-	info[n].m_LR.push_back({kLRki.L, kLRki.R});
+        td.m_multisig_k.push_back(rct::skGen());
+        const rct::multisig_kLRki kLRki = get_multisig_kLRki(specific_transfers, n, td.m_multisig_k.back());
+        info[n].m_LR.push_back({kLRki.L, kLRki.R});
       }
       
       info[n].m_signer = signer;
@@ -14667,7 +14659,7 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
     size_t n_outputs = specific_transfers.size();
     for (auto &pi: info_xasset)
       if (pi[asset_type].size() < n_outputs)
-	n_outputs = pi[asset_type].size();
+	      n_outputs = pi[asset_type].size();
     
     if (n_outputs != 0) {
 
@@ -14675,38 +14667,38 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
     
       // check signers are consistent
       for (auto &pi: info_xasset)
-	{
-	  CHECK_AND_ASSERT_THROW_MES(std::find(m_multisig_signers.begin(), m_multisig_signers.end(), pi[asset_type][0].m_signer) != m_multisig_signers.end(),
-				     "Signer is not a member of this multisig wallet");
-	  for (size_t n = 1; n < n_outputs; ++n)
-	    CHECK_AND_ASSERT_THROW_MES(pi[asset_type][n].m_signer == pi[asset_type][0].m_signer, "Mismatched signers in imported multisig info");
-	}
+      {
+        CHECK_AND_ASSERT_THROW_MES(std::find(m_multisig_signers.begin(), m_multisig_signers.end(), pi[asset_type][0].m_signer) != m_multisig_signers.end(),
+                "Signer is not a member of this multisig wallet");
+        for (size_t n = 1; n < n_outputs; ++n)
+          CHECK_AND_ASSERT_THROW_MES(pi[asset_type][n].m_signer == pi[asset_type][0].m_signer, "Mismatched signers in imported multisig info");
+      }
     
       // trim data we don't have info for from all participants
       for (auto &pi: info_xasset)
-	pi[asset_type].resize(n_outputs);
+	      pi[asset_type].resize(n_outputs);
     
       // sort by signer
       if (!info_xasset.empty() && !info_xasset.front().at(asset_type).empty())
       {
-	std::sort(info_xasset.begin(), info_xasset.end(), [&asset_type](const std::map<std::string, std::vector<tools::wallet2::multisig_info>> &i0, const std::map<std::string, std::vector<tools::wallet2::multisig_info>> &i1){
+	      std::sort(info_xasset.begin(), info_xasset.end(), [&asset_type](const std::map<std::string, std::vector<tools::wallet2::multisig_info>> &i0, const std::map<std::string, std::vector<tools::wallet2::multisig_info>> &i1){
 							    return memcmp(&i0.at(asset_type)[0].m_signer, &i1.at(asset_type)[0].m_signer, sizeof(i0.at(asset_type)[0].m_signer)); });
       }
 
       // first pass to determine where to detach the blockchain
       for (size_t n = 0; n < n_outputs; ++n)
       {
-	const transfer_details &td = specific_transfers[n];
-	if (!td.m_key_image_partial)
-	  continue;
-	MINFO("Multisig info importing from block height " << td.m_block_height);
-	detach_blockchain(td.m_block_height);
-	break;
+        const transfer_details &td = specific_transfers[n];
+        if (!td.m_key_image_partial)
+          continue;
+        MINFO("Multisig info importing from block height " << td.m_block_height);
+        detach_blockchain(td.m_block_height);
+        break;
       }
     
       for (size_t n = 0; n < n_outputs && n < specific_transfers.size(); ++n)
       {
-	update_multisig_rescan_info(asset_type, k, info_xasset, n);
+        update_multisig_rescan_info(asset_type, k, info_xasset, n);
       }
     
       m_multisig_rescan_k = &k;
@@ -14717,9 +14709,9 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
       }
       catch (...)
       {
-	m_multisig_rescan_info = NULL;
-	m_multisig_rescan_k = NULL;
-	throw;
+        m_multisig_rescan_info = NULL;
+        m_multisig_rescan_k = NULL;
+        throw;
       }
       m_multisig_rescan_info = NULL;
       m_multisig_rescan_k = NULL;
