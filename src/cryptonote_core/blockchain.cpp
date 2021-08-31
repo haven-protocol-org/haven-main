@@ -1447,7 +1447,7 @@ start:
     MGINFO("START DUMP");
     MGINFO(ss.str());
     MGINFO("END DUMP");
-    MGINFO("Please send moneromooo on Freenode the contents of this log, from a couple dozen lines before START DUMP to END DUMP");
+    MGINFO("Please send main developer contents of this log, from a couple dozen lines before START DUMP to END DUMP");
   }
   return diff;
 }
@@ -1926,26 +1926,38 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       partial_block_reward = true;
     base_reward = money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"];
 
+
+    // collect all unique assets
+    std::set<std::string> unique_assets;
+    for (const auto& asset : fee_map) {
+      unique_assets.insert(asset.first);
+    }
+    for (const auto& asset : offshore_fee_map) {
+      unique_assets.insert(asset.first);
+    }
+    for (const auto& asset : xasset_fee_map) {
+      unique_assets.insert(asset.first);
+    }
+
     if (version >= HF_VERSION_OFFSHORE_FULL) {
       // Check offshore / xAsset amounts as well
       if (version >= HF_VERSION_XASSET_FEES_V2) {
-        try { 
-          for (auto &money_in_use_map_entry: money_in_use_map) {
-            const std::string& asset = money_in_use_map_entry.first;
-            if (asset == "XHV") continue;
-            if (money_in_use_map_entry.second > fee_map.at(asset) + offshore_fee_map.at(asset) + xasset_fee_map.at(asset)) {
-              MDEBUG("miner transaction is spending too much money in " << asset << ":  spent: " << money_in_use_map_entry.second << ",  fees "
-               << fee_map[asset] << ", conversion fees " << offshore_fee_map[asset]);
-              return false;
-            }
+        for (auto &money_in_use_map_entry: money_in_use_map) {
+          const std::string& asset = money_in_use_map_entry.first;
+          if (asset == "XHV") continue;
+
+          // make sure each asset type in miner tx actually exist in at least one of the fee maps
+          if (unique_assets.find(asset) == unique_assets.end()) {
+            MDEBUG("Maliciouis miner tx found. The block doesnt have a fee paid in " << asset << ", but at least one of the miner tx outputs was " << asset << ".");
+            return false;
           }
-        } catch (const std::out_of_range& e) {
-          // At least one of the miner tx outputs has an invalid asset type
-          MDEBUG("At least one of the miner tx outputs has an invalid asset type: " << e.what());
-          return false;
-        } catch (const std::exception& e) {
-          MDEBUG("Error when checking the miner tx outputs: " << e.what());
-          return false;
+
+          // make sure the output amount isnt more than what it should be.
+          if (money_in_use_map_entry.second > fee_map[asset] + offshore_fee_map[asset] + xasset_fee_map[asset]) {
+            MDEBUG("miner transaction is spending too much money in " << asset << ":  spent: " << money_in_use_map_entry.second << ",  fees "
+              << fee_map[asset] << ", conversion fees " << offshore_fee_map[asset]);
+            return false;
+          }
         }
       } else {
         for (auto &fee_map_entry: fee_map) {

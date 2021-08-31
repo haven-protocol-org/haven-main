@@ -764,7 +764,7 @@ namespace cryptonote
     } else if (rct_config.bp_version == 3) {
       tx.version = 3;
     } else {
-      tx.version = rct ? 2 : 1;
+      tx.version = 2;
     }
     tx.unlock_time = unlock_time;
     tx.extra = extra;

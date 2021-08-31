@@ -8124,15 +8124,23 @@ bool simple_wallet::donate(const std::vector<std::string> &args_)
 bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
 {
   // gather info to ask the user
-  uint64_t amount = 0, amount_to_dests = 0, change = 0;
+  uint64_t amount = 0, change = 0, fee = 0;
   size_t min_ring_size = ~0;
-  std::unordered_map<cryptonote::account_public_address, std::pair<std::string, uint64_t>> dests;
+  std::unordered_map<cryptonote::account_public_address, std::pair<std::string, std::pair<std::string, uint64_t>>> dests;
   int first_known_non_zero_change_index = -1;
   std::string payment_id_string = "";
+
+
+  if (get_num_txes() > 1) {
+    fail_msg_writer() << tr("Please load 1 transaction at a time!");
+    return false;
+  }
+
+  std::string source_asset;
   for (size_t n = 0; n < get_num_txes(); ++n)
   {
     const tools::wallet2::tx_construction_data &cd = get_tx(n);
-
+    fee += cd.fee;
     std::vector<tx_extra_field> tx_extra_fields;
     bool has_encrypted_payment_id = false;
     crypto::hash8 payment_id8 = crypto::null_hash8;
@@ -8173,6 +8181,9 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
       }
     }
 
+    if (!cd.sources.empty()) {
+      source_asset = cd.sources[0].asset_type;
+    }
     for (size_t s = 0; s < cd.sources.size(); ++s)
     {
       amount += cd.sources[s].amount;
@@ -8183,6 +8194,7 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
     for (size_t d = 0; d < cd.splitted_dsts.size(); ++d)
     {
       const tx_destination_entry &entry = cd.splitted_dsts[d];
+      uint64_t entry_amount = (entry.asset_type == "XHV") ? entry.amount : entry.asset_type == "XUSD" ? entry.amount_usd : entry.amount_xasset;
       std::string address, standard_address = get_account_address_as_str(m_wallet->nettype(), entry.is_subaddress, entry.addr);
       if (has_encrypted_payment_id && !entry.is_subaddress && standard_address != entry.original)
       {
@@ -8193,12 +8205,13 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
         address = standard_address;
       auto i = dests.find(entry.addr);
       if (i == dests.end())
-        dests.insert(std::make_pair(entry.addr, std::make_pair(address, entry.amount)));
+        dests.insert(std::make_pair(entry.addr, std::make_pair(entry.asset_type, std::make_pair(address, entry_amount))));
       else
-        i->second.second += entry.amount;
-      amount_to_dests += entry.amount;
+        i->second.second.second += entry_amount;
     }
-    if (cd.change_dts.amount > 0)
+
+    uint64_t change_amount = (source_asset == "XHV") ? cd.change_dts.amount: source_asset == "XUSD" ? cd.change_dts.amount_usd : cd.change_dts.amount_xasset;
+    if (change_amount > 0)
     {
       auto it = dests.find(cd.change_dts.addr);
       if (it == dests.end())
@@ -8206,12 +8219,12 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
         fail_msg_writer() << tr("Claimed change does not go to a paid address");
         return false;
       }
-      if (it->second.second < cd.change_dts.amount)
+      if (it->second.second.second < change_amount)
       {
         fail_msg_writer() << tr("Claimed change is larger than payment to the change address");
         return false;
       }
-      if (cd.change_dts.amount > 0)
+      if (change_amount > 0)
       {
         if (first_known_non_zero_change_index == -1)
           first_known_non_zero_change_index = n;
@@ -8221,9 +8234,9 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
           return false;
         }
       }
-      change += cd.change_dts.amount;
-      it->second.second -= cd.change_dts.amount;
-      if (it->second.second == 0)
+      change += change_amount;
+      it->second.second.second -= change_amount;
+      if (it->second.second.second == 0)
         dests.erase(cd.change_dts.addr);
     }
   }
@@ -8235,11 +8248,11 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
   size_t n_dummy_outputs = 0;
   for (auto i = dests.begin(); i != dests.end(); )
   {
-    if (i->second.second > 0)
+    if (i->second.second.second > 0)
     {
       if (!dest_string.empty())
         dest_string += ", ";
-      dest_string += (boost::format(tr("sending %s to %s")) % print_money(i->second.second) % i->second.first).str();
+      dest_string += (boost::format(tr("sending %s %s to %s")) % print_money(i->second.second.second) %  i->second.first % i->second.second.first).str();
     }
     else
       ++n_dummy_outputs;
@@ -8258,13 +8271,12 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
   if (change > 0)
   {
     std::string address = get_account_address_as_str(m_wallet->nettype(), get_tx(0).subaddr_account > 0, get_tx(0).change_dts.addr);
-    change_string += (boost::format(tr("%s change to %s")) % print_money(change) % address).str();
+    change_string += (boost::format(tr("%s %s change to %s")) % print_money(change) % source_asset % address).str();
   }
   else
     change_string += tr("no change");
 
-  uint64_t fee = amount - amount_to_dests;
-  std::string prompt_str = (boost::format(tr("Loaded %lu transactions, for %s, fee %s, %s, %s, with min ring size %lu, %s. %sIs this okay?")) % (unsigned long)get_num_txes() % print_money(amount) % print_money(fee) % dest_string % change_string % (unsigned long)min_ring_size % payment_id_string % extra_message).str();
+  std::string prompt_str = (boost::format(tr("Loaded %lu transaction, for %s, fee %s %s, %s, %s, with min ring size %lu, %s. %sIs this okay?")) % (unsigned long)get_num_txes() % print_money(amount) % print_money(fee) % source_asset % dest_string % change_string % (unsigned long)min_ring_size % payment_id_string % extra_message).str();
   return command_line::is_yes(input_line(prompt_str, true));
 }
 //----------------------------------------------------------------------------------------------------

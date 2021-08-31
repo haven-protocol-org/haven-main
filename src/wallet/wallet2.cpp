@@ -9802,7 +9802,8 @@ void wallet2::transfer_selected_rct(
           fees_version, 
           true,
           rct_config,
-          &msout
+          &msout,
+          false
         );
         LOG_PRINT_L2("constructed tx, r="<<r);
         THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
@@ -9864,10 +9865,8 @@ void wallet2::transfer_selected_rct(
   ptx.construction_data.extra = tx.extra;
   ptx.construction_data.unlock_time = unlock_time;
   ptx.construction_data.use_rct = true;
-  ptx.construction_data.rct_config = {
-    tx.rct_signatures.p.bulletproofs.empty() ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof,
-    use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1
-  };ptx.construction_data.dests = dsts;
+  ptx.construction_data.rct_config = rct_config;
+  ptx.construction_data.dests = dsts;
   // record which subaddress indices are being used as inputs
   ptx.construction_data.subaddr_account = subaddr_account;
   ptx.construction_data.subaddr_indices.clear();
