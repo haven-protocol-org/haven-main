@@ -8130,16 +8130,21 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
   int first_known_non_zero_change_index = -1;
   std::string payment_id_string = "";
 
-
-  if (get_num_txes() > 1) {
-    fail_msg_writer() << tr("Please load 1 transaction at a time!");
-    return false;
-  }
-
   std::string source_asset;
+  std::string dest_asset;
   for (size_t n = 0; n < get_num_txes(); ++n)
   {
     const tools::wallet2::tx_construction_data &cd = get_tx(n);
+    if (!cd.sources.empty()) {
+      if (n == 0) {
+        source_asset = cd.sources[0].asset_type;
+      } else {
+        if (source_asset != cd.sources[0].asset_type) {
+          fail_msg_writer() << tr("at least 2 different type of tx found(e.g. offshore and xusd_to_xasset). Please make sure all loaded tx types are homogeneous.");
+          return false;
+        }
+      }
+    }
     fee += cd.fee;
     std::vector<tx_extra_field> tx_extra_fields;
     bool has_encrypted_payment_id = false;
@@ -8181,9 +8186,6 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
       }
     }
 
-    if (!cd.sources.empty()) {
-      source_asset = cd.sources[0].asset_type;
-    }
     for (size_t s = 0; s < cd.sources.size(); ++s)
     {
       amount += cd.sources[s].amount;
@@ -8208,6 +8210,20 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
         dests.insert(std::make_pair(entry.addr, std::make_pair(entry.asset_type, std::make_pair(address, entry_amount))));
       else
         i->second.second.second += entry_amount;
+
+      // set the destination asset type
+      if (n == 0 && entry.asset_type != source_asset) {
+        dest_asset = entry.asset_type;
+      }
+      if (n > 0) {
+        if (entry.asset_type != dest_asset && entry.asset_type != source_asset) {
+          fail_msg_writer() << tr("at least 2 different type of tx found(e.g. offshore and xusd_to_xasset). Please make sure all loaded tx types are homogeneous.");
+          return false;
+        }
+      }
+    }
+    if (dest_asset.empty()) {
+      dest_asset = source_asset;
     }
 
     uint64_t change_amount = (source_asset == "XHV") ? cd.change_dts.amount: source_asset == "XUSD" ? cd.change_dts.amount_usd : cd.change_dts.amount_xasset;
