@@ -6354,7 +6354,7 @@ void BlockchainLMDB::migrate_6_7()
           
           std::vector<std::pair<uint64_t, uint64_t>> tx_output_indices;
           bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
-          for (int idx=0; idx<tx.vout.size(); idx++) {
+          for (size_t idx=0; idx<tx.vout.size(); idx++) {
             auto output = tx.vout[idx];
             crypto::public_key pubkey = null_pkey;
             rct::key commitment;
@@ -6625,7 +6625,7 @@ void BlockchainLMDB::migrate_7_8()
             throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
 
           bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
-          for (int idx=0; idx<tx.vout.size(); idx++) {
+          for (size_t idx=0; idx<tx.vout.size(); idx++) {
             auto output = tx.vout[idx];
             crypto::public_key pubkey = null_pkey;
             rct::key commitment;

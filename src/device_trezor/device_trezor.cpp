@@ -488,7 +488,7 @@ namespace trezor {
                                 tools::wallet2::signed_tx_set & signed_tx,
                                 hw::tx_aux_data & aux_data)
     {
-      CHECK_AND_ASSERT_THROW_MES(unsigned_tx.transfers.first == 0, "Unsuported non zero offset");
+      CHECK_AND_ASSERT_THROW_MES(unsigned_tx.transfers.at("XHV").first == 0, "Unsuported non zero offset");
 
       TREZOR_AUTO_LOCK_CMD();
       require_connected();
@@ -499,7 +499,7 @@ namespace trezor {
       const size_t num_tx = unsigned_tx.txes.size();
       m_num_transations_to_sign = num_tx;
       signed_tx.key_images.clear();
-      signed_tx.key_images.resize(unsigned_tx.transfers.second.size());
+      signed_tx.key_images.at("XHV").resize(unsigned_tx.transfers.at("XHV").second.size());
 
       for(size_t tx_idx = 0; tx_idx < num_tx; ++tx_idx) {
         std::shared_ptr<protocol::tx::Signer> signer;
@@ -543,8 +543,8 @@ namespace trezor {
         cpend.key_images = key_images;
 
         // KI sync
-        for(size_t cidx=0, trans_max=unsigned_tx.transfers.second.size(); cidx < trans_max; ++cidx){
-          signed_tx.key_images[cidx] = unsigned_tx.transfers.second[cidx].m_key_image;
+        for(size_t cidx=0, trans_max=unsigned_tx.transfers.at("XHV").second.size(); cidx < trans_max; ++cidx){
+          signed_tx.key_images.at("XHV")[cidx] = unsigned_tx.transfers.at("XHV").second[cidx].m_key_image;
         }
 
         size_t num_sources = cdata.tx_data.sources.size();
@@ -556,13 +556,13 @@ namespace trezor {
           CHECK_AND_ASSERT_THROW_MES(src_idx < cdata.tx.vin.size(), "Invalid idx_mapped");
 
           size_t idx_map_src = cdata.tx_data.selected_transfers[idx_mapped];
-          CHECK_AND_ASSERT_THROW_MES(idx_map_src >= unsigned_tx.transfers.first, "Invalid offset");
+          CHECK_AND_ASSERT_THROW_MES(idx_map_src >= unsigned_tx.transfers.at("XHV").first, "Invalid offset");
 
-          idx_map_src -= unsigned_tx.transfers.first;
+          idx_map_src -= unsigned_tx.transfers.at("XHV").first;
           CHECK_AND_ASSERT_THROW_MES(idx_map_src < signed_tx.key_images.size(), "Invalid key image index");
 
           const auto vini = boost::get<cryptonote::txin_to_key>(cdata.tx.vin[src_idx]);
-          signed_tx.key_images[idx_map_src] = vini.k_image;
+          signed_tx.key_images.at("XHV")[idx_map_src] = vini.k_image;
         }
       }
 
