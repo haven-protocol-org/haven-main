@@ -415,18 +415,17 @@ namespace boost
     if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
-    if (ver >= 4u) {
+    if (x.type == rct::RCTTypeHaven2) {
       a & x.txnOffshoreFee;
       a & x.maskSums;
-    } else if (ver >= 1u) {
-      a & x.txnFee_usd;
-      if (ver >= 2u) {
-	      a & x.txnFee_xasset;
-      }
+    }
+    if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
       a & x.txnOffshoreFee;
+      a & x.txnFee_usd;
       a & x.txnOffshoreFee_usd;
-      if (ver >= 2u) {
-	      a & x.txnOffshoreFee_xasset;
+      if (x.type == rct::RCTTypeCLSAGN) {
+        a & x.txnFee_xasset;
+        a & x.txnOffshoreFee_xasset;
       }
     }
     //--------------
