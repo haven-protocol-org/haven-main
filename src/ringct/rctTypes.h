@@ -295,16 +295,13 @@ namespace rct {
         if (type == RCTTypeHaven2) {
           // serialize offshore fee
           VARINT_FIELD(txnOffshoreFee)
-        } else if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN)) {
-          VARINT_FIELD(txnFee_usd)
-          if (type == RCTTypeCLSAGN)
-          {
-            VARINT_FIELD(txnFee_xasset)
-          }
+        } else if (type == RCTTypeCLSAG || type == RCTTypeCLSAGN) {
           VARINT_FIELD(txnOffshoreFee)
+          VARINT_FIELD(txnFee_usd)
           VARINT_FIELD(txnOffshoreFee_usd)
           if (type == RCTTypeCLSAGN)
           {
+            VARINT_FIELD(txnFee_xasset)
             VARINT_FIELD(txnOffshoreFee_xasset)
           }
         } else {
