@@ -1062,6 +1062,7 @@ namespace cryptonote
     uint64_t amount_out = 0;
 
     //fill outputs
+    tx.amount_minted = tx.amount_burnt = 0;
     size_t output_index = 0;
     for(const tx_destination_entry& dst_entr: destinations)
     {
@@ -1114,6 +1115,18 @@ namespace cryptonote
       summary_outs_money += dst_entr_clone.amount;
       summary_outs_money_usd += dst_entr_clone.amount_usd;
       summary_outs_money_xasset += dst_entr_clone.amount_xasset;
+      if (strSource != strDest) {
+        if (dst_entr_clone.asset_type == strDest) {
+          tx.amount_minted += out.amount;
+          if (tx_type == transaction_type::OFFSHORE) {
+            tx.amount_burnt += dst_entr_clone.amount;
+          } else if (tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET) {
+            tx.amount_burnt += dst_entr_clone.amount_usd;
+          } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+            tx.amount_burnt += dst_entr_clone.amount_xasset;
+          }
+        }
+      }
 
       destination_keys.push_back(rct::pk2rct(out_eph_public_key));
     }
@@ -1135,6 +1148,13 @@ namespace cryptonote
       return false;
     }
 
+    // Add 80% of the conversion fee to the amount burnt
+    if (tx_type == transaction_type::XUSD_TO_XASSET) {
+      tx.amount_burnt += (offshore_fee_usd * 4) / 5;
+    } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+      tx.amount_burnt += (offshore_fee_xasset * 4) / 5;
+    }
+    
     //check money
     LOG_ERROR("SIM=" << summary_inputs_money);
     LOG_ERROR("SIMu=" << summary_inputs_money_usd);
@@ -1142,6 +1162,12 @@ namespace cryptonote
     LOG_ERROR("SOM=" << summary_outs_money);
     LOG_ERROR("SOMu=" << summary_outs_money_usd);
     LOG_ERROR("SOMX=" << summary_outs_money_xasset);
+    CHECK_AND_ASSERT_MES(summary_inputs_money < HAVEN_MAX_TX_VALUE, false, "XHV inputs are too much");
+    CHECK_AND_ASSERT_MES(summary_inputs_money_usd < HAVEN_MAX_TX_VALUE, false, "xUSD inputs are too much");
+    CHECK_AND_ASSERT_MES(summary_inputs_money_xasset < HAVEN_MAX_TX_VALUE, false, "xAsset inputs are too much");
+    CHECK_AND_ASSERT_MES(summary_outs_money < HAVEN_MAX_TX_VALUE, false, "XHV outputs are too much");
+    CHECK_AND_ASSERT_MES(summary_outs_money_usd < HAVEN_MAX_TX_VALUE, false, "xUSD outputs are too much");
+    CHECK_AND_ASSERT_MES(summary_outs_money_xasset < HAVEN_MAX_TX_VALUE, false, "xAsset outputs are too much");
     
     // check for watch only wallet
     bool zero_secret_key = true;
@@ -1222,56 +1248,9 @@ namespace cryptonote
 
     // zero out destination amounts
     for (size_t i = 0; i < tx.vout.size(); ++i) {
-      // fill the amount minted before amounts go encrypted if it is a conversion
-      if (tx_type == transaction_type::OFFSHORE && tx.vout[i].target.type() == typeid(txout_offshore))
-        tx.amount_minted += tx.vout[i].amount;
-      else if (tx_type == transaction_type::ONSHORE && tx.vout[i].target.type() == typeid(txout_to_key))
-        tx.amount_minted += tx.vout[i].amount;
-      else if (tx_type == transaction_type::XUSD_TO_XASSET && tx.vout[i].target.type() == typeid(txout_xasset))
-        tx.amount_minted += tx.vout[i].amount;
-      else if (tx_type == transaction_type::XASSET_TO_XUSD && tx.vout[i].target.type() == typeid(txout_offshore))
-        tx.amount_minted += tx.vout[i].amount;
       tx.vout[i].amount = 0;
     }
 
-    // Calculate amount_burnt from the amount_minted
-    if (tx_type == transaction_type::OFFSHORE) {
-      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-      boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-      amount_128 *= 1000000000000;
-      amount_128 /= exchange_128;
-      tx.amount_burnt = (uint64_t)(amount_128);
-    } else if (tx_type == transaction_type::ONSHORE) {
-      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-      boost::multiprecision::uint128_t exchange_128 = pr.unused1;
-      amount_128 *= exchange_128;
-      amount_128 /= 1000000000000;
-      tx.amount_burnt = (uint64_t)(amount_128);
-    } else if (tx_type == transaction_type::OFFSHORE_TRANSFER) {
-      tx.amount_burnt = tx.amount_minted = 0;
-    } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
-      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-      boost::multiprecision::uint128_t exchange_128 = pr[strDest];
-      amount_128 *= 1000000000000;
-      amount_128 /= exchange_128;
-      tx.amount_burnt = (uint64_t)(amount_128);
-      if (fees_version >= 3) {
-        // Add the burnt part of the fee
-        tx.amount_burnt += (uint64_t)((offshore_fee_usd * 80) / 100);
-      }
-    } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
-      boost::multiprecision::uint128_t amount_128 = tx.amount_minted;
-      boost::multiprecision::uint128_t exchange_128 = pr[strSource];
-      amount_128 *= exchange_128;
-      amount_128 /= 1000000000000;
-      tx.amount_burnt = (uint64_t)(amount_128);
-      if (fees_version >= 3) {
-        // Add the burnt part of the fee
-        tx.amount_burnt += (uint64_t)((offshore_fee_xasset * 80) / 100);
-      }
-    } else if (tx_type == transaction_type::XASSET_TRANSFER) {
-      tx.amount_burnt = tx.amount_minted = 0;
-    }
     if ((strSource != strDest) && (!tx.amount_burnt || !tx.amount_minted)) {
       LOG_ERROR("Invalid offshore TX - amount too small (<1 ATOMIC_UNIT)");
       return false;
