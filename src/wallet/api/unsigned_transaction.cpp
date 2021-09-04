@@ -100,15 +100,30 @@ bool UnsignedTransactionImpl::sign(const std::string &signedFileName)
 bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
 {
   // gather info to ask the user
-  uint64_t amount = 0, amount_to_dests = 0, change = 0;
+  uint64_t amount = 0, change = 0, fee = 0;
   size_t min_ring_size = ~0;
   std::unordered_map<cryptonote::account_public_address, std::pair<std::string, uint64_t>> dests;
   int first_known_non_zero_change_index = -1;
   std::string payment_id_string = "";
+
+  std::string source_asset;
+  std::string dest_asset;
   for (size_t n = 0; n < get_num_txes(); ++n)
   {
     const tools::wallet2::tx_construction_data &cd = get_tx(n);
 
+    if (!cd.sources.empty()) {
+      if (n == 0) {
+        source_asset = cd.sources[0].asset_type;
+      } else {
+        if (source_asset != cd.sources[0].asset_type) {
+          m_status = Status_Error;
+          m_errorString = tr("at least 2 different type of tx found(e.g. offshore and xusd_to_xasset). Please make sure all loaded tx types are homogeneous.");
+          return false;
+        }
+      }
+    }
+    fee += cd.fee;
     std::vector<cryptonote::tx_extra_field> tx_extra_fields;
     bool has_encrypted_payment_id = false;
     crypto::hash8 payment_id8 = crypto::null_hash8;
@@ -144,6 +159,7 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
     for (size_t d = 0; d < cd.splitted_dsts.size(); ++d)
     {
       const cryptonote::tx_destination_entry &entry = cd.splitted_dsts[d];
+      uint64_t entry_amount = (entry.asset_type == "XHV") ? entry.amount : entry.asset_type == "XUSD" ? entry.amount_usd : entry.amount_xasset;
       std::string address, standard_address = get_account_address_as_str(m_wallet.m_wallet->nettype(), entry.is_subaddress, entry.addr);
       if (has_encrypted_payment_id && !entry.is_subaddress)
       {
@@ -154,12 +170,28 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
         address = standard_address;
       auto i = dests.find(entry.addr);
       if (i == dests.end())
-        dests.insert(std::make_pair(entry.addr, std::make_pair(address, entry.amount)));
+        dests.insert(std::make_pair(entry.addr, std::make_pair(address, entry_amount)));
       else
-        i->second.second += entry.amount;
-      amount_to_dests += entry.amount;
+        i->second.second += entry_amount;
+
+      // set the destination asset type
+      if (n == 0 && entry.asset_type != source_asset) {
+        dest_asset = entry.asset_type;
+      }
+
+       if (n > 0) {
+        if (entry.asset_type != dest_asset && entry.asset_type != source_asset) {
+          m_status = Status_Error;
+          m_errorString = tr("at least 2 different type of tx found(e.g. offshore and xusd_to_xasset). Please make sure all loaded tx types are homogeneous.");
+          return false;
+        }
+      }
+
     }
-    if (cd.change_dts.amount > 0)
+
+    uint64_t change_amount = (source_asset == "XHV") ? cd.change_dts.amount: source_asset == "XUSD" ? cd.change_dts.amount_usd : cd.change_dts.amount_xasset;
+
+    if (change_amount > 0)
     {
       auto it = dests.find(cd.change_dts.addr);
       if (it == dests.end())
@@ -168,13 +200,13 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
         m_errorString = tr("Claimed change does not go to a paid address");
         return false;
       }
-      if (it->second.second < cd.change_dts.amount)
+      if (it->second.second.second < change_amount)
       {
         m_status = Status_Error;
         m_errorString = tr("Claimed change is larger than payment to the change address");
         return  false;
       }
-      if (cd.change_dts.amount > 0)
+      if (change_amount > 0)
       {
         if (first_known_non_zero_change_index == -1)
           first_known_non_zero_change_index = n;
@@ -185,16 +217,21 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
           return false;
         }
       }
-      change += cd.change_dts.amount;
-      it->second.second -= cd.change_dts.amount;
-      if (it->second.second == 0)
+      change += change_amount;
+      it->second.second.second -= change_amount;
+      if (it->second.second.second == 0)
         dests.erase(cd.change_dts.addr);
     }
   }
   std::string dest_string;
   for (auto i = dests.begin(); i != dests.end(); )
   {
-    dest_string += (boost::format(tr("sending %s to %s")) % cryptonote::print_money(i->second.second) % i->second.first).str();
+   if (i->second.second.second > 0)
+    {
+      if (!dest_string.empty())
+        dest_string += ", ";
+      dest_string += (boost::format(tr("sending %s %s to %s")) % print_money(i->second.second.second) %  i->second.first % i->second.second.first).str();
+    }
     ++i;
     if (i != dests.end())
       dest_string += ", ";
@@ -206,12 +243,12 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
   if (change > 0)
   {
     std::string address = get_account_address_as_str(m_wallet.m_wallet->nettype(), get_tx(0).subaddr_account > 0, get_tx(0).change_dts.addr);
-    change_string += (boost::format(tr("%s change to %s")) % cryptonote::print_money(change) % address).str();
+     change_string += (boost::format(tr("%s %s change to %s")) % print_money(change) % source_asset % address).str();
   }
   else
     change_string += tr("no change");
-  uint64_t fee = amount - amount_to_dests;
-  m_confirmationMessage = (boost::format(tr("Loaded %lu transactions, for %s, fee %s, %s, %s, with min ring size %lu. %s")) % (unsigned long)get_num_txes() % cryptonote::print_money(amount) % cryptonote::print_money(fee) % dest_string % change_string % (unsigned long)min_ring_size % extra_message).str();
+  
+  m_confirmationMessage = (boost::format(tr("Loaded %lu transaction, for %s, fee %s %s, %s, %s, with min ring size %lu, %s. %sIs this okay?")) % (unsigned long)get_num_txes() % print_money(amount) % print_money(fee) % source_asset % dest_string % change_string % (unsigned long)min_ring_size % payment_id_string % extra_message).str();
   return true;
 }
 
