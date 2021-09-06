@@ -102,8 +102,7 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
   // gather info to ask the user
   uint64_t amount = 0, change = 0, fee = 0;
   size_t min_ring_size = ~0;
-  std::unordered_map<cryptonote::account_public_address, std::pair<std::string, uint64_t>> dests;
-  int first_known_non_zero_change_index = -1;
+  std::unordered_map<cryptonote::account_public_address, std::pair<std::string, std::pair<std::string, uint64_t>>> dests;  int first_known_non_zero_change_index = -1;
   std::string payment_id_string = "";
 
   std::string source_asset;
@@ -170,9 +169,9 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
         address = standard_address;
       auto i = dests.find(entry.addr);
       if (i == dests.end())
-        dests.insert(std::make_pair(entry.addr, std::make_pair(address, entry_amount)));
+        dests.insert(std::make_pair(entry.addr, std::make_pair(entry.asset_type, std::make_pair(address, entry_amount))));
       else
-        i->second.second += entry_amount;
+        i->second.second.second += entry_amount;
 
       // set the destination asset type
       if (n == 0 && entry.asset_type != source_asset) {
@@ -230,7 +229,7 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
     {
       if (!dest_string.empty())
         dest_string += ", ";
-      dest_string += (boost::format(tr("sending %s %s to %s")) % print_money(i->second.second.second) %  i->second.first % i->second.second.first).str();
+      dest_string += (boost::format(tr("sending %s %s to %s")) % cryptonote::print_money(i->second.second.second) %  i->second.first % i->second.second.first).str();
     }
     ++i;
     if (i != dests.end())
@@ -243,12 +242,12 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
   if (change > 0)
   {
     std::string address = get_account_address_as_str(m_wallet.m_wallet->nettype(), get_tx(0).subaddr_account > 0, get_tx(0).change_dts.addr);
-     change_string += (boost::format(tr("%s %s change to %s")) % print_money(change) % source_asset % address).str();
+     change_string += (boost::format(tr("%s %s change to %s")) % cryptonote::print_money(change) % source_asset % address).str();
   }
   else
     change_string += tr("no change");
   
-  m_confirmationMessage = (boost::format(tr("Loaded %lu transaction, for %s, fee %s %s, %s, %s, with min ring size %lu, %s. %sIs this okay?")) % (unsigned long)get_num_txes() % print_money(amount) % print_money(fee) % source_asset % dest_string % change_string % (unsigned long)min_ring_size % payment_id_string % extra_message).str();
+  m_confirmationMessage = (boost::format(tr("Loaded %lu transaction, for %s, fee %s %s, %s, %s, with min ring size %lu, %s. %sIs this okay?")) % (unsigned long)get_num_txes() % cryptonote::print_money(amount) % cryptonote::print_money(fee) % source_asset % dest_string % change_string % (unsigned long)min_ring_size % payment_id_string % extra_message).str();
   return true;
 }
 
