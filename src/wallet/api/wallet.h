@@ -153,12 +153,12 @@ public:
                                         optional<std::vector<uint64_t>> amount, uint32_t mixin_count,
                                         PendingTransaction::Priority priority = PendingTransaction::Priority_Low,
                                         uint32_t subaddr_account = 0,
-                                        std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV") override;
+                                        std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV", PendingTransaction::TransactionType tx_type = PendingTransaction::TRANSFER) override;
     PendingTransaction * createTransaction(const std::string &dst_addr, const std::string &payment_id,
                                         optional<uint64_t> amount, uint32_t mixin_count,
                                         PendingTransaction::Priority priority = PendingTransaction::Priority_Low,
                                         uint32_t subaddr_account = 0,
-                                        std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV") override;
+                                        std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV", PendingTransaction::TransactionType tx_type = PendingTransaction::TRANSFER) override;
     virtual PendingTransaction * createSweepUnmixableTransaction() override;
     bool submitTransaction(const std::string &fileName) override;
     virtual UnsignedTransaction * loadUnsignedTx(const std::string &unsigned_filename) override;

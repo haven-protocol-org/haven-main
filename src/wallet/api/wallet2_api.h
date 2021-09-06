@@ -86,6 +86,19 @@ struct PendingTransaction
         Priority_Last
     };
 
+    enum TransactionType {
+        UNSET = 0,
+        TRANSFER,
+        OFFSHORE,
+        ONSHORE,
+        OFFSHORE_TRANSFER,
+        XUSD_TO_XASSET,
+        XASSET_TO_XUSD,
+        XASSET_TRANSFER
+  };
+
+    
+
     virtual ~PendingTransaction() = 0;
     virtual int status() const = 0;
     virtual std::string errorString() const = 0;
@@ -832,7 +845,7 @@ struct Wallet
                                                    optional<std::vector<uint64_t>> amount, uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,
-                                                   std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV") = 0;
+                                                   std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV", PendingTransaction::TransactionType tx_type = PendingTransaction::TRANSFER) = 0;
 
     /*!
      * \brief createTransaction creates transaction. if dst_addr is an integrated address, payment_id is ignored
@@ -851,7 +864,7 @@ struct Wallet
                                                    optional<uint64_t> amount, uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,
-                                                   std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV") = 0;
+                                                   std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV", PendingTransaction::TransactionType tx_type = PendingTransaction::TRANSFER) = 0;
 
     /*!
      * \brief createSweepUnmixableTransaction creates transaction with unmixable outputs.
