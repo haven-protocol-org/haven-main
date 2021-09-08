@@ -842,10 +842,12 @@ struct Wallet
      */
 
     virtual PendingTransaction * createTransactionMultDest(const std::vector<std::string> &dst_addr, const std::string &payment_id,
-                                                   optional<std::vector<uint64_t>> amount, uint32_t mixin_count,
+                                                   optional<std::vector<uint64_t>> amount, 
+                                                   const std::string &str_source, const std::string &str_dest, PendingTransaction::TransactionType tx_type,
+                                                   uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,
-                                                   std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV", PendingTransaction::TransactionType tx_type = PendingTransaction::TRANSFER) = 0;
+                                                   std::set<uint32_t> subaddr_indices = {}) = 0;
 
     /*!
      * \brief createTransaction creates transaction. if dst_addr is an integrated address, payment_id is ignored
@@ -861,10 +863,12 @@ struct Wallet
      */
 
     virtual PendingTransaction * createTransaction(const std::string &dst_addr, const std::string &payment_id,
-                                                   optional<uint64_t> amount, uint32_t mixin_count,
+                                                   optional<uint64_t> amount, 
+                                                   const std::string &str_source, const std::string &str_dest, PendingTransaction::TransactionType tx_type,
+                                                   uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,
-                                                   std::set<uint32_t> subaddr_indices = {}, const std::string &str_source = "XHV", const std::string &str_dest = "XHV", PendingTransaction::TransactionType tx_type = PendingTransaction::TRANSFER) = 0;
+                                                   std::set<uint32_t> subaddr_indices = {}) = 0;
 
     /*!
      * \brief createSweepUnmixableTransaction creates transaction with unmixable outputs.
