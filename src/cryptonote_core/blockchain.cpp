@@ -756,15 +756,6 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   m_offline = offline;
   m_fixed_difficulty = fixed_difficulty;
 
-  std::string oracle_public_key = get_config(m_nettype).ORACLE_PUBLIC_KEY;
-  MINFO("Using oracle public key:" << ENDL << oracle_public_key);
-  BIO* bio = BIO_new_mem_buf(oracle_public_key.c_str(), oracle_public_key.size());
-  if (!bio) {
-    return false;
-  }
-  m_oracle_public_key = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
-  BIO_free(bio);
-
   if (m_hardfork == nullptr)
   {
     if (m_nettype ==  FAKECHAIN || m_nettype == STAGENET)
@@ -984,12 +975,6 @@ bool Blockchain::deinit()
     LOG_ERROR("There was an issue closing/storing the blockchain, shutting down now to prevent issues!");
   }
 
-  if (m_oracle_public_key) {
-    // Cleanup the openssl stuff
-    EVP_PKEY_free(m_oracle_public_key);
-    m_oracle_public_key = NULL;
-  }
-  
   delete m_hardfork;
   m_hardfork = NULL;
   delete m_db;
@@ -2977,38 +2962,8 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
   COMMAND_RPC_GET_PRICING_RECORD::request req = AUTO_VAL_INIT(req);
   COMMAND_RPC_GET_PRICING_RECORD::response res = AUTO_VAL_INIT(res);
   
-  // Do we have a public key for verification yet?
-  if (!m_oracle_public_key) {
-
-    if (0/*m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_FEES_V3*/) {
-      
-      COMMAND_RPC_GET_PUBLIC_KEY::request req_key = AUTO_VAL_INIT(req_key);
-      COMMAND_RPC_GET_PUBLIC_KEY::response res_key = AUTO_VAL_INIT(res_key);
-      
-      // Attempt to get the public key for signature verifications
-      http_client.set_server("keys.havenprotocol.org:443", boost::none, epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
-      std::string url = "/get_public_key.php";
-      r = epee::net_utils::invoke_http_json(url, req_key, res_key, http_client, std::chrono::seconds(10), "GET");
-      if (r) {
-	
-	// Create key from the returned string if possible
-	BIO* bio = BIO_new_mem_buf(res_key.str_ec_public_key.c_str(), res_key.str_ec_public_key.size());
-	if (bio) {
-	  m_oracle_public_key = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
-	  BIO_free(bio);
-	}
-      }
-    }
-  }
-  
   std::array<std::string, 3> oracle_urls = get_config(m_nettype).ORACLE_URLS;
   std::shuffle(oracle_urls.begin(), oracle_urls.end(), std::default_random_engine(crypto::rand<unsigned>()));
-  if (0/*m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_FEES_V3*/) {
-    if ((m_nettype == TESTNET) || (m_nettype == STAGENET)) {
-      // Attempt BAND - if no connection, failover to our established Oracle system
-      oracle_urls = {{"feeds.haven.bandprotocol.com:443", "oracle2.havenprotocol.org:443", "oracle3.havenprotocol.org:443"}};
-    }
-  }
   for (size_t n=0; n<oracle_urls.size(); n++) {
     http_client.set_server(oracle_urls[n], boost::none, epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
     std::string url = "/price/?timestamp=" + boost::lexical_cast<std::string>(timestamp) + "&version=" + std::to_string(m_hardfork->get_current_version());
@@ -3031,18 +2986,14 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
 
   // Pricing records can go in at any time - we just mustn't create txs that use them before the HF!!!
   if (hf_version >= HF_VERSION_OFFSHORE_PRICING) {
-
     // Only VERIFY if full mode has been enabled
     if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
-
       // Verify the signature
-      if (res.pr.verifySignature(m_oracle_public_key)) {
-	pr = res.pr;
-	//pr.xBTC = 1000000000000;
-	//std::memset(pr.signature, 0, sizeof(pr.signature));
+      if (res.pr.verifySignature(get_config(m_nettype).ORACLE_PUBLIC_KEY)) {
+        pr = res.pr;
       } else {
-	LOG_PRINT_L0("Failed to verify signature of pricing record from Oracle - returning empty PR");
-	pr = offshore::pricing_record();
+        LOG_PRINT_L0("Failed to verify signature of pricing record from Oracle - returning empty PR");
+        pr = offshore::pricing_record();
       }
     } else {
       // Do not attempt to verify this pricing record
@@ -5196,47 +5147,19 @@ leave: {
 
   TIME_MEASURE_FINISH(t2);
 
-  if (m_hardfork->get_current_version() >= HF_VERSION_OFFSHORE_PRICING) {
-    
-    TIME_MEASURE_START(pricing_record);
-
-    if (!bl.pricing_record.is_empty()) {
-      if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
-        // protects chain from the oracle providing a timestamp too far in the future
-        if (bl.pricing_record.timestamp > bl.timestamp + PRICING_RECORD_VALID_TIME_DIFF_FROM_BLOCK) {
-          MERROR_VER("Block with id: " << id << std::endl << "has pricing record timestamp too far in the future: " << std::to_string(bl.pricing_record.timestamp)
-            << " Header timestamp: " << std::to_string(bl.timestamp));
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
-
-        if (!bl.pricing_record.verifySignature(m_oracle_public_key)) {
-          MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record signature: " << epee::string_tools::pod_to_hex(bl.pricing_record.signature));
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
-
-        uint64_t top_block_timestamp = m_db->get_top_block_timestamp();
-        if (bl.pricing_record.timestamp <= top_block_timestamp) {
-          MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record timestamp: " << std::to_string(bl.pricing_record.timestamp)
-            << " Top timestamp: " << std::to_string(top_block_timestamp));
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
+  // validate the pricing record
+  offshore::pricing_record pr;
+  if (hf_version >= HF_VERSION_OFFSHORE_PRICING) {
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      pr = bl.pricing_record;
+      TIME_MEASURE_START(pricing_record);
+      if (!pr.valid(m_nettype, hf_version, bl.timestamp, m_db->get_top_block_timestamp())) {
+        MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record!");
+        bvc.m_verifivation_failed = true;
+        goto leave;
       }
-      else
-      {
-        unsigned char test_sig[64];
-        std::memset(test_sig, 0, sizeof(test_sig));
-        if (std::memcmp(test_sig, bl.pricing_record.signature, sizeof(bl.pricing_record.signature)) != 0 && !bl.pricing_record.verifySignature(m_oracle_public_key)) {
-          MERROR_VER("Block with id: " << id << std::endl << "has invalid pricing record signature: " << epee::string_tools::pod_to_hex(bl.pricing_record.signature));
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
-      }
+      TIME_MEASURE_FINISH(pricing_record);
     }
-
-    TIME_MEASURE_FINISH(pricing_record);
   }
 
   //check proof of work
@@ -5457,20 +5380,10 @@ leave: {
     }
 #endif
 
-    if(m_hardfork->get_current_version() >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
+    // block use of timestamps in the unlock time field
+    if(hf_version >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
       bvc.m_verifivation_failed = true;
       goto leave;
-    }
-
-    // Validate that pricing record has not grown too old since it was first included in the pool
-    if (tx.pricing_record_height > 0 && (blockchain_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-      // see explanation for these hard-coded allowances in add_tx tx_pool.cpp 
-      if (blockchain_height != 848280 || tx.pricing_record_height != 848269 || epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6")
-      {
-        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
-        bvc.m_verifivation_failed = true;
-        goto leave;
-      }
     }
 
     // get the asset types
@@ -5480,6 +5393,15 @@ leave: {
       LOG_PRINT_L2("At least 1 input or 1 output of the tx was invalid.");
       bvc.m_verifivation_failed = true;
       goto leave;
+    }
+
+    // Validate pr per tx
+    if (source != dest) {
+      if (!pr.valid(m_nettype, blockchain_height, tx.pricing_record_height, tx.hash)) {
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
     }
 
     TIME_MEASURE_FINISH(cc);

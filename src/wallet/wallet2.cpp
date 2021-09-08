@@ -7337,6 +7337,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     }
 
     uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+    uint32_t hf_version = get_current_hard_fork();
     bool r = cryptonote::construct_tx_and_get_tx_key(
       m_account.get_keys(),
       m_subaddresses,
@@ -7354,6 +7355,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       current_height,
       pr,
       fees_version,
+      hf_version,
       sd.use_rct,
       rct_config,
       m_multisig ? &msout : NULL
@@ -7915,8 +7917,9 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
       bool b = get_pricing_record(pr, current_height);
       THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
     }
-    uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
 
+    uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+    uint32_t hf_version = get_current_hard_fork();
     bool r = cryptonote::construct_tx_with_tx_key(
       m_account.get_keys(),
       m_subaddresses,
@@ -7934,6 +7937,7 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
       current_height,
       pr,
       fees_version,
+      hf_version,
       sd.use_rct,
       rct_config,
       &msout,
@@ -9711,6 +9715,7 @@ void wallet2::transfer_selected_rct(
     THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
   }
   uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+  uint32_t hf_version = get_current_hard_fork();
   bool r = cryptonote::construct_tx_and_get_tx_key(
     m_account.get_keys(),
     m_subaddresses,
@@ -9728,6 +9733,7 @@ void wallet2::transfer_selected_rct(
     current_height,
     pr,
     fees_version,
+    hf_version,
     true,
     rct_config,
     m_multisig ? &msout : NULL
@@ -9783,6 +9789,7 @@ void wallet2::transfer_selected_rct(
           THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
         }
         uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+        uint32_t hf_version = get_current_hard_fork();
         bool r = cryptonote::construct_tx_with_tx_key(
           m_account.get_keys(),
           m_subaddresses,
@@ -9799,7 +9806,8 @@ void wallet2::transfer_selected_rct(
           additional_tx_keys,
           current_height,
           pr,
-          fees_version, 
+          fees_version,
+          hf_version,
           true,
           rct_config,
           &msout,

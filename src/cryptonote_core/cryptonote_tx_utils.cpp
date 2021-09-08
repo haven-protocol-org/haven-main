@@ -734,6 +734,7 @@ namespace cryptonote
     uint64_t current_height, 
     offshore::pricing_record pr, 
     uint32_t fees_version,
+    uint32_t hf_version,
     bool rct, 
     const rct::RCTConfig &rct_config, 
     rct::multisig_out *msout, 
@@ -756,12 +757,11 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    // NEAC: verify this is correct, because it introduces a relationship between bp_version and tx.version that isn't guaranteed
-    if (rct_config.bp_version >= 5) {
+    if (hf_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
-    } else if (rct_config.bp_version == 4) {
+    } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
       tx.version = 4;
-    } else if (rct_config.bp_version == 3) {
+    } else if (hf_version >= HF_VERSION_CLSAG) {
       tx.version = 3;
     } else {
       tx.version = 2;
@@ -1149,10 +1149,12 @@ namespace cryptonote
     }
 
     // Add 80% of the conversion fee to the amount burnt
-    if (tx_type == transaction_type::XUSD_TO_XASSET) {
-      tx.amount_burnt += (offshore_fee_usd * 4) / 5;
-    } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
-      tx.amount_burnt += (offshore_fee_xasset * 4) / 5;
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      if (tx_type == transaction_type::XUSD_TO_XASSET) {
+        tx.amount_burnt += (offshore_fee_usd * 4) / 5;
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+        tx.amount_burnt += (offshore_fee_xasset * 4) / 5;
+      }
     }
     
     //check money
@@ -1310,6 +1312,7 @@ namespace cryptonote
     uint64_t current_height,
     offshore::pricing_record pr,
     uint32_t fees_version,
+    uint32_t hf_version,
     bool rct,
     const rct::RCTConfig &rct_config,
     rct::multisig_out *msout
@@ -1348,6 +1351,7 @@ namespace cryptonote
         current_height,
         pr,
         fees_version,
+        hf_version,
         rct,
         rct_config,
         msout

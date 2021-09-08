@@ -155,6 +155,7 @@ namespace cryptonote
     uint64_t current_height,
     offshore::pricing_record pr,
     uint32_t fees_version,
+    uint32_t hf_version,
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
     rct::multisig_out *msout = NULL,
@@ -177,6 +178,7 @@ namespace cryptonote
     uint64_t current_height,
     offshore::pricing_record pr,
     uint32_t fees_version,
+    uint32_t hf_version,
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
     rct::multisig_out *msout = NULL
