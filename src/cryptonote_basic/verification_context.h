@@ -31,6 +31,7 @@
 #pragma once
 
 #include "cryptonote_protocol/enums.h"
+#include "offshore/pricing_record.h"
 
 namespace cryptonote
 {
@@ -56,6 +57,8 @@ namespace cryptonote
     std::string m_source_asset;
     std::string m_dest_asset;
     transaction_type m_type;
+    offshore::pricing_record pr;
+    bool tx_pr_height_verified = false;
   };
 
   struct block_verification_context

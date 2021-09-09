@@ -367,7 +367,7 @@ namespace offshore
     return false;
   }
 
-  void pricing_record::set_for_heigth_821428() {
+  void pricing_record::set_for_height_821428() {
     const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
     this->xAG = 614976143259;
     this->xAU = 8892867133;
@@ -429,33 +429,5 @@ namespace offshore
 
     return true;
   }
-
-  // overload for pr validation for txs
-  bool pricing_record::valid(cryptonote::network_type nettype, uint64_t height, uint64_t tx_pr_height, const crypto::hash& tx_hash) const
-  {
-    // is it empty?
-    if (this->empty())
-      return false;
-
-    // is it too old?
-    if ((height - PRICING_RECORD_VALID_BLOCKS) > tx_pr_height) {
-      // exception for a tx that used older pr and already in the chain
-      std::string h = epee::string_tools::pod_to_hex(tx_hash);
-      if (h != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
-        LOG_ERROR("Tx with id " << h << " uses pricing record that is too old.");
-        return false;
-      }
-    }
-
-    // is it from a trusted source?
-    if (!verifySignature(get_config(nettype).ORACLE_PUBLIC_KEY)) {
-      std::string h = epee::string_tools::pod_to_hex(tx_hash);
-      LOG_ERROR("Tx with id" << h << "uses invalid pricing record.");
-      return false;
-    }
-
-    return true;
-  }
-
 
 }

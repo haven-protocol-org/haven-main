@@ -179,7 +179,6 @@ namespace cryptonote
     std::string source = tvc.m_source_asset;
     std::string dest = tvc.m_dest_asset;
     transaction_type tx_type = tvc.m_type;
-    offshore::pricing_record pr;
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
     if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
@@ -207,47 +206,55 @@ namespace cryptonote
 
     // check whether this is a conversion tx.
     if (source != dest) {
-      // Get the pricing record that was used for conversion
-      block bl;
-      bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
-      if (!r) {
-        LOG_ERROR("error: failed to get block containing pricing record");
-        tvc.m_verifivation_failed = true;
-        return false;
-      }
-      pr = bl.pricing_record;
-
-      // validate the pr for this tx
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
-      if (!pr.valid(m_blockchain.get_nettype(), current_height, tx.pricing_record_height, tx.hash)) {
-        LOG_ERROR("Tx uses invalid pricing record.");
-        tvc.m_verifivation_failed = true;
-        return false;
+      if (!tvc.tx_pr_height_verified) { // will only be false if poping blocks
+        if (((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height)) {
+          if (epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
+            LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        } else {
+          tvc.tx_pr_height_verified = true;
+        }
+      }
+      if(tvc.pr.empty()) {
+        // Get the pricing record that was used for conversion
+        block bl;
+        bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
+        if (!r) {
+          LOG_ERROR("error: failed to get block containing pricing record");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+        tvc.pr = bl.pricing_record;
       }
 
-      // check whether we have a valid exchange rate
+      // check whether we have a valid exchange rate (some values in the pr mioght be 0)
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-        if (!pr.unused1) { // using 24 hr MA in unused1
+        if (!tvc.pr.unused1) { // using 24 hr MA in unused1
+          LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+        if (!tvc.pr[dest]) {
+          LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+        if (!tvc.pr[source]) {
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
         }
       } else {
-        if (tx_type == transaction_type::XUSD_TO_XASSET) {
-          if (!pr[dest]) {
-            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-        } else { // should be xasset_to_xusd
-          if (!pr[source]) {
-            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-        }
+        LOG_ERROR("error: wrong tx type set.");
+        tvc.m_verifivation_failed = true;
+        return false;
       }
-      
+    
       // check whether we have empty amount burnt/mint. Actual validation happens in verRctSemanticsSimple2()
       if (!tx.amount_burnt || !tx.amount_minted) {
         LOG_ERROR("error: Invalid Tx found. 0 burnt/minted for a conversion tx.");
@@ -256,17 +263,13 @@ namespace cryptonote
       }
 
       // Check the amount burnt and minted
-      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest, version)) {
+      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
         LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
         tvc.m_verifivation_failed = true;
         return false;
       }
 
-      // HERE BE DRAGONS!!!
-      // NEAC: verify whether this value of unlock time needs to use current_height instead of PR height
-      // Verify the offshore conversion fee is present and correct here
       uint64_t unlock_time = tx.unlock_time - current_height;
-      // LAND AHOY
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         if (unlock_time < 180) {
           LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
@@ -311,7 +314,7 @@ namespace cryptonote
 
     // check the std tx fee
     if (!kept_by_block) {
-      if (!fee || !m_blockchain.check_fee(tx_weight, fee, pr, source, dest)){
+      if (!fee || !m_blockchain.check_fee(tx_weight, fee, tvc.pr, source, dest)){
         tvc.m_verifivation_failed = true;
         tvc.m_fee_too_low = true;
         return false;
@@ -620,7 +623,6 @@ namespace cryptonote
     std::string source = tvc.m_source_asset;
     std::string dest = tvc.m_dest_asset;
     transaction_type tx_type = tvc.m_type;
-    offshore::pricing_record pr;
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
     if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
@@ -657,51 +659,58 @@ namespace cryptonote
       
       // this check is here because of a soft fork that needed to happen due to invalid pr
       if (tx.pricing_record_height > 658500 || m_blockchain.get_nettype() != MAINNET) {
-        // NEAC: recover from the reorg during Oracle switch - 1 TX affected
-        if (tx.pricing_record_height == 821428 && m_blockchain.get_nettype() == MAINNET) {
-         pr.set_for_heigth_821428();
-        } else {
-          // Get the pricing record that was used for conversion
-          block bl;
-          bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
-          if (!r) {
-            LOG_ERROR("error: failed to get block containing pricing record");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-          pr = bl.pricing_record;
-        }
-        ////// recover ends //////////
 
-        // validate the pr for this tx
         uint64_t current_height = m_blockchain.get_current_blockchain_height();
-        if (!pr.valid(m_blockchain.get_nettype(), current_height, tx.pricing_record_height, tx.hash)) {
-          LOG_ERROR("Tx uses invalid pricing record.");
-          tvc.m_verifivation_failed = true;
-          return false;
+        if (!tvc.tx_pr_height_verified) { // will only be false if poping blocks
+          if (((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height)) {
+            if (epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
+              LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          } else {
+            tvc.tx_pr_height_verified = true;
+          }
+        }
+        if(tvc.pr.empty()) {
+          if (tx.pricing_record_height == 821428 && m_blockchain.get_nettype() == MAINNET) {
+            tvc.pr.set_for_height_821428();
+          } else {
+            // Get the pricing record that was used for conversion
+            block bl;
+            bool r = m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl);
+            if (!r) {
+              LOG_ERROR("error: failed to get block containing pricing record");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+            tvc.pr = bl.pricing_record;
+          }
         }
 
         // check whether we have a valid exchange rate (some values in the pr mioght be 0)
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-          if (!pr.unused1) { // using 24 hr MA in unused1
+          if (!tvc.pr.unused1) { // using 24 hr MA in unused1
+            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+          if (!tvc.pr[dest]) {
+            LOG_ERROR("error: empty exchange rate. Conversion not possible.");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+          if (!tvc.pr[source]) {
             LOG_ERROR("error: empty exchange rate. Conversion not possible.");
             tvc.m_verifivation_failed = true;
             return false;
           }
         } else {
-          if (tx_type == transaction_type::XUSD_TO_XASSET) {
-            if (!pr[dest]) {
-              LOG_ERROR("error: empty exchange rate. Conversion not possible.");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
-          } else { // should be xasset_to_xusd
-            if (!pr[source]) {
-              LOG_ERROR("error: empty exchange rate. Conversion not possible.");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
-          }
+          LOG_ERROR("error: wrong tx type set.");
+          tvc.m_verifivation_failed = true;
+          return false;
         }
         
         // check whether we have empty amount burnt/mint. Actual validation happens in verRctSemanticsSimple()
@@ -712,17 +721,14 @@ namespace cryptonote
         }
 
         // Check the amount burnt and minted
-        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, pr, source, dest, version)) {
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
           tvc.m_verifivation_failed = true;
           return false;
         }
 
-        // HERE BE DRAGONS!!!
-        // NEAC: verify whether this value of unlock time needs to use current_height instead of PR height
-        // Verify the offshore conversion fee is present and correct here
-        uint64_t unlock_time = tx.unlock_time - current_height;
-        // LAND AHOY
+        // changing tx pricing_record height to current_heihgt might cause sync problems due to at leat 1 block diff between them.
+        uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
           if (unlock_time < 180) {
             LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
@@ -786,7 +792,7 @@ namespace cryptonote
 
     // check the std tx fee
     if (!kept_by_block) {
-      if ((!fee && !fee_usd && !fee_xasset) || !m_blockchain.check_fee(tx_weight, source == "XHV" ? fee : source == "XUSD" ? fee_usd : fee_xasset, pr, source, dest)){
+      if ((!fee && !fee_usd && !fee_xasset) || !m_blockchain.check_fee(tx_weight, source == "XHV" ? fee : source == "XUSD" ? fee_usd : fee_xasset, tvc.pr, source, dest)){
         tvc.m_verifivation_failed = true;
         tvc.m_fee_too_low = true;
         return false;

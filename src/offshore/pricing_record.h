@@ -113,21 +113,14 @@ namespace offshore
       bool store(epee::serialization::portable_storage& dest, epee::serialization::section* hparent) const;
       pricing_record(const pricing_record& orig) noexcept;
       ~pricing_record() = default;
-      void set_for_heigth_821428();
+      void set_for_height_821428();
       bool equal(const pricing_record& other) const noexcept;
       bool empty() const noexcept;
       bool verifySignature(const std::string& public_key) const;
-      bool valid(cryptonote::network_type nettype, uint64_t height, uint64_t tx_pr_height, const crypto::hash& tx_hash) const;
       bool valid(cryptonote::network_type nettype, uint32_t hf_version, uint64_t bl_timestamp, uint64_t last_bl_timestamp) const;
-      
 
       pricing_record& operator=(const pricing_record& orig) noexcept;
       uint64_t operator[](const std::string& asset_type) const;
-
-    // enum class validation_type {
-    //   transaction = 0,
-    //   block
-    // }
   };
 
   inline bool operator==(const pricing_record& a, const pricing_record& b) noexcept
