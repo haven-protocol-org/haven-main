@@ -1292,7 +1292,6 @@ namespace rct {
     const std::string& strSource, 
     const std::string& strDest,
     uint64_t amount_burnt,
-    uint64_t amount_minted,
     const std::vector<cryptonote::tx_out> &vout
   ){
 
@@ -1320,9 +1319,8 @@ namespace rct {
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
       CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
       if (strSource != strDest) {
-        CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pr found for a conversion tx");
-        CHECK_AND_ASSERT_MES(amount_burnt, false, "Empty amount_burnt found for a conversion tx");
-        CHECK_AND_ASSERT_MES(amount_minted, false, "Empty amount_minted found for a conversion tx");
+        CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
+        CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
       }
       
       // OUTPUTS SUMMED FOR EACH COLOUR

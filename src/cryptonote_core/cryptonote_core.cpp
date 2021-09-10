@@ -896,24 +896,26 @@ namespace cryptonote
         tx_info[n].result = false;
 	      continue;
       }
-     
-      // validate that tx uses a recent pr
-      const uint64_t pr_height = tx_info[n].tx->pricing_record_height;
-      uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
-      if (((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height)) {
-        if (epee::string_tools::pod_to_hex(tx_info[n].tx->hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
-          MERROR_VER("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << pr_height);
-          set_semantics_failed(tx_info[n].tx_hash);
-          tx_info[n].tvc.m_verifivation_failed = true;
-          tx_info[n].result = false;
-          continue;
-        }
-      } else {
-        tx_info[n].tvc.tx_pr_height_verified = true;
-      }
 
       // Get the pricing_record_height for any offshore TX
       if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
+
+        // validate that tx uses a recent pr
+        const uint64_t pr_height = tx_info[n].tx->pricing_record_height;
+        uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
+        if (((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height)) {
+          // exception for 1 tx that ised 11 block old record and is already in the chain.
+          if (epee::string_tools::pod_to_hex(tx_info[n].tx->hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
+            MERROR_VER("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << pr_height);
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            continue;
+          }
+        } else {
+          tx_info[n].tvc.tx_pr_height_verified = true;
+        }
+
         // NEAC: recover from the reorg during Oracle switch - 1 TX affected
         if (pr_height == 821428 && m_nettype == MAINNET) {
           tx_info[n].tvc.pr.set_for_height_821428();
@@ -1005,7 +1007,7 @@ namespace cryptonote
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2)
           continue;
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2) {
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, tx_info[n].tx->vout))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout))
           {
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;

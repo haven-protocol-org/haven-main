@@ -2964,7 +2964,7 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
   
   std::array<std::string, 3> oracle_urls = get_config(m_nettype).ORACLE_URLS;
   std::shuffle(oracle_urls.begin(), oracle_urls.end(), std::default_random_engine(crypto::rand<unsigned>()));
-  for (size_t n=0; n<oracle_urls.size(); n++) {
+  for (size_t n = 0; n < oracle_urls.size(); n++) {
     http_client.set_server(oracle_urls[n], boost::none, epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
     std::string url = "/price/?timestamp=" + boost::lexical_cast<std::string>(timestamp) + "&version=" + std::to_string(m_hardfork->get_current_version());
     r = epee::net_utils::invoke_http_json(url, req, res, http_client, std::chrono::seconds(10), "GET");
@@ -3005,7 +3005,7 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
   }
 
   std::string sig_hex;
-  for (unsigned int i=0; i<64; i++) {
+  for (size_t i = 0; i < 64; i++) {
     std::stringstream ss;
     ss << std::hex << std::setw(2) << std::setfill('0') << (0xff & pr.signature[i]);
     sig_hex += ss.str();

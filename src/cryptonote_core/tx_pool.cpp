@@ -207,8 +207,8 @@ namespace cryptonote
     // check whether this is a conversion tx.
     if (source != dest) {
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
-      if (!tvc.tx_pr_height_verified) { // will only be false if poping blocks
-        if (((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height)) {
+      if (!tvc.tx_pr_height_verified) { // tx_pr_height_verified will only be false if poping blocks, otherwise the tx should already have been rejected.
+        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
           if (epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
             LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
             tvc.m_verifivation_failed = true;
