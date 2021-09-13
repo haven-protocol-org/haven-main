@@ -206,14 +206,14 @@ namespace cryptonote
 
     // check whether this is a conversion tx.
     if (source != dest) {
+
+      // get pr for this tx
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if (!tvc.tx_pr_height_verified) { // tx_pr_height_verified will only be false if poping blocks, otherwise the tx should already have been rejected.
-        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-          if (epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
-            LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
+        if (!tx_pr_height_valid(current_height, tx.pricing_record_height, tx.hash)) {
+          LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
+          tvc.m_verifivation_failed = true;
+          return false;
         } else {
           tvc.tx_pr_height_verified = true;
         }
@@ -650,6 +650,7 @@ namespace cryptonote
 
     // check whether this is a conversion tx.
     if (source != dest) {
+
       // Block all conversions as of fork 17 till HAVEN2
       if (version >= HF_VERSION_XASSET_FEES_V2) {
         LOG_ERROR("Conversion TXs are not permitted as of fork" << HF_VERSION_XASSET_FEES_V2);
@@ -660,14 +661,13 @@ namespace cryptonote
       // this check is here because of a soft fork that needed to happen due to invalid pr
       if (tx.pricing_record_height > 658500 || m_blockchain.get_nettype() != MAINNET) {
 
+        // get the pr for this tx
         uint64_t current_height = m_blockchain.get_current_blockchain_height();
         if (!tvc.tx_pr_height_verified) { // will only be false if poping blocks
-          if (((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height)) {
-            if (epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
-              LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
+          if (!tx_pr_height_valid(current_height, tx.pricing_record_height, tx.hash)) {
+            LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
+            tvc.m_verifivation_failed = true;
+            return false;
           } else {
             tvc.tx_pr_height_verified = true;
           }

@@ -716,6 +716,16 @@ namespace cryptonote
     return true;
   }
 
+  bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash) {
+    if ((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height) {
+      // exception for 1 tx that used 11 block old record and is already in the chain.
+      if (epee::string_tools::pod_to_hex(tx_hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
+        return false;
+      }
+    }
+    return true;
+  }
+
   //---------------------------------------------------------------
   bool construct_tx_with_tx_key(
     const account_keys& sender_account_keys, 

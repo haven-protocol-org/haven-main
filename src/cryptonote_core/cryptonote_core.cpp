@@ -902,16 +902,13 @@ namespace cryptonote
 
         // validate that tx uses a recent pr
         const uint64_t pr_height = tx_info[n].tx->pricing_record_height;
-        uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
-        if (((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height)) {
-          // exception for 1 tx that ised 11 block old record and is already in the chain.
-          if (epee::string_tools::pod_to_hex(tx_info[n].tx->hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
-            MERROR_VER("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << pr_height);
-            set_semantics_failed(tx_info[n].tx_hash);
-            tx_info[n].tvc.m_verifivation_failed = true;
-            tx_info[n].result = false;
-            continue;
-          }
+        const uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
+        if (!tx_pr_height_valid(current_height, pr_height, tx_info[n].tx->hash)) {
+          MERROR_VER("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << pr_height);
+          set_semantics_failed(tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
+          continue;
         } else {
           tx_info[n].tvc.tx_pr_height_verified = true;
         }

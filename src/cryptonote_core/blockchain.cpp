@@ -5393,13 +5393,10 @@ leave: {
 
     // Validate tx pr height
     if (source != dest) {
-      if ((blockchain_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-        // exception for 1 tx that ised 11 block old record and is already in the chain.
-        if (epee::string_tools::pod_to_hex(tx.hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
-          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
+      if (!tx_pr_height_valid(blockchain_height, tx.pricing_record_height, tx.hash)) {
+        LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
+        bvc.m_verifivation_failed = true;
+        goto leave;
       }
     }
 
