@@ -3690,7 +3690,7 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
   // enforce the dummy change output for conversions after Haven2 fork.
   if (hf_version >= HF_VERSION_HAVEN2) {
     if (tvc.m_source_asset != tvc.m_dest_asset) {
-      if (tx.vout.size() >= 3) {
+      if (tx.vout.size() >= 4) {
         std::map<std::string, uint32_t> asset_counter;
         std::string asset;
         for (const auto &o: tx.vout) {
@@ -3708,18 +3708,18 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
           asset_counter[asset]++;
         }
 
-        if (asset_counter.size() > 2) {
-          MERROR_VER("TX has more than 2 different asset types in the outputs.");
+        if (asset_counter.size() != 2) {
+          MERROR_VER("Conversion tx has more or less than 2 different asset types in the outputs.");
           tvc.m_invalid_output = true;
           return false;
         }
-        if (asset_counter[tvc.m_source_asset] < 2) {
-          MERROR_VER("Conversion Txs should have at least 2 output that is same asset type as converted asset after Haven2 fork.");
+        if (asset_counter[tvc.m_source_asset] < 2 || asset_counter[tvc.m_dest_asset] < 2) {
+          MERROR_VER("Conversion Txs should have at least 2 output that is same asset type as source asset and  2 output that is same asset type as dest asset after Haven2 fork.");
           tvc.m_invalid_output = true;
           return false;
         }
       } else {
-        MERROR_VER("Conversion Txs should have at least 3 output after Haven2 fork.");
+        MERROR_VER("Conversion Txs should have at least 4 output after Haven2 fork.");
         tvc.m_invalid_output = true;
         return false;
       }
