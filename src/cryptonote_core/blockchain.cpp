@@ -1729,15 +1729,33 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
+  // collect all unique assets from fees except xhv since it is handled separetly.
+  std::set<std::string> unique_assets;
+  for (const auto& asset : fee_map) {
+    if (asset.first != "XHV") {
+      unique_assets.insert(asset.first);
+    }
+  }
+  for (const auto& asset : offshore_fee_map) {
+    if (asset.first != "XHV") {
+      unique_assets.insert(asset.first);
+    }
+  }
+  for (const auto& asset : xasset_fee_map) {
+    if (asset.first != "XHV") {
+      unique_assets.insert(asset.first);
+    }
+  }
+
   // check output size
-  // it must be an even number greater than or equal to 2.
+  // it must be number of unique assets times 2 and + 2 for xhv.
   const size_t output_size = b.miner_tx.vout.size();
-  if ((version >= 3) && (output_size < 2 || (output_size  % 2) != 0)) {
+  if ((version >= 3) && (output_size != (2 + (unique_assets.size() * 2)))  ) {
     MERROR("Miner tx has invalid output size!");
     return false;
   }
-  
-  //validate reward
+
+  //collect reward
   std::map<std::string, uint64_t> money_in_use_map;
   for (auto& o: b.miner_tx.vout) {
     if (o.target.type() == typeid(txout_offshore)) {
@@ -1753,6 +1771,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   }
   partial_block_reward = false;
 
+  // validate weigth and get base reward
   uint64_t median_weight;
   if (version >= HF_VERSION_EFFECTIVE_SHORT_TERM_MEDIAN_IN_PENALTY)
   {
@@ -1769,9 +1788,22 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
+  
+  // validate first output is xhv
+  if (b.miner_tx.vout[0].target.type() != typeid(txout_to_key)) {
+    MERROR_VER("First output of a miner tx must be txout_to_key(XHV) type");
+    return false;
+  }
+
   if (version >= 3) {
     if (already_generated_coins != 0)
     {
+      // validate first output is xhv
+      if (b.miner_tx.vout[1].target.type() != typeid(txout_to_key)) {
+        MERROR_VER("Second output of a miner tx must be txout_to_key(XHV) type");
+        return false;
+      }
+
       // Check that the governance reward for XHV is correct
       uint64_t governance_reward = get_governance_reward(m_db->height(), base_reward);
       governance_reward += offshore_fee_map["XHV"];
@@ -1781,34 +1813,8 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
         return false;
       }
       
-      // get the governance wallet address
-      std::string governance_wallet_address_str;
-      if (version >= HF_VERSION_XASSET_FULL) {
-        if (m_nettype == TESTNET) {
-          governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
-        } else if (m_nettype == STAGENET) {
-          governance_wallet_address_str = ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
-        } else {
-          governance_wallet_address_str = ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
-        }
-      } else if (version >= 4) {
-        if (m_nettype == TESTNET) {
-          governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
-        } else if (m_nettype == STAGENET) {
-          governance_wallet_address_str = ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
-        } else {
-          governance_wallet_address_str = ::config::GOVERNANCE_WALLET_ADDRESS_MULTI;
-        }
-      } else {
-        if (m_nettype == TESTNET) {
-          governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS;
-        } else if (m_nettype == STAGENET) {
-          governance_wallet_address_str = ::config::stagenet::GOVERNANCE_WALLET_ADDRESS;
-        } else {
-          governance_wallet_address_str = ::config::GOVERNANCE_WALLET_ADDRESS;
-        }
-      }
-
+      // get the governance wallet address and validate xhv reward
+      std::string governance_wallet_address_str = cryptonote::get_governance_address(version, m_nettype);
       if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, 1, boost::get<txout_to_key>(b.miner_tx.vout[1].target).key, m_nettype))
       {
         MERROR("Governance reward public key incorrect (vout[1]).");
@@ -1816,18 +1822,17 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       }
 
       // Check for presence of xUSD or xAsset fees
-      if (b.miner_tx.vout.size() > 2) {
-
+      if (unique_assets.size() > 0) {
         for (uint64_t idx = 2; idx < output_size; idx += 2) {
           std::string asset_type;
           if (b.miner_tx.vout[idx].target.type() == typeid(txout_offshore)) {
             asset_type = "XUSD";
             if (version >= HF_VERSION_XASSET_FEES_V2) {
-              if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_offshore)) {
-                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
+              if (b.miner_tx.vout[idx + 1].target.type() != typeid(txout_offshore)) {
+                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx + 1 << "]");
                 return false;
               }
-              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_offshore>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
+              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx + 1, boost::get<txout_offshore>(b.miner_tx.vout[idx + 1].target).key, m_nettype)) {
                 MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
                 return false;
               }
@@ -1835,17 +1840,17 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
           } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
             asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
             if (version >= HF_VERSION_XASSET_FEES_V2) {
-              if (b.miner_tx.vout[idx+1].target.type() != typeid(txout_xasset)) {
+              if (b.miner_tx.vout[idx + 1].target.type() != typeid(txout_xasset)) {
                 MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
                 return false;
               }
-              std::string asset_type_check = boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).asset_type;
+              std::string asset_type_check = boost::get<txout_xasset>(b.miner_tx.vout[idx + 1].target).asset_type;
               if (asset_type != asset_type_check) {
-                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "] asset types (" << asset_type << " != " << asset_type_check <<")");
+                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx + 1 << "] asset types (" << asset_type << " != " << asset_type_check <<")");
                 return false;
               }
-              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx+1, boost::get<txout_xasset>(b.miner_tx.vout[idx+1].target).key, m_nettype)) {
-                MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
+              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx + 1, boost::get<txout_xasset>(b.miner_tx.vout[idx +1 ].target).key, m_nettype)) {
+                MERROR("Governance reward public key incorrect (vout[" << idx + 1 <<"]).");
                 return false;
               }
             }
@@ -1878,7 +1883,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
             MERROR("Miner reward amount for " << asset_type << " is incorrect. Should be: " << print_money(miner_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx].amount));
             return false;
           }
-          if (b.miner_tx.vout[idx+1].amount != governance_reward_xasset) {
+          if (b.miner_tx.vout[idx + 1].amount != governance_reward_xasset) {
             MERROR("Governance reward amount for " << asset_type << " is incorrect. Should be: " << print_money(governance_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx+1].amount));
             return false;
           }
@@ -1911,21 +1916,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       partial_block_reward = true;
     base_reward = money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"];
 
-
-    // collect all unique assets
-    std::set<std::string> unique_assets;
-    for (const auto& asset : fee_map) {
-      unique_assets.insert(asset.first);
-    }
-    for (const auto& asset : offshore_fee_map) {
-      unique_assets.insert(asset.first);
-    }
-    for (const auto& asset : xasset_fee_map) {
-      unique_assets.insert(asset.first);
-    }
-
     if (version >= HF_VERSION_OFFSHORE_FULL) {
-      // Check offshore / xAsset amounts as well
       if (version >= HF_VERSION_XASSET_FEES_V2) {
         for (auto &money_in_use_map_entry: money_in_use_map) {
           const std::string& asset = money_in_use_map_entry.first;

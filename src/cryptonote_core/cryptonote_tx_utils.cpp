@@ -123,15 +123,7 @@ namespace cryptonote
     keypair gov_key = get_deterministic_keypair_from_height(height);
 
     cryptonote::address_parse_info governance_wallet_address;
-
-    if (nettype == TESTNET) {
-      cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, governance_wallet_address_str);
-    } else if (nettype == STAGENET) {
-      cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, governance_wallet_address_str);
-    } else {
-      cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, governance_wallet_address_str);
-    }
-
+    cryptonote::get_account_address_from_str(governance_wallet_address, nettype, governance_wallet_address_str);
     crypto::public_key correct_key;
 
     if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, output_index, correct_key))
@@ -141,6 +133,34 @@ namespace cryptonote
     }
 
     return correct_key == output_key;
+  }
+
+  std::string get_governance_address(uint32_t version, network_type nettype) {
+    if (version >= HF_VERSION_XASSET_FULL) {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+      }
+    } else if (version >= 4) {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      }
+    } else {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS;
+      }
+    }
   }
   
   //---------------------------------------------------------------
@@ -187,14 +207,11 @@ namespace cryptonote
     }
 
     block_reward += fee_map["XHV"];
-
     uint64_t summary_amounts = 0;
-
     crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
     crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
     bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
     CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
-
     r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
     CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << "0" << ", "<< miner_address.m_spend_public_key << ")");
 
@@ -206,42 +223,14 @@ namespace cryptonote
     out.target = tk;
     tx.vout.push_back(out);
 
+    // add governance wallet output for xhv
     cryptonote::address_parse_info governance_wallet_address;
-
     if (hard_fork_version >= 3) {
       if (already_generated_coins != 0)
       {
         add_tx_pub_key_to_extra(tx, gov_key.pub);
-
-        if (hard_fork_version >= HF_VERSION_XASSET_FULL) {
-          if (nettype == TESTNET) {
-            cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-          } else if (nettype == STAGENET) {
-	          cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-          } else {
-            cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW);
-          }
-        } else if (hard_fork_version >= 4) {
-          // shouts to sebseb7
-          if (nettype == TESTNET) {
-            cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-          } else if (nettype == STAGENET) {
-	          cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-          } else {
-            cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS_MULTI);
-          }
-        } else {
-          if (nettype == TESTNET) {
-            cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS);
-          } else if (nettype == STAGENET) {
-	          cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS);
-          } else {
-            cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS);
-          }
-        }
-
+        cryptonote::get_account_address_from_str(governance_wallet_address, nettype, get_governance_address(hard_fork_version, nettype));
         crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
-
         if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, 1 /* second output in miner tx */, out_eph_public_key))
         {
           MERROR("Failed to generate deterministic output key for governance wallet output creation");
@@ -250,23 +239,19 @@ namespace cryptonote
 
         txout_to_key tk;
         tk.key = out_eph_public_key;
-
         tx_out out;
         summary_amounts += out.amount = governance_reward;
-
         if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
           out.amount += offshore_fee_map["XHV"];
         }
 
         out.target = tk;
         tx.vout.push_back(out);
-
         CHECK_AND_ASSERT_MES(summary_amounts == (block_reward + governance_reward), false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << (block_reward + governance_reward));
-
       }
     }
-    if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
 
+    if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
       // Add all of the outputs for all of the currencies in the contained TXs
       uint64_t idx = 2;
       for (auto &fee_map_entry: fee_map) {
@@ -275,7 +260,6 @@ namespace cryptonote
           continue;
     
         if (fee_map_entry.second != 0) {
-
           uint64_t block_reward_xasset = fee_map_entry.second;
           uint64_t governance_reward_xasset = 0;
           governance_reward_xasset = get_governance_reward(height, fee_map_entry.second);
@@ -326,7 +310,6 @@ namespace cryptonote
           }
 
           crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
-
           if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
           {
             MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
@@ -371,7 +354,6 @@ namespace cryptonote
     //lock
     tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
     tx.vin.push_back(in);
-
     tx.invalidate_hashes();
 
     //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
