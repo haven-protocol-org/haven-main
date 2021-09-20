@@ -21,7 +21,9 @@ namespace
     make_miner_transaction(cryptonote::account_public_address const& to)
     {
         cryptonote::transaction tx{};
-        if (!cryptonote::construct_miner_tx(0, 0, 5000, 500, 500, to, tx))
+        std::map<std::string, uint64_t> fee_map, offshore_fee_map, xasset_fee_map;
+        fee_map["XHV"] = 0;
+        if (!cryptonote::construct_miner_tx(0, 0, 5000, 500, fee_map, offshore_fee_map, xasset_fee_map, to, tx))
             throw std::runtime_error{"transaction construction error"};
 
         crypto::hash id{0};
@@ -36,6 +38,9 @@ namespace
         cryptonote::account_keys const& from,
         std::vector<cryptonote::transaction> const& sources,
         std::vector<cryptonote::account_public_address> const& destinations,
+        uint64_t current_height,
+        offshore::pricing_record pr,
+        uint32_t fees_version,
         bool rct,
         bool bulletproof)
     {
@@ -77,7 +82,7 @@ namespace
         std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
         subaddresses[from.m_account_address.m_spend_public_key] = {0,0};
 
-        if (!cryptonote::construct_tx_and_get_tx_key(from, subaddresses, actual_sources, to, boost::none, {}, tx, 0, tx_key, extra_keys, rct, { bulletproof ? rct::RangeProofBulletproof : rct::RangeProofBorromean, bulletproof ? 2 : 0 }))
+        if (!cryptonote::construct_tx_and_get_tx_key(from, subaddresses, actual_sources, to, boost::none, {}, tx, 0, tx_key, extra_keys, current_height, pr, fees_version, true, rct, { bulletproof ? rct::RangeProofBulletproof : rct::RangeProofBorromean, bulletproof ? 2 : 0 }))
             throw std::runtime_error{"transaction construction error"};
 
         return tx;
@@ -137,9 +142,11 @@ TEST(JsonSerialization, RegularTransaction)
     cryptonote::account_base acct2;
     acct2.generate();
 
+    const offshore::pricing_record pr;
+    const uint64_t height = 1;
+    const uint32_t fees_version = 3;
     const auto miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
-    const auto tx = make_transaction(
-        acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, false, false
+    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, pr, fees_version, false, false
     );
 
     crypto::hash tx_hash{};
@@ -168,10 +175,11 @@ TEST(JsonSerialization, RingctTransaction)
     cryptonote::account_base acct2;
     acct2.generate();
 
+    const offshore::pricing_record pr;
+    const uint64_t height = 1;
+    const uint32_t fees_version = 3;
     const auto miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
-    const auto tx = make_transaction(
-        acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, true, false
-    );
+    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, pr, fees_version, true, false);
 
     crypto::hash tx_hash{};
     ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
@@ -199,10 +207,11 @@ TEST(JsonSerialization, BulletproofTransaction)
     cryptonote::account_base acct2;
     acct2.generate();
 
+    const offshore::pricing_record pr;
+    const uint64_t height = 1;
+    const uint32_t fees_version = 3;
     const auto miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
-    const auto tx = make_transaction(
-        acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, true, true
-    );
+    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, pr, fees_version, true, true);
 
     crypto::hash tx_hash{};
     ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));

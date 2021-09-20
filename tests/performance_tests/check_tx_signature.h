@@ -87,7 +87,7 @@ public:
       if (m_tx.rct_signatures.type == rct::RCTTypeFull)
         return rct::verRct(m_tx.rct_signatures);
       else
-        return rct::verRctSimple(m_tx.rct_signatures);
+        return rct::verRctSemanticsSimple(m_tx.rct_signatures);
     }
     else
     {
