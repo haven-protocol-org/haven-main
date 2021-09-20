@@ -39,8 +39,13 @@ namespace
         std::vector<cryptonote::transaction> const& sources,
         std::vector<cryptonote::account_public_address> const& destinations,
         uint64_t current_height,
+        uint64_t unlock_time,
+        cryptonote::transaction_type tx_type,
+        std::string source,
+        std::string dest,
         offshore::pricing_record pr,
         uint32_t fees_version,
+        uint32_t hf_version,
         bool rct,
         bool bulletproof)
     {
@@ -82,7 +87,7 @@ namespace
         std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
         subaddresses[from.m_account_address.m_spend_public_key] = {0,0};
 
-        if (!cryptonote::construct_tx_and_get_tx_key(from, subaddresses, actual_sources, to, boost::none, {}, tx, 0, tx_key, extra_keys, current_height, pr, fees_version, true, rct, { bulletproof ? rct::RangeProofBulletproof : rct::RangeProofBorromean, bulletproof ? 2 : 0 }))
+        if (!cryptonote::construct_tx_and_get_tx_key(from, subaddresses, actual_sources, to, boost::none, {}, tx, tx_type, source, dest, unlock_time, tx_key, extra_keys, current_height, pr, fees_version, hf_version, rct, { bulletproof ? rct::RangeProofBulletproof : rct::RangeProofBorromean, bulletproof ? 2 : 0 }))
             throw std::runtime_error{"transaction construction error"};
 
         return tx;
@@ -144,10 +149,14 @@ TEST(JsonSerialization, RegularTransaction)
 
     const offshore::pricing_record pr;
     const uint64_t height = 1;
+    const uint64_t unlock_time = 0;
     const uint32_t fees_version = 3;
+    const uint32_t hf_version = 17;
+    std::string source = "XHV";
+    std::string dest = "XHV";
+    cryptonote::transaction_type tx_type = cryptonote::transaction_type::TRANSFER;
     const auto miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
-    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, pr, fees_version, false, false
-    );
+    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, false, false);
 
     crypto::hash tx_hash{};
     ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
@@ -177,9 +186,14 @@ TEST(JsonSerialization, RingctTransaction)
 
     const offshore::pricing_record pr;
     const uint64_t height = 1;
+    const uint64_t unlock_time = 0;
     const uint32_t fees_version = 3;
+    const uint32_t hf_version = 17;
+    std::string source = "XHV";
+    std::string dest = "XHV";
+    cryptonote::transaction_type tx_type = cryptonote::transaction_type::TRANSFER;
     const auto miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
-    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, pr, fees_version, true, false);
+    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, false);
 
     crypto::hash tx_hash{};
     ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
@@ -201,17 +215,23 @@ TEST(JsonSerialization, RingctTransaction)
 
 TEST(JsonSerialization, BulletproofTransaction)
 {
+    // regular transfer
     cryptonote::account_base acct1;
     acct1.generate();
 
     cryptonote::account_base acct2;
     acct2.generate();
 
-    const offshore::pricing_record pr;
-    const uint64_t height = 1;
-    const uint32_t fees_version = 3;
-    const auto miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
-    const auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, pr, fees_version, true, true);
+    offshore::pricing_record pr;
+    uint64_t height = 1;
+    uint64_t unlock_time = 0;
+    uint32_t fees_version = 3;
+    uint32_t hf_version = 17;
+    std::string source = "XHV";
+    std::string dest = "XHV";
+    cryptonote::transaction_type tx_type = cryptonote::transaction_type::TRANSFER;
+    auto miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
+    auto tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, true);
 
     crypto::hash tx_hash{};
     ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
@@ -224,6 +244,199 @@ TEST(JsonSerialization, BulletproofTransaction)
 
     cryptonote::blobdata tx_bytes{};
     cryptonote::blobdata tx_copy_bytes{};
+
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx, tx_bytes));
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx_copy, tx_copy_bytes));
+
+    EXPECT_EQ(tx_bytes, tx_copy_bytes);
+
+
+    // ofsfhore tx
+    acct1.generate();
+    acct2.generate();
+
+    pr = {};
+    height = 1;
+    unlock_time = height + 180;
+    fees_version = 3;
+    hf_version = 17;
+    source = "XHV";
+    dest = "XUSD";
+    tx_type = cryptonote::transaction_type::OFFSHORE;
+    miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
+    tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, true);
+
+    tx_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
+
+    tx_copy = test_json(tx);
+
+    tx_copy_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx_copy, tx_copy_hash));
+    EXPECT_EQ(tx_hash, tx_copy_hash);
+
+    tx_bytes = {};
+    tx_copy_bytes = {};
+
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx, tx_bytes));
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx_copy, tx_copy_bytes));
+
+    EXPECT_EQ(tx_bytes, tx_copy_bytes);
+    
+    // osnhore tx
+    acct1.generate();
+    acct2.generate();
+
+    pr = {};
+    height = 1;
+    unlock_time = height + 180;
+    fees_version = 3;
+    hf_version = 17;
+    source = "XUSD";
+    dest = "XHV";
+    tx_type = cryptonote::transaction_type::ONSHORE;
+    miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
+    tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, true);
+
+    tx_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
+
+    tx_copy = test_json(tx);
+
+    tx_copy_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx_copy, tx_copy_hash));
+    EXPECT_EQ(tx_hash, tx_copy_hash);
+
+    tx_bytes = {};
+    tx_copy_bytes = {};
+
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx, tx_bytes));
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx_copy, tx_copy_bytes));
+
+    EXPECT_EQ(tx_bytes, tx_copy_bytes);
+    
+    // ofsfhore transfer tx
+    acct1.generate();
+    acct2.generate();
+
+    pr = {};
+    height = 1;
+    unlock_time = 0;
+    fees_version = 3;
+    hf_version = 17;
+    source = "XUSD";
+    dest = "XUSD";
+    tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
+    miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
+    tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, true);
+
+    tx_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
+
+    tx_copy = test_json(tx);
+
+    tx_copy_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx_copy, tx_copy_hash));
+    EXPECT_EQ(tx_hash, tx_copy_hash);
+
+    tx_bytes = {};
+    tx_copy_bytes = {};
+
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx, tx_bytes));
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx_copy, tx_copy_bytes));
+
+    EXPECT_EQ(tx_bytes, tx_copy_bytes);
+    
+    // xusd_to_xasaset tx
+    acct1.generate();
+    acct2.generate();
+
+    pr = {};
+    height = 1;
+    unlock_time = height + 1440;
+    fees_version = 3;
+    hf_version = 17;
+    source = "XUSD";
+    dest = "XBTC";
+    tx_type = cryptonote::transaction_type::XUSD_TO_XASSET;
+    miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
+    tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, true);
+
+    tx_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
+
+    tx_copy = test_json(tx);
+
+    tx_copy_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx_copy, tx_copy_hash));
+    EXPECT_EQ(tx_hash, tx_copy_hash);
+
+    tx_bytes = {};
+    tx_copy_bytes = {};
+
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx, tx_bytes));
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx_copy, tx_copy_bytes));
+
+    EXPECT_EQ(tx_bytes, tx_copy_bytes);
+    
+    // xasset_to_xusd tx
+    acct1.generate();
+    acct2.generate();
+
+    pr = {};
+    height = 1;
+    unlock_time = height + 1440;
+    fees_version = 3;
+    hf_version = 17;
+    source = "XBTC";
+    dest = "XUSD";
+    tx_type = cryptonote::transaction_type::XASSET_TO_XUSD;
+    miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
+    tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, true);
+
+    tx_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
+
+    tx_copy = test_json(tx);
+
+    tx_copy_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx_copy, tx_copy_hash));
+    EXPECT_EQ(tx_hash, tx_copy_hash);
+
+    tx_bytes = {};
+    tx_copy_bytes = {};
+
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx, tx_bytes));
+    ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx_copy, tx_copy_bytes));
+
+    EXPECT_EQ(tx_bytes, tx_copy_bytes);
+
+    // xasset_transfer tx
+    acct1.generate();
+    acct2.generate();
+
+    pr = {};
+    height = 1;
+    unlock_time = height + 0;
+    fees_version = 3;
+    hf_version = 17;
+    source = "XBTC";
+    dest = "XBTC";
+    tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
+    miner_tx = make_miner_transaction(acct1.get_keys().m_account_address);
+    tx = make_transaction(acct1.get_keys(), {miner_tx}, {acct2.get_keys().m_account_address}, height, unlock_time, tx_type, source, dest, pr, fees_version, hf_version, true, true);
+
+    tx_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx, tx_hash));
+
+    tx_copy = test_json(tx);
+
+    tx_copy_hash = {};
+    ASSERT_TRUE(cryptonote::get_transaction_hash(tx_copy, tx_copy_hash));
+    EXPECT_EQ(tx_hash, tx_copy_hash);
+
+    tx_bytes = {};
+    tx_copy_bytes = {};
 
     ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx, tx_bytes));
     ASSERT_TRUE(cryptonote::t_serializable_object_to_blob(tx_copy, tx_copy_bytes));
