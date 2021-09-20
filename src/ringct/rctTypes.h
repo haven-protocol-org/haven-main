@@ -295,7 +295,7 @@ namespace rct {
         if (type == RCTTypeHaven2) {
           // serialize offshore fee
           VARINT_FIELD(txnOffshoreFee)
-        } else if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN)) {
+        } else if (type == RCTTypeCLSAG || type == RCTTypeCLSAGN) {
           VARINT_FIELD(txnFee_usd)
           if (type == RCTTypeCLSAGN)
           {

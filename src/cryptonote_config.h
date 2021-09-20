@@ -71,6 +71,7 @@
 #define CRYPTONOTE_DISPLAY_DECIMAL_POINT                12
 // COIN - number of smallest units in one coin
 #define COIN                                            ((uint64_t)1000000000000) // pow(10, 12)
+#define HAVEN_MAX_TX_VALUE                              ((uint64_t)15000000000000000000)
 
 #define FEE_PER_KB_OLD                                  ((uint64_t)100000000)
 #define FEE_PER_KB                                      ((uint64_t)20000000)

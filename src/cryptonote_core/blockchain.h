@@ -57,7 +57,6 @@
 #include "checkpoints/checkpoints.h"
 #include "cryptonote_basic/hardfork.h"
 #include "blockchain_db/blockchain_db.h"
-#include "offshore/pricing_handler.h"
 
 namespace tools { class Notify; }
 
@@ -1101,9 +1100,6 @@ namespace cryptonote
     bool m_enforce_dns_checkpoints;
 
     HardFork *m_hardfork;
-
-    offshore::PricingHandler *m_pricing_handler;
-    EVP_PKEY* m_oracle_public_key;
 
     network_type m_nettype;
     bool m_offline;

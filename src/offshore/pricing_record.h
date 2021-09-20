@@ -43,6 +43,9 @@
 #include <string>
 #include <cstring>
 
+#include "cryptonote_config.h"
+#include "crypto/hash.h"
+
 namespace epee
 {
   namespace serialization
@@ -80,47 +83,44 @@ namespace offshore
   class pricing_record
   {
 
-  public:
+    public:
 
-    // Fields 
-    uint64_t xAG;
-    uint64_t xAU;
-    uint64_t xAUD;
-    uint64_t xBTC;
-    uint64_t xCAD;
-    uint64_t xCHF;
-    uint64_t xCNY;
-    uint64_t xEUR;
-    uint64_t xGBP;
-    uint64_t xJPY;
-    uint64_t xNOK;
-    uint64_t xNZD;
-    uint64_t xUSD;
-    uint64_t unused1;
-    uint64_t unused2;
-    uint64_t unused3;
-    uint64_t timestamp;
-    unsigned char signature[64];
+      // Fields 
+      uint64_t xAG;
+      uint64_t xAU;
+      uint64_t xAUD;
+      uint64_t xBTC;
+      uint64_t xCAD;
+      uint64_t xCHF;
+      uint64_t xCNY;
+      uint64_t xEUR;
+      uint64_t xGBP;
+      uint64_t xJPY;
+      uint64_t xNOK;
+      uint64_t xNZD;
+      uint64_t xUSD;
+      uint64_t unused1;
+      uint64_t unused2;
+      uint64_t unused3;
+      uint64_t timestamp;
+      unsigned char signature[64];
 
-    // Default c'tor
-    pricing_record() noexcept;
-    
-    //! Load from epee p2p format
-    bool _load(epee::serialization::portable_storage& src, epee::serialization::section* hparent);
-    
-    //! Store in epee p2p format
-    bool store(epee::serialization::portable_storage& dest, epee::serialization::section* hparent) const;
-    pricing_record(const pricing_record& orig) noexcept;
-    ~pricing_record() = default;
-    pricing_record& operator=(const pricing_record& orig) noexcept;
+      // Default c'tor
+      pricing_record() noexcept;
+      //! Load from epee p2p format
+      bool _load(epee::serialization::portable_storage& src, epee::serialization::section* hparent);
+      //! Store in epee p2p format
+      bool store(epee::serialization::portable_storage& dest, epee::serialization::section* hparent) const;
+      pricing_record(const pricing_record& orig) noexcept;
+      ~pricing_record() = default;
+      void set_for_height_821428();
+      bool equal(const pricing_record& other) const noexcept;
+      bool empty() const noexcept;
+      bool verifySignature(const std::string& public_key) const;
+      bool valid(cryptonote::network_type nettype, uint32_t hf_version, uint64_t bl_timestamp, uint64_t last_bl_timestamp) const;
 
-    uint64_t operator[](const std::string asset_type) const;
-    
-    bool equal(const pricing_record& other) const noexcept;
-
-    bool is_empty() const noexcept;
-
-    bool verifySignature(EVP_PKEY* public_key = NULL) const noexcept;
+      pricing_record& operator=(const pricing_record& orig) noexcept;
+      uint64_t operator[](const std::string& asset_type) const;
   };
 
   inline bool operator==(const pricing_record& a, const pricing_record& b) noexcept
