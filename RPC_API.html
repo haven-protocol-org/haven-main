@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>
+      Wallet RPC documentation | Haven - secure, private, untraceable
+    </title>
+      <meta name="description" content="
+  Haven, a digital currency that is secure, private, and untraceable
+  ">
+      <meta name="keywords" content="haven, xhv, xusd, cryptocurrency">
+
+          <meta property="og:title" content="
+    
+    
+      User Guides: Wallet RPC documentation
+      " />
+	      <meta property="og:description" content="
+    Haven, a digital currency that is secure, private, and untraceable
+    ">
+	      <!-- If the page specifies a dedicated image we use that one, otherwise we use the classic Haven logo -->
+	      <meta property="og:site_name" content="havenprotocol.org, The Haven Project">
+	      <meta property="og:url" content="http://docs.havenprotocol.org/RPC_API.html">
+	      <meta property="og:type" content="website">
+
+	      <link rel="apple-touch-icon" sizes="180x180" href="/meta/apple-touch-icon.png">
+	      <link rel="icon" type="image/png" sizes="32x32" href="/meta/favicon-32x32.png">
+	      <link rel="icon" type="image/png" sizes="16x16" href="/meta/favicon-16x16.png">
+	      <link rel="manifest" href="/meta/manifest.json">
+	      <link rel="mask-icon" href="/meta/safari-pinned-tab.svg" color="#5bbad5">
+	      <meta name="theme-color" content="#ffffff">
+
+	      <link href="/css/custom.css" rel="stylesheet">
+
+
+	      <meta name="msapplication-config" content="/ietemplates/ieconfig.xml">
+
+  </head>
+
+  <body>
+    <!-- FULL WIDTH BLOCK -->
+    <section class="container full guides">
+      <div class="info-block text-adapt">
+        <div>
+          <h1 id="wallet-rpc">Wallet RPC</h1>
+          
+      <h3 id="index-of-json-rpc-methods">Index of JSON RPC Methods:</h3>
+      
+      <ul>
+      <li><a href="#transfer">transfer</a></li>
+      <li><a href="#transfer_split">transfer_split</a></li>
+      <li><a href="#offshore">offshore</a></li>
+      <li><a href="#onshore">onshore</a></li>
+      <li><a href="#offshore_transfer">offshore_transfer</a></li>
+      <li><a href="#offshore_sweep_all">offshore_sweep_all</a></li>
+      </ul>
+
+      <br />
+      <hr />
+      <br />
+
+      <h2 id="json-rpc-methods">JSON RPC Methods:</h2>
+      
+<h3 id="transfer"><strong>transfer</strong></h3>
+
+<p>Send XHV to a number of recipients.</p>
+
+<p>Alias: <em>None</em>.</p>
+
+<p>Inputs:</p>
+
+<ul>
+  <li><em>destinations</em> - array of destinations to receive XHV:
+    <ul>
+      <li><em>amount</em> - unsigned int; Amount to send to each destination, in @atomic-units.</li>
+      <li><em>address</em> - string; Destination public address.</li>
+    </ul>
+  </li>
+  <li><em>account_index</em> - unsigned int; (Optional) Transfer from this account index. (Defaults to 0)</li>
+  <li><em>subaddr_indices</em> - array of unsigned int; (Optional) Transfer from this set of subaddresses. (Defaults to empty - all indices)</li>
+  <li><em>priority</em> - unsigned int; Set a priority for the transaction. Accepted Values are: 0-3 for: default, unimportant, normal, elevated, priority.</li>
+  <li><em>mixin</em> - unsigned int; Number of outputs from the blockchain to mix with (0 means no mixing).</li>
+  <li><em>ring_size</em> - unsigned int; Number of outputs to mix in the transaction (this output + N decoys from the blockchain).</li>
+  <li><em>unlock_time</em> - unsigned int; Number of blocks before the haven can be spent (0 to not add a lock).</li>
+  <li><em>get_tx_key</em> - boolean; (Optional) Return the transaction key after sending.</li>
+  <li><em>do_not_relay</em> - boolean; (Optional) If true, the newly created transaction will not be relayed to the haven network. (Defaults to false)</li>
+  <li><em>get_tx_hex</em> - boolean; Return the transaction as hex string after sending (Defaults to false)</li>
+  <li><em>get_tx_metadata</em> - boolean; Return the metadata needed to relay the transaction. (Defaults to false)</li>
+</ul>
+
+<p>Outputs:</p>
+
+<ul>
+  <li><em>amount</em> - Amount transferred for the transaction.</li>
+  <li><em>amount_usd</em> - Amount transferred for the transaction.</li>
+  <li><em>fee</em> - Integer value of the fee charged for the txn.</li>
+  <li><em>multisig_txset</em> - Set of multisig transactions in the process of being signed (empty for non-multisig).</li>
+  <li><em>tx_blob</em> - Raw transaction represented as hex string, if get_tx_hex is true.</li>
+  <li><em>tx_hash</em> - String for the publically searchable transaction hash.</li>
+  <li><em>tx_key</em> - String for the transaction key if get_tx_key is true, otherwise, blank string.</li>
+  <li><em>tx_metadata</em> - Set of transaction metadata needed to relay this transfer later, if get_tx_metadata is true.</li>
+  <li><em>unsigned_txset</em> - String. Set of unsigned tx for cold-signing purposes.</li>
+</ul>
+
+<p>Example:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl http://127.0.0.1:17751/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{"destinations":[{"amount":100000000000,"address":"7BnERTpvL5MbCLtj5n9No7J5oE5hHiB3tVCK5cjSvCsYWD2WRJLFuWeKTLiXo5QJqt2ZwUaLy2Vh1Ad51K7FNgqcHgjW85o"},{"amount":200000000000,"address":"75sNpRwUtekcJGejMuLSGA71QFuK1qcCVLZnYRTfQLgFU5nJ7xiAHtR5ihioS53KMe8pBhH61moraZHyLoG4G7fMER8xkNv"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_key": true}}' -H 'Content-Type: application/json'
+{
+  "id": "0",
+  "jsonrpc": "2.0",
+  "result": {
+    "amount": 300000000000,
+    "fee": 86897600000,
+    "multisig_txset": "",
+    "tx_blob": "",
+    "tx_hash": "7663438de4f72b25a0e395b770ea9ecf7108cd2f0c4b75be0b14a103d3362be9",
+    "tx_key": "25c9d8ec20045c80c93d665c9d3684aab7335f8b2cd02e1ba2638485afd1c70e236c4bdd7a2f1cb511dbf466f13421bdf8df988b7b969c448ca6239d7251490e4bf1bbf9f6ffacffdcdc93b9d1648ec499eada4d6b4e02ce92d4a1c0452e5d009fbbbf15b549df8856205a4c7bda6338d82c823f911acd00cb75850b198c5803",
+    "tx_metadata": "",
+    "unsigned_txset": ""
+  }
+}
+</code></pre></div></div>
+
+<h3 id="transfer_split"><strong>transfer_split</strong></h3>
+
+<p>Same as transfer, but can split into more than one tx if necessary.</p>
+
+<p>Alias: <em>None</em>.</p>
+
+<p>Inputs:</p>
+
+<ul>
+  <li><em>destinations</em> - array of destinations to receive XHV:
+    <ul>
+      <li><em>amount</em> - unsigned int; Amount to send to each destination, in @atomic-units.</li>
+      <li><em>address</em> - string; Destination public address.</li>
+    </ul>
+  </li>
+  <li><em>account_index</em> - unsigned int; (Optional) Transfer from this account index. (Defaults to 0)</li>
+  <li><em>subaddr_indices</em> - array of unsigned int; (Optional) Transfer from this set of subaddresses. (Defaults to empty - all indices)</li>
+  <li><em>mixin</em> - unsigned int; Number of outputs from the blockchain to mix with (0 means no mixing).</li>
+  <li><em>ring_size</em> - unsigned int; Sets ringsize to n (mixin + 1).</li>
+  <li><em>unlock_time</em> - unsigned int; Number of blocks before the haven can be spent (0 to not add a lock).</li>
+  <li><em>get_tx_keys</em> - boolean; (Optional) Return the transaction keys after sending.</li>
+  <li><em>priority</em> - unsigned int; Set a priority for the transactions. Accepted Values are: 0-3 for: default, unimportant, normal, elevated, priority.</li>
+  <li><em>do_not_relay</em> - boolean; (Optional) If true, the newly created transaction will not be relayed to the haven network. (Defaults to false)</li>
+  <li><em>get_tx_hex</em> - boolean; Return the transactions as hex string after sending</li>
+  <li><em>new_algorithm</em> - boolean; True to use the new transaction construction algorithm, defaults to false.</li>
+  <li><em>get_tx_metadata</em> - boolean; Return list of transaction metadata needed to relay the transfer later.</li>
+</ul>
+
+<p>Outputs:</p>
+
+<ul>
+  <li><em>tx_hash_list</em> - array of: string. The tx hashes of every transaction.</li>
+  <li><em>tx_key_list</em> - array of: string. The transaction keys for every transaction.</li>
+  <li><em>amount_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>amount_usd_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>fee_list</em> - array of: integer. The amount of fees paid for every transaction.</li>
+  <li><em>tx_blob_list</em> - array of: string. The tx as hex string for every transaction.</li>
+  <li><em>tx_metadata_list</em> - array of: string. List of transaction metadata needed to relay the transactions later.</li>
+  <li><em>multisig_txset</em> - string. The set of signing keys used in a multisig transaction (empty for non-multisig).</li>
+  <li><em>unsigned_txset</em> - string. Set of unsigned tx for cold-signing purposes.</li>
+</ul>
+
+<p>Example:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl http://127.0.0.1:17751/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer_split","params":{"destinations":[{"amount":1000000000000,"address":"7BnERTpvL5MbCLtj5n9No7J5oE5hHiB3tVCK5cjSvCsYWD2WRJLFuWeKTLiXo5QJqt2ZwUaLy2Vh1Ad51K7FNgqcHgjW85o"},{"amount":2000000000000,"address":"75sNpRwUtekcJGejMuLSGA71QFuK1qcCVLZnYRTfQLgFU5nJ7xiAHtR5ihioS53KMe8pBhH61moraZHyLoG4G7fMER8xkNv"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_keys": true}}' -H 'Content-Type: application/json'
+{
+  "id": "0",
+  "jsonrpc": "2.0",
+  "result": {
+    "amount_list": [3000000000000],
+    "fee_list": [473710000],
+    "multisig_txset": "",
+    "tx_hash_list": ["4adcdc1af3f665770cdf8fb7a380887cd07ac53c2b771bd18df5ca375d5e7540"],
+    "tx_key_list": ["5b455c0f97168be652a2c03c5c68a064bb84cdae4ddef01b5c48d73a0bbb27075fb714f2ca19ea6c8ff592417e606addea6deb1d6530e2969f75681ffcbfc4075677b94a8c9197963ae38fa6f543ee68f0a4c4bbda4c453f39538f00b28e980ea08509730b51c004960101ba2f3adbc34cbbdff0d5af9dba061b523090debd06"],
+    "unsigned_txset": ""
+  }
+}
+</code></pre></div></div>
+
+<h3 id="offshore"><strong>offshore</strong></h3>
+
+<p>Same as transfer_split, but sends xUSD by burning XHV.</p>
+
+<p>Alias: <em>None</em>.</p>
+
+<p>Inputs:</p>
+
+<ul>
+  <li><em>destinations</em> - array of destinations to receive xUSD:
+    <ul>
+      <li><em>amount</em> - unsigned int; Amount in XHV to send to each destination, in @atomic-units.</li>
+      <li><em>address</em> - string; Destination public address.</li>
+    </ul>
+  </li>
+  <li><em>account_index</em> - unsigned int; (Optional) Transfer from this account index. (Defaults to 0)</li>
+  <li><em>subaddr_indices</em> - array of unsigned int; (Optional) Transfer from this set of subaddresses. (Defaults to empty - all indices)</li>
+  <li><em>mixin</em> - unsigned int; Number of outputs from the blockchain to mix with (0 means no mixing).</li>
+  <li><em>ring_size</em> - unsigned int; Sets ringsize to n (mixin + 1).</li>
+  <li><em>unlock_time</em> - unsigned int; Number of blocks before the haven can be spent (0 to not add a lock).</li>
+  <li><em>get_tx_keys</em> - boolean; (Optional) Return the transaction keys after sending.</li>
+  <li><em>priority</em> - unsigned int; Set a priority for the transactions. Accepted Values are: 0-3 for: default, unimportant, normal, elevated, priority.</li>
+  <li><em>do_not_relay</em> - boolean; (Optional) If true, the newly created transaction will not be relayed to the haven network. (Defaults to false)</li>
+  <li><em>get_tx_hex</em> - boolean; Return the transactions as hex string after sending</li>
+  <li><em>new_algorithm</em> - boolean; True to use the new transaction construction algorithm, defaults to false.</li>
+  <li><em>get_tx_metadata</em> - boolean; Return list of transaction metadata needed to relay the transfer later.</li>
+</ul>
+
+<p>Outputs:</p>
+
+<ul>
+  <li><em>tx_hash_list</em> - array of: string. The tx hashes of every transaction.</li>
+  <li><em>tx_key_list</em> - array of: string. The transaction keys for every transaction.</li>
+  <li><em>amount_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>amount_usd_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>fee_list</em> - array of: integer. The amount of fees paid for every transaction.</li>
+  <li><em>tx_blob_list</em> - array of: string. The tx as hex string for every transaction.</li>
+  <li><em>tx_metadata_list</em> - array of: string. List of transaction metadata needed to relay the transactions later.</li>
+  <li><em>multisig_txset</em> - string. The set of signing keys used in a multisig transaction (empty for non-multisig).</li>
+  <li><em>unsigned_txset</em> - string. Set of unsigned tx for cold-signing purposes.</li>
+</ul>
+
+<p>Example:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl http://127.0.0.1:17751/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"offshore","params":{"destinations":[{"amount":1000000000000,"address":"7BnERTpvL5MbCLtj5n9No7J5oE5hHiB3tVCK5cjSvCsYWD2WRJLFuWeKTLiXo5QJqt2ZwUaLy2Vh1Ad51K7FNgqcHgjW85o"},{"amount":2000000000000,"address":"75sNpRwUtekcJGejMuLSGA71QFuK1qcCVLZnYRTfQLgFU5nJ7xiAHtR5ihioS53KMe8pBhH61moraZHyLoG4G7fMER8xkNv"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_keys": true}}' -H 'Content-Type: application/json'
+{
+  "id": "0",
+  "jsonrpc": "2.0",
+  "result": {
+    "amount_list": [3000000000000],
+    "amount_usd_list": [3000000000000],
+    "fee_list": [473710000],
+    "multisig_txset": "",
+    "tx_hash_list": ["4adcdc1af3f665770cdf8fb7a380887cd07ac53c2b771bd18df5ca375d5e7540"],
+    "tx_key_list": ["5b455c0f97168be652a2c03c5c68a064bb84cdae4ddef01b5c48d73a0bbb27075fb714f2ca19ea6c8ff592417e606addea6deb1d6530e2969f75681ffcbfc4075677b94a8c9197963ae38fa6f543ee68f0a4c4bbda4c453f39538f00b28e980ea08509730b51c004960101ba2f3adbc34cbbdff0d5af9dba061b523090debd06"],
+    "unsigned_txset": ""
+  }
+}
+</code></pre></div></div>
+
+<h3 id="onshore"><strong>onshore</strong></h3>
+
+<p>Same as transfer_split, but sends XHV by burning xUSD.</p>
+
+<p>Alias: <em>None</em>.</p>
+
+<p>Inputs:</p>
+
+<ul>
+  <li><em>destinations</em> - array of destinations to receive XHV:
+    <ul>
+      <li><em>amount</em> - unsigned int; Amount in XHV to send to each destination, in @atomic-units.</li>
+      <li><em>address</em> - string; Destination public address.</li>
+    </ul>
+  </li>
+  <li><em>account_index</em> - unsigned int; (Optional) Transfer from this account index. (Defaults to 0)</li>
+  <li><em>subaddr_indices</em> - array of unsigned int; (Optional) Transfer from this set of subaddresses. (Defaults to empty - all indices)</li>
+  <li><em>mixin</em> - unsigned int; Number of outputs from the blockchain to mix with (0 means no mixing).</li>
+  <li><em>ring_size</em> - unsigned int; Sets ringsize to n (mixin + 1).</li>
+  <li><em>unlock_time</em> - unsigned int; Number of blocks before the haven can be spent (0 to not add a lock).</li>
+  <li><em>get_tx_keys</em> - boolean; (Optional) Return the transaction keys after sending.</li>
+  <li><em>priority</em> - unsigned int; Set a priority for the transactions. Accepted Values are: 0-3 for: default, unimportant, normal, elevated, priority.</li>
+  <li><em>do_not_relay</em> - boolean; (Optional) If true, the newly created transaction will not be relayed to the haven network. (Defaults to false)</li>
+  <li><em>get_tx_hex</em> - boolean; Return the transactions as hex string after sending</li>
+  <li><em>new_algorithm</em> - boolean; True to use the new transaction construction algorithm, defaults to false.</li>
+  <li><em>get_tx_metadata</em> - boolean; Return list of transaction metadata needed to relay the transfer later.</li>
+</ul>
+
+<p>Outputs:</p>
+
+<ul>
+  <li><em>tx_hash_list</em> - array of: string. The tx hashes of every transaction.</li>
+  <li><em>tx_key_list</em> - array of: string. The transaction keys for every transaction.</li>
+  <li><em>amount_list</em> - array of: integer. The amount transferred in XHV for every transaction.</li>
+  <li><em>amount_usd_list</em> - array of: integer. The amount transferred in xUSD for every transaction.</li>
+  <li><em>fee_list</em> - array of: integer. The amount of fees paid for every transaction.</li>
+  <li><em>tx_blob_list</em> - array of: string. The tx as hex string for every transaction.</li>
+  <li><em>tx_metadata_list</em> - array of: string. List of transaction metadata needed to relay the transactions later.</li>
+  <li><em>multisig_txset</em> - string. The set of signing keys used in a multisig transaction (empty for non-multisig).</li>
+  <li><em>unsigned_txset</em> - string. Set of unsigned tx for cold-signing purposes.</li>
+</ul>
+
+<p>Example:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl http://127.0.0.1:17751/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"onshore","params":{"destinations":[{"amount":1000000000000,"address":"7BnERTpvL5MbCLtj5n9No7J5oE5hHiB3tVCK5cjSvCsYWD2WRJLFuWeKTLiXo5QJqt2ZwUaLy2Vh1Ad51K7FNgqcHgjW85o"},{"amount":2000000000000,"address":"75sNpRwUtekcJGejMuLSGA71QFuK1qcCVLZnYRTfQLgFU5nJ7xiAHtR5ihioS53KMe8pBhH61moraZHyLoG4G7fMER8xkNv"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_keys": true}}' -H 'Content-Type: application/json'
+{
+  "id": "0",
+  "jsonrpc": "2.0",
+  "result": {
+    "amount_list": [3000000000000],
+    "amount_usd_list": [3000000000000],
+    "fee_list": [473710000],
+    "multisig_txset": "",
+    "tx_hash_list": ["4adcdc1af3f665770cdf8fb7a380887cd07ac53c2b771bd18df5ca375d5e7540"],
+    "tx_key_list": ["5b455c0f97168be652a2c03c5c68a064bb84cdae4ddef01b5c48d73a0bbb27075fb714f2ca19ea6c8ff592417e606addea6deb1d6530e2969f75681ffcbfc4075677b94a8c9197963ae38fa6f543ee68f0a4c4bbda4c453f39538f00b28e980ea08509730b51c004960101ba2f3adbc34cbbdff0d5af9dba061b523090debd06"],
+    "unsigned_txset": ""
+  }
+}
+</code></pre></div></div>
+
+<h3 id="offshore_transfer"><strong>offshore_transfer</strong></h3>
+
+<p>Same as transfer_split, but sends xUSD between wallets.</p>
+
+<p>Alias: <em>None</em>.</p>
+
+<p>Inputs:</p>
+
+<ul>
+  <li><em>destinations</em> - array of destinations to receive xUSD:
+    <ul>
+      <li><em>amount</em> - unsigned int; Amount in xUSD to send to each destination, in @atomic-units.</li>
+      <li><em>address</em> - string; Destination public address.</li>
+    </ul>
+  </li>
+  <li><em>account_index</em> - unsigned int; (Optional) Transfer from this account index. (Defaults to 0)</li>
+  <li><em>subaddr_indices</em> - array of unsigned int; (Optional) Transfer from this set of subaddresses. (Defaults to empty - all indices)</li>
+  <li><em>mixin</em> - unsigned int; Number of outputs from the blockchain to mix with (0 means no mixing).</li>
+  <li><em>ring_size</em> - unsigned int; Sets ringsize to n (mixin + 1).</li>
+  <li><em>unlock_time</em> - unsigned int; Number of blocks before the haven can be spent (0 to not add a lock).</li>
+  <li><em>get_tx_keys</em> - boolean; (Optional) Return the transaction keys after sending.</li>
+  <li><em>priority</em> - unsigned int; Set a priority for the transactions. Accepted Values are: 0-3 for: default, unimportant, normal, elevated, priority.</li>
+  <li><em>do_not_relay</em> - boolean; (Optional) If true, the newly created transaction will not be relayed to the haven network. (Defaults to false)</li>
+  <li><em>get_tx_hex</em> - boolean; Return the transactions as hex string after sending</li>
+  <li><em>new_algorithm</em> - boolean; True to use the new transaction construction algorithm, defaults to false.</li>
+  <li><em>get_tx_metadata</em> - boolean; Return list of transaction metadata needed to relay the transfer later.</li>
+</ul>
+
+<p>Outputs:</p>
+
+<ul>
+  <li><em>tx_hash_list</em> - array of: string. The tx hashes of every transaction.</li>
+  <li><em>tx_key_list</em> - array of: string. The transaction keys for every transaction.</li>
+  <li><em>amount_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>amount_usd_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>fee_list</em> - array of: integer. The amount of fees paid for every transaction.</li>
+  <li><em>tx_blob_list</em> - array of: string. The tx as hex string for every transaction.</li>
+  <li><em>tx_metadata_list</em> - array of: string. List of transaction metadata needed to relay the transactions later.</li>
+  <li><em>multisig_txset</em> - string. The set of signing keys used in a multisig transaction (empty for non-multisig).</li>
+  <li><em>unsigned_txset</em> - string. Set of unsigned tx for cold-signing purposes.</li>
+</ul>
+
+<p>Example:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl http://127.0.0.1:17751/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"offshore","params":{"destinations":[{"amount":1000000000000,"address":"7BnERTpvL5MbCLtj5n9No7J5oE5hHiB3tVCK5cjSvCsYWD2WRJLFuWeKTLiXo5QJqt2ZwUaLy2Vh1Ad51K7FNgqcHgjW85o"},{"amount":2000000000000,"address":"75sNpRwUtekcJGejMuLSGA71QFuK1qcCVLZnYRTfQLgFU5nJ7xiAHtR5ihioS53KMe8pBhH61moraZHyLoG4G7fMER8xkNv"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_keys": true}}' -H 'Content-Type: application/json'
+{
+  "id": "0",
+  "jsonrpc": "2.0",
+  "result": {
+    "amount_list": [3000000000000],
+    "amount_usd_list": [3000000000000],
+    "fee_list": [473710000],
+    "multisig_txset": "",
+    "tx_hash_list": ["4adcdc1af3f665770cdf8fb7a380887cd07ac53c2b771bd18df5ca375d5e7540"],
+    "tx_key_list": ["5b455c0f97168be652a2c03c5c68a064bb84cdae4ddef01b5c48d73a0bbb27075fb714f2ca19ea6c8ff592417e606addea6deb1d6530e2969f75681ffcbfc4075677b94a8c9197963ae38fa6f543ee68f0a4c4bbda4c453f39538f00b28e980ea08509730b51c004960101ba2f3adbc34cbbdff0d5af9dba061b523090debd06"],
+    "unsigned_txset": ""
+  }
+}
+</code></pre></div></div>
+
+<h3 id="offshore_sweep_all"><strong>offshore_sweep_all</strong></h3>
+
+<p>Send all unlocked xUSD balance to an address.</p>
+
+<p>Alias: <em>None</em>.</p>
+
+<p>Inputs:</p>
+
+<ul>
+  <li><em>address</em> - string; Destination public address.</li>
+  <li><em>account_index</em> - unsigned int; Sweep transactions from this account.</li>
+  <li><em>subaddr_indices</em> - array of unsigned int; (Optional) Sweep from this set of subaddresses in the account.</li>
+  <li><em>priority</em> - unsigned int; (Optional) Priority for sending the sweep transfer, partially determines fee.</li>
+  <li><em>mixin</em> - unsigned int; Number of outputs from the blockchain to mix with (0 means no mixing).</li>
+  <li><em>ring_size</em> - unsigned int; Sets ringsize to n (mixin + 1).</li>
+  <li><em>unlock_time</em> - unsigned int; Number of blocks before the haven can be spent (0 to not add a lock).</li>
+  <li><em>get_tx_keys</em> - boolean; (Optional) Return the transaction keys after sending.</li>
+  <li><em>below_amount</em> - unsigned int; (Optional) Include outputs below this amount.</li>
+  <li><em>do_not_relay</em> - boolean; (Optional) If true, do not relay this sweep transfer. (Defaults to false)</li>
+  <li><em>get_tx_hex</em> - boolean; (Optional) return the transactions as hex encoded string. (Defaults to false)</li>
+  <li><em>get_tx_metadata</em> - boolean; (Optional) return the transaction metadata as a string. (Defaults to false)</li>
+</ul>
+
+<p>Outputs:</p>
+
+<ul>
+  <li><em>tx_hash_list</em> - array of: string. The tx hashes of every transaction.</li>
+  <li><em>tx_key_list</em> - array of: string. The transaction keys for every transaction.</li>
+  <li><em>amount_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>amount_usd_list</em> - array of: integer. The amount transferred for every transaction.</li>
+  <li><em>fee_list</em> - array of: integer. The amount of fees paid for every transaction.</li>
+  <li><em>tx_blob_list</em> - array of: string. The tx as hex string for every transaction.</li>
+  <li><em>tx_metadata_list</em> - array of: string. List of transaction metadata needed to relay the transactions later.</li>
+  <li><em>multisig_txset</em> - string. The set of signing keys used in a multisig transaction (empty for non-multisig).</li>
+  <li><em>unsigned_txset</em> - string. Set of unsigned tx for cold-signing purposes.</li>
+</ul>
+
+<p>Example:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl http://localhost:17751/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"offshore_sweep_all","params":{"address":"55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt","subaddr_indices":[4],"ring_size":7,"unlock_time":0,"get_tx_keys":true}}' -H 'Content-Type: application/json'
+{
+  "id": "0",
+  "jsonrpc": "2.0",
+  "result": {
+    "amount_list": [9985885770000],
+    "fee_list": [14114230000],
+    "multisig_txset": "",
+    "tx_hash_list": ["ab4b6b65cc8cd8c9dd317d0b90d97582d68d0aa1637b0065b05b61f9a66ea5c5"],
+    "tx_key_list": ["b9b4b39d3bb3062ddb85ec0266d4df39058f4c86077d99309f218ce4d76af607"],
+    "unsigned_txset": ""
+  }
+}
+</code></pre></div></div>
+
+<h3 id="get_offshore_balance"><strong>get_offshore_balance</strong></h3>
+
+<p>Return the wallet's balance in xUSD.</p>
+
+<p>Alias: <em>None</em>.</p>
+
+<p>Inputs:</p>
+
+<ul>
+  <li><em>account_index</em> - unsigned int; Return xUSD balance for this account.</li>
+  <li><em>address_indices</em> - array of unsigned int; (Optional) Return balance detail for those subaddresses.</li>
+</ul>
+
+<p>Outputs:</p>
+
+<ul>
+  <li><em>balance</em> - unsigned int; The total balance in xUSD of the current haven-wallet-rpc in session.</li>
+  <li><em>unlocked_balance</em> - unsigned int; Unlocked funds are those funds that are sufficiently deep enough in the Haven blockchain to be considered safe to spend.</li>
+  <li><em>multisig_import_needed</em> - boolean; True if importing multisig data is needed for returning a correct balance.</li>
+  <li><em>per_subaddress</em> - array of subaddress information; Balance information for each subaddress in an account.
+    <ul>
+      <li><em>address_index</em> - unsigned int; Index of the subaddress in the account.</li>
+      <li><em>address</em> - string; Address at this index. Base58 representation of the public keys.</li>
+      <li><em>balance</em> - unsigned int; Balance for the subaddress (locked or unlocked).</li>
+      <li><em>unlocked_balance</em> - unsigned int; Unlocked balance for the subaddress.</li>
+      <li><em>label</em> - string; Label for the subaddress.</li>
+      <li><em>num_unspent_outputs</em> - unsigned int; Number of unspent outputs available for the subaddress.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>Example:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl http://127.0.0.1:17751/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_ofshore_balance","params":{"account_index":0,"address_indices":[0,1]}}' -H 'Content-Type: application/json'
+{
+  "id": "0",
+  "jsonrpc": "2.0",
+  "result": {
+    "balance": 157443303037455077,
+    "multisig_import_needed": false,
+    "per_subaddress": [{
+      "address": "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
+      "address_index": 0,
+      "balance": 157360317826255077,
+      "label": "Primary account",
+      "num_unspent_outputs": 5281,
+      "unlocked_balance": 157360317826255077
+    },{
+      "address": "7BnERTpvL5MbCLtj5n9No7J5oE5hHiB3tVCK5cjSvCsYWD2WRJLFuWeKTLiXo5QJqt2ZwUaLy2Vh1Ad51K7FNgqcHgjW85o",
+      "address_index": 1,
+      "balance": 59985211200000,
+      "label": "",
+      "num_unspent_outputs": 1,
+      "unlocked_balance": 59985211200000
+    }],
+    "unlocked_balance": 157443303037455077
+  }
+}
+</code></pre></div></div>
+
+    </div>
+    </section>
+
+  </div>
+  </body>
+</html>

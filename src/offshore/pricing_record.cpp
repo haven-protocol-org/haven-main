@@ -32,6 +32,7 @@
 #include "serialization/keyvalue_serialization.h"
 #include "storages/portable_storage.h"
 
+#include "string_tools.h"
 namespace offshore
 {
 
@@ -127,8 +128,8 @@ namespace offshore
       unused3 = in.unused3;
       timestamp = in.timestamp;
       for (unsigned int i = 0; i < in.signature.length(); i += 2) {
-	std::string byteString = in.signature.substr(i, 2);
-	signature[i>>1] = (char) strtol(byteString.c_str(), NULL, 16);
+        std::string byteString = in.signature.substr(i, 2);
+        signature[i>>1] = (char) strtol(byteString.c_str(), NULL, 16);
       }
       return true;
     }
@@ -194,7 +195,7 @@ namespace offshore
     return *this;
   }
 
-  uint64_t pricing_record::operator[](const std::string asset_type) const noexcept
+  uint64_t pricing_record::operator[](const std::string& asset_type) const
   {
     if (asset_type == "XHV") {
       return 1000000000000;
@@ -225,7 +226,7 @@ namespace offshore
     } else if (asset_type == "XNZD") {
       return xNZD;
     } else {
-      return 1000000000000;
+     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
     }
   }
   
@@ -251,17 +252,26 @@ namespace offshore
 	    !::memcmp(signature, other.signature, sizeof(signature)));
   }
 
-  bool pricing_record::is_empty() const noexcept
+  bool pricing_record::empty() const noexcept
   {
     const pricing_record empty_pr = offshore::pricing_record();
     return (*this).equal(empty_pr);
   }
 
-  bool pricing_record::verifySignature(EVP_PKEY* public_key) const noexcept
+  bool pricing_record::verifySignature(const std::string& public_key) const 
   {
-    // Sanity check - accept empty pricing records
-    if ((*this).is_empty())
-      return true;
+    CHECK_AND_ASSERT_THROW_MES(!public_key.empty(), "Pricing record verification failed. NULL public key. PK Size: " << public_key.size()); // TODO: is this necessary or the one below already covers this case, meannin it will produce empty pubkey?
+    
+    // extract the key
+    EVP_PKEY* pubkey;
+    BIO* bio = BIO_new_mem_buf(public_key.c_str(), public_key.size());
+    if (!bio) {
+      return false;
+    }
+    pubkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+    CHECK_AND_ASSERT_THROW_MES(pubkey != NULL, "Pricing record verification failed. NULL public key.");
+
 
     // Convert our internal 64-byte binary representation into 128-byte hex string
     std::string sig_hex;
@@ -330,50 +340,23 @@ namespace offshore
       compact += (byte);
     }
 
-    // Check to see if we have been passed a public key to use
-    EVP_PKEY* pubkey = NULL;
-    if (public_key) {
-
-      // Take a copy for local use
-      pubkey = public_key;
-      
-    } else {
-      
-      // No public key provided - failover to embedded key
-      static const char public_key[] = "-----BEGIN PUBLIC KEY-----\n"
-	"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5YBxWx1AZCA9jTUk8Pr2uZ9jpfRt\n"
-	"KWv3Vo1/Gny+1vfaxsXhBQiG1KlHkafNGarzoL0WHW4ocqaaqF5iv8i35A==\n"
-	"-----END PUBLIC KEY-----\n";
-    
-      BIO* bio = BIO_new_mem_buf(public_key, (int)sizeof(public_key));
-      if (!bio) {
-	return false;
-      }
-      pubkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
-      BIO_free(bio);
-    }
-    assert(pubkey != NULL);
-
     // Create a verify digest from the message
     EVP_MD_CTX *ctx = EVP_MD_CTX_create();
     int ret = 0;
     if (ctx) {
-      ret=EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, pubkey);
+      ret = EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, pubkey);
       if (ret == 1) {
-	ret=EVP_DigestVerifyUpdate(ctx, message.data(), message.length());
-	if (ret == 1) {
-	  ret=EVP_DigestVerifyFinal(ctx, (const unsigned char *)compact.data(), compact.length());
-	}
+        ret = EVP_DigestVerifyUpdate(ctx, message.data(), message.length());
+        if (ret == 1) {
+          ret = EVP_DigestVerifyFinal(ctx, (const unsigned char *)compact.data(), compact.length());
+        }
       }
     }
+
     // Cleanup the context we created
     EVP_MD_CTX_destroy(ctx);
-
-    // Was the key provided by the caller?
-    if (pubkey != public_key) {
-      // Cleanup the openssl stuff
-      EVP_PKEY_free(pubkey);
-    }
+    // Cleanup the openssl stuff
+    EVP_PKEY_free(pubkey);
     
     if (ret == 1)
       return true;
@@ -383,4 +366,68 @@ namespace offshore
   
     return false;
   }
+
+  void pricing_record::set_for_height_821428() {
+    const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+    this->xAG = 614976143259;
+    this->xAU = 8892867133;
+    this->xAUD = 20156914758078;
+    this->xBTC = 275800760;
+    this->xCAD = 0;
+    this->xCHF = 14464149948650;
+    this->xCNY = 0;
+    this->xEUR = 13059317798903;
+    this->xGBP = 11162715471325;
+    this->xJPY = 1690137827184892;
+    this->xNOK = 0;
+    this->xNZD = 0;
+    this->xUSD = 15393775330000;
+    this->unused1 = 16040600000000;
+    this->unused2 = 16100600000000;
+    this->unused3 = 15359200000000;
+    this->timestamp = 0;
+    std::string sig = "2f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
+    int j=0;
+    for (unsigned int i = 0; i < sig.size(); i += 2) {
+      std::string byteString = sig.substr(i, 2);
+      this->signature[j++] = (char) strtol(byteString.c_str(), NULL, 16);
+    }
+  }
+
+  // overload for pr validation for block
+  bool pricing_record::valid(cryptonote::network_type nettype, uint32_t hf_version, uint64_t bl_timestamp, uint64_t last_bl_timestamp) const 
+  {
+    // check for empty pr 
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      if (this->empty())
+        return true;
+    } else {
+      unsigned char test_sig[64];
+      std::memset(test_sig, 0, sizeof(test_sig));
+      if (std::memcmp(test_sig, this->signature, sizeof(this->signature)) == 0) {
+        return true;
+      }
+    }
+
+    // verify the signature
+    if (!verifySignature(get_config(nettype).ORACLE_PUBLIC_KEY)) {
+      LOG_ERROR("Invalid pricing record signature.");
+      return false;
+    }
+  
+    // valiadte the timestmap
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      if (this->timestamp > bl_timestamp + PRICING_RECORD_VALID_TIME_DIFF_FROM_BLOCK) {
+        LOG_ERROR("Pricing record timestamp is too far in the future.");
+        return false;
+      }
+      if (this->timestamp <= last_bl_timestamp) {
+        LOG_ERROR("Pricing record timestamp is too old.");
+        return false;
+      }
+    }
+
+    return true;
+  }
+
 }

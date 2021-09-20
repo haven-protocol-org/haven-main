@@ -174,7 +174,7 @@ namespace cryptonote
 	} else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
 	  rv.outPk[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
 	} else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
-	  rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
+	  rv.outPk[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
 	} else {
           LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
           return false;
@@ -193,7 +193,7 @@ namespace cryptonote
 	  } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
 	    rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
 	  } else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
-	    rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
+	    rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
 	  } else {
 	    LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
 	    return false;
@@ -245,14 +245,19 @@ namespace cryptonote
           const size_t n_amounts = tx.vout.size();
           CHECK_AND_ASSERT_MES(n_amounts == rv.outPk.size(), false, "Internal error filling out V");
           rv.p.bulletproofs[0].V.resize(n_amounts);
-          for (size_t i = 0; i < n_amounts; ++i)
-	    if (tx.vout[i].target.type() == typeid(txout_to_key)) {
-	      rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
-	    } else if (tx.vout[i].target.type() == typeid(txout_offshore)) {
-	      rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_usd[i].mask, rct::INV_EIGHT);
-	    } else {
-	      rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_xasset[i].mask, rct::INV_EIGHT);
-	    }
+          for (size_t i = 0; i < n_amounts; ++i) {
+            if (rv.type == rct::RCTTypeHaven2) {
+              rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
+            } else {
+              if (tx.vout[i].target.type() == typeid(txout_to_key)) {
+                rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
+              } else if (tx.vout[i].target.type() == typeid(txout_offshore)) {
+                rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_usd[i].mask, rct::INV_EIGHT);
+              } else {
+                rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk_xasset[i].mask, rct::INV_EIGHT);
+              }
+            }
+          }
         }
       }
     }
@@ -964,11 +969,6 @@ namespace cryptonote
 			   << "or " << typeid(txout_xasset).name()
 			   << ", in transaction id=" << get_transaction_hash(tx));
 
-      if (tx.version == 1)
-      {
-        CHECK_AND_NO_ASSERT_MES(0 < out.amount, false, "zero amount output in transaction id=" << get_transaction_hash(tx));
-      }
-
       if(!check_key(out.target.type() == typeid(txout_to_key) ? boost::get<txout_to_key>(out.target).key :
 		    out.target.type() == typeid(txout_offshore) ? boost::get<txout_offshore>(out.target).key :
 		    boost::get<txout_xasset>(out.target).key))
@@ -1342,13 +1342,6 @@ namespace cryptonote
   bool calculate_transaction_hash(const transaction& t, crypto::hash& res, size_t* blob_size)
   {
     CHECK_AND_ASSERT_MES(!t.pruned, false, "Cannot calculate the hash of a pruned transaction");
-
-    // v1 transactions hash the entire blob
-    if (t.version == 1)
-    {
-      size_t ignored_blob_size, &blob_size_ref = blob_size ? *blob_size : ignored_blob_size;
-      return get_object_hash(t, res, blob_size_ref);
-    }
 
     // v2 transactions hash different parts together, than hash the set of those hashes
     crypto::hash hashes[3];

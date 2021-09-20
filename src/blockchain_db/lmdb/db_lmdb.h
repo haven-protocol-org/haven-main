@@ -463,6 +463,9 @@ private:
 
   // migrate from DB version 6 to 7
   void migrate_6_7();
+  
+  // migrate from DB version 6 to 7
+  void migrate_7_8();
 
   void cleanup_batch();
 

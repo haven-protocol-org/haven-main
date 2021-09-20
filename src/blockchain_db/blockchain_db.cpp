@@ -252,8 +252,12 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
     else
     {
-      amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time,
-					    tx.version > 1 ? ((tx.vout[i].target.type() == typeid(txout_xasset)) ? &tx.rct_signatures.outPk_xasset[i].mask : (tx.vout[i].target.type() == typeid(txout_offshore)) ? &tx.rct_signatures.outPk_usd[i].mask : &tx.rct_signatures.outPk[i].mask) : NULL);
+      if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
+      } else {
+        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time,
+                                              tx.version > 1 ? ((tx.vout[i].target.type() == typeid(txout_xasset)) ? &tx.rct_signatures.outPk_xasset[i].mask : (tx.vout[i].target.type() == typeid(txout_offshore)) ? &tx.rct_signatures.outPk_usd[i].mask : &tx.rct_signatures.outPk[i].mask) : NULL);
+      }
     }
   }
   add_tx_amount_output_indices(tx_id, amount_output_indices);
