@@ -49,6 +49,12 @@ enum NetworkType : uint8_t {
     STAGENET
 };
 
+
+    namespace Assets {
+
+        std::vector<std::string> list();
+    }
+
     namespace Utils {
         bool isAddressLocal(const std::string &hostaddr);
         void onStartup();
