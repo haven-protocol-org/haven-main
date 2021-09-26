@@ -121,6 +121,7 @@ struct Utils
                   << ", pe: " << (t->isPending() ? "true" : "false")
                   << ", bh: " << t->blockHeight()
                   << ", a: " << Monero::Wallet::displayAmount(t->amount())
+                  << ", at: " << Monero::Wallet::displayAmount(t->assetType())
                   << ", f: " << Monero::Wallet::displayAmount(t->fee())
                   << ", h: " << t->hash()
                   << ", pid: " << t->paymentId()
