@@ -124,7 +124,7 @@ struct Utils
                   << ", pe: " << (t->isPending() ? "true" : "false")
                   << ", bh: " << t->blockHeight()
                   << ", a: " << Monero::Wallet::displayAmount(t->amount())
-                  << ", at: " << Monero::Wallet::displayAmount(t->assetType())
+                  << ", at: " << t->assetType()
                   << ", f: " << Monero::Wallet::displayAmount(t->fee())
                   << ", h: " << t->hash()
                   << ", pid: " << t->paymentId()
@@ -511,7 +511,7 @@ TEST_F(WalletTest1, WalletShowsBalance)
 
     ASSERT_TRUE(balance1 == wallet2->balance(XHV_ASSET, 0));
     std::cout << "wallet balance: " << wallet2->balance(XHV_ASSET, 0) << std::endl;
-    ASSERT_TRUE(unlockedBalance1 == wallet2->unlockedBalance(0));
+    ASSERT_TRUE(unlockedBalance1 == wallet2->unlockedBalance(XHV_ASSET, 0));
     std::cout << "wallet unlocked balance: " << wallet2->unlockedBalance(XHV_ASSET, 0) << std::endl;
     ASSERT_TRUE(wmgr->closeWallet(wallet2));
 }
@@ -727,7 +727,7 @@ TEST_F(WalletTest1, WalletTransactionAndHistory)
 
     Monero::PendingTransaction * tx = wallet_src->createTransaction(wallet4_addr,
                                                                        PAYMENT_ID_EMPTY,
-                                                                       AMOUNT_10XMR * 5, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
+                                                                       AMOUNT_10XMR * 5, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, 1, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
 
     ASSERT_TRUE(tx->status() == Monero::PendingTransaction::Status_Ok);
     ASSERT_TRUE(tx->commit());
