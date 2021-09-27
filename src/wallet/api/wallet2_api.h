@@ -617,7 +617,7 @@ struct Wallet
     virtual void setTrustedDaemon(bool arg) = 0;
     virtual bool trustedDaemon() const = 0;
     virtual std::map<uint32_t, std::map<std::string, uint64_t>> balance(uint32_t accountIndex = 0) const = 0;
-    uint64_t balance(std::string asset_type, uint32_t accountIndex) const = 0;
+    virtual uint64_t balance(std::string asset_type, uint32_t accountIndex) const = 0;
     uint64_t balanceAll() const {
         uint64_t result = 0;
        // for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
@@ -625,7 +625,7 @@ struct Wallet
         return result;
     }
     virtual std::map<uint32_t, std::map<std::string, uint64_t>> unlockedBalance(uint32_t accountIndex = 0) const = 0;
-    uint64_t unlockedBalance(std::string asset_type, uint32_t accountIndex) const = 0;
+    virtual uint64_t unlockedBalance(std::string asset_type, uint32_t accountIndex) const = 0;
     uint64_t unlockedBalanceAll() const {
         uint64_t result = 0;
         //for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
