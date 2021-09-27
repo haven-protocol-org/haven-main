@@ -109,6 +109,8 @@ public:
     bool trustedDaemon() const override;
     std::map<uint32_t, std::map<std::string, uint64_t>> balance(uint32_t accountIndex = 0) const override;
     std::map<uint32_t, std::map<std::string, uint64_t>> unlockedBalance(uint32_t accountIndex = 0) const override;
+    uint64_t balance(std::string asset_type, uint32_t accountIndex) const override;
+    uint64_t unlockedBalance(std::string asset_type, uint32_t accountIndex) const override;
     uint64_t blockChainHeight() const override;
     uint64_t approximateBlockChainHeight() const override;
     uint64_t estimateBlockChainHeight() const override;

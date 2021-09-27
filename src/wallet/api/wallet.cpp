@@ -1007,6 +1007,16 @@ std::map<uint32_t, std::map<std::string, uint64_t>> WalletImpl::unlockedBalance(
     return m_wallet->unlocked_balance(accountIndex, false);
 }
 
+uint64_t WalletImpl::balance(std::string asset_type, uint32_t accountIndex) const
+{
+    return m_wallet->balance(asset_type, accountIndex, false);
+}
+
+uint64_t WalletImpl::unlockedBalance(std::string asset_type, uint32_t accountIndex) const
+{
+    return m_wallet->unlocked_balance(asset_type, accountIndex, false);
+}
+
 uint64_t WalletImpl::blockChainHeight() const
 {
     if(m_wallet->light_wallet()) {
@@ -1534,15 +1544,7 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
                         locked_blocks = 1440; // ~48 hours
                     }
                 } 
-               
-                //adjust prio
-                if (isOffshoreTransfer || isXassetTransfer) {
-
-                      if (adjusted_priority > 1) {
-                        adjusted_priority = 1;
-                      }
-
-                }
+        
             }
 
         bc_height = m_wallet->get_daemon_blockchain_height(err);
@@ -1573,6 +1575,8 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
                                                                               extra, subaddr_account, subaddr_indices, str_source, transfer_type);
             }
             pendingTxPostProcess(transaction);
+
+            transaction->m_asset_type = str_source;
 
             if (multisig().isMultisig) {
                 auto tx_set = m_wallet->make_multisig_tx_set(transaction->m_pending_tx);
