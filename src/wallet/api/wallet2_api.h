@@ -111,6 +111,7 @@ struct PendingTransaction
     // commit transaction or save to file if filename is provided.
     virtual bool commit(const std::string &filename = "", bool overwrite = false) = 0;
     virtual uint64_t amount() const = 0;
+    virtual std::string assetType() const = 0;
     virtual uint64_t dust() const = 0;
     virtual uint64_t fee() const = 0;
     virtual std::vector<std::string> txid() const = 0;
@@ -368,14 +369,14 @@ struct WalletListener
      * @param txId       - transaction id
      * @param amount     - amount
      */
-    virtual void moneySpent(const std::string &txId, uint64_t amount) = 0;
+    virtual void moneySpent(const std::string &txId, uint64_t amount, std::string asset_type) = 0;
 
     /**
      * @brief moneyReceived - called when money received
      * @param txId          - transaction id
      * @param amount        - amount
      */
-    virtual void moneyReceived(const std::string &txId, uint64_t amount) = 0;
+    virtual void moneyReceived(const std::string &txId, uint64_t amount, std::string asset_type) = 0;
     
    /**
     * @brief unconfirmedMoneyReceived - called when payment arrived in tx pool
@@ -616,6 +617,7 @@ struct Wallet
     virtual void setTrustedDaemon(bool arg) = 0;
     virtual bool trustedDaemon() const = 0;
     virtual std::map<uint32_t, std::map<std::string, uint64_t>> balance(uint32_t accountIndex = 0) const = 0;
+    uint64_t balance(std::string asset_type, uint32_t accountIndex) const = 0;
     uint64_t balanceAll() const {
         uint64_t result = 0;
        // for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
@@ -623,6 +625,7 @@ struct Wallet
         return result;
     }
     virtual std::map<uint32_t, std::map<std::string, uint64_t>> unlockedBalance(uint32_t accountIndex = 0) const = 0;
+    uint64_t unlockedBalance(std::string asset_type, uint32_t accountIndex) const = 0;
     uint64_t unlockedBalanceAll() const {
         uint64_t result = 0;
         //for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
