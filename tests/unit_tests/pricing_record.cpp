@@ -33,35 +33,18 @@
 TEST(pricing_record, verify_empty)
 {
   offshore::pricing_record pr;
-  std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-  "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
-  "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
-  "-----END PUBLIC KEY-----\n";
-  ASSERT_TRUE(pr.verifySignature(ORACLE_PUBLIC_KEY));
+  EXPECT_TRUE(pr.valid(cryptonote::network_type::MAINNET, 17, 1632401454, 1632400454));
 }
 
-TEST(pricing_record, verify_empty_fail_if_edited)
+TEST(pricing_record, fail_if_empty_signatuere)
 {
   offshore::pricing_record pr;
-  std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-  "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
-  "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
-  "-----END PUBLIC KEY-----\n";
-
   pr.xNZD = 1;
-  EXPECT_TRUE(pr.verifySignature(ORACLE_PUBLIC_KEY));
-  pr.xNZD = 0;
-  pr.signature[0] = 0x01;
-  EXPECT_FALSE(pr.verifySignature(ORACLE_PUBLIC_KEY));
+  EXPECT_FALSE(pr.valid(cryptonote::network_type::MAINNET, 17, 1632401454, 1632400454));
 }
 
 TEST(pricing_record, verify_known_good)
 {
-  std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-  "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
-  "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
-  "-----END PUBLIC KEY-----\n";
-
   offshore::pricing_record pr;
   const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
   pr.xAG = 614976143259;
@@ -89,16 +72,11 @@ TEST(pricing_record, verify_known_good)
   }
 
   // verify the pr
-  ASSERT_TRUE(pr.verifySignature(ORACLE_PUBLIC_KEY));
+  EXPECT_TRUE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454)); // version is v16 here because pr has no timestamp
 }
 
 TEST(pricing_record, verify_known_good_fail_if_edited)
 {
-  std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-  "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
-  "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
-  "-----END PUBLIC KEY-----\n";
-
   offshore::pricing_record pr;
   const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
   pr.xAG = 614976143259;
@@ -126,15 +104,15 @@ TEST(pricing_record, verify_known_good_fail_if_edited)
   }
 
   // verify the pr
-  EXPECT_TRUE(pr.verifySignature(ORACLE_PUBLIC_KEY));
+  EXPECT_TRUE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454));
 
   // Now make a change to an exchange rate and reverify
   pr.xNZD = 1;
-  EXPECT_FALSE(pr.verifySignature(ORACLE_PUBLIC_KEY));
+  EXPECT_FALSE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454));
 
   // Revert that ER change and modify the signature
   pr.xNZD = 0;
   pr.signature[0] = 0x2e;
-  EXPECT_FALSE(pr.verifySignature(ORACLE_PUBLIC_KEY));
+  EXPECT_FALSE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454));
 }
 

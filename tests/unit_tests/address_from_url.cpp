@@ -35,6 +35,8 @@
 #include "simplewallet/simplewallet.h"
 #include <string>
 
+// the features that following test cases test are not yet supported by Haven. Uncomment those tests when it is.
+/*
 TEST(AddressFromTXT, Success)
 {
   std::string addr = "46BeWrHpwXmHDpDEUmZBWZfoQpdc6HaERCNmx1pEYL2rAcuwufPN9rXHHtyUA4QVy66qeFQkn6sfK8aHYjA3jk3o1Bv16em";
@@ -116,3 +118,4 @@ TEST(AddressFromURL, Failure)
 
   ASSERT_EQ(0, addresses.size());
 }
+*/
