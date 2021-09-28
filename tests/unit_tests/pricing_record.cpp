@@ -33,17 +33,14 @@
 TEST(pricing_record, verify_empty)
 {
   offshore::pricing_record pr;
-  ASSERT_TRUE(pr.verifySignature());
+  EXPECT_TRUE(pr.valid(cryptonote::network_type::MAINNET, 17, 1632401454, 1632400454));
 }
 
-TEST(pricing_record, verify_empty_fail_if_edited)
+TEST(pricing_record, fail_if_empty_signatuere)
 {
   offshore::pricing_record pr;
   pr.xNZD = 1;
-  EXPECT_TRUE(pr.verifySignature());
-  pr.xNZD = 0;
-  pr.signature[0] = 0x01;
-  EXPECT_FALSE(pr.verifySignature());
+  EXPECT_FALSE(pr.valid(cryptonote::network_type::MAINNET, 17, 1632401454, 1632400454));
 }
 
 TEST(pricing_record, verify_known_good)
@@ -75,7 +72,7 @@ TEST(pricing_record, verify_known_good)
   }
 
   // verify the pr
-  ASSERT_TRUE(pr.verifySignature());
+  EXPECT_TRUE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454)); // version is v16 here because pr has no timestamp
 }
 
 TEST(pricing_record, verify_known_good_fail_if_edited)
@@ -107,15 +104,15 @@ TEST(pricing_record, verify_known_good_fail_if_edited)
   }
 
   // verify the pr
-  EXPECT_TRUE(pr.verifySignature());
+  EXPECT_TRUE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454));
 
   // Now make a change to an exchange rate and reverify
   pr.xNZD = 1;
-  EXPECT_FALSE(pr.verifySignature());
+  EXPECT_FALSE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454));
 
   // Revert that ER change and modify the signature
   pr.xNZD = 0;
   pr.signature[0] = 0x2e;
-  EXPECT_FALSE(pr.verifySignature());
+  EXPECT_FALSE(pr.valid(cryptonote::network_type::MAINNET, 16, 1632401454, 1632400454));
 }
 

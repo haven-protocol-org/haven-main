@@ -52,7 +52,7 @@ TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XHV)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XHV");
     EXPECT_EQ(dest, "XHV");
@@ -75,7 +75,7 @@ TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XUSD)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XUSD");
     EXPECT_EQ(dest, "XUSD");
@@ -104,7 +104,7 @@ TEST(get_tx_asset_types, successful_on_1_input_type_1_output_typeXASSET)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XBTC");
     EXPECT_EQ(dest, "XBTC");
@@ -131,7 +131,7 @@ TEST(get_tx_asset_types, successful_offshore)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XHV");
     EXPECT_EQ(dest, "XUSD");
@@ -157,7 +157,7 @@ TEST(get_tx_asset_types, successful_onshore)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XUSD");
     EXPECT_EQ(dest, "XHV");
@@ -183,7 +183,7 @@ TEST(get_tx_asset_types, successful_xusd_to_xasset)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XUSD");
     EXPECT_EQ(dest, "XGBP");
@@ -211,7 +211,7 @@ TEST(get_tx_asset_types, successful_xasset_to_xusd)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XEUR");
     EXPECT_EQ(dest, "XUSD");
@@ -243,7 +243,7 @@ TEST(get_tx_asset_types, fail_on_multiple_input_types_with_2_output_types)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // fail on single input types with more than 2 output types
@@ -272,7 +272,7 @@ TEST(get_tx_asset_types, fail_single_input_and_more_than_2output_types)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // fail on single input types & single output types & they are not equal
@@ -298,7 +298,7 @@ TEST(get_tx_asset_types, fail_single_input_single_output_types_are_not_equal)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // fail on single input types & 2 output types & none of the outputs matches inputs
@@ -324,7 +324,7 @@ TEST(get_tx_asset_types, none_of_output_mathces_input)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // pass on single input types & 2 output types & 1 of the outputs matches inputs, other ddesn't but not allowed. xhv -> xasset
@@ -350,7 +350,7 @@ TEST(get_tx_asset_types, succesfuul_on_logical_input_output_but_not_allowed)
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XHV");
     EXPECT_EQ(dest, "XBTC");
@@ -381,7 +381,7 @@ TEST(get_tx_asset_types, succesfuul_on_logical_input_output_but_not_allowed_xass
 
     std::string source;
     std::string dest;
-    EXPECT_TRUE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 
     EXPECT_EQ(source, "XBTC");
     EXPECT_EQ(dest, "XJPY");
@@ -412,7 +412,7 @@ TEST(get_tx_asset_types, fail_on_2_different_xasset)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // fail on unknown asset types
@@ -440,7 +440,7 @@ TEST(get_tx_asset_types, fail_on_2_unknown_asset_types)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // fail on unknown asset types
@@ -468,7 +468,7 @@ TEST(get_tx_asset_types, fail_on_2_unknown_asset_types_and_multiple_outs)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // fail on unknown asset types
@@ -496,5 +496,5 @@ TEST(get_tx_asset_types, fail_on_1_unknown_asset_type)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, source, dest, false));
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
