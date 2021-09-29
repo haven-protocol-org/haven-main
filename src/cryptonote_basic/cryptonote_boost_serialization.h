@@ -368,17 +368,34 @@ namespace boost
     if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
-    if (x.type == rct::RCTTypeHaven2) {
-      a & x.txnOffshoreFee;
-      a & x.maskSums;
-    }
-    if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
-      a & x.txnOffshoreFee;
-      a & x.txnFee_usd;
-      a & x.txnOffshoreFee_usd;
-      if (x.type == rct::RCTTypeCLSAGN) {
-        a & x.txnFee_xasset;
-        a & x.txnOffshoreFee_xasset;
+    if (ver >= 5u) {
+      if (x.type == rct::RCTTypeHaven2) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      }
+      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+        a & x.txnOffshoreFee;
+        a & x.txnFee_usd;
+        a & x.txnOffshoreFee_usd;
+        if (x.type == rct::RCTTypeCLSAGN) {
+          a & x.txnFee_xasset;
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    } else {
+      if (ver >= 4u) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      } else if (ver >= 1u) {
+        a & x.txnFee_usd;
+        if (ver >= 2u) {
+          a & x.txnFee_xasset;
+        }
+        a & x.txnOffshoreFee;        
+        a & x.txnOffshoreFee_usd;
+        if (ver >= 2u) {
+          a & x.txnOffshoreFee_xasset;
+        }
       }
     }
   }
@@ -415,17 +432,34 @@ namespace boost
     if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
-    if (x.type == rct::RCTTypeHaven2) {
-      a & x.txnOffshoreFee;
-      a & x.maskSums;
-    }
-    if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
-      a & x.txnOffshoreFee;
-      a & x.txnFee_usd;
-      a & x.txnOffshoreFee_usd;
-      if (x.type == rct::RCTTypeCLSAGN) {
-        a & x.txnFee_xasset;
-        a & x.txnOffshoreFee_xasset;
+    if (ver >= 5u) {
+      if (x.type == rct::RCTTypeHaven2) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      }
+      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+        a & x.txnOffshoreFee;
+        a & x.txnFee_usd;
+        a & x.txnOffshoreFee_usd;
+        if (x.type == rct::RCTTypeCLSAGN) {
+          a & x.txnFee_xasset;
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    } else {
+      if (ver >= 4u) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      } else if (ver >= 1u) {
+        a & x.txnFee_usd;
+        if (ver >= 2u) {
+          a & x.txnFee_xasset;
+        }
+        a & x.txnOffshoreFee;        
+        a & x.txnOffshoreFee_usd;
+        if (ver >= 2u) {
+          a & x.txnOffshoreFee_xasset;
+        }
       }
     }
     //--------------
@@ -501,8 +535,8 @@ namespace boost
 
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 2)
-BOOST_CLASS_VERSION(rct::rctSigBase, 4)
-BOOST_CLASS_VERSION(rct::rctSig, 4)
+BOOST_CLASS_VERSION(rct::rctSigBase, 5)
+BOOST_CLASS_VERSION(rct::rctSig, 5)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)
 
 //}

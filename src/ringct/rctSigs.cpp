@@ -1292,7 +1292,6 @@ namespace rct {
     const std::string& strSource, 
     const std::string& strDest,
     uint64_t amount_burnt,
-    uint64_t amount_minted,
     const std::vector<cryptonote::tx_out> &vout
   ){
 
@@ -1320,9 +1319,8 @@ namespace rct {
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
       CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
       if (strSource != strDest) {
-        CHECK_AND_ASSERT_MES(!pr.is_empty(), false, "Empty pr found for a conversion tx");
-        CHECK_AND_ASSERT_MES(amount_burnt, false, "Empty amount_burnt found for a conversion tx");
-        CHECK_AND_ASSERT_MES(amount_minted, false, "Empty amount_minted found for a conversion tx");
+        CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
+        CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
       }
       
       // OUTPUTS SUMMED FOR EACH COLOUR
@@ -1457,7 +1455,7 @@ namespace rct {
 
           // calculate the burnt fee. Should be the 80% of the offshoreFee
           boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
-          boost::multiprecision::uint128_t burnt_fee = (fee_128 * 80) / 100;
+          boost::multiprecision::uint128_t burnt_fee = (fee_128 * 4) / 5;
             
           // subtract it from amount burnt
           amount_burnt -= (uint64_t)burnt_fee;
@@ -1571,7 +1569,7 @@ namespace rct {
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
       CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
       if (strSource != strDest) {
-        CHECK_AND_ASSERT_MES(!pr.is_empty(), false, "Empty pr found for a conversion tx");
+        CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pr found for a conversion tx");
       }
       
       if (!bulletproof)
@@ -1971,9 +1969,9 @@ namespace rct {
     } else if (source == "XUSD" && destination != "XHV" && destination != "XUSD") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
       if (version >= HF_VERSION_HAVEN2) {
-        xusd_128 -= ((rv.txnOffshoreFee * 80) / 100);
+        xusd_128 -= ((rv.txnOffshoreFee * 4) / 5);
       } else if (version >= HF_VERSION_XASSET_FEES_V2) {
-        xusd_128 -= ((rv.txnOffshoreFee_usd * 80) / 100);
+        xusd_128 -= ((rv.txnOffshoreFee_usd * 4) / 5);
       }
       boost::multiprecision::uint128_t exchange_128 = pr[destination];
       boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
@@ -1986,9 +1984,9 @@ namespace rct {
     } else if (source != "XHV" && source != "XUSD" && destination == "XUSD") {
       boost::multiprecision::uint128_t xasset_128 = amount_burnt;
       if (version >= HF_VERSION_HAVEN2) {
-        xasset_128 -= ((rv.txnOffshoreFee * 80) / 100);
+        xasset_128 -= ((rv.txnOffshoreFee * 4) / 5);
       } else if (version >= HF_VERSION_XASSET_FEES_V2) {
-	      xasset_128 -= ((rv.txnOffshoreFee_xasset * 80) / 100);
+	      xasset_128 -= ((rv.txnOffshoreFee_xasset * 4) / 5);
       }
       boost::multiprecision::uint128_t exchange_128 = pr[source];
       boost::multiprecision::uint128_t xusd_128 = xasset_128 * COIN;
