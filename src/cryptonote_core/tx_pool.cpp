@@ -269,7 +269,9 @@ namespace cryptonote
         return false;
       }
 
-      uint64_t unlock_time = tx.unlock_time - current_height;
+      // dont use current_height instead of pricing_record_height here. Otherwise daemon will reject the conversion txs that arent immediately mined in the next block.
+      // since it changes the priorit therefore the fee check calculation fails.
+      uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         if (unlock_time < 180) {
           LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
