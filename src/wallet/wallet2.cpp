@@ -10560,8 +10560,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   boost::unique_lock<hw::device> hwdev_lock (hwdev);
   hw::reset_mode rst(hwdev);  
 
-  // auto original_dsts = dsts;
-
   if(m_light_wallet) {
     // Populate m_transfers
     light_wallet_get_unspent_outs();
@@ -10648,7 +10646,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   }
   // check we have a valid tx type
   using tt = cryptonote::transaction_type;
-  THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported Dest Asset Type!");
+  THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported TX Type!");
 
   if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
     if (priority > 1) {
@@ -10762,6 +10760,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
   // throw if attempting a transaction with no money
   THROW_WALLET_EXCEPTION_IF(needed_money == 0, error::zero_destination);
+
+  // keep the orig dsts for sanity check
+  auto original_dsts = dsts;
 
   // Calculate the offshore fee
   std::vector<transfer_details> empty;
@@ -10942,7 +10943,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   std::vector<size_t>* unused_dust_indices      = &unused_dust_indices_per_subaddr[0].second;
   
   hwdev.set_mode(hw::device::TRANSACTION_CREATE_FAKE);
-  while ((!dsts.empty() && (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) > 0) || adding_fee || !preferred_inputs.empty() || should_pick_a_second_output(use_rct, txes.back().selected_transfers.size(), *unused_transfers_indices, *unused_dust_indices, specific_transfers)) {
+#define DSTS_FRONT_AMOUNT  use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount
+  while ((!dsts.empty() && (DSTS_FRONT_AMOUNT > 0)) || adding_fee || !preferred_inputs.empty() || should_pick_a_second_output(use_rct, txes.back().selected_transfers.size(), *unused_transfers_indices, *unused_dust_indices, specific_transfers)) {
     TX &tx = txes.back();
 
     LOG_PRINT_L2("Start of loop with " << unused_transfers_indices->size() << " " << unused_dust_indices->size() << ", tx.dsts.size() " << tx.dsts.size());
@@ -10964,7 +10966,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       idx = pop_back(preferred_inputs);
       pop_if_present(*unused_transfers_indices, idx);
       pop_if_present(*unused_dust_indices, idx);
-    } else if ((dsts.empty() || (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) == 0) && !adding_fee) {
+    } else if ((dsts.empty() || (DSTS_FRONT_AMOUNT == 0)) && !adding_fee) {
       // the "make rct txes 2/2" case - we pick a small value output to "clean up" the wallet too
       std::vector<size_t> indices = get_only_rct(specific_transfers, *unused_dust_indices, *unused_transfers_indices);
       idx = pop_best_value_from(specific_transfers, indices, tx.selected_transfers, true);
@@ -11015,15 +11017,15 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     }
     else
     {
-      while (!dsts.empty() && (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) <= available_amount && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag) < TX_WEIGHT_TARGET(upper_transaction_weight_limit))
+      while (!dsts.empty() && (DSTS_FRONT_AMOUNT <= available_amount) && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag) < TX_WEIGHT_TARGET(upper_transaction_weight_limit))
       {
         // we can fully pay that destination
         LOG_PRINT_L2("We can fully pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
-		     " for " << print_money((use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount)));
+		     " for " << print_money(DSTS_FRONT_AMOUNT));
         tx.add(dsts[0], dsts[0].amount, dsts[0].amount_usd, dsts[0].amount_xasset, original_output_index, m_merge_destinations);
 
-	      available_amount -= (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount);
-        (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) = 0;
+	      available_amount -= DSTS_FRONT_AMOUNT;
+        DSTS_FRONT_AMOUNT = 0;
 
         if (tx_type == tt::OFFSHORE) {
           tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height);
@@ -11042,16 +11044,16 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       if (available_amount > 0 && !dsts.empty() && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag) < TX_WEIGHT_TARGET(upper_transaction_weight_limit)) {
         // we can partially fill that destination
         LOG_PRINT_L2("We can partially pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
-                     " for " << print_money(available_amount) << "/" << print_money((strSource != "XHV" && strSource != "XUSD") ? dsts[0].amount_xasset : strSource == "XHV" ? dsts[0].amount : dsts[0].amount_usd));
+                     " for " << print_money(available_amount) << "/" << print_money(DSTS_FRONT_AMOUNT));
         tx.add(dsts[0],
-	       (use_xasset_outputs || use_offshore_outputs ? 0 : available_amount),
-	       (use_offshore_outputs ? available_amount : 0),
-	       (use_xasset_outputs ? available_amount : 0),
+	       dsts[0].asset_type == "XHV" ? available_amount : 0,
+	       dsts[0].asset_type == "XUSD" ? available_amount : 0,
+	       dsts[0].asset_type != "XHV" && dsts[0].asset_type != "XUSD" ? available_amount : 0,
 	       original_output_index,
 	       m_merge_destinations
         );
 
-	      (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount) -= available_amount;
+	      DSTS_FRONT_AMOUNT -= available_amount;
         available_amount = 0;
       }
     }
@@ -11153,7 +11155,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       LOG_PRINT_L2("Made a " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(available_for_fee) << " available for fee (" <<
         print_money(needed_fee + offshore_fee) << " needed)");
 
-      if (needed_fee > available_for_fee && !dsts.empty() && (dsts[0].amount > 0))
+      if (needed_fee > available_for_fee && !dsts.empty() && (DSTS_FRONT_AMOUNT > 0))
       {
         // we don't have enough for the fee, but we've only partially paid the current address,
         // so we can take the fee from the paid amount, since we'll have to make another tx anyway
@@ -11167,7 +11169,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           LOG_PRINT_L2("Adjusting amount paid to " << get_account_address_as_str(m_nettype, i->is_subaddress, i->addr) << " from " <<
             print_money(i->amount) << " to " << print_money(new_paid_amount) << " to accommodate " <<
             print_money(needed_fee) << " fee");
-	          dsts[0].amount += i->amount - new_paid_amount;
+	          DSTS_FRONT_AMOUNT += i->amount - new_paid_amount;
           i->amount = new_paid_amount;
           test_ptx.fee = needed_fee;
           available_for_fee = needed_fee;
@@ -11235,7 +11237,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 skip_tx:
     // if unused_*_indices is empty while unused_*_indices_per_subaddr has multiple elements, and if we still have something to pay, 
     // pop front of unused_*_indices_per_subaddr and have unused_*_indices point to the front of unused_*_indices_per_subaddr
-    if ((!dsts.empty() && (dsts[0].amount > 0)) || adding_fee)
+    if ((!dsts.empty() && (DSTS_FRONT_AMOUNT > 0)) || adding_fee)
     {
       if (unused_transfers_indices->empty() && unused_transfers_indices_per_subaddr.size() > 1)
       {
@@ -11301,7 +11303,7 @@ skip_tx:
 
     ptx_vector.push_back(tx.ptx);
   }
-  THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
+  THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, original_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
 
   // if we made it this far, we're OK to actually send the transactions
   return ptx_vector;
@@ -11317,7 +11319,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
 
   
   // check every party in there does receive at least the required amount
-  std::unordered_map<account_public_address, std::pair<std::map<std::string,uint64_t>, bool>> required;
+  std::unordered_map<account_public_address, std::pair<std::map<std::string, uint64_t>, bool>> required;
   for (const auto &d: dsts)
   {
     if (d.asset_type == "XHV")
@@ -11330,23 +11332,10 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
     required[d.addr].second = d.is_subaddress;
   }
 
-  /*
-  // add change
-  uint64_t change = 0;
-  for (const auto &ptx: ptx_vector)
-  {
-    for (size_t idx: ptx.selected_transfers)
-      change += specific_transfers[idx].amount();
-    change -= ptx.fee;
-  }
-  for (const auto &r: required)
-    change -= (use_offshore_outputs) ? r.second.first;
-  MDEBUG("Adding " << cryptonote::print_money(change) << " expected change");
-  */
   // for all txes that have actual change, check change is coming back to the sending wallet
   for (const pending_tx &ptx: ptx_vector)
   {
-    if (ptx.change_dts.amount == 0)
+    if (ptx.change_dts.amount == 0 && ptx.change_dts.amount_usd == 0 && ptx.change_dts.amount_xasset == 0)
       continue;
     THROW_WALLET_EXCEPTION_IF(m_subaddresses.find(ptx.change_dts.addr.m_spend_public_key) == m_subaddresses.end(),
          error::wallet_internal_error, "Change address is not ours");
@@ -12642,13 +12631,6 @@ void wallet2::check_tx_key(const crypto::hash &txid, const crypto::secret_key &t
 void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypto::key_derivation &derivation, const std::vector<crypto::key_derivation> &additional_derivations, const cryptonote::account_public_address &address, std::map<std::string, uint64_t> &received) const
 {
 
-  bool bOffshoreTx = false;
-  tx_extra_offshore offshore_data;
-  if (tx.extra.size()) {
-    // Check to see if this is an offshore tx
-    bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
-  }
-  
   for (size_t n = 0; n < tx.vout.size(); ++n)
   {
     bool found = false;
@@ -12730,7 +12712,12 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
         crypto::derivation_to_scalar(found_derivation, n, scalar1);
         rct::ecdhTuple ecdh_info = tx.rct_signatures.ecdhInfo[n];
         rct::ecdhDecode(ecdh_info, rct::sk2rct(scalar1), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeCLSAGN || tx.rct_signatures.type == rct::RCTTypeHaven2);
-        const rct::key C = (offshore ? tx.rct_signatures.outPk_usd[n].mask : xasset ? tx.rct_signatures.outPk_xasset[n].mask : tx.rct_signatures.outPk[n].mask);
+        rct::key C;
+        if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+          C = tx.rct_signatures.outPk[n].mask;
+        } else {
+          C = (offshore ? tx.rct_signatures.outPk_usd[n].mask : xasset ? tx.rct_signatures.outPk_xasset[n].mask : tx.rct_signatures.outPk[n].mask);
+        }
         rct::key Ctmp;
         THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.mask.bytes) != 0, error::wallet_internal_error, "Bad ECDH input mask");
         THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.amount.bytes) != 0, error::wallet_internal_error, "Bad ECDH input amount");
