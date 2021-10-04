@@ -686,7 +686,7 @@ namespace cryptonote
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
 	      source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[0]).asset_type);
+	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[i]).asset_type);
       } else {
         LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
         return false;
