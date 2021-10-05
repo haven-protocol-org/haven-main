@@ -10943,7 +10943,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   std::vector<size_t>* unused_dust_indices      = &unused_dust_indices_per_subaddr[0].second;
   
   hwdev.set_mode(hw::device::TRANSACTION_CREATE_FAKE);
-#define DSTS_FRONT_AMOUNT  use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount
+#define DSTS_FRONT_AMOUNT  (use_xasset_outputs ? dsts[0].amount_xasset : use_offshore_outputs ? dsts[0].amount_usd : dsts[0].amount)
   while ((!dsts.empty() && (DSTS_FRONT_AMOUNT > 0)) || adding_fee || !preferred_inputs.empty() || should_pick_a_second_output(use_rct, txes.back().selected_transfers.size(), *unused_transfers_indices, *unused_dust_indices, specific_transfers)) {
     TX &tx = txes.back();
 
@@ -11046,9 +11046,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         LOG_PRINT_L2("We can partially pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
                      " for " << print_money(available_amount) << "/" << print_money(DSTS_FRONT_AMOUNT));
         tx.add(dsts[0],
-	       dsts[0].asset_type == "XHV" ? available_amount : 0,
-	       dsts[0].asset_type == "XUSD" ? available_amount : 0,
-	       dsts[0].asset_type != "XHV" && dsts[0].asset_type != "XUSD" ? available_amount : 0,
+	       (use_xasset_outputs || use_offshore_outputs ? 0 : available_amount),
+	       (use_offshore_outputs ? available_amount : 0),
+	       (use_xasset_outputs ? available_amount : 0),
 	       original_output_index,
 	       m_merge_destinations
         );
@@ -11163,14 +11163,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         i = std::find_if(tx.dsts.begin(), tx.dsts.end(),
           [&](const cryptonote::tx_destination_entry &d) { return !memcmp (&d.addr, &dsts[0].addr, sizeof(dsts[0].addr)); });
         THROW_WALLET_EXCEPTION_IF(i == tx.dsts.end(), error::wallet_internal_error, "paid address not found in outputs");
-        if (i->amount > needed_fee)
+        if (use_xasset_outputs ? i->amount_xasset : use_offshore_outputs ? i->amount_usd : i->amount  > needed_fee)
         {
-          uint64_t new_paid_amount = i->amount /*+ test_ptx.fee*/ - needed_fee;
-          LOG_PRINT_L2("Adjusting amount paid to " << get_account_address_as_str(m_nettype, i->is_subaddress, i->addr) << " from " <<
-            print_money(i->amount) << " to " << print_money(new_paid_amount) << " to accommodate " <<
-            print_money(needed_fee) << " fee");
-	          DSTS_FRONT_AMOUNT += i->amount - new_paid_amount;
-          i->amount = new_paid_amount;
+          // uint64_t new_paid_amount = i->amount /*+ test_ptx.fee*/ - needed_fee;
+          // LOG_PRINT_L2("Adjusting amount paid to " << get_account_address_as_str(m_nettype, i->is_subaddress, i->addr) << " from " <<
+          //   print_money(i->amount) << " to " << print_money(new_paid_amount) << " to accommodate " <<
+          //   print_money(needed_fee) << " fee");
+          DSTS_FRONT_AMOUNT += needed_fee;
+          (use_xasset_outputs ? i->amount_xasset : use_offshore_outputs ? i->amount_usd : i->amount) -= needed_fee;
           test_ptx.fee = needed_fee;
           available_for_fee = needed_fee;
         }
