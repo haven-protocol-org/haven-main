@@ -38,6 +38,7 @@
 #include "common/util.h"
 #include "common/pruning.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_core/cryptonote_tx_utils.cpp"
 #include "crypto/crypto.h"
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
@@ -979,7 +980,18 @@ void write_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val id
     throw0(DB_ERROR(lmdb_error("Failed to update tally for source circulating supply: ", result).c_str()));
 }
 
-uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& txp, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash)
+bool BlockchainLMDB::set_cs_asset_types(const transaction& tx, uint64_t& source, uint64_t& dest, bool miner_tx) {
+  std::string strSource;
+  std::string strDest;
+  if (!get_tx_asset_types(tx, tx.hash, strSource, strDest, miner_tx)) {
+    return false;
+  }
+  source = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
+  dest = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
+  return true;
+}
+
+uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& txp, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash, bool miner_tx)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
@@ -1070,33 +1082,15 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
     circ_supply cs;
     cs.tx_hash = tx_hash;
     cs.pricing_record_height = tx.pricing_record_height;
-    if (tx.offshore_data.size() == 2) {
-
-      // old-style of offshore data
-      cs.source_currency_type = (tx.offshore_data.at(0) == 'A') ? 0 : 13;
-      cs.dest_currency_type = (tx.offshore_data.at(1) == 'A') ? 0 : 13;
-
-      LOG_PRINT_L1("tx ID " << tx_id << " is an OFFSHORE TX:\nPR height =" << tx.pricing_record_height << "\nSource currency =" << tx.offshore_data.at(0) <<
-		    "\nDest currency =" << tx.offshore_data.at(1) << "\nBurnt =" << tx.amount_burnt << "\nMinted =" << tx.amount_minted);
-    } else {
-
-      // New-style of offshore data
-      std::string offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
-      int pos = offshore_data.find("-");
-      std::string strSource = offshore_data.substr(0,pos);
-      std::string strDest = offshore_data.substr(pos+1);
-      cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
-      cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
-
-      LOG_PRINT_L1("tx ID " << tx_id << " is an OFFSHORE or XASSET TX:\nPR height =" << tx.pricing_record_height << "\nSource currency =" << strSource <<
-		    "\nDest currency =" << strDest << "\nBurnt =" << tx.amount_burnt << "\nMinted =" << tx.amount_minted);
+    if (!set_cs_asset_types(tx, cs.source_currency_type, cs.dest_currency_type, miner_tx)) {
+      throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
     }
     cs.amount_burnt = tx.amount_burnt;
     cs.amount_minted = tx.amount_minted;
     MDB_val_set(val_circ_supply, cs);
     result = mdb_cursor_put(m_cur_circ_supply, &val_tx_id, &val_circ_supply, MDB_APPEND);
     if (result)
-      throw0(DB_ERROR(lmdb_error("Failed to add tx circulating supply to db transaction: ", result).c_str()));
+      throw0(DB_ERROR(  lmdb_error("Failed to add tx circulating supply to db transaction: ", result).c_str()  ));
 
     // update the tally table as well
 
@@ -1121,7 +1115,7 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
 
 // TODO: compare pros and cons of looking up the tx hash's tx index once and
 // passing it in to functions like this
-void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx)
+void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx, bool miner_tx)
 {
   int result;
 
@@ -1189,25 +1183,8 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
     cs.pricing_record_height = tx.pricing_record_height;
     cs.amount_burnt = tx.amount_burnt;
     cs.amount_minted = tx.amount_minted;
-    if (tx.offshore_data.size() == 2) {
-
-      // old-style of offshore data
-      cs.source_currency_type = (tx.offshore_data.at(0) == 'A') ? 0 : 13;
-      cs.dest_currency_type = (tx.offshore_data.at(1) == 'A') ? 0 : 13;
-
-      LOG_PRINT_L1("tx ID " << tip->data.tx_id << " is an OFFSHORE TX:\nPR height =" << tx.pricing_record_height << "\nSource currency =" << tx.offshore_data.at(0) <<
-        "\nDest currency =" << tx.offshore_data.at(1) << "\nBurnt =" << tx.amount_burnt << "\nMinted =" << tx.amount_minted);
-    } else {
-      // New-style of offshore data
-      std::string offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
-      int pos = offshore_data.find("-");
-      std::string strSource = offshore_data.substr(0,pos);
-      std::string strDest = offshore_data.substr(pos+1);
-      cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
-      cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
-
-      LOG_PRINT_L1("tx ID " << tip->data.tx_id << " is an OFFSHORE or XASSET TX:\nPR height =" << tx.pricing_record_height << "\nSource currency =" << strSource <<
-        "\nDest currency =" << strDest << "\nBurnt =" << tx.amount_burnt << "\nMinted =" << tx.amount_minted);
+    if (!set_cs_asset_types(tx, cs.source_currency_type, cs.dest_currency_type, miner_tx)) {
+      throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
     }
 
     // Update the tally by increasing the amount by how much we've burnt
@@ -3246,8 +3223,6 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   uint64_t m_coinbase = get_block_already_generated_coins(m_height-1);
   LOG_PRINT_L0("BlockchainLMDB::" << __func__ << " - mined supply for XHV = " << m_coinbase);
   check_open();
-
-  const std::array<const char* const, 14> allowed_currencies = {{"XHV", "xAG", "xAU", "xAUD", "xBTC", "xCAD", "xCHF", "xCNY", "xEUR", "xGBP", "xJPY", "xNOK", "xNZD", "xUSD"}};
   
   TXN_PREFIX_RDONLY();
   RCURSOR(circ_supply_tally);
@@ -3270,7 +3245,7 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
     // Push the data into the circulating supply return struct
     const uint64_t currency_type = *(const uint64_t*)k.mv_data;
     circ_supply_tally *cst = (circ_supply_tally*)v.mv_data;
-    const std::string currency_label = allowed_currencies.at(currency_type);
+    const std::string currency_label = offshore::ASSET_TYPES.at(currency_type);
     boost::multiprecision::int128_t amount = import_tally_from_cst(cst);
 
     // Check for XHV - we need to adjust the total for them
@@ -3278,8 +3253,8 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
       // Get the current circulating supply for XHV
       amount += m_coinbase;
     }
-    std::pair<std::string, std::string> foo(currency_label, boost::to_string(amount));
-    circulating_supply.push_back(foo);
+
+    circulating_supply.emplace_back(std::pair<std::string, std::string>{currency_label, boost::to_string(amount)});
   }
 
   TXN_POSTFIX_RDONLY();

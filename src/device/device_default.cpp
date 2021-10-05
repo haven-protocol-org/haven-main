@@ -35,7 +35,11 @@
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/subaddress_index.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
+#include "cryptonote_basic/cryptonote_format_utils.cpp"
+#include "cryptonote_basic/cryptonote_basic_impl.cpp"
+#include "cryptonote_basic/account.cpp"
 #include "ringct/rctOps.h"
+#include "offshore/pricing_record.cpp"
 #include "cryptonote_config.h"
 
 namespace hw {

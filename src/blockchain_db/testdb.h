@@ -110,8 +110,8 @@ public:
   virtual std::vector<std::vector<std::pair<uint64_t, uint64_t>>> get_tx_amount_output_indices(const uint64_t tx_index, size_t n_txes) const override { return std::vector<std::vector<std::pair<uint64_t, uint64_t>>>(); }
   virtual bool has_key_image(const crypto::key_image& img) const override { return false; }
   virtual void remove_block() override { }
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<cryptonote::transaction, cryptonote::blobdata>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash) override {return 0;}
-  virtual void remove_transaction_data(const crypto::hash& tx_hash, const cryptonote::transaction& tx) override {}
+  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<cryptonote::transaction, cryptonote::blobdata>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash, bool miner_tx) override {return 0;}
+  virtual void remove_transaction_data(const crypto::hash& tx_hash, const cryptonote::transaction& tx, bool miner_tx) override {}
   virtual std::pair<uint64_t, uint64_t> add_output(const crypto::hash& tx_hash, const cryptonote::tx_out& tx_output, const uint64_t& local_index, const uint64_t unlock_time, const rct::key *commitment) override {return std::make_pair(0,0);}
   virtual void add_tx_amount_output_indices(const uint64_t tx_index, const std::vector<std::pair<uint64_t, uint64_t>>& amount_output_indices) override {}
   virtual void add_spent_key(const crypto::key_image& k_image) override {}
