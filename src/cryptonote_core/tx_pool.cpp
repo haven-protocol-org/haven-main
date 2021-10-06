@@ -312,6 +312,12 @@ namespace cryptonote
         tvc.m_verifivation_failed = true;
         return false;
       }
+      // make sure no pr heiht set
+      if (tx.pricing_record_height) {
+        LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
     }
 
     // check the std tx fee
@@ -787,6 +793,12 @@ namespace cryptonote
       // make sure there is no burnt/mint set for transfers, since these numbers will affect circulating supply.
       if (tx.amount_burnt || tx.amount_minted) {
         LOG_ERROR("error: Invalid Tx found. Amount burnt/mint > 0 for a transfer tx.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      // make sure no pr heiht set
+      if (tx.pricing_record_height) {
+        LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
       }
@@ -2325,22 +2337,22 @@ namespace cryptonote
         continue;
       }
 
-      // Validate that pricing record has not grown too old since it was first included in the pool
-      if (tx.pricing_record_height > 0)
-      {
-        uint64_t current_height = m_blockchain.get_current_blockchain_height();
-        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
-          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-          continue;
-        }
-      }
-
       // get the asset types
       std::string source;
       std::string dest;
       if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
         LOG_PRINT_L2("At least 1 input or 1 output of the tx was invalid.");
         continue;
+      }
+
+      // Validate that pricing record has not grown too old since it was first included in the pool
+      if (source != dest)
+      {
+        uint64_t current_height = m_blockchain.get_current_blockchain_height();
+        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+          continue;
+        }
       }
 
       bl.tx_hashes.push_back(sorted_it->second);
