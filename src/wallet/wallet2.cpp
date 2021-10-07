@@ -2738,7 +2738,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   // set the fee
   uint64_t fee = 0;
   if (!miner_tx) {
-    if (use_fork_rules(HF_VERSION_HAVEN2)) {
+    if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
       fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
     } else {
       fee = (source == "XHV") ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
@@ -2905,11 +2905,16 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
 {
   std::pair<std::unordered_map<crypto::hash, confirmed_transfer_details>::iterator, bool> entry = m_confirmed_txs.insert(std::make_pair(txid, confirmed_transfer_details()));
 
-  entry.first->second.m_fee =
-    strSource == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
-    strSource == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
-    tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
-  
+  if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+    entry.first->second.m_fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
+  } else {
+    entry.first->second.m_fee =
+      strSource == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
+      strSource == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
+      tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
+  }
+
+
   // fill with the info we know, some info might already be there
   if (entry.second)
   {
@@ -7051,9 +7056,13 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
   utd.m_source_currency_type = input_asset;
 
   //get the tx fee
-  utd.m_fee = input_asset == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
-            input_asset == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
-            tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
+  if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+    utd.m_fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
+  } else {
+    utd.m_fee = input_asset == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
+              input_asset == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
+              tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
+  }
 
   // set the amount out
   utd.m_amount_out = utd.m_amount_in - utd.m_change - utd.m_fee;
@@ -7126,7 +7135,7 @@ void wallet2::commit_tx(pending_tx& ptx)
     COMMAND_RPC_SEND_RAW_TX::request req;
     req.tx_as_hex = epee::string_tools::buff_to_hex_nodelimer(tx_to_blob(ptx.tx));
     req.do_not_relay = false;
-    req.do_sanity_checks = true;
+    req.do_sanity_checks = false; // TODO: to be enabled in the future.
     COMMAND_RPC_SEND_RAW_TX::response daemon_send_resp;
 
     {
@@ -11095,10 +11104,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(tx.dsts, priority, fee_sources)
                     : (tx_type == tt::ONSHORE) ? get_onshore_fee(tx.dsts, priority, fee_sources)
-                    : (tx_type == tt::OFFSHORE_TRANSFER) ? get_offshore_to_offshore_fee(tx.dsts, 4, fee_sources)
                     : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(tx.dsts, priority, fee_sources)
                     : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(tx.dsts, priority, fee_sources)
-                    : (tx_type == tt::XASSET_TRANSFER) ? get_xasset_transfer_fee(tx.dsts, priority, fee_sources)
                     : 0;
       needed_fee += offshore_fee;
 
