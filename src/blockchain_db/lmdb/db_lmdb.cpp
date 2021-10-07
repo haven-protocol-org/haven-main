@@ -980,17 +980,6 @@ void write_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val id
     throw0(DB_ERROR(lmdb_error("Failed to update tally for source circulating supply: ", result).c_str()));
 }
 
-bool BlockchainLMDB::set_cs_asset_types(const transaction& tx, uint64_t& source, uint64_t& dest, bool miner_tx) {
-  std::string strSource;
-  std::string strDest;
-  if (!get_tx_asset_types(tx, tx.hash, strSource, strDest, miner_tx)) {
-    return false;
-  }
-  source = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
-  dest = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
-  return true;
-}
-
 uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& txp, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash, bool miner_tx)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -1076,15 +1065,21 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
       throw0(DB_ERROR(lmdb_error("Failed to add prunable tx prunable hash to db transaction: ", result).c_str()));
   }
 
+  // get tx assets
+  std::string strSource;
+  std::string strDest;
+  if (!get_tx_asset_types(tx, tx.hash, strSource, strDest, miner_tx)) {
+    throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
+  }
+
   // NEAC : check for presence of offshore TX to see if we need to update circulating supply information
-  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0)) {    
+  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (strSource != strDest)) {  
     // Offshore TX - update our records
     circ_supply cs;
     cs.tx_hash = tx_hash;
     cs.pricing_record_height = tx.pricing_record_height;
-    if (!set_cs_asset_types(tx, cs.source_currency_type, cs.dest_currency_type, miner_tx)) {
-      throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
-    }
+    cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
+    cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
     cs.amount_burnt = tx.amount_burnt;
     cs.amount_minted = tx.amount_minted;
     MDB_val_set(val_circ_supply, cs);
@@ -1174,7 +1169,14 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
         throw1(DB_ERROR(lmdb_error("Failed to add removal of prunable hash tx to db transaction: ", result).c_str()));
   }
 
-  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (tx.pricing_record_height != 0))
+  // get tx assets
+  std::string strSource;
+  std::string strDest;
+  if (!get_tx_asset_types(tx, tx.hash, strSource, strDest, miner_tx)) {
+    throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
+  }
+
+  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (strSource != strDest))
   {    
     // Update the tally table
     // Get the current tally value for the source currency type
@@ -1183,9 +1185,8 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
     cs.pricing_record_height = tx.pricing_record_height;
     cs.amount_burnt = tx.amount_burnt;
     cs.amount_minted = tx.amount_minted;
-    if (!set_cs_asset_types(tx, cs.source_currency_type, cs.dest_currency_type, miner_tx)) {
-      throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
-    }
+    cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
+    cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
 
     // Update the tally by increasing the amount by how much we've burnt
     MDB_val_copy<uint64_t> source_idx(cs.source_currency_type);

@@ -899,7 +899,6 @@ namespace cryptonote
 
       // Get the pricing_record_height for any offshore TX
       if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
-
         // validate that tx uses a recent pr
         const uint64_t pr_height = tx_info[n].tx->pricing_record_height;
         const uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
