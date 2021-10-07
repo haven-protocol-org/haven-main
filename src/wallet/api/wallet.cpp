@@ -1017,6 +1017,17 @@ uint64_t WalletImpl::unlockedBalance(std::string asset_type, uint32_t accountInd
     return m_wallet->unlocked_balance(asset_type, accountIndex, false);
 }
 
+std::map<std::string, uint64_t> WalletImpl::balanceAll() const
+{
+    return m_wallet->balance_all(false);
+}
+
+std::map<std::string, uint64_t> WalletImpl::unlockedBalanceAll() const
+{
+    return m_wallet->unlocked_balance_all(false);
+}
+
+
 uint64_t WalletImpl::blockChainHeight() const
 {
     if(m_wallet->light_wallet()) {
@@ -2139,6 +2150,8 @@ bool WalletImpl::connectToDaemon()
 
 Wallet::ConnectionStatus WalletImpl::connected() const
 {
+
+    LOG_PRINT_L3("check connection state to daemon");
     uint32_t version = 0;
     m_is_connected = m_wallet->check_connection(&version, NULL, DEFAULT_CONNECTION_TIMEOUT_MILLIS);
     if (!m_is_connected)
