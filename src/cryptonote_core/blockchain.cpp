@@ -5389,6 +5389,18 @@ leave: {
         bvc.m_verifivation_failed = true;
         goto leave;
       }
+    } else {
+      //make sure those values are 0 for transfers.
+      if (tx.amount_burnt || tx.amount_minted) {
+        LOG_PRINT_L2("error: Invalid Tx found. Amount burnt/mint > 0 for a transfer tx.");
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+      if (tx.pricing_record_height) {
+        LOG_PRINT_L2("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
     }
 
     TIME_MEASURE_FINISH(cc);

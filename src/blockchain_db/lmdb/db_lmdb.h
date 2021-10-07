@@ -391,9 +391,8 @@ private:
 
   virtual void remove_block();
 
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash);
-
-  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx);
+  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash, bool miner_tx);
+  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx, bool miner_tx);
 
   virtual std::pair<uint64_t, uint64_t> add_output(const crypto::hash& tx_hash,
       const tx_out& tx_output,

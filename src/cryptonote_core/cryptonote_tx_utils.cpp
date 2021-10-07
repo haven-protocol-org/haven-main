@@ -548,10 +548,10 @@ namespace cryptonote
   */
   bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
 
-   // Clear the source
+    // Clear the source
     std::set<std::string> source_asset_types;
     source = "";
-    for (int i=0; i<tx.vin.size(); i++) {
+    for (size_t i = 0; i < tx.vin.size(); i++) {
       if (tx.vin[i].type() == typeid(txin_gen)) {
         if (!is_miner_tx) {
           LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
@@ -565,7 +565,7 @@ namespace cryptonote
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
 	      source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[0]).asset_type);
+	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[i]).asset_type);
       } else {
         LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
         return false;

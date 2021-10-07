@@ -232,7 +232,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
   }
 
-  uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash);
+  uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash, miner_tx);
 
   std::vector<std::pair<uint64_t, uint64_t>> amount_output_indices(tx.vout.size());
 
@@ -362,9 +362,9 @@ void BlockchainDB::pop_block(block& blk, std::vector<transaction>& txs)
     if (!get_tx(h, tx) && !get_pruned_tx(h, tx))
       throw DB_ERROR("Failed to get pruned or unpruned transaction from the db");
     txs.push_back(std::move(tx));
-    remove_transaction(h);
+    remove_transaction(h, false/*miner_tx*/);
   }
-  remove_transaction(get_transaction_hash(blk.miner_tx));
+  remove_transaction(get_transaction_hash(blk.miner_tx), true /*miner_tx*/);
 }
 
 bool BlockchainDB::is_open() const
@@ -372,7 +372,7 @@ bool BlockchainDB::is_open() const
   return m_open;
 }
 
-void BlockchainDB::remove_transaction(const crypto::hash& tx_hash)
+void BlockchainDB::remove_transaction(const crypto::hash& tx_hash, bool miner_tx)
 {
   transaction tx = get_pruned_tx(tx_hash);
 
@@ -397,7 +397,7 @@ void BlockchainDB::remove_transaction(const crypto::hash& tx_hash)
   }
 
   // need tx as tx.vout has the tx outputs, and the output amounts are needed
-  remove_transaction_data(tx_hash, tx);
+  remove_transaction_data(tx_hash, tx, miner_tx);
 }
 
 block BlockchainDB::get_block_from_height(const uint64_t& height) const

@@ -278,7 +278,7 @@ namespace
   const char* USAGE_OFFSHORE("offshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
   const char* USAGE_OFFSHORE_TRANSFER("offshore_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> [memo=<memo data>])");
   const char* USAGE_ONSHORE("onshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
-  const char* USAGE_GET_PRICE("get_price <ASSET_TYPE> <xUSD amount>");
+  const char* USAGE_GET_PRICE("get_price <xUSD amount> <ASSET_TYPE> [<ASSET_TYPE>...]");
   const char* USAGE_GET_PRICES("get_prices <xUSD amount>");
 
   const char* USAGE_XASSET_SWEEP_ALL("xasset_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> <xAsset type> [<payment_id (obsolete)>]");
@@ -2365,7 +2365,14 @@ bool simple_wallet::get_price(const std::vector<std::string> &args)
     fail_msg_writer() << tr("Missing parameter");
     return false;
   }
-  uint64_t xusd = boost::lexical_cast<uint64_t>(args[0]);
+  uint64_t xusd = 0;
+  try {
+    xusd = boost::lexical_cast<uint64_t>(args[0]);
+  }
+  catch(std::exception &e) {
+    fail_msg_writer() << boost::format(tr("Invalid amount %s specified.")) % args[0];
+    return false;
+  }
   
   // Get the current blockchain height
   uint64_t current_height = m_wallet->get_blockchain_current_height()-1;
@@ -7995,6 +8002,13 @@ bool simple_wallet::offshore_sweep_below(const std::vector<std::string> &args_)
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::xasset_sweep_all(const std::vector<std::string> &args_)
 {
+  // Simple sanity check - make sure we have the asset type specified
+  if (args_.size() < 1)
+  {
+    fail_msg_writer() << tr("No xAsset type provided.");
+    PRINT_USAGE(USAGE_XASSET_SWEEP_ALL);
+    return false;
+  }
   // copy args
   std::vector<std::string> local_args = args_;
 
