@@ -7576,7 +7576,7 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
     {
       total_fee += ptx_vector[n].fee;
       for (auto i: ptx_vector[n].selected_transfers)
-	total_sent += m_wallet->get_transfer_details(asset_type, i).amount();
+	      total_sent += m_wallet->get_transfer_details(asset_type, i).amount();
     }
 
     std::ostringstream prompt;
@@ -7601,10 +7601,8 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
     }
     else {
       prompt << boost::format(tr("Sweeping %s %s for a total fee of %s %s.  Is this okay?")) %
-        print_money(total_sent) %
-	asset_type %
-        print_money(total_fee) %
-	asset_type;
+        print_money(total_sent) % asset_type %
+        print_money(total_fee) % asset_type;
     }
     std::string accepted = input_line(prompt.str(), true);
     if (std::cin.eof())
