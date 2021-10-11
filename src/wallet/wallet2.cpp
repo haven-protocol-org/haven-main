@@ -13381,19 +13381,29 @@ uint64_t wallet2::get_daemon_blockchain_target_height(string &err)
 
 uint64_t wallet2::get_approximate_blockchain_height() const
 {
-  // time of v2 fork
-  const time_t fork_time = m_nettype == TESTNET ? 1522713600 : m_nettype == STAGENET ? 1522713600 : 1518826456;
-  // v2 fork block
-  const uint64_t fork_block = m_nettype == TESTNET ? 25 : m_nettype == STAGENET ? 25 : 38500;
+
+  //TODO if testnet is expected to be stable, remove condition and take same approach like mainnet/stagenet
+  if (m_nettype == TESTNET) {
+    return 0;
+  }
+
+  // mainnet block and its matching timestamp
+  const time_t MAINNET_SNAP_SHOT_TIME = 1633955122;
+  const uint64_t MAINNET_SNAP_SHOT_BLOCK = 946112;
+
+  //stagenet
+  const time_t STAGENET_SNAP_SHOT_TIME = 1633955358;
+  const uint64_t STAGENET_SNAP_SHOT_BLOCK = 23947;
+
+  // time of snapshot
+  const time_t snap_shot_time = m_nettype == MAINNET ? MAINNET_SNAP_SHOT_TIME : STAGENET_SNAP_SHOT_TIME;
+  // snap shot block
+  const uint64_t snap_shot_block = m_nettype == MAINNET ? MAINNET_SNAP_SHOT_BLOCK : STAGENET_SNAP_SHOT_BLOCK;
   // avg seconds per block
   const int seconds_per_block = DIFFICULTY_TARGET_V2;
   // Calculated blockchain height
-  uint64_t approx_blockchain_height = fork_block + (time(NULL) - fork_time)/seconds_per_block;
-  // NO ROLLBACK FOR HAVEN
-  // testnet got some huge rollbacks, so the estimation is way off
-  //static const uint64_t approximate_testnet_rolled_back_blocks = 303967;
-  //if (m_nettype == TESTNET && approx_blockchain_height > approximate_testnet_rolled_back_blocks)
-  //approx_blockchain_height -= approximate_testnet_rolled_back_blocks;
+  uint64_t approx_blockchain_height = snap_shot_block + (time(NULL) - snap_shot_time)/seconds_per_block;
+
   LOG_PRINT_L2("Calculated blockchain height: " << approx_blockchain_height);
   return approx_blockchain_height;
 }
