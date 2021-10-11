@@ -6659,6 +6659,11 @@ void wallet2::get_xasset_transfers(std::map<std::string, wallet2::transfer_conta
   incoming_transfers = m_xasset_transfers;
 }
 //----------------------------------------------------------------------------------------------------
+void wallet2::get_xasset_transfers(wallet2::transfer_container& incoming_transfers, const std::string& asset_type)
+{
+  incoming_transfers = m_xasset_transfers[asset_type];
+}
+//----------------------------------------------------------------------------------------------------
 void wallet2::get_payments(const crypto::hash& payment_id, std::list<wallet2::payment_details>& payments, uint64_t min_height, const boost::optional<uint32_t>& subaddr_account, const std::set<uint32_t>& subaddr_indices) const
 {
   auto range = m_payments.equal_range(payment_id);

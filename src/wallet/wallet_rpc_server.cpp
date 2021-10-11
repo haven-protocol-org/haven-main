@@ -475,8 +475,17 @@ namespace tools
         balance_per_subaddress_per_account[req.account_index] = m_wallet->balance_per_subaddress(req.asset_type, req.account_index, req.strict);
         unlocked_balance_per_subaddress_per_account[req.account_index] = m_wallet->unlocked_balance_per_subaddress(req.asset_type, req.account_index, req.strict);
       }
+
+      // get transfers
       std::vector<tools::wallet2::transfer_details> transfers;
-      m_wallet->get_transfers(transfers);
+      if (req.asset_type == "XHV") {
+        m_wallet->get_transfers(transfers);
+      } else if (req.asset_type == "XUSD") {
+        m_wallet->get_offshore_transfers(transfers);
+      } else {
+        m_wallet->get_xasset_transfers(transfers, req.asset_type);
+      }
+
       for (const auto& p : balance_per_subaddress_per_account)
       {
         uint32_t account_index = p.first;
@@ -896,9 +905,8 @@ namespace tools
   //------------------------------------------------------------------------------------------------------------------------------
   template<typename Ts, typename Tu>
   bool wallet_rpc_server::fill_response(std::vector<tools::wallet2::pending_tx> &ptx_vector,
-      bool get_tx_key, Ts& tx_key, Tu &amount, std::string amount_asset, Tu &fee, Tu &weight, std::string &multisig_txset, std::string &unsigned_txset,
-				bool do_not_relay, Ts &tx_hash, bool get_tx_hex, Ts &tx_blob, bool get_tx_metadata, Ts &tx_metadata, epee::json_rpc::error &er,
-				bool use_offshore_amounts)
+    bool get_tx_key, Ts& tx_key, Tu &amount, std::string amount_asset, Tu &fee, Tu &weight, std::string &multisig_txset, std::string &unsigned_txset,
+    bool do_not_relay, Ts &tx_hash, bool get_tx_hex, Ts &tx_blob, bool get_tx_metadata, Ts &tx_metadata, epee::json_rpc::error &er)
   {
     for (const auto & ptx : ptx_vector)
     {
@@ -1092,7 +1100,7 @@ namespace tools
       res.amount_asset = "XUSD";
       res.fee_asset = "XUSD";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er, true);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1989,7 +1997,7 @@ namespace tools
         priority, extra, req.account_index, subaddr_indices, req.asset_type, tx_type
       );
 
-      return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, "XHV", res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
+      return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, req.asset_type, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
 			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
     }
     catch (const std::exception& e)
@@ -2064,7 +2072,7 @@ namespace tools
         return false;
       }
 
-      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, "XHV", res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, ptx_vector[0].change_dts.asset_type, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
           res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, er);
     }
     catch (const std::exception& e)
@@ -2278,8 +2286,8 @@ namespace tools
       // Iterate over our vector to see which currencies are requested
       bool bMatched = false;
       std::vector<std::string> types = req.types;
-      if (!types.size())
-      types.push_back("xhv");
+      if (!types.size()) // for backwarsd compatibilty
+        types.push_back("xhv");
 
       for (auto type: types) {
         if (boost::algorithm::to_lower_copy(type) == boost::algorithm::to_lower_copy(payment.m_asset_type)) {
