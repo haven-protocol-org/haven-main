@@ -25,7 +25,7 @@ jobs:
     - name: Install Haven dependencies
       run: |
         sudo apt update
-        sudo apt-get --no-install-recommends --yes install build-essential cmake pkg-config libssl-dev libunbound-dev libsodium-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev libudev-dev
+        sudo apt-get --no-install-recommends --yes install wget build-essential cmake pkg-config libssl-dev libunbound-dev libsodium-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev libudev-dev
     - name: install boost 1.77
       run: |
         wget https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.tar.gz
