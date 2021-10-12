@@ -9714,33 +9714,36 @@ void wallet2::transfer_selected_rct(
     change_dts.addr = get_subaddress({subaddr_account, 0});
     change_dts.is_subaddress = subaddr_account != 0;
     splitted_dsts.push_back(change_dts);
-
-    // add a dummy 0 change to a random address, so that we can use sum of masks
-    // of change outputs in the amount burnt verification instead of using only
-    // the real change mask. To prevent someone guesssing the indiviaul masks of outputs.
-    if (use_fork_rules(HF_VERSION_HAVEN2, 0) && strSource != strDest) {
-      LOG_PRINT_L2("generating dummy address for 0 change in conversion tx");
-      cryptonote::tx_destination_entry change_dts_2 = AUTO_VAL_INIT(change_dts_2);
-      cryptonote::account_base dummy;
-      dummy.generate();
-      change_dts_2.amount = change_dts_2.amount_usd = change_dts_2.amount_xasset = 0;
-      change_dts_2.asset_type = strSource;
-      change_dts_2.addr = dummy.get_keys().m_account_address;
-      LOG_PRINT_L2("generated dummy address for 0 change in conversion tx");
-      splitted_dsts.push_back(change_dts_2);
-
-      // also add another dummy ouput that has the same asset type as dest asset type
-      // to hide the correlation between amount_minted and dest output
-      LOG_PRINT_L2("generating dummy address for dest asset type in conversion tx");
-      dummy.generate();
-      change_dts_2.amount = change_dts_2.amount_usd = change_dts_2.amount_xasset = 0;
-      change_dts_2.asset_type = strDest;
-      change_dts_2.addr = dummy.get_keys().m_account_address;
-      LOG_PRINT_L2("generated dummy address for dest asset type in conversion tx");
-      splitted_dsts.push_back(change_dts_2);
-    }
   }
 
+  // add a dummy 0 change to a random address, so that we can use sum of change
+  // outputs masks in the amount burnt verification instead of using only
+  // the real change mask. To prevent someone guesssing the indiviaul masks of outputs.
+  // Also add another dummy ouput that has the same asset type as dest asset type
+  // to hide the correlation between amount_minted and dest output
+  if (use_fork_rules(HF_VERSION_HAVEN2, 0) && strSource != strDest) {
+    // add one for source
+    LOG_PRINT_L2("generating dummy address for 0 change in conversion tx");
+    cryptonote::tx_destination_entry change_dts_2 = AUTO_VAL_INIT(change_dts_2);
+    cryptonote::account_base dummy;
+    dummy.generate();
+    change_dts_2.amount = change_dts_2.amount_usd = change_dts_2.amount_xasset = 0;
+    change_dts_2.asset_type = strSource;
+    change_dts_2.addr = dummy.get_keys().m_account_address;
+    LOG_PRINT_L2("generated dummy address for 0 change in conversion tx");
+    splitted_dsts.push_back(change_dts_2);
+
+    // add one for dest
+    LOG_PRINT_L2("generating dummy address for dest asset type in conversion tx");
+    dummy.generate();
+    change_dts_2.amount = change_dts_2.amount_usd = change_dts_2.amount_xasset = 0;
+    change_dts_2.asset_type = strDest;
+    change_dts_2.addr = dummy.get_keys().m_account_address;
+    LOG_PRINT_L2("generated dummy address for dest asset type in conversion tx");
+    splitted_dsts.push_back(change_dts_2);
+  }
+
+  // construct the tx
   crypto::secret_key tx_key;
   std::vector<crypto::secret_key> additional_tx_keys;
   rct::multisig_out msout;
