@@ -23,7 +23,7 @@ jobs:
     - name: install boost
       run: |
         wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-boost-1.77.0-2-any.pkg.tar.zst
-        wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-icu-66.1-1-any.pkg.tar.zst
+        wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-icu-69.1-1-any.pkg.tar.zst
         pacman -U --noconfirm *.tar.zst
     - name: build Haven
       run: make release-static-win64
