@@ -91,20 +91,7 @@ struct PendingTransaction
         Priority_High = 3,
         Priority_Last
     };
-
-    enum TransactionType {
-        UNSET = 0,
-        TRANSFER,
-        OFFSHORE,
-        ONSHORE,
-        OFFSHORE_TRANSFER,
-        XUSD_TO_XASSET,
-        XASSET_TO_XUSD,
-        XASSET_TRANSFER
-  };
-
     
-
     virtual ~PendingTransaction() = 0;
     virtual int status() const = 0;
     virtual std::string errorString() const = 0;
@@ -842,7 +829,7 @@ struct Wallet
 
     virtual PendingTransaction * createTransactionMultDest(const std::vector<std::string> &dst_addr, const std::string &payment_id,
                                                    optional<std::vector<uint64_t>> amount, 
-                                                   const std::string &str_source, const std::string &str_dest, PendingTransaction::TransactionType tx_type,
+                                                   const std::string &str_source, const std::string &str_dest,
                                                    uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,
@@ -863,7 +850,7 @@ struct Wallet
 
     virtual PendingTransaction * createTransaction(const std::string &dst_addr, const std::string &payment_id,
                                                    optional<uint64_t> amount, 
-                                                   const std::string &str_source, const std::string &str_dest, PendingTransaction::TransactionType tx_type,
+                                                   const std::string &str_source, const std::string &str_dest,
                                                    uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,

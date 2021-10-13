@@ -1443,7 +1443,7 @@ PendingTransaction* WalletImpl::restoreMultisigTransaction(const string& signDat
 //    - unconfirmed_transfer_details;
 //    - confirmed_transfer_details)
 
-PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, optional<std::vector<uint64_t>> amount, const string &str_source, const string &str_dest, const PendingTransaction::TransactionType tx_type, uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, optional<std::vector<uint64_t>> amount, const string &str_source, const string &str_dest, uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 
 {
     clearStatus();
@@ -1451,8 +1451,6 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
     pauseRefresh();
       
     cryptonote::address_parse_info info;
-    cryptonote::transaction_type transfer_type = (cryptonote::transaction_type) tx_type;
-
     // indicates if dst_addr is integrated address (address + payment_id)
     // TODO:  (https://bitcointalk.org/index.php?topic=753252.msg9985441#msg9985441)
     size_t fake_outs_count = mixin_count > 0 ? mixin_count : m_wallet->default_mixin();
@@ -1465,6 +1463,14 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
     PendingTransactionImpl * transaction = new PendingTransactionImpl(*this);
 
     do {
+
+        transaction_type tx_type;
+        bool is_valid_tx_type = cryptonote::get_tx_type(str_source, str_dest, tx_type);
+
+        if (!is_valid_tx_type) {
+            setStatusError(tr("tx type is not valid: ") + str_source + "-" + str_dest);
+            break;
+        }
         std::vector<uint8_t> extra;
         std::string extra_nonce;
         vector<cryptonote::tx_destination_entry> dsts;
@@ -1524,39 +1530,30 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
         std::string err;
         uint64_t bc_height, unlock_block, locked_blocks = 0;
 
-        // non sweep transfer/offshore/onshore/xasset convversion
         if (amount) {
 
-            //determine type of tx
-            bool isOnOffshore = (str_source == "XHV" && str_dest == "XUSD") || (str_source == "XUSD" && str_dest == "XHV");
-            bool isTransfer = str_dest == str_source;
-            bool isOffshoreTransfer = isTransfer && str_dest == "XUSD";
-            bool isXHVTransfer = isTransfer && str_dest == "XHV";
-            bool isxAssetTX = !isOffshoreTransfer && !isXHVTransfer && !isOnOffshore;
-            bool isXassetExchange = isxAssetTX && !isTransfer;
-            bool isXassetTransfer = isxAssetTX && isTransfer;
 
 
                 //set unlock time for onshore/offshore
-                if (isOnOffshore) {
+            if (tx_type == transaction_type::ONSHORE || tx_type == transaction_type::OFFSHORE) {
 
-                    if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
-                        locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
-                    } else {
-                        locked_blocks = 60 * pow(3, std::max((uint32_t)0, 4-adjusted_priority));
-                    }
-
+                if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
+                    locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+                } else {
+                    locked_blocks = 60 * pow(3, std::max((uint32_t)0, 4-adjusted_priority));
                 }
 
-                // set unlock for xasset exchange
-                if (isXassetExchange) {
-
-                    if (m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
-                        locked_blocks = 1440; // ~48 hours
-                    }
-                } 
-        
             }
+
+            // set unlock for xasset exchange
+            if (tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
+
+                if (m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
+                    locked_blocks = 1440; // ~48 hours
+                }
+            } 
+        
+        }
 
         bc_height = m_wallet->get_daemon_blockchain_height(err);
 
@@ -1577,13 +1574,13 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
 
         try {
             if (amount) {
-                transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, fake_outs_count, str_source, str_dest, transfer_type, unlock_block /* unlock_time */,
+                transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, fake_outs_count, str_source, str_dest, tx_type, unlock_block /* unlock_time */,
                                                                             adjusted_priority,
                                                                             extra, subaddr_account, subaddr_indices);
             } else {
                 transaction->m_pending_tx = m_wallet->create_transactions_all(0, info.address, info.is_subaddress, 1, fake_outs_count, 0 /* unlock_time */,
                                                                               adjusted_priority,
-                                                                              extra, subaddr_account, subaddr_indices, str_source, transfer_type);
+                                                                              extra, subaddr_account, subaddr_indices, str_source, tx_type);
             }
             pendingTxPostProcess(transaction);
 
@@ -1663,11 +1660,11 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
     return transaction;
 }
 
-PendingTransaction *WalletImpl::createTransaction(const string &dst_addr, const string &payment_id, optional<uint64_t> amount, const string &str_source, const string &str_dest, PendingTransaction::TransactionType tx_type,
+PendingTransaction *WalletImpl::createTransaction(const string &dst_addr, const string &payment_id, optional<uint64_t> amount, const string &str_source, const string &str_dest,
                                                   uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 
 {
-    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), str_source, str_dest, tx_type, mixin_count, priority, subaddr_account, subaddr_indices);
+    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), str_source, str_dest, mixin_count, priority, subaddr_account, subaddr_indices);
 }
 
 PendingTransaction *WalletImpl::createSweepUnmixableTransaction()
