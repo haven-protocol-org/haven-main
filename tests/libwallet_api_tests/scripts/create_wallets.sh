@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# folder where cli resides
-WALLET_CLI_FOLDER=/Users/dev/workspace/crypto/haven-main/build/Darwin/bugfix_wallet-api/release/bin
+. ./conf.sh
 
 function create_wallet {
     wallet_name=$1
-    echo 0 | $WALLET_CLI_FOLDER/haven-wallet-cli  --testnet --trusted-daemon --daemon-address localhost:27750 --generate-new-wallet $WALLET_CLI_FOLDER/$wallet_name --restore-height 1 --password ""
+    echo 0 | $WALLET_CLI_DIR/haven-wallet-cli  --testnet --trusted-daemon --daemon-address localhost:27750 --generate-new-wallet $WALLETS_ROOT_DIR/$wallet_name --restore-height 1 --password ""
 }
 
 

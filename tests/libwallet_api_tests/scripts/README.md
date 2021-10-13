@@ -1,7 +1,7 @@
 # Running libwallet_api tests
 
 ## Environment for the tests
-* Running monero node, linked to private/public testnet. 
+* Running haven node, linked to private/public testnet. 
   By default, tests expect daemon running at ```localhost:27750```,
   can be overridden with environment variable ```TESTNET_DAEMON_ADDRESS=<your_daemon_address>```
   [Manual](https://github.com/moneroexamples/private-testnet) explaining how to run private testnet.
@@ -14,7 +14,8 @@
 
 
 ## Generating test wallets
-* ```create_wallets.sh``` - this script will create wallets (wallet_01.bin, wallet_02.bin,...,wallet_06.bin) in current directory. 
+* ```create_wallets.sh``` - this script will create wallets (alice, bob) in current directory. 
+  Directory can be changed in ```./conf.sh```  Also Directory pointing to haven-wallet-cli can be changed here. 
   when running first time, please uncomment line ```#create_wallet wallet_m``` to create miner wallet as well. 
   This wallet should be used for mining and all test wallets supposed to be seed from this miner wallet
 
