@@ -70,8 +70,8 @@ const char * WALLET_LANG = "English";
 
 
 std::string WALLETS_ROOT_DIR = "/var/monero/testnet_pvt";
-std::string TESTNET_WALLET1_NAME;
-std::string TESTNET_WALLET5_NAME;
+std::string TESTNET_WALLET_BOB;
+std::string TESTNET_WALLET_ALICE;
 
 const char * TESTNET_WALLET_PASS = "";
 
@@ -84,8 +84,8 @@ const uint64_t AMOUNT_1XMR  =  1000000000000L;
 
 const std::string PAYMENT_ID_EMPTY = "";
 
-std::string TESTNET_DAEMON_ADDRESS = "http://localhost:27750";
-std::string MAINNET_DAEMON_ADDRESS = "http://localhost:17750";
+std::string TESTNET_DAEMON_ADDRESS = "localhost:27750";
+std::string MAINNET_DAEMON_ADDRESS = "localhost:17750";
 
 std::string XHV_ASSET = "XHV";
 
@@ -533,13 +533,13 @@ TEST_F(WalletTest1, WalletReturnsDaemonBlockHeight)
 {
      Monero::Wallet * wallet1 = wmgr->openWallet(CURRENT_SRC_WALLET, TESTNET_WALLET_PASS, Monero::NetworkType::TESTNET);
     // wallet not connected to daemon
-    /*ASSERT_TRUE(wallet1->daemonBlockChainHeight() == 0);
+   /*  ASSERT_TRUE(wallet1->daemonBlockChainHeight() == 0);
     std::cout << "wallet status: " << wallet1->status() << std::endl;
     ASSERT_TRUE(wallet1->status() != Monero::Wallet::Status_Ok);
     ASSERT_FALSE(wallet1->errorString().empty());
     wmgr->closeWallet(wallet1); */
 
-    //wallet1 = wmgr->openWallet(CURRENT_SRC_WALLET, TESTNET_WALLET_PASS, Monero::NetworkType::TESTNET);
+   // wallet1 = wmgr->openWallet(CURRENT_SRC_WALLET, TESTNET_WALLET_PASS, Monero::NetworkType::TESTNET);
     // wallet connected to daemon
     wallet1->init(TESTNET_DAEMON_ADDRESS, 0);
     ASSERT_TRUE(wallet1->connected());
@@ -593,7 +593,6 @@ TEST_F(WalletTest1, WalletTransaction)
                                                                              AMOUNT_10XMR,
                                                                              XHV_ASSET,
                                                                              XHV_ASSET,
-                                                                             Monero::PendingTransaction::TRANSFER,
                                                                              MIXIN_COUNT,
                                                                              Monero::PendingTransaction::Priority_Medium,
                                                                              0,
@@ -636,7 +635,7 @@ TEST_F(WalletTest1, WalletTransactionWithMixin)
         std::cerr << "Transaction mixin count: " << mixin << std::endl;
 	
         Monero::PendingTransaction * transaction = wallet1->createTransaction(
-                    recepient_address, payment_id, AMOUNT_5XMR, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, mixin, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
+                    recepient_address, payment_id, AMOUNT_5XMR, XHV_ASSET, XHV_ASSET, mixin, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
 
         std::cerr << "Transaction status: " << transaction->status() << std::endl;
         std::cerr << "Transaction fee: " << Monero::Wallet::displayAmount(transaction->fee()) << std::endl;
@@ -678,7 +677,7 @@ TEST_F(WalletTest1, WalletTransactionWithPriority)
         std::cerr << "Transaction priority: " << *it << std::endl;
 	
         Monero::PendingTransaction * transaction = wallet1->createTransaction(
-                    recepient_address, payment_id, AMOUNT_5XMR, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, mixin, *it, 0, std::set<uint32_t>{});
+                    recepient_address, payment_id, AMOUNT_5XMR, XHV_ASSET, XHV_ASSET, mixin, *it, 0, std::set<uint32_t>{});
         std::cerr << "Transaction status: " << transaction->status() << std::endl;
         std::cerr << "Transaction fee: " << Monero::Wallet::displayAmount(transaction->fee()) << std::endl;
         std::cerr << "Transaction error: " << transaction->errorString() << std::endl;
@@ -734,7 +733,7 @@ TEST_F(WalletTest1, WalletTransactionAndHistory)
 
     Monero::PendingTransaction * tx = wallet_src->createTransaction(wallet4_addr,
                                                                        PAYMENT_ID_EMPTY,
-                                                                       AMOUNT_10XMR * 5, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, 1, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
+                                                                       AMOUNT_10XMR * 5, XHV_ASSET, XHV_ASSET, 1, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
 
     ASSERT_TRUE(tx->status() == Monero::PendingTransaction::Status_Ok);
     ASSERT_TRUE(tx->commit());
@@ -776,7 +775,7 @@ TEST_F(WalletTest1, WalletTransactionWithPaymentId)
 
     Monero::PendingTransaction * tx = wallet_src->createTransaction(integrated_address,
                                                                        PAYMENT_ID_EMPTY,
-                                                                       AMOUNT_1XMR, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, 1, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
+                                                                       AMOUNT_1XMR, XHV_ASSET, XHV_ASSET, 1, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
 
     std::cerr << "Transaction status: " << tx->status() << std::endl;
     std::cerr << "Transaction error: " << tx->errorString() << std::endl;
@@ -952,7 +951,7 @@ TEST_F(WalletTest2, WalletCallbackSent)
 
     Monero::PendingTransaction * tx = wallet_src->createTransaction(wallet_dst->mainAddress(),
                                                                        PAYMENT_ID_EMPTY,
-                                                                       amount, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, 0, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
+                                                                       amount, XHV_ASSET, XHV_ASSET, 0, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
     std::cout << "** Committing transaction: " << Monero::Wallet::displayAmount(tx->amount())
               << " with fee: " << Monero::Wallet::displayAmount(tx->fee());
 
@@ -992,7 +991,7 @@ TEST_F(WalletTest2, WalletCallbackReceived)
     std::cout << "** Sending " << Monero::Wallet::displayAmount(amount) << " to " << wallet_dst->mainAddress();
     Monero::PendingTransaction * tx = wallet_src->createTransaction(wallet_dst->mainAddress(),
                                                                        PAYMENT_ID_EMPTY,
-                                                                       amount, XHV_ASSET, XHV_ASSET, Monero::PendingTransaction::TRANSFER, 1, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
+                                                                       amount, XHV_ASSET, XHV_ASSET, 1, Monero::PendingTransaction::Priority_Medium, 0, std::set<uint32_t>{});
 
     std::cout << "** Committing transaction: " << Monero::Wallet::displayAmount(tx->amount())
               << " with fee: " << Monero::Wallet::displayAmount(tx->fee());
@@ -1024,7 +1023,7 @@ TEST_F(WalletTest2, WalletCallbackReceived)
 TEST_F(WalletTest2, WalletCallbackNewBlock)
 {
 
-    Monero::Wallet * wallet_src = wmgr->openWallet(TESTNET_WALLET5_NAME, TESTNET_WALLET_PASS, Monero::NetworkType::TESTNET);
+    Monero::Wallet * wallet_src = wmgr->openWallet(TESTNET_WALLET_ALICE, TESTNET_WALLET_PASS, Monero::NetworkType::TESTNET);
     // make sure testnet daemon is running
     ASSERT_TRUE(wallet_src->init(TESTNET_DAEMON_ADDRESS, 0));
     ASSERT_TRUE(wallet_src->refresh());
@@ -1179,11 +1178,11 @@ int main(int argc, char** argv)
     }
 
 
-    TESTNET_WALLET1_NAME = WALLETS_ROOT_DIR + "/bob";
-    TESTNET_WALLET5_NAME = WALLETS_ROOT_DIR + "/alice";
+    TESTNET_WALLET_BOB = WALLETS_ROOT_DIR + "/bob";
+    TESTNET_WALLET_ALICE = WALLETS_ROOT_DIR + "/alice";
 
-    CURRENT_SRC_WALLET = TESTNET_WALLET5_NAME;
-    CURRENT_DST_WALLET = TESTNET_WALLET1_NAME;
+    CURRENT_SRC_WALLET = TESTNET_WALLET_ALICE;
+    CURRENT_DST_WALLET = TESTNET_WALLET_BOB;
 
     ::testing::InitGoogleTest(&argc, argv);
     Monero::WalletManagerFactory::setLogLevel(Monero::WalletManagerFactory::LogLevel_4);
