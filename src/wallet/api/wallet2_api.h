@@ -294,7 +294,7 @@ struct Subaddress
 
 struct SubaddressAccountRow {
 public:
-    SubaddressAccountRow(std::size_t _rowId, const std::string &_address, const std::string &_label, const std::string &_balance, const std::string &_unlockedBalance):
+    SubaddressAccountRow(std::size_t _rowId, const std::string &_address, const std::string &_label, const std::map<uint32_t, std::map<std::string, uint64_t>> &_balance, const std::map<uint32_t, std::map<std::string, uint64_t>> &_unlockedBalance):
         m_rowId(_rowId),
         m_address(_address),
         m_label(_label),
@@ -305,14 +305,14 @@ private:
     std::size_t m_rowId;
     std::string m_address;
     std::string m_label;
-    std::string m_balance;
-    std::string m_unlockedBalance;
+    std::map<uint32_t, std::map<std::string, uint64_t>> m_balance;
+    std::map<uint32_t, std::map<std::string, uint64_t>> m_unlockedBalance;
 public:
     std::string extra;
     std::string getAddress() const {return m_address;}
     std::string getLabel() const {return m_label;}
-    std::string getBalance() const {return m_balance;}
-    std::string getUnlockedBalance() const {return m_unlockedBalance;}
+    std::map<uint32_t, std::map<std::string, uint64_t>> getBalance() const {return m_balance;}
+    std::map<uint32_t, std::map<std::string, uint64_t>> getUnlockedBalance() const {return m_unlockedBalance;}
     std::size_t getRowId() const {return m_rowId;}
 };
 
