@@ -2038,9 +2038,9 @@ bool wallet2::get_pricing_record(offshore::pricing_record& pr, const uint64_t he
   if (r && res.status == CORE_RPC_STATUS_OK)
   {
     // Got the block header - verify the pricing record
-    if (res.block_header.pricing_record == offshore::pricing_record()) {
-       MERROR("Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
-       return false;
+    if (res.block_header.pricing_record.empty()) {
+      MERROR("Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
+      return false;
     }
 
     // Return the pricing record we retrieved
@@ -7356,26 +7356,15 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     std::string strDest;
     cryptonote::transaction_type tx_type;
 
-    // figure out strSource & strDest
+    // only allow transfers due to pr issues
     strSource = sd.sources[0].asset_type;
     for (const auto& dt: sd.splitted_dsts) {
-      if (dt.asset_type != strSource) {
-        strDest = dt.asset_type;
-        break;
-      }
+      THROW_WALLET_EXCEPTION_IF(dt.asset_type != strSource, error::wallet_internal_error, "Conversiton txs don't support offline signing.");
     }
-    if (strDest.empty()) { // this is a transfer rather than a conversion
-      strDest = strSource;
-    }
-
-    // figure out the tx type & pr
+    strDest = strSource;
     if (!get_tx_type(strSource, strDest, tx_type)) {
       LOG_ERROR("At least 1 input or 1 output of the tx was invalid.");
       return false;
-    }
-    if (strSource != strDest) {
-      bool b = get_pricing_record(pr, current_height);
-      THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
     }
 
     uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
@@ -7395,7 +7384,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       tx_key,
       additional_tx_keys,
       current_height,
-      pr,
+      offshore::pricing_record(),
       fees_version,
       hf_version,
       sd.use_rct,
@@ -14607,8 +14596,7 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
 {
   CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
 
-  std::vector<std::vector<tools::wallet2::multisig_info>> info;
-  std::vector<std::vector<tools::wallet2::multisig_info>> info_offshore;
+
   std::vector<std::map<std::string, std::vector<tools::wallet2::multisig_info>>> info_xasset;
   std::unordered_set<crypto::public_key> seen;
   for (cryptonote::blobdata &data: blobs)
