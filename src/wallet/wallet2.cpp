@@ -7359,7 +7359,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     // only allow transfers due to pr issues
     strSource = sd.sources[0].asset_type;
     for (const auto& dt: sd.splitted_dsts) {
-      THROW_WALLET_EXCEPTION_IF(dt.asset_type != strSource, error::wallet_internal_error, "Conversiton txs don't support offline signing.");
+      THROW_WALLET_EXCEPTION_IF(dt.asset_type != strSource, error::wallet_internal_error, "Conversion txs don't support offline signing.");
     }
     strDest = strSource;
     if (!get_tx_type(strSource, strDest, tx_type)) {
@@ -11607,7 +11607,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   const rct::RCTConfig rct_config {
     bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : (use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : (use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1))) : 0
+    bulletproof ? (use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
+                  use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : 
+                  use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : 
+                  use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0
   };
   const uint64_t base_fee  = get_base_fee();
   const uint64_t fee_multiplier = get_fee_multiplier(priority, get_fee_algorithm());
