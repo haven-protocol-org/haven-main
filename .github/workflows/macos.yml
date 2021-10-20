@@ -3,7 +3,7 @@ name: macos-cli
 on: [push, pull_request]
 
 jobs:
-build-macos:
+  build-macos:
     env:
       CMAKE_OSX_DEPLOYMENT_TARGET: 10.15
       OSX_MIN_VERSION: 10.15
