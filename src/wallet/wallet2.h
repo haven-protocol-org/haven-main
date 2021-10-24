@@ -480,6 +480,7 @@ private:
       uint32_t subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> subaddr_indices;  // set of address indices used as inputs in this transfer
       uint64_t fee;
+      bool per_output_unlock;
 
       BEGIN_SERIALIZE_OBJECT()
         FIELD(sources)
@@ -494,6 +495,7 @@ private:
         FIELD(subaddr_account)
         FIELD(subaddr_indices)
         FIELD(fee)
+        FIELD(per_output_unlock)
       END_SERIALIZE()
     };
 

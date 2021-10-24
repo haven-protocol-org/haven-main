@@ -9554,13 +9554,14 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   std::vector<crypto::secret_key> additional_tx_keys;
   rct::multisig_out msout;
   LOG_PRINT_L2("constructing tx");
+  bool per_output_unlock = use_fork_rules(15, 5);
   uint64_t current_height = get_blockchain_current_height()-1;
   offshore::pricing_record pr;
   bool b = get_pricing_record(pr, current_height);
   THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
   uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
   bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, false, {}, m_multisig ? &msout : NULL);
+  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, false, {}, m_multisig ? &msout : NULL, per_output_unlock);
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -9599,6 +9600,8 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   ptx.construction_data.use_rct = false;
   ptx.construction_data.rct_config = { rct::RangeProofBorromean, 0 };
   ptx.construction_data.dests = dsts;
+  ptx.per_output_unlock = per_output_unlock;
+
   // record which subaddress indices are being used as inputs
   ptx.construction_data.subaddr_account = subaddr_account;
   ptx.construction_data.subaddr_indices.clear();
@@ -9851,6 +9854,8 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   std::vector<crypto::secret_key> additional_tx_keys;
   rct::multisig_out msout;
   LOG_PRINT_L2("constructing tx");
+  bool per_output_unlock = use_fork_rules(15, 5);
+
   auto sources_copy = sources;
   offshore::pricing_record pr;
   if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
@@ -9860,7 +9865,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
   bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
   
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, true, rct_config, m_multisig ? &msout : NULL);
+  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, true, rct_config, m_multisig ? &msout : NULL, per_output_unlock);
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -9913,7 +9918,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
 	}
 	uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
 	bool use_offshore_tx_version = use_fork_rules(HF_VERSION_OFFSHORE_FULL, 0);
-        bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts.addr, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, true, rct_config, &msout, false);
+        bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts.addr, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, true, rct_config, &msout, false, per_output_unlock);
         LOG_PRINT_L2("constructed tx, r="<<r);
         THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
         THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
