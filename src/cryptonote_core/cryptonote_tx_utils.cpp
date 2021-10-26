@@ -565,7 +565,12 @@ namespace cryptonote
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
 	      source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[i]).asset_type);
+        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
+          return false;
+        }
+	      source_asset_types.insert(xasset);
       } else {
         LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
         return false;
@@ -592,7 +597,12 @@ namespace cryptonote
       } else if (out.target.type() == typeid(txout_offshore)) {
         destination_asset_types.insert("XUSD");
       } else if (out.target.type() == typeid(txout_xasset)) {
-        destination_asset_types.insert(boost::get<txout_xasset>(out.target).asset_type);
+        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
+          return false;
+        }
+        destination_asset_types.insert(xasset);
       } else {
         LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
         return false;
