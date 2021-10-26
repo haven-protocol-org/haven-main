@@ -1840,6 +1840,10 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
           } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
             asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
             if (version >= HF_VERSION_XASSET_FEES_V2) {
+              if (asset_type == "XHV" || asset_type == "XUSD") { // these are not supposed to be here. Other cases are already covered below.
+                MERROR("xhv or xusd found in a xasset output.");
+                return false;
+              }
               if (b.miner_tx.vout[idx + 1].target.type() != typeid(txout_xasset)) {
                 MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
                 return false;
