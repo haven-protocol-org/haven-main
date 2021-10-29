@@ -887,7 +887,7 @@ namespace cryptonote
         tx_info[n].result = false;
         continue;
       } else {
-        if (m_blockchain_storage.get_current_hard_fork_version() >= HF_VERSION_HAVEN2 && (tx_info[n].tvc.m_source_asset == "XJPY" || tx_info[n].tvc.m_dest_asset == "XJPY")) {
+        if (m_blockchain_storage.get_current_hard_fork_version() >= HF_VERSION_NO_XJPY && (tx_info[n].tvc.m_source_asset == "XJPY" || tx_info[n].tvc.m_dest_asset == "XJPY")) {
           MERROR("XJPY is disabled after Haven2 fork." << tx_info[n].tx_hash);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
@@ -911,7 +911,7 @@ namespace cryptonote
         const uint64_t pr_height = tx_info[n].tx->pricing_record_height;
         const uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
         if (!tx_pr_height_valid(current_height, pr_height, tx_info[n].tx->hash)) {
-          MERROR_VER("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << pr_height);
+          MERROR_VER("Tx uses older pricing record than 10 blocks or a pricing record that is in the future. Current height: " << current_height << " Pr height: " << pr_height);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
           tx_info[n].result = false;
@@ -932,6 +932,7 @@ namespace cryptonote
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
             tx_info[n].result = false;
+	    continue;
           }
           tx_info[n].tvc.pr = blocks_pr[0].second.pricing_record;
         }

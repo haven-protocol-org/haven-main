@@ -6753,6 +6753,13 @@ bool simple_wallet::transfer_main(
     local_args.pop_back();
   }
 
+  if (m_wallet->use_fork_rules(HF_VERSION_NO_XJPY, 0)) {
+    if (strSource == "XJPY" || strDest == "XJPY") {
+      fail_msg_writer() << tr("XJPY transaction are disabled after haven2 fork.");
+      return false;
+    }
+  }
+
   using tt = cryptonote::transaction_type;
   if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
     locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
