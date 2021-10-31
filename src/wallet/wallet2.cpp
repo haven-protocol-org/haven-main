@@ -9982,13 +9982,16 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   ptx.construction_data.rct_config = {
     tx.rct_signatures.p.bulletproofs.empty() ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof,
     use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1
-  };ptx.construction_data.dests = dsts;
+  };
+  ptx.construction_data.dests = dsts;
   // record which subaddress indices are being used as inputs
   ptx.construction_data.subaddr_account = subaddr_account;
   ptx.construction_data.subaddr_indices.clear();
   for (size_t idx: selected_transfers)
     ptx.construction_data.subaddr_indices.insert(specific_transfers[idx].m_subaddr_index.minor);
   ptx.construction_data.fee = fee;
+
+  ptx.per_output_unlock = per_output_unlock;
   LOG_PRINT_L2("transfer_selected_rct done");
 }
 
