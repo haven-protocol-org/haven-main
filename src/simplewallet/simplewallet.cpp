@@ -6753,7 +6753,7 @@ bool simple_wallet::transfer_main(
     local_args.pop_back();
   }
 
-  if (m_wallet->use_fork_rules(HF_VERSION_NO_XJPY, 0)) {
+  if (m_wallet->use_fork_rules(HF_VERSION_HAVEN2, 0)) {
     if (strSource == "XJPY" || strDest == "XJPY") {
       fail_msg_writer() << tr("XJPY transaction are disabled after haven2 fork.");
       return false;

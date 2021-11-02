@@ -5388,10 +5388,33 @@ leave: {
 
     // Validate tx pr height
     if (source != dest) {
+      // Validate that pricing record has not grown too old since it was first included in the pool
       if (!tx_pr_height_valid(blockchain_height, tx.pricing_record_height, tx.hash)) {
         LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
         bvc.m_verifivation_failed = true;
         goto leave;
+      }
+      if (hf_version >= HF_VERSION_HAVEN2) {
+        // get tx type and pricing record
+        block bl;
+        cryptonote::transaction_type tx_type;
+        if (!get_tx_type(source, dest, tx_type)) {
+          LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+        if (!get_block_by_hash(get_block_id_by_height(tx.pricing_record_height), bl)) {
+          LOG_PRINT_L2("error: failed to get block containing pricing record");
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+        // make sure proof-of-value still holds
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout))
+        {
+          LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
       }
     } else {
       //make sure those values are 0 for transfers.

@@ -195,10 +195,9 @@
 #define HF_VERSION_XASSET_FULL                  16
 #define HF_VERSION_XASSET_FEES_V2               17
 #define HF_VERSION_HAVEN2                       18
-#define HF_VERSION_NO_XJPY                      19
 
-#define STAGENET_VERSION                        0x0d
-#define TESTNET_VERSION                         0x0d
+#define STAGENET_VERSION                        0x0e
+#define TESTNET_VERSION                         0x0e
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 

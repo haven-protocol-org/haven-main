@@ -2044,35 +2044,35 @@ namespace cryptonote
   {
     if (tx.vin[0].type() == typeid(txin_to_key)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_to_key, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_to_key, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     else if (tx.vin[0].type() == typeid(txin_offshore)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_offshore, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_offshore, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     else if (tx.vin[0].type() == typeid(txin_onshore)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_onshore, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_onshore, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     else if (tx.vin[0].type() == typeid(txin_xasset)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_xasset, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_xasset, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     return false;
   }
@@ -2345,13 +2345,31 @@ namespace cryptonote
         continue;
       }
 
-      // Validate that pricing record has not grown too old since it was first included in the pool
       if (source != dest)
       {
-        uint64_t current_height = m_blockchain.get_current_blockchain_height();
-        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+        // Validate that pricing record has not grown too old since it was first included in the pool
+        if (!tx_pr_height_valid(m_blockchain.get_current_blockchain_height(), tx.pricing_record_height, tx.hash)) {
           LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
           continue;
+        }
+        if (version >= HF_VERSION_HAVEN2) {
+          // get tx type and pricing record
+          block bl;
+          cryptonote::transaction_type tx_type;
+          if (!get_tx_type(source, dest, tx_type)) {
+            LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
+            continue;
+          }
+          if (!m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl)) {
+            LOG_PRINT_L2("error: failed to get block containing pricing record");
+            continue;
+          }
+          // make sure proof-of-value still holds
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout))
+          {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
+            continue;
+          }
         }
       }
 

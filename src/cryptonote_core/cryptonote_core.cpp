@@ -887,7 +887,7 @@ namespace cryptonote
         tx_info[n].result = false;
         continue;
       } else {
-        if (m_blockchain_storage.get_current_hard_fork_version() >= HF_VERSION_NO_XJPY && (tx_info[n].tvc.m_source_asset == "XJPY" || tx_info[n].tvc.m_dest_asset == "XJPY")) {
+        if (m_blockchain_storage.get_current_hard_fork_version() >= HF_VERSION_HAVEN2 && (tx_info[n].tvc.m_source_asset == "XJPY" || tx_info[n].tvc.m_dest_asset == "XJPY")) {
           MERROR("XJPY is disabled after Haven2 fork." << tx_info[n].tx_hash);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
@@ -932,7 +932,7 @@ namespace cryptonote
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
             tx_info[n].result = false;
-	    continue;
+            continue;
           }
           tx_info[n].tvc.pr = blocks_pr[0].second.pricing_record;
         }
