@@ -216,17 +216,17 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
           remove_spent_key(boost::get<txin_to_key>(tx_input).k_image);
         }
         else if (tx_input.type() == typeid(txin_onshore))
-	{
-	  remove_spent_key(boost::get<txin_onshore>(tx_input).k_image);
-	}
-	else if (tx_input.type() == typeid(txin_offshore))
-	{
-	  remove_spent_key(boost::get<txin_offshore>(tx_input).k_image);
-	}
-	else if (tx_input.type() == typeid(txin_xasset))
-	{
-	  remove_spent_key(boost::get<txin_xasset>(tx_input).k_image);
-	}
+        {
+          remove_spent_key(boost::get<txin_onshore>(tx_input).k_image);
+        }
+        else if (tx_input.type() == typeid(txin_offshore))
+        {
+          remove_spent_key(boost::get<txin_offshore>(tx_input).k_image);
+        }
+        else if (tx_input.type() == typeid(txin_xasset))
+        {
+          remove_spent_key(boost::get<txin_xasset>(tx_input).k_image);
+        }
       }
       return;
     }

@@ -5380,7 +5380,7 @@ leave: {
     // get the asset types
     std::string source;
     std::string dest;
-    if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
+    if (!get_tx_asset_types(tx, tx_id, source, dest, false)) {
       LOG_PRINT_L2("At least 1 input or 1 output of the tx was invalid.");
       bvc.m_verifivation_failed = true;
       goto leave;
@@ -5389,7 +5389,7 @@ leave: {
     // Validate tx pr height
     if (source != dest) {
       // Validate that pricing record has not grown too old since it was first included in the pool
-      if (!tx_pr_height_valid(blockchain_height, tx.pricing_record_height, tx.hash)) {
+      if (!tx_pr_height_valid(blockchain_height, tx.pricing_record_height, tx_id)) {
         LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
         bvc.m_verifivation_failed = true;
         goto leave;

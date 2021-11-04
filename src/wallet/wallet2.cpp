@@ -13387,8 +13387,8 @@ uint64_t wallet2::get_approximate_blockchain_height() const
   const uint64_t MAINNET_SNAP_SHOT_BLOCK = 946112;
 
   //stagenet
-  const time_t STAGENET_SNAP_SHOT_TIME = 1633955358;
-  const uint64_t STAGENET_SNAP_SHOT_BLOCK = 23947;
+  const time_t STAGENET_SNAP_SHOT_TIME = 1636026600;
+  const uint64_t STAGENET_SNAP_SHOT_BLOCK = 1612;
 
   // time of snapshot
   const time_t snap_shot_time = m_nettype == MAINNET ? MAINNET_SNAP_SHOT_TIME : STAGENET_SNAP_SHOT_TIME;
