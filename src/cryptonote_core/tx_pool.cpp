@@ -797,7 +797,7 @@ namespace cryptonote
         return false;
       }
       // make sure no pr heiht set
-      if (tx.pricing_record_height) {
+      if (version >= HF_VERSION_OFFSHORE_FEES_V2 && tx.pricing_record_height) {
         LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
