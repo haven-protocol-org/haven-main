@@ -874,7 +874,7 @@ namespace cryptonote
     for (size_t n = 0; n < tx_info.size(); ++n)
     {
       // Get the TX asset types
-      if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx->hash, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, false)) {
+      if (!get_tx_asset_types(*tx_info[n].tx, tx_info[n].tx_hash, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, false)) {
         MERROR("At least 1 input or 1 output of the tx was invalid." << tx_info[n].tx_hash);
         if (tx_info[n].tvc.m_source_asset.empty()) {
           tx_info[n].tvc.m_invalid_input = true;
@@ -910,7 +910,7 @@ namespace cryptonote
         // validate that tx uses a recent pr
         const uint64_t pr_height = tx_info[n].tx->pricing_record_height;
         const uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
-        if (!tx_pr_height_valid(current_height, pr_height, tx_info[n].tx->hash)) {
+        if (!tx_pr_height_valid(current_height, pr_height, tx_info[n].tx_hash)) {
           MERROR_VER("Tx uses older pricing record than 10 blocks or a pricing record that is in the future. Current height: " << current_height << " Pr height: " << pr_height);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
