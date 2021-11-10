@@ -14713,20 +14713,29 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
         detach_height = std::min(td.m_block_height, detach_height);
         break;
       }
-    
-      for (size_t n = 0; n < n_outputs && n < specific_transfers.size(); ++n)
-      {
-        update_multisig_rescan_info(specific_transfers, m_multisig_rescan_k[asset_type], info_xasset[asset_type], n);
-      }
     }
-      
-    m_multisig_rescan_info[asset_type] = info_xasset[asset_type];
   }
 
   bool bThrow = false;
   try
   {
     detach_blockchain(detach_height);
+    for (auto &asset_type: offshore::ASSET_TYPES) {
+
+      transfer_container &specific_transfers =
+        (asset_type == "XHV") ? m_transfers :
+        (asset_type == "XUSD") ? m_offshore_transfers :
+        m_xasset_transfers[asset_type];
+  
+      size_t n_outputs = specific_transfers.size();
+      for (auto &pi: m_multisig_rescan_info[asset_type])
+        if (pi.size() < n_outputs)
+          n_outputs = pi.size();
+      for (size_t n = 0; n < n_outputs && n < specific_transfers.size(); ++n) {
+        update_multisig_rescan_info(specific_transfers, m_multisig_rescan_k[asset_type], info_xasset[asset_type], n);
+      }
+      m_multisig_rescan_info[asset_type] = info_xasset[asset_type];
+    }
     refresh(false);
   }
   catch (...)
