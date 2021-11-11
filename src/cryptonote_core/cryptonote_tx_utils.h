@@ -33,19 +33,34 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/utility.hpp>
 #include "ringct/rctOps.h"
+#include "cryptonote_protocol/enums.h"
 
 namespace cryptonote
 {
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, std::map<std::string, uint64_t> fee_map,  std::map<std::string, uint64_t> offshore_fee_map, std::map<std::string, uint64_t> xasset_fee_map, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1, cryptonote::network_type nettype = MAINNET);
+  bool construct_miner_tx(
+    size_t height,
+    size_t median_weight,
+    uint64_t already_generated_coins,
+    size_t current_block_weight,
+    std::map<std::string, uint64_t> fee_map,
+    std::map<std::string, uint64_t> offshore_fee_map,
+    std::map<std::string, uint64_t> xasset_fee_map,
+    const account_public_address &miner_address,
+    transaction& tx,
+    const blobdata& extra_nonce = blobdata(),
+    size_t max_outs = 999,
+    uint8_t hard_fork_version = 5,
+    cryptonote::network_type nettype = MAINNET
+  );
 
   keypair get_deterministic_keypair_from_height(uint64_t height);
 
   uint64_t get_governance_reward(uint64_t height, uint64_t base_reward);
-
   bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key);
-
   bool validate_governance_reward_key(uint64_t height, const std::string& governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, cryptonote::network_type nettype = MAINNET);
+  std::string get_governance_address(uint32_t version, network_type nettype);
+
   struct tx_source_entry
   {
     typedef std::pair<uint64_t, rct::ctkey> output_entry;
@@ -137,9 +152,51 @@ namespace cryptonote
 
   //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
-  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry> &sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time);
-  bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, uint64_t current_height, offshore::pricing_record pr, uint32_t fees_version, bool use_offshore_tx_version = false, bool rct = false, const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 }, rct::multisig_out *msout = NULL, bool shuffle_outs = true);
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, uint64_t current_height, offshore::pricing_record pr, uint32_t fees_version, bool use_offshore_tx_version = false, bool rct = false, const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 }, rct::multisig_out *msout = NULL);
+  bool construct_tx_with_tx_key(
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    transaction_type tx_type,
+    const std::string strSource,
+    const std::string strDest,
+    uint64_t unlock_time,
+    const crypto::secret_key &tx_key,
+    const std::vector<crypto::secret_key> &additional_tx_keys,
+    uint64_t current_height,
+    offshore::pricing_record pr,
+    uint32_t fees_version,
+    uint32_t hf_version,
+    bool rct = false,
+    const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
+    rct::multisig_out *msout = NULL,
+    bool shuffle_outs = true
+  );
+  bool construct_tx_and_get_tx_key(
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    transaction_type tx_type,
+    const std::string strSource,
+    const std::string strDest,
+    uint64_t unlock_time,
+    crypto::secret_key &tx_key,
+    std::vector<crypto::secret_key> &additional_tx_keys,
+    uint64_t current_height,
+    offshore::pricing_record pr,
+    uint32_t fees_version,
+    uint32_t hf_version,
+    bool rct = false,
+    const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
+    rct::multisig_out *msout = NULL
+  );
   bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
                                       const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,
                                       const bool &need_additional_txkeys, const std::vector<crypto::secret_key> &additional_tx_keys,
@@ -158,7 +215,7 @@ namespace cryptonote
       block& bl
     , std::string const & genesis_tx
     , uint32_t nonce
-    , cryptonote::network_type nettype
+    , cryptonote::network_type nettype = MAINNET
     );
 
   class Blockchain;
@@ -174,7 +231,8 @@ namespace cryptonote
   bool get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height);
   bool get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height);
   bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx);
-  bool get_tx_type(const std::string& source, const std::string& destination, bool& offshore, bool& onshore, bool& offshore_transfer, bool& xusd_to_xasset, bool& xasset_to_xusd, bool& xasset_transfer);
+  bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
+  bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash);
  
 }
 
