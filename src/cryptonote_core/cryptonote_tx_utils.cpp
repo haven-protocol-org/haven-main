@@ -557,20 +557,20 @@ namespace cryptonote
           LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
           return false;
         }
-	      source_asset_types.insert("XHV");
+        source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_to_key)) {
-	      source_asset_types.insert("XHV");
+        source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-	      source_asset_types.insert("XUSD");
+        source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-	      source_asset_types.insert("XUSD");
+        source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
         std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
         if (xasset == "XHV" || xasset == "XUSD") {
           LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
           return false;
         }
-	      source_asset_types.insert(xasset);
+        source_asset_types.insert(xasset);
       } else {
         LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
         return false;
