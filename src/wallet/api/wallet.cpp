@@ -1027,6 +1027,27 @@ std::map<std::string, uint64_t> WalletImpl::unlockedBalanceAll() const
     return m_wallet->unlocked_balance_all(false);
 }
 
+std::map<std::string, uint64_t> WalletImpl::oracleRates() const
+{
+    std::map<std::string, uint64_t> result;
+    uint64_t current_height = blockChainHeight()-1;
+
+    offshore::pricing_record pr;
+    if (!m_wallet->get_pricing_record(pr, current_height)) {
+        setStatusError((boost::format(tr("Failed to get prices at height %s - maybe pricing record is missing?")) % std::to_string(current_height)).str());
+        return result;
+    }
+
+    std::vector<std::string> asset_list = Assets::list();
+
+    for (int i=1; i<asset_list.size(); i++) {
+        
+        const std::string asset = asset_list[i];
+        result[asset] = pr[asset];
+     }
+
+     return result;
+}
 
 uint64_t WalletImpl::blockChainHeight() const
 {

@@ -113,6 +113,7 @@ public:
     uint64_t unlockedBalance(std::string asset_type, uint32_t accountIndex) const override;
     std::map<std::string, uint64_t> balanceAll() const override;
     std::map<std::string, uint64_t> unlockedBalanceAll() const override;
+    std::map<std::string, uint64_t> oracleRates() const override;
     uint64_t blockChainHeight() const override;
     uint64_t approximateBlockChainHeight() const override;
     uint64_t estimateBlockChainHeight() const override;

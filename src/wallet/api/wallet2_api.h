@@ -609,6 +609,7 @@ struct Wallet
     virtual std::map<uint32_t, std::map<std::string, uint64_t>> unlockedBalance(uint32_t accountIndex = 0) const = 0;
     virtual uint64_t unlockedBalance(std::string asset_type, uint32_t accountIndex) const = 0;
     virtual std::map<std::string, uint64_t> unlockedBalanceAll() const = 0;
+    virtual std::map<std::string, uint64_t> oracleRates() const = 0;
 
    /**
     * @brief watchOnly - checks if wallet is watch only
