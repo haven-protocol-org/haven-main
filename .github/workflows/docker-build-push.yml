@@ -72,8 +72,10 @@ jobs:
           images: ${{ secrets.DOCKERHUB_REPO }}
           sep-tags: ","
           tags: |
-            type=sha,format=long
             type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Merge multiplatform docker images
         run: |
