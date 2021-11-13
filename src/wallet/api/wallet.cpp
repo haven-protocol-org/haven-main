@@ -1040,7 +1040,7 @@ std::map<std::string, uint64_t> WalletImpl::oracleRates() const
 
     std::vector<std::string> asset_list = Assets::list();
 
-    for (int i=1; i<asset_list.size(); i++) {
+    for (int i=0; i<asset_list.size(); i++) {
         
         const std::string asset = asset_list[i];
         result[asset] = pr[asset];
