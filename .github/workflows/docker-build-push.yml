@@ -5,19 +5,35 @@ name: docker
 #     - '*'
 on: [push, pull_request]
 jobs:
-  main:
+  build-docker:
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            platformdashes: linux-amd64
+          - platform: linux/arm64
+            platformdashes: linux-arm64
+          - platform: linux/arm/v7
+            platformdashes: linux-arm-v7
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: recursive
+      # - name: Docker meta
+      #   id: docker_meta
+      #   uses: crazy-max/ghaction-docker-meta@v1
+      #   with:
+      #     images: ${{ secrets.DOCKERHUB_REPO }}
+      #     tag-semver: |
+      #       {{version}}
       - name: Docker meta
         id: docker_meta
-        uses: crazy-max/ghaction-docker-meta@v1
+        uses: docker/metadata-action@v3
         with:
           images: ${{ secrets.DOCKERHUB_REPO }}
-          tag-semver: |
-            {{version}}
+          tags: |
+            type=sha,format=long,prefix=${{ matrix.platformdashes }}-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
@@ -33,9 +49,34 @@ jobs:
         with:
           context: .
           file: ./.docker/Dockerfile
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
+  merge-multiplatform-images:
+    needs: build-docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker meta
+        id: docker_meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ${{ secrets.DOCKERHUB_REPO }}
+          sep-tags: ","
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+
+      - name: Merge multiplatform docker images
+        run: |
+          set -eu -o pipefail
+          IFS=, tags="${{ steps.docker_meta.outputs.tags }}"
+          for tag in $tags; do docker buildx imagetools create --tag $tag ${{ secrets.DOCKERHUB_REPO }}:linux-amd64-${{ github.sha }} ${{ secrets.DOCKERHUB_REPO }}:linux-arm64-${{ github.sha }} ${{ secrets.DOCKERHUB_REPO }}:linux-arm-v7-${{ github.sha }}; done
