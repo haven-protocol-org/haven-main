@@ -135,11 +135,10 @@ namespace
     inv = sm(inv, 3, _101);
     inv = sm(inv, 1 + 2, _11);
 
-#ifdef DEBUG_BP
+    // Sanity check for successful inversion
     rct::key tmp;
     sc_mul(tmp.bytes, inv.bytes, x.bytes);
     CHECK_AND_ASSERT_THROW_MES(tmp == rct::identity(), "invert failed");
-#endif
     return inv;
   }
   
@@ -930,9 +929,7 @@ namespace rct {
     }
 
     // do the bulletproofs
-    key zerokey;
-    memwipe(&zerokey, sizeof(key));
-    key zeromask = rct::scalarmult8(zerokey);
+    key zerokey = rct::identity();
     rv.p.bulletproofs.clear();
     if (rv.type == RCTTypeHaven2) {
       rv.maskSums.resize(2);
@@ -977,15 +974,15 @@ namespace rct {
         } else {
           if (outamounts[i].first == "XHV") {
             rv.outPk[i].mask = rct::scalarmult8(C[i]);
-            rv.outPk_usd[i].mask = zeromask;
-            rv.outPk_xasset[i].mask = zeromask;
+            rv.outPk_usd[i].mask = zerokey;
+            rv.outPk_xasset[i].mask = zerokey;
           } else if (outamounts[i].first == "XUSD") {
-            rv.outPk[i].mask = zeromask;
+            rv.outPk[i].mask = zerokey;
             rv.outPk_usd[i].mask = rct::scalarmult8(C[i]);
-            rv.outPk_xasset[i].mask = zeromask;
+            rv.outPk_xasset[i].mask = zerokey;
           } else {
-            rv.outPk[i].mask = zeromask;
-            rv.outPk_usd[i].mask = zeromask;
+            rv.outPk[i].mask = zerokey;
+            rv.outPk_usd[i].mask = zerokey;
             rv.outPk_xasset[i].mask = rct::scalarmult8(C[i]);
           }
         }
@@ -1035,15 +1032,15 @@ namespace rct {
         } else {
           if (outamounts[i + amounts_proved].first == "XHV") {
             rv.outPk[i + amounts_proved].mask = rct::scalarmult8(C[i]);
-            rv.outPk_usd[i + amounts_proved].mask = zeromask;
-            rv.outPk_xasset[i + amounts_proved].mask = zeromask;
+            rv.outPk_usd[i + amounts_proved].mask = zerokey;
+            rv.outPk_xasset[i + amounts_proved].mask = zerokey;
           } else if (outamounts[i + amounts_proved].first == "XUSD") {
-            rv.outPk[i + amounts_proved].mask = zeromask;
+            rv.outPk[i + amounts_proved].mask = zerokey;
             rv.outPk_usd[i + amounts_proved].mask = rct::scalarmult8(C[i]);
-            rv.outPk_xasset[i + amounts_proved].mask = zeromask;
+            rv.outPk_xasset[i + amounts_proved].mask = zerokey;
           } else {
-            rv.outPk[i + amounts_proved].mask = zeromask;
-            rv.outPk_usd[i + amounts_proved].mask = zeromask;
+            rv.outPk[i + amounts_proved].mask = zerokey;
+            rv.outPk_usd[i + amounts_proved].mask = zerokey;
             rv.outPk_xasset[i + amounts_proved].mask = rct::scalarmult8(C[i]);
           }
         }
@@ -1055,9 +1052,7 @@ namespace rct {
     // do the output encryption and asset conversions
     key sumout = zero();
     key atomic = d2h(COIN);
-    key rate = d2h(pr.unused1); // MA in XHV - used to convert between XHV-XUSD
     key inverse_atomic = invert(atomic);
-    key inverse_rate = invert(rate);
     for (i = 0; i < outSk.size(); ++i)
     {
       key outSk_scaled = zero();
@@ -1066,6 +1061,7 @@ namespace rct {
         // SPENDING XHV
         if (outamounts[i].first == "XUSD") {
           // OFFSHORE - Convert output amount to XHV for equalKeys() testing
+          key inverse_rate = invert(d2h(pr.unused1));
           sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
           sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
         } else {
@@ -1079,12 +1075,12 @@ namespace rct {
           outSk_scaled = outSk[i].mask;
         } else if (outamounts[i].first == "XHV") {
           // ONSHORE - convert output amount to USD for equalKeys() testing
+          key rate = d2h(pr.unused1);
           sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
           sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
         } else {
           // xAsset equivalent to OFFSHORE - convert output amount to USD for equalKeys() testing
-          key rate_xasset = d2h(pr[outamounts[i].first]);
-          key inverse_rate_xasset = invert(rate_xasset);
+          key inverse_rate_xasset = invert(d2h(pr[outamounts[i].first]));
           sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
           sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate_xasset.bytes);
         }
@@ -1324,8 +1320,9 @@ namespace rct {
       }
       
       // OUTPUTS SUMMED FOR EACH COLOUR
-      key zerokey = scalarmultH(d2h(0));
-      key Zi = zero();
+      key zerokey = rct::identity();
+      // Zi is intentionally set to a different value to zerokey, so that if a bug is introduced in the later logic, any comparison with zerokey will fail
+      key Zi = scalarmultH(d2h(1));
 
       // Calculate sum of all C' and D'
       rct::keyV masks_C;
@@ -1435,8 +1432,11 @@ namespace rct {
         Zi = addKeys(sumC, D_final);
       } else if (type == tx_type::XASSET_TRANSFER) {
         Zi = addKeys(sumC, sumD);
-      } else {
+      } else if (type == tx_type::TRANSFER) {
         Zi = addKeys(sumC, sumD);
+      } else {
+        LOG_PRINT_L1("Invalid transaction type specified");
+        return false;
       }
 
       //check Zi == 0
@@ -1580,8 +1580,9 @@ namespace rct {
       const keyV &pseudoOuts = bulletproof ? rv.p.pseudoOuts : rv.pseudoOuts;
 
       // OUTPUTS SUMMED FOR EACH COLOUR
-      key zerokey = scalarmultH(d2h(0));
-      key Zi = zero();
+      key zerokey = rct::identity();
+      // Zi is intentionally set to a different value to zerokey, so that if a bug is introduced in the later logic, any comparison with zerokey will fail
+      key Zi = scalarmultH(d2h(1));
 
       // Calculate sum of all C'
       rct::keyV masks(rv.outPk.size());
@@ -1698,8 +1699,11 @@ namespace rct {
         Zi = addKeys(C_final, sumXASSET);
       } else if (type == tx_type::XASSET_TRANSFER) {
         Zi = addKeys(sumUSD, sumXASSET);
-      } else {
+      } else if (type == tx_type::TRANSFER) {
         Zi = addKeys(sumXHV, sumUSD);
+      } else {
+        LOG_PRINT_L1("Invalid transaction type specified");
+        return false;
       }
 
       //check Zi == 0
@@ -1863,12 +1867,12 @@ namespace rct {
     key amount = ecdh_info.amount;
     key C;
     if (rv.type == RCTTypeHaven2) {
-      CHECK_AND_ASSERT_THROW_MES(!equalKeys(scalarmultH(d2h(0)),rv.outPk[i].mask), "warning, bad outPk mask");
+      CHECK_AND_ASSERT_THROW_MES(!equalKeys(rct::identity(),rv.outPk[i].mask), "warning, bad outPk mask");
       C = rv.outPk[i].mask;
     } else {
-      if (!equalKeys(scalarmultH(d2h(0)),rv.outPk[i].mask)) C = rv.outPk[i].mask;
-      else if (!equalKeys(scalarmultH(d2h(0)),rv.outPk_usd[i].mask)) C = rv.outPk_usd[i].mask;
-      else if (!equalKeys(scalarmultH(d2h(0)),rv.outPk_xasset[i].mask)) C = rv.outPk_xasset[i].mask;
+      if (!equalKeys(rct::identity(),rv.outPk[i].mask)) C = rv.outPk[i].mask;
+      else if (!equalKeys(rct::identity(),rv.outPk_usd[i].mask)) C = rv.outPk_usd[i].mask;
+      else if (!equalKeys(rct::identity(),rv.outPk_xasset[i].mask)) C = rv.outPk_xasset[i].mask;
     }
     DP("C");
     DP(C);

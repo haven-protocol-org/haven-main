@@ -557,15 +557,20 @@ namespace cryptonote
           LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
           return false;
         }
-	      source_asset_types.insert("XHV");
+        source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_to_key)) {
-	      source_asset_types.insert("XHV");
+        source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-	      source_asset_types.insert("XUSD");
+        source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-	      source_asset_types.insert("XUSD");
+        source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[i]).asset_type);
+        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert(xasset);
       } else {
         LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
         return false;
@@ -592,7 +597,12 @@ namespace cryptonote
       } else if (out.target.type() == typeid(txout_offshore)) {
         destination_asset_types.insert("XUSD");
       } else if (out.target.type() == typeid(txout_xasset)) {
-        destination_asset_types.insert(boost::get<txout_xasset>(out.target).asset_type);
+        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
+          return false;
+        }
+        destination_asset_types.insert(xasset);
       } else {
         LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
         return false;
@@ -700,6 +710,9 @@ namespace cryptonote
   }
 
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash) {
+    if (pr_height >= current_height) {
+      return false;
+    }
     if ((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height) {
       // exception for 1 tx that used 11 block old record and is already in the chain.
       if (epee::string_tools::pod_to_hex(tx_hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
