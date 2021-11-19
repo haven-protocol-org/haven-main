@@ -166,10 +166,15 @@ uint64_t PendingTransactionImpl::amount() const
     uint64_t result = 0;
     for (const auto &ptx : m_pending_tx)   {
         for (const auto &dest : ptx.dests) {
-            result += dest.amount;
+            result += (m_asset_type == "XUSD" ? dest.amount_usd : m_asset_type == "XHV" ? dest.amount : dest.amount_xasset);
         }
     }
     return result;
+}
+
+string PendingTransactionImpl::assetType() const
+{
+    return m_asset_type;
 }
 
 uint64_t PendingTransactionImpl::dust() const

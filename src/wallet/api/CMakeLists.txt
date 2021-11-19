@@ -37,6 +37,7 @@ set(wallet_api_sources
   transaction_history.cpp
   pending_transaction.cpp
   utils.cpp
+  assets.cpp
   address_book.cpp
   subaddress.cpp
   subaddress_account.cpp
@@ -67,6 +68,7 @@ target_link_libraries(wallet_api
   PUBLIC
     wallet
     common
+    offshore
     cryptonote_core
     mnemonics
     ${LMDB_LIBRARY}
