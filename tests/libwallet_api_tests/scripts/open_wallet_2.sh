@@ -1,5 +1,6 @@
 #!/bin/bash
 
+. ./conf.sh
 
-rlwrap monero-wallet-cli --wallet-file wallet_02.bin --password "" --testnet --trusted-daemon --daemon-address localhost:38081  --log-file wallet_01.log
+rlwrap $WALLET_CLI_DIR/haven-wallet-cli --wallet-file $WALLETS_ROOT_DIR/bob --password "" --testnet --trusted-daemon --daemon-address localhost:27750  --log-file bob.log
 
