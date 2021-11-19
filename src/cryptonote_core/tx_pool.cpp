@@ -122,6 +122,19 @@ namespace cryptonote
 
   }
   //---------------------------------------------------------------------------------
+  uint64_t tx_memory_pool::get_tx_unlock_time(uint64_t tx_unlock_time, uint64_t tx_pr_height, uint64_t current_height)
+  {
+    uint64_t unlock_time = 0;
+    if (current_height > 973672) {
+      if (tx_unlock_time > tx_pr_height) {
+        unlock_time = tx_unlock_time - tx_pr_height;
+      }
+    } else {
+      unlock_time = tx_unlock_time - tx_pr_height;
+    }
+    return unlock_time;
+  }
+  //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {
     const bool kept_by_block = (tx_relay == relay_method::block);
@@ -271,7 +284,7 @@ namespace cryptonote
 
       // dont use current_height instead of pricing_record_height here. Otherwise daemon will reject the conversion txs that arent immediately mined in the next block.
       // since it changes the priorit therefore the fee check calculation fails.
-      uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+      uint64_t unlock_time = get_tx_unlock_time(tx.unlock_time, tx.pricing_record_height, current_height);
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         if (unlock_time < 180) {
           LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
@@ -736,7 +749,7 @@ namespace cryptonote
         }
 
         // changing tx pricing_record height to current_heihgt might cause sync problems due to at leat 1 block diff between them.
-        uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+        uint64_t unlock_time = get_tx_unlock_time(tx.unlock_time, tx.pricing_record_height, current_height);
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
           if (unlock_time < 180) {
             LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");

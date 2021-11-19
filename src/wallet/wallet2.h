@@ -1608,7 +1608,7 @@ private:
     rct::multisig_kLRki get_multisig_composite_kLRki(transfer_container &specific_transfers, size_t n,  const std::unordered_set<crypto::public_key> &ignore_set, std::unordered_set<rct::key> &used_L, std::unordered_set<rct::key> &new_used_L);
     rct::multisig_kLRki get_multisig_kLRki(transfer_container &specific_transfers, size_t n, const rct::key &k);
     rct::key get_multisig_k(transfer_container &specific_transfers, size_t idx, const std::unordered_set<rct::key> &used_L);
-    void update_multisig_rescan_info(const std::string& asset_type, const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::map<std::string, std::vector<tools::wallet2::multisig_info>>> &info, size_t n);
+    void update_multisig_rescan_info(transfer_container &specific_transfers, const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::vector<tools::wallet2::multisig_info>> &info, size_t n);
     /*
     crypto::key_image get_multisig_composite_key_image(size_t n) const;
     rct::multisig_kLRki get_multisig_composite_kLRki(size_t n,  const std::unordered_set<crypto::public_key> &ignore_set, std::unordered_set<rct::key> &used_L, std::unordered_set<rct::key> &new_used_L) const;
@@ -1689,8 +1689,8 @@ private:
     std::vector<tools::wallet2::address_book_row> m_address_book;
     std::pair<std::map<std::string, std::string>, std::vector<std::string>> m_account_tags;
     uint64_t m_upper_transaction_weight_limit; //TODO: auto-calc this value or request from daemon, now use some fixed value
-    const std::vector<std::map<std::string, std::vector<tools::wallet2::multisig_info>>> *m_multisig_rescan_info;
-    const std::vector<std::vector<rct::key>> *m_multisig_rescan_k;
+    std::map<std::string, std::vector<std::vector<tools::wallet2::multisig_info>>> m_multisig_rescan_info;
+    std::map<std::string, std::vector<std::vector<rct::key>>> m_multisig_rescan_k;
     std::unordered_map<crypto::public_key, crypto::key_image> m_cold_key_images;
 
     std::atomic<bool> m_run;

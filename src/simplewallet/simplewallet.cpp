@@ -3455,7 +3455,7 @@ simple_wallet::simple_wallet()
                                   "  Whether to automatically synchronize new blocks from the daemon.\n "
                                   "refresh-type <full|optimize-coinbase|no-coinbase|default>\n "
                                   "  Set the wallet's refresh behaviour.\n "
-                                  "priority [0|1|2|3|4]\n "
+                                  "priority [0|1|2|3|4] or\n priority [default|unimportant|normal|elevated|priority]\n "
                                   "  Set the fee to default/unimportant/normal/elevated/priority.\n "
                                   "confirm-missing-payment-id <1|0>\n "
                                   "ask-password <0|1|2   (or never|action|decrypt)>\n "
@@ -6078,15 +6078,23 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
 
         // The total balance
         boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
-        xusd_128 /= exchange_128;
-        value = (uint64_t)xusd_128;
-        xusd_value_str = "(" + print_money(value) + " XUSD)";
-
+        if (exchange_128 > 0) {
+          xusd_128 /= exchange_128;
+          value = (uint64_t)xusd_128;
+          xusd_value_str = "(" + print_money(value) + " XUSD)";
+        } else {
+          xusd_value_str = "";
+        }
+        
         // The unlocked balance
         boost::multiprecision::uint128_t xusd_unlocked_128 = xasset_unlocked_128 * 1000000000000;
-        xusd_unlocked_128 /= exchange_128;
-        value_unlocked = (uint64_t)xusd_unlocked_128;
-        xusd_unlocked_value_str = "(" + print_money(value_unlocked) + " XUSD)";
+        if (exchange_128 > 0) {
+          xusd_unlocked_128 /= exchange_128;
+          value_unlocked = (uint64_t)xusd_unlocked_128;
+          xusd_unlocked_value_str = "(" + print_money(value_unlocked) + " XUSD)";
+        } else {
+          xusd_unlocked_value_str = "";
+        }          
       }
       success_msg_writer() << tr("Currency: ") << asset.first << tr(", balance: ") << print_money(asset.second) << xusd_value_str << tr(", unlocked balance: ") << print_money(unlocked_balance_total[asset.first]) << xusd_unlocked_value_str << unlock_time_message;
     } else {
