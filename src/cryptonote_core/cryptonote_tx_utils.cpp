@@ -365,11 +365,12 @@ namespace cryptonote
   {
     account_public_address addr = {null_pkey, null_pkey};
     size_t count = 0;
+    bool found_change = false;
     for (const auto &i : destinations)
     {
       if (i.amount == 0 && i.amount_usd == 0 && i.amount_xasset == 0)
         continue;
-      if (change_addr && i.addr == *change_addr)
+      if (change_addr && i.addr == *change_addr && !found_change)
         continue;
       if (i.addr == addr)
         continue;
