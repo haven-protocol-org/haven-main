@@ -959,7 +959,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool check_outs_valid(const transaction& tx)
   {
-   if (tx.version >= PER_OUTPUT_UNLOCK_VERSION)
+   if (tx.version > 5)
    {
      CHECK_AND_NO_ASSERT_MES(tx.vout.size() == tx.output_unlock_times.size(), false, "tx version 4 must have equal number of output unlock times and outputs");
    }

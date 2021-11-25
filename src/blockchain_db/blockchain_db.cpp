@@ -241,7 +241,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
   for (uint64_t i = 0; i < tx.vout.size(); ++i)
   {
     uint64_t unlock_time = 0;
-    if (tx.version > 4)
+    if (tx.version > 5)
     {
       unlock_time = tx.output_unlock_times[i];
     }

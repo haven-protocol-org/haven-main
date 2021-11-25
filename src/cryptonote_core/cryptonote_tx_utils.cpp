@@ -340,8 +340,9 @@ namespace cryptonote
         }
       }
     }
-    
-    if (hard_fork_version >= HF_VERSION_HAVEN2) {
+    if (hard_fork_version >= PER_OUTPUT_UNLOCK_VERSION) {
+      tx.version = 6;
+    } else if (hard_fork_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
     } else if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
       tx.version = 4;
