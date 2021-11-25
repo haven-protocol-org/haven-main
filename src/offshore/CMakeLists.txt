@@ -27,14 +27,12 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(offshore_sources
-  pricing_handler.cpp
   pricing_record.cpp)
 
 set(offshore_headers)
 
 set(offshore_private_headers
   asset_types.h
-  pricing_handler.h
   pricing_record.h)
 
 monero_private_headers(offshore

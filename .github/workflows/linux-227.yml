@@ -102,5 +102,5 @@ jobs:
         tag: ${{ github.ref }}
         overwrite: true
         body: ""
-        prerelease: false
+        prerelease: true
         

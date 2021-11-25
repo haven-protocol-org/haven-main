@@ -197,9 +197,10 @@ namespace boost
     a & x.extra;
     if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
       a & x.pricing_record_height;
-      a & x.offshore_data;
       a & x.amount_burnt;
       a & x.amount_minted;
+      if (x.version < 5)
+        a & x.offshore_data;
     }
 
     if (x.version >= PER_OUTPUT_UNLOCK_VERSION) {
@@ -217,23 +218,18 @@ namespace boost
     a & x.extra;
     if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
       a & x.pricing_record_height;
-      a & x.offshore_data;
       a & x.amount_burnt;
       a & x.amount_minted;
+      if (x.version < 5)
+        a & x.offshore_data;
     }
     if (x.version >= PER_OUTPUT_UNLOCK_VERSION) {
         a & x.output_unlock_times;
     }
-    if (x.version == 1)
-    {
-      a & x.signatures;
-    }
-    else
-    {
-      a & (rct::rctSigBase&)x.rct_signatures;
-      if (x.rct_signatures.type != rct::RCTTypeNull)
-        a & x.rct_signatures.p;
-    }
+
+    a & (rct::rctSigBase&)x.rct_signatures;
+    if (x.rct_signatures.type != rct::RCTTypeNull)
+      a & x.rct_signatures.p;
   }
 
   template <class Archive>
@@ -367,7 +363,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -380,15 +376,34 @@ namespace boost
     if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
-    if (ver >= 1u) {
-      a & x.txnFee_usd;
-      if (ver >= 2u) {
-	a & x.txnFee_xasset;
+    if (ver >= 5u) {
+      if (x.type == rct::RCTTypeHaven2) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
       }
-      a & x.txnOffshoreFee;
-      a & x.txnOffshoreFee_usd;
-      if (ver >= 2u) {
-	a & x.txnOffshoreFee_xasset;
+      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+        a & x.txnOffshoreFee;
+        a & x.txnFee_usd;
+        a & x.txnOffshoreFee_usd;
+        if (x.type == rct::RCTTypeCLSAGN) {
+          a & x.txnFee_xasset;
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    } else {
+      if (ver >= 4u) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      } else if (ver >= 1u) {
+        a & x.txnFee_usd;
+        if (ver >= 2u) {
+          a & x.txnFee_xasset;
+        }
+        a & x.txnOffshoreFee;        
+        a & x.txnOffshoreFee_usd;
+        if (ver >= 2u) {
+          a & x.txnOffshoreFee_xasset;
+        }
       }
     }
   }
@@ -412,7 +427,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -425,15 +440,34 @@ namespace boost
     if (x.type == rct::RCTTypeCLSAGN)
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
-    if (ver >= 1u) {
-      a & x.txnFee_usd;
-      if (ver >= 2u) {
-	a & x.txnFee_xasset;
+    if (ver >= 5u) {
+      if (x.type == rct::RCTTypeHaven2) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
       }
-      a & x.txnOffshoreFee;
-      a & x.txnOffshoreFee_usd;
-      if (ver >= 2u) {
-	a & x.txnOffshoreFee_xasset;
+      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+        a & x.txnOffshoreFee;
+        a & x.txnFee_usd;
+        a & x.txnOffshoreFee_usd;
+        if (x.type == rct::RCTTypeCLSAGN) {
+          a & x.txnFee_xasset;
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    } else {
+      if (ver >= 4u) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      } else if (ver >= 1u) {
+        a & x.txnFee_usd;
+        if (ver >= 2u) {
+          a & x.txnFee_xasset;
+        }
+        a & x.txnOffshoreFee;        
+        a & x.txnOffshoreFee_usd;
+        if (ver >= 2u) {
+          a & x.txnOffshoreFee_xasset;
+        }
       }
     }
     //--------------
@@ -441,9 +475,9 @@ namespace boost
     if (x.p.rangeSigs.empty())
       a & x.p.bulletproofs;
     a & x.p.MGs;
-    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN))
+    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN) || (x.type == rct::RCTTypeHaven2))
       a & x.p.CLSAGs;
-    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN)
+    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN || x.type == rct::RCTTypeHaven2)
       a & x.p.pseudoOuts;
   }
 
@@ -509,8 +543,8 @@ namespace boost
 
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 2)
-BOOST_CLASS_VERSION(rct::rctSigBase, 3)
-BOOST_CLASS_VERSION(rct::rctSig, 3)
+BOOST_CLASS_VERSION(rct::rctSigBase, 5)
+BOOST_CLASS_VERSION(rct::rctSig, 5)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)
 
 //}

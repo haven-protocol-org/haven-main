@@ -245,7 +245,8 @@ namespace cryptonote
       FIELD(extra)
       if(version < OFFSHORE_TRANSACTION_VERSION) return true;
       VARINT_FIELD(pricing_record_height)
-      FIELD(offshore_data)
+      if (version < 5)
+        FIELD(offshore_data)
       VARINT_FIELD(amount_burnt)
       VARINT_FIELD(amount_minted)
       if (version > 2)

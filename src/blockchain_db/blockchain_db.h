@@ -445,7 +445,7 @@ private:
    * @param tx_prunable_hash the hash of the prunable part of the transaction
    * @return the transaction ID
    */
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash) = 0;
+  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash, bool miner_tx) = 0;
 
   /**
    * @brief remove data about a transaction
@@ -463,7 +463,7 @@ private:
    * @param tx_hash the hash of the transaction to be removed
    * @param tx the transaction
    */
-  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx) = 0;
+  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx, bool miner_tx) = 0;
 
   /**
    * @brief store an output
@@ -552,7 +552,7 @@ private:
    *
    * @param tx_hash the hash of the transaction to be removed
    */
-  void remove_transaction(const crypto::hash& tx_hash);
+  void remove_transaction(const crypto::hash& tx_hash, bool miner_tx);
 
   uint64_t num_calls = 0;  //!< a performance metric
   uint64_t time_blk_hash = 0;  //!< a performance metric

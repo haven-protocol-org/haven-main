@@ -112,6 +112,10 @@ namespace cryptonote
      * @param tx_weight the transaction's weight
      */
     bool add_tx(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version);
+    // this function only made for readability purposes. It is being called after
+    // haven2 fork. So it doesn't have the rules prior to this fork.
+    bool add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version);
+    uint64_t get_tx_unlock_time(uint64_t tx_unlock_time, uint64_t tx_pr_height, uint64_t current_height);
 
     /**
      * @brief add a transaction to the transaction pool

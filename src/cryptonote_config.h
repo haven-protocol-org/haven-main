@@ -45,7 +45,7 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
-#define CURRENT_TRANSACTION_VERSION                     4
+#define CURRENT_TRANSACTION_VERSION                     5
 #define OFFSHORE_TRANSACTION_VERSION                    3
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     1
@@ -71,6 +71,7 @@
 #define CRYPTONOTE_DISPLAY_DECIMAL_POINT                12
 // COIN - number of smallest units in one coin
 #define COIN                                            ((uint64_t)1000000000000) // pow(10, 12)
+#define HAVEN_MAX_TX_VALUE                              ((uint64_t)15000000000000000000ull)
 
 #define FEE_PER_KB_OLD                                  ((uint64_t)100000000)
 #define FEE_PER_KB                                      ((uint64_t)20000000)
@@ -193,9 +194,10 @@
 #define HF_VERSION_OFFSHORE_FEES_V2             14
 #define HF_VERSION_XASSET_FULL                  16
 #define HF_VERSION_XASSET_FEES_V2               17
+#define HF_VERSION_HAVEN2                       18
 
-#define STAGENET_VERSION                        0x0d
-#define TESTNET_VERSION                         0x0d
+#define STAGENET_VERSION                        0x0e
+#define TESTNET_VERSION                         0x0e
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
