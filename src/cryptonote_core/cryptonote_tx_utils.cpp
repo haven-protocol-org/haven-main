@@ -1075,6 +1075,8 @@ namespace cryptonote
     //fill outputs
     tx.amount_minted = tx.amount_burnt = 0;
     size_t output_index = 0;
+    bool found_change = false;
+
     for(const tx_destination_entry& dst_entr: destinations)
     {
       CHECK_AND_ASSERT_MES(dst_entr.amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.amount);
@@ -1092,7 +1094,10 @@ namespace cryptonote
         additional_tx_keys,
         additional_tx_public_keys,
         amount_keys,
-        out_eph_public_key
+        out_eph_public_key,
+        found_change,
+        tx.output_unlock_times,
+        unlock_time
       );
 
       tx_out out;
@@ -1367,6 +1372,7 @@ namespace cryptonote
         rct,
         rct_config,
         msout,
+        true,
         per_output_unlock
       );
       hwdev.close_tx();
