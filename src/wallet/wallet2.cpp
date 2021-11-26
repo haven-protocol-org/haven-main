@@ -9910,7 +9910,7 @@ void wallet2::transfer_selected_rct(
     ptx.construction_data.subaddr_indices.insert(specific_transfers[idx].m_subaddr_index.minor);
   ptx.construction_data.fee = fee;
 
-  ptx.per_output_unlock = per_output_unlock;
+  ptx.construction_data.per_output_unlock = per_output_unlock;
   LOG_PRINT_L2("transfer_selected_rct done");
 }
 
