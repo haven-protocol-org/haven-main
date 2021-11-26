@@ -203,7 +203,7 @@ namespace boost
         a & x.offshore_data;
     }
 
-    if (x.version >= PER_OUTPUT_UNLOCK_VERSION) {
+    if (x.version >= POU_TRANSACTION_VERSION) {
         a & x.output_unlock_times;
     }
   }

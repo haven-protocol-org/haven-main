@@ -247,13 +247,14 @@ namespace cryptonote
       VARINT_FIELD(pricing_record_height)
       if (version < 5)
         FIELD(offshore_data)
-      VARINT_FIELD(amount_burnt)
-      VARINT_FIELD(amount_minted)
-      if (version > 2)
+
+      if (version >= POU_TRANSACTION_VERSION)
       {
         FIELD(output_unlock_times)
       }
-      if (version >= 4 && vout.size() != output_unlock_times.size()) return false;
+      if (version >= POU_TRANSACTION_VERSION && vout.size() != output_unlock_times.size()) return false;
+      VARINT_FIELD(amount_burnt)
+      VARINT_FIELD(amount_minted)
     END_SERIALIZE()
 
   public:
