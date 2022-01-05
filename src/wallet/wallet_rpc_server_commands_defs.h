@@ -2717,5 +2717,126 @@ namespace wallet_rpc
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  struct COMMAND_RPC_SIGN_MULTISIG_PARALLEL
+  {
+    struct request_t
+    {
+      std::string tx_data_hex;
+      std::vector<std::string> all_signer_pubkeys;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(tx_data_hex)
+        KV_SERIALIZE(all_signer_pubkeys)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::string tx_data_hex;
+      std::list<std::string> tx_hash_list;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(tx_data_hex)
+        KV_SERIALIZE(tx_hash_list)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_EXPORT_SIGNKEY 
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::list<std::string> multisig_keys;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(multisig_keys)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_ACCU_MULTISIG
+  {
+    struct request_t
+    {
+      std::list<std::string> tx_data_hex;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(tx_data_hex)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::string tx_data_hex;
+      std::list<std::string> tx_hash_list;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(tx_data_hex)
+        KV_SERIALIZE(tx_hash_list)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_TRANSACTION_CHECK
+  {
+    struct request_t
+    {
+      std::list<transfer_destination> destinations;
+      std::string payment_id;
+      std::string tx_data_hex;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(destinations)
+        KV_SERIALIZE(payment_id)
+        KV_SERIALIZE(tx_data_hex)
+        END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      bool check_result;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(check_result, false)
+        END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_SAVE_POOL_WALLET
+  {
+    struct request_t
+    {
+      std::string pool_address;
+      std::string old_address;
+      std::string password;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(pool_address)
+        KV_SERIALIZE(password)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      bool create_result;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(create_result);
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
 }
 }
