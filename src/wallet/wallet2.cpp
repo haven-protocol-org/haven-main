@@ -9732,7 +9732,7 @@ void wallet2::transfer_selected_rct(
   std::vector<crypto::secret_key> additional_tx_keys;
   rct::multisig_out msout;
   LOG_PRINT_L2("constructing tx");
-  bool per_output_unlock = use_fork_rules(15, 5);
+  bool per_output_unlock = use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0);
 
   auto sources_copy = sources;
   offshore::pricing_record pr;

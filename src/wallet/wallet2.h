@@ -2301,8 +2301,13 @@ namespace boost
 	x.fee = 0;
 	return;
       }
-      a & x.per_output_unlock;
       a & x.fee;
+      if (ver < 6)
+      {
+        // initialise x.per_output_unlock?
+        return;
+      }
+      a & x.per_output_unlock;
     }
 
     template <class Archive>

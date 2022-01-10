@@ -340,7 +340,7 @@ namespace cryptonote
         }
       }
     }
-    if (hard_fork_version >= PER_OUTPUT_UNLOCK_VERSION) {
+    if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
       tx.version = 6;
     } else if (hard_fork_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
@@ -357,6 +357,11 @@ namespace cryptonote
     tx.vin.push_back(in);
     tx.invalidate_hashes();
 
+    // per-output-unlock times
+    if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION)
+      for (size_t i=0; i<tx.vout.size(); i++)
+        tx.output_unlock_times.push_back(tx.unlock_time);
+    
     //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
     //  << "), current_block_size=" << current_block_size << ", already_generated_coins=" << already_generated_coins << ", tx_id=" << get_transaction_hash(tx), LOG_LEVEL_2);
     return true;
@@ -766,7 +771,7 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    if (hf_version >= PER_OUTPUT_UNLOCK_VERSION){
+    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION){
       tx.version = 6;
     } else if (hf_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
@@ -1094,10 +1099,7 @@ namespace cryptonote
         additional_tx_keys,
         additional_tx_public_keys,
         amount_keys,
-        out_eph_public_key,
-        found_change,
-        tx.output_unlock_times,
-        unlock_time
+        out_eph_public_key
       );
 
       tx_out out;
@@ -1117,13 +1119,31 @@ namespace cryptonote
       } else {
         txout_xasset tk;
         tk.key = out_eph_public_key;
-	      tk.asset_type = dst_entr_clone.asset_type;
+        tk.asset_type = dst_entr_clone.asset_type;
         out.target = tk;
         out.amount = dst_entr_clone.amount_xasset;
         outamounts.push_back(std::pair<std::string, uint64_t>(dst_entr_clone.asset_type, dst_entr_clone.amount_xasset));
       }
 
-      // pusdh to outputs
+      // Check for per-output-unlocks
+      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && strSource != strDest) {
+        if (dst_entr_clone.asset_type == strDest) {
+          // Destination amount - needs a full unlock time
+          tx.output_unlock_times.push_back(tx.unlock_time);
+        } else if (dst_entr_clone.asset_type == strSource) {
+          // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
+          tx.output_unlock_times.push_back(0);
+        } else {
+          // Should never happen
+          LOG_ERROR("Invalid asset type detected: source = " << strSource << ", dest = " << strDest << ", detected " << dst_entr_clone.asset_type);
+          return false;
+        }
+      } else {
+        // Put 0s in the output-unlock-times
+        tx.output_unlock_times.push_back(0);
+      }
+      
+      // push to outputs
       tx.vout.push_back(out);
       output_index++;
 

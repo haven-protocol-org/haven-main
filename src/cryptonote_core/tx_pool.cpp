@@ -299,6 +299,33 @@ namespace cryptonote
         }
       }
 
+      if ((tx.version >= POU_TRANSACTION_VERSION) && (source != dest)) {
+
+        // Make sure that we have a suitable vector of unlock times for all the outputs
+        if (tx.output_unlock_times.size() != tx.vout.size()) {
+          LOG_PRINT_L1("output_unlock_times vector is too short: " << tx.output_unlock_times.size() << " found, but we have " << tx.vout.size() << " outputs.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+        
+        // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
+        for (auto i=0; i<tx.vout.size(); ++i) {
+          // Check if the output asset type is the same as the source
+          if (((tx.vout[i].target.type() == typeid(txout_to_key)) && (source == "XHV")) ||
+              ((tx.vout[i].target.type() == typeid(txout_offshore)) && (source == "XUSD")) ||
+              ((tx.vout[i].target.type() == typeid(txout_xasset)) && (source == boost::get<txout_xasset>(tx.vout[i].target).asset_type))) {
+            // Yes - it's change, so allow 10-block unlock
+          } else {
+            // No - enforce full unlock time
+            if (tx.output_unlock_times[i] < unlock_time) {
+              LOG_PRINT_L1("output_unlock_times[" << i << "] is too short for converted output: " << tx.output_unlock_times[i] << " found, but TX unlock time is " << unlock_time);
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          }
+        }
+      }
+      
       // validate conversion fees
       uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;

@@ -197,7 +197,7 @@
 #define HF_VERSION_XASSET_FULL                  16
 #define HF_VERSION_XASSET_FEES_V2               17
 #define HF_VERSION_HAVEN2                       18
-#define PER_OUTPUT_UNLOCK_VERSION               19
+#define HF_PER_OUTPUT_UNLOCK_VERSION            19
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x0e

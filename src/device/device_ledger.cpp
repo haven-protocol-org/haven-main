@@ -1532,7 +1532,7 @@ namespace hw {
                                                        const bool &need_additional_txkeys,  const std::vector<crypto::secret_key> &additional_tx_keys,
                                                        std::vector<crypto::public_key> &additional_tx_public_keys,
                                                        std::vector<rct::key> &amount_keys,
-                                                       crypto::public_key &out_eph_public_key, bool &found_change, std::vector<uint64_t> &output_unlock_times, uint64_t unlock_time) {
+                                                       crypto::public_key &out_eph_public_key) {
       AUTO_LOCK_CMD();
 
       #ifdef DEBUG_HWDEVICE
