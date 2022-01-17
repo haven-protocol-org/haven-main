@@ -406,7 +406,12 @@ namespace cryptonote
       }
     }
 
-    if (fees_version >= 2) {
+    if (fees_version >= 4) {
+
+      // Flat 0.5% fee
+      fee_estimate = amount / 200;
+      
+    } else if (fees_version >= 2) {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
@@ -442,7 +447,12 @@ namespace cryptonote
       }
     }
 
-    if (fees_version >= 2) {
+    if (fees_version >= 4) {
+
+      // Flat 0.5% fee
+      fee_estimate = amount_usd / 200;
+      
+    } else if (fees_version >= 2) {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.

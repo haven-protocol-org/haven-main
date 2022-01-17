@@ -7371,7 +7371,10 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       return false;
     }
 
-    uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+    uint32_t fees_version =
+      use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
+      use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
+      use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
     uint32_t hf_version = get_current_hard_fork();
     bool r = cryptonote::construct_tx_and_get_tx_key(
       m_account.get_keys(),
@@ -7944,7 +7947,10 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
       return false;
     }
 
-    uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+    uint32_t fees_version =
+      use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
+      use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
+      use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
     uint32_t hf_version = get_current_hard_fork();
     bool r = cryptonote::construct_tx_with_tx_key(
       m_account.get_keys(),
@@ -9740,7 +9746,10 @@ void wallet2::transfer_selected_rct(
     bool b = get_pricing_record(pr, current_height);
     THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
   }
-  uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+  uint32_t fees_version =
+    use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
+    use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
+    use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
   uint32_t hf_version = get_current_hard_fork();
   bool r = cryptonote::construct_tx_and_get_tx_key(
     m_account.get_keys(),
@@ -9815,7 +9824,10 @@ void wallet2::transfer_selected_rct(
           bool b = get_pricing_record(pr, current_height);
           THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
         }
-        uint32_t fees_version = use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 : use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
+        uint32_t fees_version =
+          use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
+          use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
+          use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
         uint32_t hf_version = get_current_hard_fork();
         bool r = cryptonote::construct_tx_with_tx_key(
           m_account.get_keys(),
@@ -15448,8 +15460,13 @@ uint64_t wallet2::get_offshore_fee(std::vector<cryptonote::tx_destination_entry>
     amount_usd += dt.amount_usd;
   }
 
-  if (0/*use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)*/) {
+  if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
 
+    uint64_t fee_estimate = (amount > 0) ? amount : amount_usd;
+    fee_estimate /= 200; // 0.5% flat fee for conversions
+    return fee_estimate;
+    
+    /*
     // Get the latest pricing records from the top block
     cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::request req_last = AUTO_VAL_INIT(req_last);
     cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::response res_last = AUTO_VAL_INIT(res_last);
@@ -15546,7 +15563,8 @@ uint64_t wallet2::get_offshore_fee(std::vector<cryptonote::tx_destination_entry>
     
     // Return the fee
     return (uint64_t)conversion_fee + speed_fee + speculation_fee;
-
+    */
+    
   } else if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
 
     uint64_t fee_estimate = (amount > 0) ? amount : amount_usd;
@@ -15604,8 +15622,13 @@ uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> 
     amount_usd += dt.amount_usd;
   }
 
-  if (0/*use_fork_rules(HF_VERSION_OFFSHORE_FEES_V3, 0)*/) {
+  if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
 
+    uint64_t fee_estimate = amount_usd;
+    fee_estimate /= 200; // 0.5% flat fee for conversions
+    return fee_estimate;
+
+    /*
     // Get the latest pricing records from the top block
     cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::request req_last = AUTO_VAL_INIT(req_last);
     cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::response res_last = AUTO_VAL_INIT(res_last);
@@ -15774,7 +15797,7 @@ uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> 
       
     // Return the fee
     return (uint64_t)conversion_fee + speed_fee + speculation_fee;
-
+    */
   } else if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
 
     uint64_t fee_estimate = amount_usd;

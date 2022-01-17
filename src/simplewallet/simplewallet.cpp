@@ -6769,12 +6769,26 @@ bool simple_wallet::transfer_main(
   }
 
   using tt = cryptonote::transaction_type;
-  if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-    locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
-    transfer_type = TransferLocked;
-  } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
-    locked_blocks = 1440; // ~48 hours
-    transfer_type = TransferLocked;
+  if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+    // Long offshore lock, short onshore lock, no effect from priority
+    if (tx_type == tt::OFFSHORE) {
+      locked_blocks = (14*720); // ~14 days
+      transfer_type = TransferLocked;
+    } else if (tx_type == tt::ONSHORE) {
+      locked_blocks = (12*30); // ~12 hours
+      transfer_type = TransferLocked;
+    } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
+      locked_blocks = 1440; // ~48 hours
+      transfer_type = TransferLocked;
+    }
+  } else {
+    if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
+      locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+      transfer_type = TransferLocked;
+    } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
+      locked_blocks = 1440; // ~48 hours
+      transfer_type = TransferLocked;
+    }
   }
   if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
     if (priority > 1) {
