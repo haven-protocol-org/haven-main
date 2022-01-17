@@ -2141,6 +2141,10 @@ uint64_t wallet2::get_xusd_amount(const uint64_t amount, const std::string asset
       asset_type == "XHV" ? res.block_header.pricing_record.unused1 :
       res.block_header.pricing_record.unused1;
     if (asset_type == "XHV") {
+      if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+        // Eliminate MA/spot advantage for offshore conversion
+        exchange_128 = std::min(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
+      }
       boost::multiprecision::uint128_t xusd_128 = amount_128 * exchange_128;
       xusd_128 /= 1000000000000;
       return (uint64_t)xusd_128;
@@ -2178,6 +2182,10 @@ uint64_t wallet2::get_xhv_amount(const uint64_t xusd_amount, const uint64_t heig
     boost::multiprecision::uint128_t xusd_128 = xusd_amount;
     boost::multiprecision::uint128_t exchange_128 = res.block_header.pricing_record.unused1;
     boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
+    if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+      // Eliminate MA/spot advantage for onshore conversion
+      exchange_128 = std::max(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
+    }
     xhv_128 /= exchange_128;
     //if (xhv_128 != xhv_amount) {
     //  MERROR("Conversion error detected in get_xhv_amount() : double=" << xhv_amount << ", 128-bit=" << xhv_128);
@@ -10591,7 +10599,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           i = dsts.end() - 1;
           i->amount = 0;
           i->amount_usd = 0;
-	        i->amount_xasset = 0;
+          i->amount_xasset = 0;
         }
         i->amount += amount;
         i->amount_usd += amount_usd;

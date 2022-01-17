@@ -6772,7 +6772,7 @@ bool simple_wallet::transfer_main(
   if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
     // Long offshore lock, short onshore lock, no effect from priority
     if (tx_type == tt::OFFSHORE) {
-      locked_blocks = (14*720); // ~14 days
+      locked_blocks = (21*720); // ~21 days
       transfer_type = TransferLocked;
     } else if (tx_type == tt::ONSHORE) {
       locked_blocks = (12*30); // ~12 hours
