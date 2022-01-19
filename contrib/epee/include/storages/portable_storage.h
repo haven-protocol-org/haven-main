@@ -40,7 +40,6 @@
 #include "span.h"
 #include <boost/mpl/contains.hpp>
 #include "int-util.h"
-#include <boost/mpl/contains.hpp>
 
 namespace epee
 {
