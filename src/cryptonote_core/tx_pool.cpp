@@ -122,6 +122,19 @@ namespace cryptonote
 
   }
   //---------------------------------------------------------------------------------
+  uint64_t tx_memory_pool::get_tx_unlock_time(uint64_t tx_unlock_time, uint64_t tx_pr_height, uint64_t current_height)
+  {
+    uint64_t unlock_time = 0;
+    if (current_height > 973672) {
+      if (tx_unlock_time > tx_pr_height) {
+        unlock_time = tx_unlock_time - tx_pr_height;
+      }
+    } else {
+      unlock_time = tx_unlock_time - tx_pr_height;
+    }
+    return unlock_time;
+  }
+  //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {
     const bool kept_by_block = (tx_relay == relay_method::block);
@@ -182,7 +195,7 @@ namespace cryptonote
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
     if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
-      if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
+      if (!get_tx_asset_types(tx, id, source, dest, false)) {
         LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
         tvc.m_verifivation_failed = true;
         if (source.empty()) {
@@ -194,7 +207,7 @@ namespace cryptonote
         return false;
       }
       if (!get_tx_type(source, dest, tx_type)) {
-        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
+        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << id);
         tvc.m_verifivation_failed = true;
         return false;
       }
@@ -210,7 +223,7 @@ namespace cryptonote
       // get pr for this tx
       uint64_t current_height = m_blockchain.get_current_blockchain_height();
       if (!tvc.tx_pr_height_verified) { // tx_pr_height_verified will only be false if poping blocks, otherwise the tx should already have been rejected.
-        if (!tx_pr_height_valid(current_height, tx.pricing_record_height, tx.hash)) {
+        if (!tx_pr_height_valid(current_height, tx.pricing_record_height, id)) {
           LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
           tvc.m_verifivation_failed = true;
           return false;
@@ -271,7 +284,7 @@ namespace cryptonote
 
       // dont use current_height instead of pricing_record_height here. Otherwise daemon will reject the conversion txs that arent immediately mined in the next block.
       // since it changes the priorit therefore the fee check calculation fails.
-      uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+      uint64_t unlock_time = get_tx_unlock_time(tx.unlock_time, tx.pricing_record_height, current_height);
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
         if (unlock_time < 180) {
           LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
@@ -286,6 +299,33 @@ namespace cryptonote
         }
       }
 
+      if ((tx.version >= POU_TRANSACTION_VERSION) && (source != dest)) {
+
+        // Make sure that we have a suitable vector of unlock times for all the outputs
+        if (tx.output_unlock_times.size() != tx.vout.size()) {
+          LOG_PRINT_L1("output_unlock_times vector is too short: " << tx.output_unlock_times.size() << " found, but we have " << tx.vout.size() << " outputs.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+        
+        // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
+        for (auto i=0; i<tx.vout.size(); ++i) {
+          // Check if the output asset type is the same as the source
+          if (((tx.vout[i].target.type() == typeid(txout_to_key)) && (source == "XHV")) ||
+              ((tx.vout[i].target.type() == typeid(txout_offshore)) && (source == "XUSD")) ||
+              ((tx.vout[i].target.type() == typeid(txout_xasset)) && (source == boost::get<txout_xasset>(tx.vout[i].target).asset_type))) {
+            // Yes - it's change, so allow 10-block unlock
+          } else {
+            // No - enforce full unlock time
+            if (tx.output_unlock_times[i] < unlock_time) {
+              LOG_PRINT_L1("output_unlock_times[" << i << "] is too short for converted output: " << tx.output_unlock_times[i] << " found, but TX unlock time is " << unlock_time);
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          }
+        }
+      }
+      
       // validate conversion fees
       uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;
@@ -634,7 +674,7 @@ namespace cryptonote
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
     if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
-      if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
+      if (!get_tx_asset_types(tx, id, source, dest, false)) {
         LOG_PRINT_L1("At least 1 input or 1 output of the tx was invalid." << id);
         tvc.m_verifivation_failed = true;
         if (source.empty()) {
@@ -646,7 +686,7 @@ namespace cryptonote
         return false;
       }
       if (!get_tx_type(source, dest, tx_type)) {
-        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << tx.hash);
+        LOG_ERROR("At least 1 input or 1 output of the tx was invalid." << id);
         tvc.m_verifivation_failed = true;
         return false;
       }
@@ -672,7 +712,7 @@ namespace cryptonote
         // get the pr for this tx
         uint64_t current_height = m_blockchain.get_current_blockchain_height();
         if (!tvc.tx_pr_height_verified) { // will only be false if poping blocks
-          if (!tx_pr_height_valid(current_height, tx.pricing_record_height, tx.hash)) {
+          if (!tx_pr_height_valid(current_height, tx.pricing_record_height, id)) {
             LOG_ERROR("Tx uses older pricing record than what is allowed. Current height: " << current_height << " Pr height: " << tx.pricing_record_height);
             tvc.m_verifivation_failed = true;
             return false;
@@ -736,7 +776,7 @@ namespace cryptonote
         }
 
         // changing tx pricing_record height to current_heihgt might cause sync problems due to at leat 1 block diff between them.
-        uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height;
+        uint64_t unlock_time = get_tx_unlock_time(tx.unlock_time, tx.pricing_record_height, current_height);
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
           if (unlock_time < 180) {
             LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
@@ -779,8 +819,8 @@ namespace cryptonote
           ((tx_type == transaction_type::XASSET_TO_XUSD) && (conversion_fee_check != tx.rct_signatures.txnOffshoreFee_xasset))
         ){
           // Check for 2 known overflow TXs
-          if ((epee::string_tools::pod_to_hex(tx.hash) != "5cdd9be420bd9034e2ff83a04cd22978c163a5263f8e7a0577f46ec762a21da6") &&
-              (epee::string_tools::pod_to_hex(tx.hash) != "b5cd616fc1b64a04750f890e466663ee3308c07846a174daf4d64c111f2de052")) {
+          if ((epee::string_tools::pod_to_hex(id) != "5cdd9be420bd9034e2ff83a04cd22978c163a5263f8e7a0577f46ec762a21da6") &&
+              (epee::string_tools::pod_to_hex(id) != "b5cd616fc1b64a04750f890e466663ee3308c07846a174daf4d64c111f2de052")) {
           
             LOG_PRINT_L1("conversion fee is incorrect - rejecting");
             tvc.m_verifivation_failed = true;
@@ -797,7 +837,7 @@ namespace cryptonote
         return false;
       }
       // make sure no pr heiht set
-      if (tx.pricing_record_height) {
+      if (version >= HF_VERSION_OFFSHORE_FEES_V2 && tx.pricing_record_height) {
         LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
@@ -2044,35 +2084,35 @@ namespace cryptonote
   {
     if (tx.vin[0].type() == typeid(txin_to_key)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_to_key, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_to_key, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     else if (tx.vin[0].type() == typeid(txin_offshore)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_offshore, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_offshore, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     else if (tx.vin[0].type() == typeid(txin_onshore)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_onshore, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_onshore, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     else if (tx.vin[0].type() == typeid(txin_xasset)) {
       for(size_t i = 0; i!= tx.vin.size(); i++)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_xasset, itk, false);
-	  if(k_images.count(itk.k_image))
-	    return true;
-	}
+      {
+        CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], const txin_xasset, itk, false);
+        if(k_images.count(itk.k_image))
+          return true;
+      }
     }
     return false;
   }
@@ -2340,18 +2380,36 @@ namespace cryptonote
       // get the asset types
       std::string source;
       std::string dest;
-      if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
+      if (!get_tx_asset_types(tx, sorted_it->second, source, dest, false)) {
         LOG_PRINT_L2("At least 1 input or 1 output of the tx was invalid.");
         continue;
       }
 
-      // Validate that pricing record has not grown too old since it was first included in the pool
       if (source != dest)
       {
-        uint64_t current_height = m_blockchain.get_current_blockchain_height();
-        if ((current_height - PRICING_RECORD_VALID_BLOCKS) > tx.pricing_record_height) {
+        // Validate that pricing record has not grown too old since it was first included in the pool
+        if (!tx_pr_height_valid(m_blockchain.get_current_blockchain_height(), tx.pricing_record_height, sorted_it->second)) {
           LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
           continue;
+        }
+        if (version >= HF_VERSION_HAVEN2) {
+          // get tx type and pricing record
+          block bl;
+          cryptonote::transaction_type tx_type;
+          if (!get_tx_type(source, dest, tx_type)) {
+            LOG_PRINT_L2(" transaction has invalid tx type " << sorted_it->second);
+            continue;
+          }
+          if (!m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl)) {
+            LOG_PRINT_L2("error: failed to get block containing pricing record");
+            continue;
+          }
+          // make sure proof-of-value still holds
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout))
+          {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
+            continue;
+          }
         }
       }
 

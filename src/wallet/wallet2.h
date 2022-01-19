@@ -479,6 +479,7 @@ private:
       uint32_t subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> subaddr_indices;  // set of address indices used as inputs in this transfer
       uint64_t fee;
+      bool per_output_unlock;
 
       BEGIN_SERIALIZE_OBJECT()
         FIELD(sources)
@@ -493,6 +494,7 @@ private:
         FIELD(subaddr_account)
         FIELD(subaddr_indices)
         FIELD(fee)
+        FIELD(per_output_unlock)
       END_SERIALIZE()
     };
 
@@ -1608,7 +1610,7 @@ private:
     rct::multisig_kLRki get_multisig_composite_kLRki(transfer_container &specific_transfers, size_t n,  const std::unordered_set<crypto::public_key> &ignore_set, std::unordered_set<rct::key> &used_L, std::unordered_set<rct::key> &new_used_L);
     rct::multisig_kLRki get_multisig_kLRki(transfer_container &specific_transfers, size_t n, const rct::key &k);
     rct::key get_multisig_k(transfer_container &specific_transfers, size_t idx, const std::unordered_set<rct::key> &used_L);
-    void update_multisig_rescan_info(const std::string& asset_type, const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::map<std::string, std::vector<tools::wallet2::multisig_info>>> &info, size_t n);
+    void update_multisig_rescan_info(transfer_container &specific_transfers, const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::vector<tools::wallet2::multisig_info>> &info, size_t n);
     /*
     crypto::key_image get_multisig_composite_key_image(size_t n) const;
     rct::multisig_kLRki get_multisig_composite_kLRki(size_t n,  const std::unordered_set<crypto::public_key> &ignore_set, std::unordered_set<rct::key> &used_L, std::unordered_set<rct::key> &new_used_L) const;
@@ -1689,8 +1691,8 @@ private:
     std::vector<tools::wallet2::address_book_row> m_address_book;
     std::pair<std::map<std::string, std::string>, std::vector<std::string>> m_account_tags;
     uint64_t m_upper_transaction_weight_limit; //TODO: auto-calc this value or request from daemon, now use some fixed value
-    const std::vector<std::map<std::string, std::vector<tools::wallet2::multisig_info>>> *m_multisig_rescan_info;
-    const std::vector<std::vector<rct::key>> *m_multisig_rescan_k;
+    std::map<std::string, std::vector<std::vector<tools::wallet2::multisig_info>>> m_multisig_rescan_info;
+    std::map<std::string, std::vector<std::vector<rct::key>>> m_multisig_rescan_k;
     std::unordered_map<crypto::public_key, crypto::key_image> m_cold_key_images;
 
     std::atomic<bool> m_run;
@@ -1817,7 +1819,7 @@ BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 18)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
 BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
 BOOST_CLASS_VERSION(tools::wallet2::signed_tx_set, 1)
-BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 5)
+BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 6)
 BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 0)
 
@@ -2300,6 +2302,12 @@ namespace boost
 	return;
       }
       a & x.fee;
+      if (ver < 6)
+      {
+        // initialise x.per_output_unlock?
+        return;
+      }
+      a & x.per_output_unlock;
     }
 
     template <class Archive>

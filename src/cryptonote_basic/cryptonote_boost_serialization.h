@@ -202,6 +202,10 @@ namespace boost
       if (x.version < 5)
         a & x.offshore_data;
     }
+
+    if (x.version >= POU_TRANSACTION_VERSION) {
+        a & x.output_unlock_times;
+    }
   }
 
   template <class Archive>
@@ -219,6 +223,10 @@ namespace boost
       if (x.version < 5)
         a & x.offshore_data;
     }
+    if (x.version >= POU_TRANSACTION_VERSION) {
+        a & x.output_unlock_times;
+    }
+
     a & (rct::rctSigBase&)x.rct_signatures;
     if (x.rct_signatures.type != rct::RCTTypeNull)
       a & x.rct_signatures.p;

@@ -38,6 +38,7 @@
 #include "portable_storage_from_json.h"
 #include "portable_storage_val_converters.h"
 #include "span.h"
+#include <boost/mpl/contains.hpp>
 #include "int-util.h"
 #include <boost/mpl/contains.hpp>
 

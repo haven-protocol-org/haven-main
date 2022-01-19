@@ -5,15 +5,12 @@ on: [push, pull_request]
 jobs:
   build-macos:
     env:
-      CMAKE_OSX_DEPLOYMENT_TARGET: 10.14
-      OSX_MIN_VERSION: 10.14
+      CMAKE_OSX_DEPLOYMENT_TARGET: 10.15
+      OSX_MIN_VERSION: 10.15
       USE_SINGLE_BUILDDIR: 1
     runs-on: macOS-latest
     steps:
-    - uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: '12.0'
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
       with:
         submodules: recursive
     - name: install dependencies
@@ -39,6 +36,7 @@ jobs:
         name: haven-macos.tar.gz
         path: build/release/bin/haven-macos.tar.gz
         retention-days: 10
+
 
   upload-macos:
     needs: build-macos

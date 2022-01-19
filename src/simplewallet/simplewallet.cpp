@@ -3455,7 +3455,7 @@ simple_wallet::simple_wallet()
                                   "  Whether to automatically synchronize new blocks from the daemon.\n "
                                   "refresh-type <full|optimize-coinbase|no-coinbase|default>\n "
                                   "  Set the wallet's refresh behaviour.\n "
-                                  "priority [0|1|2|3|4]\n "
+                                  "priority [0|1|2|3|4] or\n priority [default|unimportant|normal|elevated|priority]\n "
                                   "  Set the fee to default/unimportant/normal/elevated/priority.\n "
                                   "confirm-missing-payment-id <1|0>\n "
                                   "ask-password <0|1|2   (or never|action|decrypt)>\n "
@@ -6078,15 +6078,23 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
 
         // The total balance
         boost::multiprecision::uint128_t xusd_128 = xasset_128 * 1000000000000;
-        xusd_128 /= exchange_128;
-        value = (uint64_t)xusd_128;
-        xusd_value_str = "(" + print_money(value) + " XUSD)";
-
+        if (exchange_128 > 0) {
+          xusd_128 /= exchange_128;
+          value = (uint64_t)xusd_128;
+          xusd_value_str = "(" + print_money(value) + " XUSD)";
+        } else {
+          xusd_value_str = "";
+        }
+        
         // The unlocked balance
         boost::multiprecision::uint128_t xusd_unlocked_128 = xasset_unlocked_128 * 1000000000000;
-        xusd_unlocked_128 /= exchange_128;
-        value_unlocked = (uint64_t)xusd_unlocked_128;
-        xusd_unlocked_value_str = "(" + print_money(value_unlocked) + " XUSD)";
+        if (exchange_128 > 0) {
+          xusd_unlocked_128 /= exchange_128;
+          value_unlocked = (uint64_t)xusd_unlocked_128;
+          xusd_unlocked_value_str = "(" + print_money(value_unlocked) + " XUSD)";
+        } else {
+          xusd_unlocked_value_str = "";
+        }          
       }
       success_msg_writer() << tr("Currency: ") << asset.first << tr(", balance: ") << print_money(asset.second) << xusd_value_str << tr(", unlocked balance: ") << print_money(unlocked_balance_total[asset.first]) << xusd_unlocked_value_str << unlock_time_message;
     } else {
@@ -6753,13 +6761,34 @@ bool simple_wallet::transfer_main(
     local_args.pop_back();
   }
 
+  if (m_wallet->use_fork_rules(HF_VERSION_HAVEN2, 0)) {
+    if (strSource == "XJPY" || strDest == "XJPY") {
+      fail_msg_writer() << tr("XJPY transaction are disabled after haven2 fork.");
+      return false;
+    }
+  }
+
   using tt = cryptonote::transaction_type;
-  if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-    locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
-    transfer_type = TransferLocked;
-  } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
-    locked_blocks = 1440; // ~48 hours
-    transfer_type = TransferLocked;
+  if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+    // Long offshore lock, short onshore lock, no effect from priority
+    if (tx_type == tt::OFFSHORE) {
+      locked_blocks = (21*720); // ~21 days
+      transfer_type = TransferLocked;
+    } else if (tx_type == tt::ONSHORE) {
+      locked_blocks = (12*30); // ~12 hours
+      transfer_type = TransferLocked;
+    } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
+      locked_blocks = 1440; // ~48 hours
+      transfer_type = TransferLocked;
+    }
+  } else {
+    if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
+      locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+      transfer_type = TransferLocked;
+    } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
+      locked_blocks = 1440; // ~48 hours
+      transfer_type = TransferLocked;
+    }
   }
   if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
     if (priority > 1) {

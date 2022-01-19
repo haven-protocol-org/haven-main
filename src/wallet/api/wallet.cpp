@@ -157,7 +157,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback
         }
     }
 
-    virtual void on_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount, const cryptonote::subaddress_index& subaddr_index, bool is_change, uint64_t unlock_time)
+    virtual void on_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount, const cryptonote::subaddress_index& subaddr_index, bool is_change, uint64_t unlock_time, std::string asset_type)
     {
 
         std::string tx_hash =  epee::string_tools::pod_to_hex(txid);
@@ -168,7 +168,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback
                      << ", idx: " << subaddr_index);
         // do not signal on received tx if wallet is not syncronized completely
         if (m_listener && m_wallet->synchronized()) {
-            m_listener->moneyReceived(tx_hash, amount);
+            m_listener->moneyReceived(tx_hash, amount, asset_type);
             m_listener->updated();
         }
     }
@@ -190,7 +190,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback
     }
 
     virtual void on_money_spent(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& in_tx,
-                                uint64_t amount, const cryptonote::transaction& spend_tx, const cryptonote::subaddress_index& subaddr_index)
+                                uint64_t amount, const cryptonote::transaction& spend_tx, const cryptonote::subaddress_index& subaddr_index, std::string asset_type)
     {
         // TODO;
         std::string tx_hash = epee::string_tools::pod_to_hex(txid);
@@ -200,7 +200,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback
                      << ", idx: " << subaddr_index);
         // do not signal on sent tx if wallet is not syncronized completely
         if (m_listener && m_wallet->synchronized()) {
-            m_listener->moneySpent(tx_hash, amount);
+            m_listener->moneySpent(tx_hash, amount, asset_type);
             m_listener->updated();
         }
     }
@@ -218,11 +218,11 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback
       }
     }
 
-    virtual void on_lw_money_received(uint64_t height, const crypto::hash &txid, uint64_t amount)
+    virtual void on_lw_money_received(uint64_t height, const crypto::hash &txid, uint64_t amount, std::string asset_type)
     {
       if (m_listener) {
         std::string tx_hash =  epee::string_tools::pod_to_hex(txid);
-        m_listener->moneyReceived(tx_hash, amount);
+        m_listener->moneyReceived(tx_hash, amount, asset_type);
       }
     }
 
@@ -234,11 +234,11 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback
       }
     }
 
-    virtual void on_lw_money_spent(uint64_t height, const crypto::hash &txid, uint64_t amount)
+    virtual void on_lw_money_spent(uint64_t height, const crypto::hash &txid, uint64_t amount, std::string asset_type)
     {
       if (m_listener) {
         std::string tx_hash =  epee::string_tools::pod_to_hex(txid);
-        m_listener->moneySpent(tx_hash, amount);
+        m_listener->moneySpent(tx_hash, amount, asset_type);
       }
     }
 
@@ -997,14 +997,56 @@ void WalletImpl::setSubaddressLookahead(uint32_t major, uint32_t minor)
     m_wallet->set_subaddress_lookahead(major, minor);
 }
 
-uint64_t WalletImpl::balance(uint32_t accountIndex) const
+std::map<uint32_t, std::map<std::string, uint64_t>> WalletImpl::balance(uint32_t accountIndex) const
 {
     return m_wallet->balance(accountIndex, false);
 }
 
-uint64_t WalletImpl::unlockedBalance(uint32_t accountIndex) const
+std::map<uint32_t, std::map<std::string, uint64_t>> WalletImpl::unlockedBalance(uint32_t accountIndex) const
 {
     return m_wallet->unlocked_balance(accountIndex, false);
+}
+
+uint64_t WalletImpl::balance(std::string asset_type, uint32_t accountIndex) const
+{
+    return m_wallet->balance(asset_type, accountIndex, false);
+}
+
+uint64_t WalletImpl::unlockedBalance(std::string asset_type, uint32_t accountIndex) const
+{
+    return m_wallet->unlocked_balance(asset_type, accountIndex, false);
+}
+
+std::map<std::string, uint64_t> WalletImpl::balanceAll() const
+{
+    return m_wallet->balance_all(false);
+}
+
+std::map<std::string, uint64_t> WalletImpl::unlockedBalanceAll() const
+{
+    return m_wallet->unlocked_balance_all(false);
+}
+
+std::map<std::string, uint64_t> WalletImpl::oracleRates() const
+{
+    std::map<std::string, uint64_t> result;
+    uint64_t current_height = blockChainHeight()-1;
+
+    offshore::pricing_record pr;
+    if (!m_wallet->get_pricing_record(pr, current_height)) {
+        setStatusError((boost::format(tr("Failed to get prices at height %s - maybe pricing record is missing?")) % std::to_string(current_height)).str());
+        return result;
+    }
+
+    std::vector<std::string> asset_list = Assets::list();
+
+    for (int i=0; i<asset_list.size(); i++) {
+        
+        const std::string asset = asset_list[i];
+        result[asset] = pr[asset];
+     }
+
+     return result;
 }
 
 uint64_t WalletImpl::blockChainHeight() const
@@ -1134,11 +1176,16 @@ UnsignedTransaction *WalletImpl::loadUnsignedTx(const std::string &unsigned_file
 
     return transaction;
   }
-  
-  // Check tx data and construct confirmation message
+
+// Check tx data and construct confirmation message
   std::string extra_message;
-  if (!transaction->m_unsigned_tx_set.transfers.second.empty())
-    extra_message = (boost::format("%u outputs to import. ") % (unsigned)transaction->m_unsigned_tx_set.transfers.second.size()).str();
+  size_t output_size = 0;
+  for (const auto& tr: transaction->m_unsigned_tx_set.transfers) {
+    output_size += tr.second.second.size();
+  }
+  
+  if (output_size)
+    extra_message = (boost::format("%u outputs to import. ") % (unsigned)output_size).str();
   transaction->checkLoadedTx([&transaction](){return transaction->m_unsigned_tx_set.txes.size();}, [&transaction](size_t n)->const tools::wallet2::tx_construction_data&{return transaction->m_unsigned_tx_set.txes[n];}, extra_message);
   setStatus(transaction->status(), transaction->errorString());
     
@@ -1417,7 +1464,7 @@ PendingTransaction* WalletImpl::restoreMultisigTransaction(const string& signDat
 //    - unconfirmed_transfer_details;
 //    - confirmed_transfer_details)
 
-PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, optional<std::vector<uint64_t>> amount, uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, optional<std::vector<uint64_t>> amount, const string &str_source, const string &str_dest, uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 
 {
     clearStatus();
@@ -1425,7 +1472,6 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
     pauseRefresh();
       
     cryptonote::address_parse_info info;
-
     // indicates if dst_addr is integrated address (address + payment_id)
     // TODO:  (https://bitcointalk.org/index.php?topic=753252.msg9985441#msg9985441)
     size_t fake_outs_count = mixin_count > 0 ? mixin_count : m_wallet->default_mixin();
@@ -1438,6 +1484,14 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
     PendingTransactionImpl * transaction = new PendingTransactionImpl(*this);
 
     do {
+
+        transaction_type tx_type;
+        bool is_valid_tx_type = cryptonote::get_tx_type(str_source, str_dest, tx_type);
+
+        if (!is_valid_tx_type) {
+            setStatusError(tr("tx type is not valid: ") + str_source + "-" + str_dest);
+            break;
+        }
         std::vector<uint8_t> extra;
         std::string extra_nonce;
         vector<cryptonote::tx_destination_entry> dsts;
@@ -1493,21 +1547,65 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
         if (error) {
             break;
         }
+
+        std::string err;
+        uint64_t bc_height, unlock_block, locked_blocks = 0;
+
+        if (amount) {
+
+
+
+                //set unlock time for onshore/offshore
+            if (tx_type == transaction_type::ONSHORE || tx_type == transaction_type::OFFSHORE) {
+
+                if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
+                    locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+                } else {
+                    locked_blocks = 60 * pow(3, std::max((uint32_t)0, 4-adjusted_priority));
+                }
+
+            }
+
+            // set unlock for xasset exchange
+            if (tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
+
+                if (m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
+                    locked_blocks = 1440; // ~48 hours
+                }
+            } 
+        
+        }
+
+        bc_height = m_wallet->get_daemon_blockchain_height(err);
+
+        if (!err.empty())
+        {
+          setStatusError(tr("failed to get blockchain height: "));
+            error = true;
+            break;
+        }
+
+        // set unlock
+        unlock_block = bc_height + locked_blocks;
+
         if (!extra_nonce.empty() && !add_extra_nonce_to_tx_extra(extra, extra_nonce)) {
             setStatusError(tr("failed to set up payment id, though it was decoded correctly"));
             break;
         }
+
         try {
             if (amount) {
-                transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, fake_outs_count, 0 /* unlock_time */,
+                transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, fake_outs_count, str_source, str_dest, tx_type, unlock_block /* unlock_time */,
                                                                             adjusted_priority,
                                                                             extra, subaddr_account, subaddr_indices);
             } else {
                 transaction->m_pending_tx = m_wallet->create_transactions_all(0, info.address, info.is_subaddress, 1, fake_outs_count, 0 /* unlock_time */,
                                                                               adjusted_priority,
-                                                                              extra, subaddr_account, subaddr_indices);
+                                                                              extra, subaddr_account, subaddr_indices, str_source, tx_type);
             }
             pendingTxPostProcess(transaction);
+
+            transaction->m_asset_type = str_source;
 
             if (multisig().isMultisig) {
                 auto tx_set = m_wallet->make_multisig_tx_set(transaction->m_pending_tx);
@@ -1583,11 +1681,11 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
     return transaction;
 }
 
-PendingTransaction *WalletImpl::createTransaction(const string &dst_addr, const string &payment_id, optional<uint64_t> amount, uint32_t mixin_count,
-                                                  PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+PendingTransaction *WalletImpl::createTransaction(const string &dst_addr, const string &payment_id, optional<uint64_t> amount, const string &str_source, const string &str_dest,
+                                                  uint32_t mixin_count, PendingTransaction::Priority priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 
 {
-    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), mixin_count, priority, subaddr_account, subaddr_indices);
+    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), str_source, str_dest, mixin_count, priority, subaddr_account, subaddr_indices);
 }
 
 PendingTransaction *WalletImpl::createSweepUnmixableTransaction()
@@ -1683,6 +1781,7 @@ uint64_t WalletImpl::estimateTransactionFee(const std::vector<std::pair<std::str
     const size_t pubkey_size = 33;
     const size_t encrypted_paymentid_size = 11;
     const size_t extra_size = pubkey_size + encrypted_paymentid_size;
+    const bool clsag = m_wallet->use_fork_rules(HF_VERSION_CLSAG, 0);
 
     return m_wallet->estimate_fee(
         m_wallet->use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0),
@@ -1692,6 +1791,7 @@ uint64_t WalletImpl::estimateTransactionFee(const std::vector<std::pair<std::str
         destinations.size() + 1,
         extra_size,
         m_wallet->use_fork_rules(8, 0),
+        clsag,
         m_wallet->get_base_fee(),
         m_wallet->get_fee_multiplier(m_wallet->adjust_priority(static_cast<uint32_t>(priority))),
         m_wallet->get_fee_quantization_mask());
@@ -1803,7 +1903,7 @@ std::string WalletImpl::getTxKey(const std::string &txid_str) const
     }
 }
 
-bool WalletImpl::checkTxKey(const std::string &txid_str, std::string tx_key_str, const std::string &address_str, uint64_t &received, bool &in_pool, uint64_t &confirmations)
+bool WalletImpl::checkTxKey(const std::string &txid_str, std::string tx_key_str, const std::string &address_str, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations)
 {
     crypto::hash txid;
     if (!epee::string_tools::hex_to_pod(txid_str, txid))
@@ -1879,7 +1979,7 @@ std::string WalletImpl::getTxProof(const std::string &txid_str, const std::strin
     }
 }
 
-bool WalletImpl::checkTxProof(const std::string &txid_str, const std::string &address_str, const std::string &message, const std::string &signature, bool &good, uint64_t &received, bool &in_pool, uint64_t &confirmations)
+bool WalletImpl::checkTxProof(const std::string &txid_str, const std::string &address_str, const std::string &message, const std::string &signature, bool &good, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations)
 {
     crypto::hash txid;
     if (!epee::string_tools::hex_to_pod(txid_str, txid))
@@ -2068,6 +2168,8 @@ bool WalletImpl::connectToDaemon()
 
 Wallet::ConnectionStatus WalletImpl::connected() const
 {
+
+    LOG_PRINT_L3("check connection state to daemon");
     uint32_t version = 0;
     m_is_connected = m_wallet->check_connection(&version, NULL, DEFAULT_CONNECTION_TIMEOUT_MILLIS);
     if (!m_is_connected)

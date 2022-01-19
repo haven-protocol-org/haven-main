@@ -1725,8 +1725,17 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
 }
 //------------------------------------------------------------------
 // This function validates the miner transaction reward
-bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, std::map<std::string, uint64_t>& xasset_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
-{
+bool Blockchain::validate_miner_transaction(
+  const block& b,
+  size_t cumulative_block_weight,
+  std::map<std::string, uint64_t>& fee_map, // can't be const due to [] operator
+  std::map<std::string, uint64_t>& offshore_fee_map,
+  std::map<std::string, uint64_t>& xasset_fee_map,
+  uint64_t& base_reward,
+  uint64_t already_generated_coins,
+  bool &partial_block_reward,
+  uint8_t version
+){
   LOG_PRINT_L3("Blockchain::" << __func__);
 
   // collect all unique assets from fees except xhv since it is handled separetly.
@@ -1750,7 +1759,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   // check output size
   // it must be number of unique assets times 2 and + 2 for xhv.
   const size_t output_size = b.miner_tx.vout.size();
-  if ((version >= 3) && (output_size != (2 + (unique_assets.size() * 2)))  ) {
+  if ((version >= HF_VERSION_XASSET_FEES_V2) && (output_size != (2 + (unique_assets.size() * 2)))  ) {
     MERROR("Miner tx has invalid output size!");
     return false;
   }
@@ -1840,6 +1849,10 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
           } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
             asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
             if (version >= HF_VERSION_XASSET_FEES_V2) {
+              if (asset_type == "XHV" || asset_type == "XUSD") { // these are not supposed to be here. Other cases are already covered below.
+                MERROR("xhv or xusd found in a xasset output.");
+                return false;
+              }
               if (b.miner_tx.vout[idx + 1].target.type() != typeid(txout_xasset)) {
                 MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
                 return false;
@@ -5376,7 +5389,7 @@ leave: {
     // get the asset types
     std::string source;
     std::string dest;
-    if (!get_tx_asset_types(tx, tx.hash, source, dest, false)) {
+    if (!get_tx_asset_types(tx, tx_id, source, dest, false)) {
       LOG_PRINT_L2("At least 1 input or 1 output of the tx was invalid.");
       bvc.m_verifivation_failed = true;
       goto leave;
@@ -5384,10 +5397,33 @@ leave: {
 
     // Validate tx pr height
     if (source != dest) {
-      if (!tx_pr_height_valid(blockchain_height, tx.pricing_record_height, tx.hash)) {
+      // Validate that pricing record has not grown too old since it was first included in the pool
+      if (!tx_pr_height_valid(blockchain_height, tx.pricing_record_height, tx_id)) {
         LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ", block " << blockchain_height << ")");
         bvc.m_verifivation_failed = true;
         goto leave;
+      }
+      if (hf_version >= HF_VERSION_HAVEN2) {
+        // get tx type and pricing record
+        block bl;
+        cryptonote::transaction_type tx_type;
+        if (!get_tx_type(source, dest, tx_type)) {
+          LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+        if (!get_block_by_hash(get_block_id_by_height(tx.pricing_record_height), bl)) {
+          LOG_PRINT_L2("error: failed to get block containing pricing record");
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+        // make sure proof-of-value still holds
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout))
+        {
+          LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
       }
     } else {
       //make sure those values are 0 for transfers.
@@ -5396,7 +5432,7 @@ leave: {
         bvc.m_verifivation_failed = true;
         goto leave;
       }
-      if (tx.pricing_record_height) {
+      if (hf_version >= HF_VERSION_OFFSHORE_FEES_V2 && tx.pricing_record_height) {
         LOG_PRINT_L2("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         bvc.m_verifivation_failed = true;
         goto leave;

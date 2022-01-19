@@ -38,6 +38,7 @@
 #include <ctime>
 #include <iostream>
 #include <stdexcept>
+#include <map>
 
 //  Public interface for libwallet library
 namespace Monero {
@@ -47,6 +48,12 @@ enum NetworkType : uint8_t {
     TESTNET,
     STAGENET
 };
+
+
+    namespace Assets {
+
+        std::vector<std::string> list();
+    }
 
     namespace Utils {
         bool isAddressLocal(const std::string &hostaddr);
@@ -84,13 +91,14 @@ struct PendingTransaction
         Priority_High = 3,
         Priority_Last
     };
-
+    
     virtual ~PendingTransaction() = 0;
     virtual int status() const = 0;
     virtual std::string errorString() const = 0;
     // commit transaction or save to file if filename is provided.
     virtual bool commit(const std::string &filename = "", bool overwrite = false) = 0;
     virtual uint64_t amount() const = 0;
+    virtual std::string assetType() const = 0;
     virtual uint64_t dust() const = 0;
     virtual uint64_t fee() const = 0;
     virtual std::vector<std::string> txid() const = 0;
@@ -194,6 +202,7 @@ struct TransactionInfo
     virtual std::string hash() const = 0;
     virtual std::time_t timestamp() const = 0;
     virtual std::string paymentId() const = 0;
+    virtual std::string assetType() const = 0;
     //! only applicable for output transactions
     virtual const std::vector<Transfer> & transfers() const = 0;
 };
@@ -285,7 +294,7 @@ struct Subaddress
 
 struct SubaddressAccountRow {
 public:
-    SubaddressAccountRow(std::size_t _rowId, const std::string &_address, const std::string &_label, const std::string &_balance, const std::string &_unlockedBalance):
+    SubaddressAccountRow(std::size_t _rowId, const std::string &_address, const std::string &_label, const std::map<uint32_t, std::map<std::string, uint64_t>> &_balance, const std::map<uint32_t, std::map<std::string, uint64_t>> &_unlockedBalance):
         m_rowId(_rowId),
         m_address(_address),
         m_label(_label),
@@ -296,14 +305,14 @@ private:
     std::size_t m_rowId;
     std::string m_address;
     std::string m_label;
-    std::string m_balance;
-    std::string m_unlockedBalance;
+    std::map<uint32_t, std::map<std::string, uint64_t>> m_balance;
+    std::map<uint32_t, std::map<std::string, uint64_t>> m_unlockedBalance;
 public:
     std::string extra;
     std::string getAddress() const {return m_address;}
     std::string getLabel() const {return m_label;}
-    std::string getBalance() const {return m_balance;}
-    std::string getUnlockedBalance() const {return m_unlockedBalance;}
+    std::map<uint32_t, std::map<std::string, uint64_t>> getBalance() const {return m_balance;}
+    std::map<uint32_t, std::map<std::string, uint64_t>> getUnlockedBalance() const {return m_unlockedBalance;}
     std::size_t getRowId() const {return m_rowId;}
 };
 
@@ -347,14 +356,14 @@ struct WalletListener
      * @param txId       - transaction id
      * @param amount     - amount
      */
-    virtual void moneySpent(const std::string &txId, uint64_t amount) = 0;
+    virtual void moneySpent(const std::string &txId, uint64_t amount, std::string asset_type) = 0;
 
     /**
      * @brief moneyReceived - called when money received
      * @param txId          - transaction id
      * @param amount        - amount
      */
-    virtual void moneyReceived(const std::string &txId, uint64_t amount) = 0;
+    virtual void moneyReceived(const std::string &txId, uint64_t amount, std::string asset_type) = 0;
     
    /**
     * @brief unconfirmedMoneyReceived - called when payment arrived in tx pool
@@ -594,20 +603,13 @@ struct Wallet
     virtual ConnectionStatus connected() const = 0;
     virtual void setTrustedDaemon(bool arg) = 0;
     virtual bool trustedDaemon() const = 0;
-    virtual uint64_t balance(uint32_t accountIndex = 0) const = 0;
-    uint64_t balanceAll() const {
-        uint64_t result = 0;
-        for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
-            result += balance(i);
-        return result;
-    }
-    virtual uint64_t unlockedBalance(uint32_t accountIndex = 0) const = 0;
-    uint64_t unlockedBalanceAll() const {
-        uint64_t result = 0;
-        for (uint32_t i = 0; i < numSubaddressAccounts(); ++i)
-            result += unlockedBalance(i);
-        return result;
-    }
+    virtual std::map<uint32_t, std::map<std::string, uint64_t>> balance(uint32_t accountIndex = 0) const = 0;
+    virtual uint64_t balance(std::string asset_type, uint32_t accountIndex) const = 0;
+    virtual std::map<std::string, uint64_t> balanceAll() const = 0;
+    virtual std::map<uint32_t, std::map<std::string, uint64_t>> unlockedBalance(uint32_t accountIndex = 0) const = 0;
+    virtual uint64_t unlockedBalance(std::string asset_type, uint32_t accountIndex) const = 0;
+    virtual std::map<std::string, uint64_t> unlockedBalanceAll() const = 0;
+    virtual std::map<std::string, uint64_t> oracleRates() const = 0;
 
    /**
     * @brief watchOnly - checks if wallet is watch only
@@ -827,7 +829,9 @@ struct Wallet
      */
 
     virtual PendingTransaction * createTransactionMultDest(const std::vector<std::string> &dst_addr, const std::string &payment_id,
-                                                   optional<std::vector<uint64_t>> amount, uint32_t mixin_count,
+                                                   optional<std::vector<uint64_t>> amount, 
+                                                   const std::string &str_source, const std::string &str_dest,
+                                                   uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,
                                                    std::set<uint32_t> subaddr_indices = {}) = 0;
@@ -846,7 +850,9 @@ struct Wallet
      */
 
     virtual PendingTransaction * createTransaction(const std::string &dst_addr, const std::string &payment_id,
-                                                   optional<uint64_t> amount, uint32_t mixin_count,
+                                                   optional<uint64_t> amount, 
+                                                   const std::string &str_source, const std::string &str_dest,
+                                                   uint32_t mixin_count,
                                                    PendingTransaction::Priority = PendingTransaction::Priority_Low,
                                                    uint32_t subaddr_account = 0,
                                                    std::set<uint32_t> subaddr_indices = {}) = 0;
@@ -945,9 +951,9 @@ struct Wallet
      */
     virtual std::string getUserNote(const std::string &txid) const = 0;
     virtual std::string getTxKey(const std::string &txid) const = 0;
-    virtual bool checkTxKey(const std::string &txid, std::string tx_key, const std::string &address, uint64_t &received, bool &in_pool, uint64_t &confirmations) = 0;
+    virtual bool checkTxKey(const std::string &txid, std::string tx_key, const std::string &address, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations) = 0;
     virtual std::string getTxProof(const std::string &txid, const std::string &address, const std::string &message) const = 0;
-    virtual bool checkTxProof(const std::string &txid, const std::string &address, const std::string &message, const std::string &signature, bool &good, uint64_t &received, bool &in_pool, uint64_t &confirmations) = 0;
+    virtual bool checkTxProof(const std::string &txid, const std::string &address, const std::string &message, const std::string &signature, bool &good, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations) = 0;
     virtual std::string getSpendProof(const std::string &txid, const std::string &message) const = 0;
     virtual bool checkSpendProof(const std::string &txid, const std::string &message, const std::string &signature, bool &good) const = 0;
     /*!

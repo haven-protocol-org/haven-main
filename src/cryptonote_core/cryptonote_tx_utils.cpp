@@ -168,6 +168,7 @@ namespace cryptonote
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
+    tx.output_unlock_times.clear();
 
     keypair txkey = keypair::generate(hw::get_device("default"));
     add_tx_pub_key_to_extra(tx, txkey.pub);
@@ -340,8 +341,9 @@ namespace cryptonote
         }
       }
     }
-    
-    if (hard_fork_version >= HF_VERSION_HAVEN2) {
+    if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+      tx.version = 6;
+    } else if (hard_fork_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
     } else if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
       tx.version = 4;
@@ -356,6 +358,11 @@ namespace cryptonote
     tx.vin.push_back(in);
     tx.invalidate_hashes();
 
+    // per-output-unlock times
+    if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION)
+      for (size_t i=0; i<tx.vout.size(); i++)
+        tx.output_unlock_times.push_back(tx.unlock_time);
+    
     //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
     //  << "), current_block_size=" << current_block_size << ", already_generated_coins=" << already_generated_coins << ", tx_id=" << get_transaction_hash(tx), LOG_LEVEL_2);
     return true;
@@ -365,11 +372,12 @@ namespace cryptonote
   {
     account_public_address addr = {null_pkey, null_pkey};
     size_t count = 0;
+    bool found_change = false;
     for (const auto &i : destinations)
     {
       if (i.amount == 0 && i.amount_usd == 0 && i.amount_xasset == 0)
         continue;
-      if (change_addr && i.addr == *change_addr)
+      if (change_addr && i.addr == *change_addr && !found_change)
         continue;
       if (i.addr == addr)
         continue;
@@ -398,7 +406,12 @@ namespace cryptonote
       }
     }
 
-    if (fees_version >= 2) {
+    if (fees_version >= 4) {
+
+      // Flat 0.5% fee
+      fee_estimate = amount / 200;
+      
+    } else if (fees_version >= 2) {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
@@ -434,7 +447,12 @@ namespace cryptonote
       }
     }
 
-    if (fees_version >= 2) {
+    if (fees_version >= 4) {
+
+      // Flat 0.5% fee
+      fee_estimate = amount_usd / 200;
+      
+    } else if (fees_version >= 2) {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
@@ -557,15 +575,20 @@ namespace cryptonote
           LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
           return false;
         }
-	      source_asset_types.insert("XHV");
+        source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_to_key)) {
-	      source_asset_types.insert("XHV");
+        source_asset_types.insert("XHV");
       } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-	      source_asset_types.insert("XUSD");
+        source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-	      source_asset_types.insert("XUSD");
+        source_asset_types.insert("XUSD");
       } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-	      source_asset_types.insert(boost::get<txin_xasset>(tx.vin[i]).asset_type);
+        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert(xasset);
       } else {
         LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
         return false;
@@ -592,7 +615,12 @@ namespace cryptonote
       } else if (out.target.type() == typeid(txout_offshore)) {
         destination_asset_types.insert("XUSD");
       } else if (out.target.type() == typeid(txout_xasset)) {
-        destination_asset_types.insert(boost::get<txout_xasset>(out.target).asset_type);
+        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
+          return false;
+        }
+        destination_asset_types.insert(xasset);
       } else {
         LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
         return false;
@@ -700,6 +728,9 @@ namespace cryptonote
   }
 
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash) {
+    if (pr_height >= current_height) {
+      return false;
+    }
     if ((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height) {
       // exception for 1 tx that used 11 block old record and is already in the chain.
       if (epee::string_tools::pod_to_hex(tx_hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
@@ -731,7 +762,8 @@ namespace cryptonote
     bool rct, 
     const rct::RCTConfig &rct_config, 
     rct::multisig_out *msout, 
-    bool shuffle_outs
+    bool shuffle_outs,
+    bool per_output_unlock
   ){
 
     hw::device &hwdev = sender_account_keys.get_device();
@@ -750,7 +782,9 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    if (hf_version >= HF_VERSION_HAVEN2) {
+    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION){
+      tx.version = 6;
+    } else if (hf_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
     } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
       tx.version = 4;
@@ -1057,6 +1091,8 @@ namespace cryptonote
     //fill outputs
     tx.amount_minted = tx.amount_burnt = 0;
     size_t output_index = 0;
+    bool found_change = false;
+
     for(const tx_destination_entry& dst_entr: destinations)
     {
       CHECK_AND_ASSERT_MES(dst_entr.amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.amount);
@@ -1094,13 +1130,31 @@ namespace cryptonote
       } else {
         txout_xasset tk;
         tk.key = out_eph_public_key;
-	      tk.asset_type = dst_entr_clone.asset_type;
+        tk.asset_type = dst_entr_clone.asset_type;
         out.target = tk;
         out.amount = dst_entr_clone.amount_xasset;
         outamounts.push_back(std::pair<std::string, uint64_t>(dst_entr_clone.asset_type, dst_entr_clone.amount_xasset));
       }
 
-      // pusdh to outputs
+      // Check for per-output-unlocks
+      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && strSource != strDest) {
+        if (dst_entr_clone.asset_type == strDest) {
+          // Destination amount - needs a full unlock time
+          tx.output_unlock_times.push_back(tx.unlock_time);
+        } else if (dst_entr_clone.asset_type == strSource) {
+          // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
+          tx.output_unlock_times.push_back(0);
+        } else {
+          // Should never happen
+          LOG_ERROR("Invalid asset type detected: source = " << strSource << ", dest = " << strDest << ", detected " << dst_entr_clone.asset_type);
+          return false;
+        }
+      } else {
+        // Put 0s in the output-unlock-times
+        tx.output_unlock_times.push_back(0);
+      }
+      
+      // push to outputs
       tx.vout.push_back(out);
       output_index++;
 
@@ -1308,7 +1362,8 @@ namespace cryptonote
     uint32_t hf_version,
     bool rct,
     const rct::RCTConfig &rct_config,
-    rct::multisig_out *msout
+    rct::multisig_out *msout,
+    bool per_output_unlock
   ){
 
     hw::device &hwdev = sender_account_keys.get_device();
@@ -1347,7 +1402,9 @@ namespace cryptonote
         hf_version,
         rct,
         rct_config,
-        msout
+        msout,
+        true,
+        per_output_unlock
       );
       hwdev.close_tx();
       return r;

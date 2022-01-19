@@ -1068,7 +1068,7 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
   // get tx assets
   std::string strSource;
   std::string strDest;
-  if (!get_tx_asset_types(tx, tx.hash, strSource, strDest, miner_tx)) {
+  if (!get_tx_asset_types(tx, tx_hash, strSource, strDest, miner_tx)) {
     throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
   }
 
@@ -1130,49 +1130,49 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
   MDB_val_set(val_h, tx_hash);
 
   if (mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &val_h, MDB_GET_BOTH))
-      throw1(TX_DNE("Attempting to remove transaction that isn't in the db"));
+    throw1(TX_DNE("Attempting to remove transaction that isn't in the db"));
   txindex *tip = (txindex *)val_h.mv_data;
   MDB_val_set(val_tx_id, tip->data.tx_id);
 
   if ((result = mdb_cursor_get(m_cur_txs_pruned, &val_tx_id, NULL, MDB_SET)))
-      throw1(DB_ERROR(lmdb_error("Failed to locate pruned tx for removal: ", result).c_str()));
+    throw1(DB_ERROR(lmdb_error("Failed to locate pruned tx for removal: ", result).c_str()));
   result = mdb_cursor_del(m_cur_txs_pruned, 0);
   if (result)
-      throw1(DB_ERROR(lmdb_error("Failed to add removal of pruned tx to db transaction: ", result).c_str()));
+    throw1(DB_ERROR(lmdb_error("Failed to add removal of pruned tx to db transaction: ", result).c_str()));
 
   result = mdb_cursor_get(m_cur_txs_prunable, &val_tx_id, NULL, MDB_SET);
   if (result == 0)
   {
-      result = mdb_cursor_del(m_cur_txs_prunable, 0);
-      if (result)
-          throw1(DB_ERROR(lmdb_error("Failed to add removal of prunable tx to db transaction: ", result).c_str()));
+    result = mdb_cursor_del(m_cur_txs_prunable, 0);
+    if (result)
+      throw1(DB_ERROR(lmdb_error("Failed to add removal of prunable tx to db transaction: ", result).c_str()));
   }
   else if (result != MDB_NOTFOUND)
-      throw1(DB_ERROR(lmdb_error("Failed to locate prunable tx for removal: ", result).c_str()));
+    throw1(DB_ERROR(lmdb_error("Failed to locate prunable tx for removal: ", result).c_str()));
 
   result = mdb_cursor_get(m_cur_txs_prunable_tip, &val_tx_id, NULL, MDB_SET);
   if (result && result != MDB_NOTFOUND)
-      throw1(DB_ERROR(lmdb_error("Failed to locate tx id for removal: ", result).c_str()));
+    throw1(DB_ERROR(lmdb_error("Failed to locate tx id for removal: ", result).c_str()));
   if (result == 0)
   {
     result = mdb_cursor_del(m_cur_txs_prunable_tip, 0);
     if (result)
-        throw1(DB_ERROR(lmdb_error("Error adding removal of tx id to db transaction", result).c_str()));
+      throw1(DB_ERROR(lmdb_error("Error adding removal of tx id to db transaction", result).c_str()));
   }
 
   if (tx.version > 1)
   {
     if ((result = mdb_cursor_get(m_cur_txs_prunable_hash, &val_tx_id, NULL, MDB_SET)))
-        throw1(DB_ERROR(lmdb_error("Failed to locate prunable hash tx for removal: ", result).c_str()));
+      throw1(DB_ERROR(lmdb_error("Failed to locate prunable hash tx for removal: ", result).c_str()));
     result = mdb_cursor_del(m_cur_txs_prunable_hash, 0);
     if (result)
-        throw1(DB_ERROR(lmdb_error("Failed to add removal of prunable hash tx to db transaction: ", result).c_str()));
+      throw1(DB_ERROR(lmdb_error("Failed to add removal of prunable hash tx to db transaction: ", result).c_str()));
   }
 
   // get tx assets
   std::string strSource;
   std::string strDest;
-  if (!get_tx_asset_types(tx, tx.hash, strSource, strDest, miner_tx)) {
+  if (!get_tx_asset_types(tx, tx_hash, strSource, strDest, miner_tx)) {
     throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
   }
 
@@ -1202,10 +1202,10 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
 
     // Update the circ_supply table
     if ((result = mdb_cursor_get(m_cur_circ_supply, &val_tx_id, NULL, MDB_SET)))
-        throw1(DB_ERROR(lmdb_error("Failed to locate circulating supply for removal: ", result).c_str()));
+      throw1(DB_ERROR(lmdb_error("Failed to locate circulating supply for removal: ", result).c_str()));
     result = mdb_cursor_del(m_cur_circ_supply, 0);
     if (result)
-        throw1(DB_ERROR(lmdb_error("Failed to add removal of circulating supply to db transaction: ", result).c_str()));
+      throw1(DB_ERROR(lmdb_error("Failed to add removal of circulating supply to db transaction: ", result).c_str()));
 
     LOG_PRINT_L1("tx ID " << tip->data.tx_id << "\nSource tally before undoing burn =" << boost::to_string(source_tally) << "\nSource tally after undoing burn =" << boost::to_string(final_source_tally) <<
        "\nDest tally before undoing mint =" << boost::to_string(dest_tally) << "\nDest tally after undoing mint =" << boost::to_string(final_dest_tally));

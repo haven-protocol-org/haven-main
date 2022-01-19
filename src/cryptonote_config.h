@@ -45,8 +45,10 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
-#define CURRENT_TRANSACTION_VERSION                     5
+#define CURRENT_TRANSACTION_VERSION                     6
 #define OFFSHORE_TRANSACTION_VERSION                    3
+#define POU_TRANSACTION_VERSION                         6
+
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     1
 #define CRYPTONOTE_V2_POW_BLOCK_VERSION                 2
@@ -195,9 +197,10 @@
 #define HF_VERSION_XASSET_FULL                  16
 #define HF_VERSION_XASSET_FEES_V2               17
 #define HF_VERSION_HAVEN2                       18
+#define HF_PER_OUTPUT_UNLOCK_VERSION            19
 
-#define STAGENET_VERSION                        0x0d
-#define TESTNET_VERSION                         0x0d
+#define STAGENET_VERSION                        0x0e
+#define TESTNET_VERSION                         0x0e
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
