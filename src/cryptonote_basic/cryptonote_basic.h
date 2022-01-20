@@ -239,7 +239,10 @@ namespace cryptonote
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
       if(version == 0 || CURRENT_TRANSACTION_VERSION < version) return false;
-      VARINT_FIELD(unlock_time)
+      if (version < POU_TRANSACTION_VERSION)
+      {
+        VARINT_FIELD(unlock_time)
+      }
       FIELD(vin)
       FIELD(vout)
       FIELD(extra)

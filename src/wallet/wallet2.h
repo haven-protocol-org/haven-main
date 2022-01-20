@@ -887,7 +887,7 @@ private:
     // Get offshore amount in xAsset
     uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height);
     // Get offshore amount in XUSD, not XHV
-    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height);
+    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height, bool bOnshore = false);
     // Get onshore amount in XHV, not XUSD
     uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
 

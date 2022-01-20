@@ -1329,7 +1329,8 @@ namespace cryptonote
       outSk,
       rct_config,
       hwdev,
-      pr
+      pr,
+      tx.version
     );
     for (size_t i=0; i<inSk.size(); i++) {
       memwipe(&inSk[i], sizeof(rct::ctkeyV));

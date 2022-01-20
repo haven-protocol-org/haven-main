@@ -276,7 +276,7 @@ namespace cryptonote
       }
 
       // Check the amount burnt and minted
-      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
+      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version, tx.version)) {
         LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
         tvc.m_verifivation_failed = true;
         return false;
@@ -285,21 +285,8 @@ namespace cryptonote
       // dont use current_height instead of pricing_record_height here. Otherwise daemon will reject the conversion txs that arent immediately mined in the next block.
       // since it changes the priorit therefore the fee check calculation fails.
       uint64_t unlock_time = get_tx_unlock_time(tx.unlock_time, tx.pricing_record_height, current_height);
-      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-        if (unlock_time < 180) {
-          LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
-          tvc.m_verifivation_failed = true;
-          return false;
-        }
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-        if (unlock_time < 1440) {
-          LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
-          tvc.m_verifivation_failed = true;
-          return false;
-        }
-      }
 
-      if ((tx.version >= POU_TRANSACTION_VERSION) && (source != dest)) {
+      if (tx.version >= POU_TRANSACTION_VERSION) {
 
         // Make sure that we have a suitable vector of unlock times for all the outputs
         if (tx.output_unlock_times.size() != tx.vout.size()) {
@@ -310,18 +297,54 @@ namespace cryptonote
         
         // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
         for (auto i=0; i<tx.vout.size(); ++i) {
+
+          // Get the correct unlock time for this output
+          unlock_time = get_tx_unlock_time(tx.output_unlock_times[i], tx.pricing_record_height, current_height);
+
           // Check if the output asset type is the same as the source
           if (((tx.vout[i].target.type() == typeid(txout_to_key)) && (source == "XHV")) ||
               ((tx.vout[i].target.type() == typeid(txout_offshore)) && (source == "XUSD")) ||
               ((tx.vout[i].target.type() == typeid(txout_xasset)) && (source == boost::get<txout_xasset>(tx.vout[i].target).asset_type))) {
             // Yes - it's change, so allow 10-block unlock
-          } else {
-            // No - enforce full unlock time
-            if (tx.output_unlock_times[i] < unlock_time) {
-              LOG_PRINT_L1("output_unlock_times[" << i << "] is too short for converted output: " << tx.output_unlock_times[i] << " found, but TX unlock time is " << unlock_time);
+            if (unlock_time < 10) {
+              LOG_ERROR("output_unlock_times[" << i << "] is too short for change output: " << tx.output_unlock_times[i] << " found, but change unlock time is " << current_height+10);
               tvc.m_verifivation_failed = true;
               return false;
             }
+          } else {
+            // No - enforce full unlock time
+            uint64_t expected_unlock_time = 0;
+            if (tx_type == transaction_type::OFFSHORE) {
+              expected_unlock_time = 21*720; // 21 days unlock for offshore TXs
+            } else if (tx_type == transaction_type::ONSHORE) {
+              expected_unlock_time = 12*30; // 12 hours unlock for onshore TXs
+            } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
+              expected_unlock_time = 1440; // 2 days unlock for xAsset conversion TXs
+            } else {
+              LOG_ERROR("unexpected tx_type found - rejecting TX");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+            if (expected_unlock_time > unlock_time) {
+              LOG_ERROR("output_unlock_times[" << i << "] is too short for converted output: required unlock period is " << expected_unlock_time << " blocks but output unlock period is " << unlock_time << " blocks");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          }
+        }
+      } else {
+        // pre-v6 TX - unlock times not set per output
+        if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
+          if (unlock_time < 180) {
+            LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
+          if (unlock_time < 1440) {
+            LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
+            tvc.m_verifivation_failed = true;
+            return false;
           }
         }
       }
@@ -330,7 +353,12 @@ namespace cryptonote
       uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-        conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
+        if (tx.version >= POU_TRANSACTION_VERSION) {
+          // Flat 0.5% fee
+          conversion_fee_check = tx.amount_burnt / 200;
+        } else {
+          conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
+        }
       } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
         // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
         // for the tx.amount_burnt containing the 80% burnt fee proportion as well
@@ -769,7 +797,7 @@ namespace cryptonote
         }
 
         // Check the amount burnt and minted
-        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version, tx.version)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
           tvc.m_verifivation_failed = true;
           return false;
@@ -2405,7 +2433,7 @@ namespace cryptonote
             continue;
           }
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.version))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

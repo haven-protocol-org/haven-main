@@ -2106,7 +2106,7 @@ uint64_t wallet2::get_xasset_amount(const uint64_t xusd_amount, const std::strin
   }
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xusd_amount(const uint64_t amount, const std::string asset_type, const uint64_t height)
+uint64_t wallet2::get_xusd_amount(const uint64_t amount, const std::string asset_type, const uint64_t height, bool bOnshore)
 {
   // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
   cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
@@ -2142,8 +2142,13 @@ uint64_t wallet2::get_xusd_amount(const uint64_t amount, const std::string asset
       res.block_header.pricing_record.unused1;
     if (asset_type == "XHV") {
       if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
-        // Eliminate MA/spot advantage for offshore conversion
-        exchange_128 = std::min(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
+        if (bOnshore) {
+          // Eliminate MA/spot advantage for onshore conversion
+          exchange_128 = std::max(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
+        } else {
+          // Eliminate MA/spot advantage for offshore conversion
+          exchange_128 = std::min(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
+        }
       }
       boost::multiprecision::uint128_t xusd_128 = amount_128 * exchange_128;
       xusd_128 /= 1000000000000;
@@ -10716,7 +10721,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, 0, m_nettype);
     } else if (tx_type == tt::ONSHORE) {
       // Input amount is in XHV - convert so we have both
-      dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height);
+      dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height, true);
       THROW_WALLET_EXCEPTION_IF(dt.amount_usd == 0, error::wallet_internal_error, "Failed to convert needed_money back to xUSD");
       needed_money += dt.amount_usd;
       dt.asset_type = "XHV";
