@@ -315,11 +315,11 @@ namespace cryptonote
             // No - enforce full unlock time
             uint64_t expected_unlock_time = 0;
             if (tx_type == transaction_type::OFFSHORE) {
-              expected_unlock_time = 21*720; // 21 days unlock for offshore TXs
+              expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days unlock for offshore TXs
             } else if (tx_type == transaction_type::ONSHORE) {
-              expected_unlock_time = 12*30; // 12 hours unlock for onshore TXs
+              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hours unlock for onshore TXs
             } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-              expected_unlock_time = 1440; // 2 days unlock for xAsset conversion TXs
+              expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days unlock for xAsset conversion TXs
             } else {
               LOG_ERROR("unexpected tx_type found - rejecting TX");
               tvc.m_verifivation_failed = true;
