@@ -869,7 +869,7 @@ namespace cryptonote
       MTRACE("Skipping semantics check for tx kept by block in embedded hash area");
       return true;
     }
-
+    const uint8_t hf_version = m_blockchain_storage.get_current_hard_fork_version();
     std::vector<const rct::rctSig*> rvv;
     for (size_t n = 0; n < tx_info.size(); ++n)
     {
@@ -887,7 +887,7 @@ namespace cryptonote
         tx_info[n].result = false;
         continue;
       } else {
-        if (m_blockchain_storage.get_current_hard_fork_version() >= HF_VERSION_HAVEN2 && (tx_info[n].tvc.m_source_asset == "XJPY" || tx_info[n].tvc.m_dest_asset == "XJPY")) {
+        if (hf_version >= HF_VERSION_HAVEN2 && (tx_info[n].tvc.m_source_asset == "XJPY" || tx_info[n].tvc.m_dest_asset == "XJPY")) {
           MERROR("XJPY is disabled after Haven2 fork." << tx_info[n].tx_hash);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
@@ -1012,7 +1012,7 @@ namespace cryptonote
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2)
           continue;
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2) {
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->version))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, hf_version))
           {
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;

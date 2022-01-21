@@ -238,7 +238,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
 
   // iterate tx.vout using indices instead of C++11 foreach syntax because
   // we need the index
-  for (uint64_t i = 0; i < tx.vout.size(); ++i)
+  for (size_t i = 0; i < tx.vout.size(); ++i)
   {
     uint64_t unlock_time = 0;
     if (tx.version >= POU_TRANSACTION_VERSION)

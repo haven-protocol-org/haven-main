@@ -169,6 +169,13 @@ namespace cryptonote
 
     // From HF18, only allow TX version 5+
     if (tx.version < 5) {
+      LOG_ERROR("Only 5+ transaction version are permitted after HAVEN2 hard fork(version 18)");
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+
+    if (version >= HF_PER_OUTPUT_UNLOCK_VERSION && tx.version < POU_TRANSACTION_VERSION) {
+      LOG_ERROR("Only 6+ transaction version are permitted after PER_OUTPUT_LOCK hard fork(version 19)");
       tvc.m_verifivation_failed = true;
       return false;
     }
@@ -276,7 +283,7 @@ namespace cryptonote
       }
 
       // Check the amount burnt and minted
-      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version, tx.version)) {
+      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
         LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
         tvc.m_verifivation_failed = true;
         return false;
@@ -286,7 +293,7 @@ namespace cryptonote
       // since it changes the priorit therefore the fee check calculation fails.
       uint64_t unlock_time = get_tx_unlock_time(tx.unlock_time, tx.pricing_record_height, current_height);
 
-      if (tx.version >= POU_TRANSACTION_VERSION) {
+      if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
 
         // Make sure that we have a suitable vector of unlock times for all the outputs
         if (tx.output_unlock_times.size() != tx.vout.size()) {
@@ -296,7 +303,7 @@ namespace cryptonote
         }
         
         // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
-        for (auto i=0; i<tx.vout.size(); ++i) {
+        for (size_t i = 0; i < tx.vout.size(); ++i) {
 
           // Get the correct unlock time for this output
           unlock_time = get_tx_unlock_time(tx.output_unlock_times[i], tx.pricing_record_height, current_height);
@@ -305,31 +312,26 @@ namespace cryptonote
           if (((tx.vout[i].target.type() == typeid(txout_to_key)) && (source == "XHV")) ||
               ((tx.vout[i].target.type() == typeid(txout_offshore)) && (source == "XUSD")) ||
               ((tx.vout[i].target.type() == typeid(txout_xasset)) && (source == boost::get<txout_xasset>(tx.vout[i].target).asset_type))) {
-            // Yes - it's change, so allow 10-block unlock
-            if (unlock_time < 10) {
-              LOG_ERROR("output_unlock_times[" << i << "] is too short for change output: " << tx.output_unlock_times[i] << " found, but change unlock time is " << current_height+10);
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
+            continue;
+          }
+          
+          // No - enforce full unlock time
+          uint64_t expected_unlock_time = 0;
+          if (tx_type == transaction_type::OFFSHORE) {
+            expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days unlock for offshore TXs
+          } else if (tx_type == transaction_type::ONSHORE) {
+            expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hours unlock for onshore TXs
+          } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
+            expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days unlock for xAsset conversion TXs
           } else {
-            // No - enforce full unlock time
-            uint64_t expected_unlock_time = 0;
-            if (tx_type == transaction_type::OFFSHORE) {
-              expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days unlock for offshore TXs
-            } else if (tx_type == transaction_type::ONSHORE) {
-              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hours unlock for onshore TXs
-            } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-              expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days unlock for xAsset conversion TXs
-            } else {
-              LOG_ERROR("unexpected tx_type found - rejecting TX");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
-            if (expected_unlock_time > unlock_time) {
-              LOG_ERROR("output_unlock_times[" << i << "] is too short for converted output: required unlock period is " << expected_unlock_time << " blocks but output unlock period is " << unlock_time << " blocks");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
+            LOG_ERROR("unexpected tx_type found - rejecting TX");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+          if (unlock_time < expected_unlock_time) {
+            LOG_ERROR("output_unlock_times[" << i << "] is too short for converted output: required unlock period is " << expected_unlock_time << " blocks but output unlock period is " << unlock_time << " blocks");
+            tvc.m_verifivation_failed = true;
+            return false;
           }
         }
       } else {
@@ -353,7 +355,7 @@ namespace cryptonote
       uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-        if (tx.version >= POU_TRANSACTION_VERSION) {
+        if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
           // Flat 0.5% fee
           conversion_fee_check = tx.amount_burnt / 200;
         } else {
@@ -797,7 +799,7 @@ namespace cryptonote
         }
 
         // Check the amount burnt and minted
-        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version, tx.version)) {
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
           tvc.m_verifivation_failed = true;
           return false;
@@ -2433,7 +2435,7 @@ namespace cryptonote
             continue;
           }
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.version))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, version))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

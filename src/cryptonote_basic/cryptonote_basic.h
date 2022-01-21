@@ -264,18 +264,18 @@ namespace cryptonote
     transaction_prefix(){ set_null(); }
 
     uint64_t get_unlock_time(size_t out_index) const
-   {
-     if (version >= POU_TRANSACTION_VERSION)
-     {
-       if (out_index >= output_unlock_times.size())
-       {
-         LOG_ERROR("Tried to get unlock time of a v6+ transaction with missing output unlock time");
-         return unlock_time;
-       }
-       return output_unlock_times[out_index];
-     }
-     return unlock_time;
-   }
+    {
+      if (version >= POU_TRANSACTION_VERSION)
+      {
+        if (out_index >= output_unlock_times.size())
+        {
+          LOG_ERROR("Tried to get unlock time of a v6+ transaction with missing output unlock time");
+          return unlock_time;
+        }
+        return output_unlock_times[out_index];
+      }
+      return unlock_time;
+    }
 
 
     void set_null()

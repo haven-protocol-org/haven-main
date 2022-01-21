@@ -1291,7 +1291,7 @@ namespace rct {
     const std::string& strDest,
     uint64_t amount_burnt,
     const std::vector<cryptonote::tx_out> &vout,
-    uint8_t tx_version
+    const uint8_t version
   ){
 
     try
@@ -1413,11 +1413,11 @@ namespace rct {
       using tx_type = cryptonote::transaction_type;
       if (type == tx_type::OFFSHORE) {
         key D_scaled = scalarmultKey(sumD, d2h(COIN));
-        key yC_invert = invert(d2h((tx_version >= POU_TRANSACTION_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
+        key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
       } else if (type == tx_type::ONSHORE) {
-        key D_scaled = scalarmultKey(sumD, d2h((tx_version >= POU_TRANSACTION_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
+        key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
         key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
@@ -1951,11 +1951,11 @@ namespace rct {
       return signMultisigMLSAG(rv, indices, k, msout, secret_key);
   }
 
-  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version, const uint8_t tx_version) {
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version) {
 
     if (source == "XHV" && destination == "XUSD") {
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = (tx_version >= POU_TRANSACTION_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;
+      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;
       boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
       xusd_128 /= COIN;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
@@ -1965,7 +1965,7 @@ namespace rct {
       }
     } else if (source == "XUSD" && destination == "XHV") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = (tx_version >= POU_TRANSACTION_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1;
+      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1;
       boost::multiprecision::uint128_t xhv_128 = xusd_128 * COIN;
       xhv_128 /= exchange_128;
       boost::multiprecision::uint128_t minted_128 = amount_minted;

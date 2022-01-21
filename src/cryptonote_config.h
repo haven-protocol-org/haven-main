@@ -57,12 +57,12 @@
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 
 // UNLOCK TIMES
-//#define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    21*720  // 21 day unlock time
-//#define TX_V6_ONSHORE_UNLOCK_BLOCKS                     12*30   // 12 hour unlock time
-//#define TX_V6_XASSET_UNLOCK_BLOCKS                      2*720   // 2 day unlock time
-#define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    21  // 21 day unlock time
-#define TX_V6_ONSHORE_UNLOCK_BLOCKS                     12  // 12 hour unlock time
+#define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    21*720  // 21 day unlock time
+#define TX_V6_ONSHORE_UNLOCK_BLOCKS                     12*30   // 12 hour unlock time
 #define TX_V6_XASSET_UNLOCK_BLOCKS                      2*720   // 2 day unlock time
+// #define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    21  // 21 day unlock time
+// #define TX_V6_ONSHORE_UNLOCK_BLOCKS                     12  // 12 hour unlock time
+// #define TX_V6_XASSET_UNLOCK_BLOCKS                      2*720   // 2 day unlock time
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 
