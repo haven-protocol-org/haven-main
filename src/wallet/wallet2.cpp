@@ -6624,10 +6624,11 @@ std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::
       }
       else
       {
+        uint64_t output_unlock_height = td.m_tx.get_unlock_time(td.m_internal_output_index);
         uint64_t unlock_height = td.m_block_height + std::max<uint64_t>(CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE, CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS);
-        if (td.m_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && td.m_tx.unlock_time > unlock_height)
-          unlock_height = td.m_tx.unlock_time;
-        uint64_t unlock_time = td.m_tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER ? td.m_tx.unlock_time : 0;
+        if (output_unlock_height < CRYPTONOTE_MAX_BLOCK_NUMBER && output_unlock_height > unlock_height)
+          unlock_height = output_unlock_height;
+        uint64_t unlock_time = output_unlock_height >= CRYPTONOTE_MAX_BLOCK_NUMBER ? output_unlock_height : 0;
         blocks_to_unlock = unlock_height > blockchain_height ? unlock_height - blockchain_height : 0;
         time_to_unlock = unlock_time > now ? unlock_time - now : 0;
         amount = 0;
