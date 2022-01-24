@@ -762,8 +762,7 @@ namespace cryptonote
     bool rct, 
     const rct::RCTConfig &rct_config, 
     rct::multisig_out *msout, 
-    bool shuffle_outs,
-    bool per_output_unlock
+    bool shuffle_outs
   ){
 
     hw::device &hwdev = sender_account_keys.get_device();
@@ -1329,7 +1328,8 @@ namespace cryptonote
       outSk,
       rct_config,
       hwdev,
-      pr
+      pr,
+      tx.version
     );
     for (size_t i=0; i<inSk.size(); i++) {
       memwipe(&inSk[i], sizeof(rct::ctkeyV));
@@ -1362,8 +1362,7 @@ namespace cryptonote
     uint32_t hf_version,
     bool rct,
     const rct::RCTConfig &rct_config,
-    rct::multisig_out *msout,
-    bool per_output_unlock
+    rct::multisig_out *msout
   ){
 
     hw::device &hwdev = sender_account_keys.get_device();
@@ -1403,8 +1402,7 @@ namespace cryptonote
         rct,
         rct_config,
         msout,
-        true,
-        per_output_unlock
+        true
       );
       hwdev.close_tx();
       return r;

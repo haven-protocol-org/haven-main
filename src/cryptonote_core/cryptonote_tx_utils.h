@@ -173,8 +173,8 @@ namespace cryptonote
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
     rct::multisig_out *msout = NULL,
-    bool shuffle_outs = true,
-    bool per_output_unlock = false);
+    bool shuffle_outs = true
+  );
 
   bool construct_tx_and_get_tx_key(
     const account_keys& sender_account_keys,
@@ -196,9 +196,10 @@ namespace cryptonote
     uint32_t hf_version,
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
-    rct::multisig_out *msout = NULL,
-    bool per_output_unlock = false);
-    
+    rct::multisig_out *msout = NULL
+  );
+
+  /*
   bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
                                       const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,
                                       const bool &need_additional_txkeys, const std::vector<crypto::secret_key> &additional_tx_keys,
@@ -218,7 +219,7 @@ namespace cryptonote
                                       bool &found_change,
                                       std::vector<uint64_t> &output_unlock_times,
                                       uint64_t unlock_time);
-
+  */
   bool generate_genesis_block(
       block& bl
     , std::string const & genesis_tx

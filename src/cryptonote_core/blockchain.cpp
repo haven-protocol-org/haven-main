@@ -4621,7 +4621,7 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
     if (source != dest) {
       // get_xusd_amount()
       boost::multiprecision::uint128_t amount_128 = needed_fee;
-      boost::multiprecision::uint128_t exchange_128 = pr.unused1; // XHV value moving avg
+      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1; // XHV value moving avg
       boost::multiprecision::uint128_t result_128 = (amount_128 * exchange_128) / 1000000000000;
       needed_fee = (uint64_t)result_128;
 
@@ -5418,7 +5418,7 @@ leave: {
           goto leave;
         }
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, hf_version))
         {
           LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
           bvc.m_verifivation_failed = true;

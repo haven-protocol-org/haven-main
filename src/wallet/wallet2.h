@@ -479,7 +479,6 @@ private:
       uint32_t subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> subaddr_indices;  // set of address indices used as inputs in this transfer
       uint64_t fee;
-      bool per_output_unlock;
 
       BEGIN_SERIALIZE_OBJECT()
         FIELD(sources)
@@ -494,7 +493,6 @@ private:
         FIELD(subaddr_account)
         FIELD(subaddr_indices)
         FIELD(fee)
-        FIELD(per_output_unlock)
       END_SERIALIZE()
     };
 
@@ -887,9 +885,11 @@ private:
     // Get offshore amount in xAsset
     uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height);
     // Get offshore amount in XUSD, not XHV
-    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height);
+    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height, bool bOnshore);
     // Get onshore amount in XHV, not XUSD
     uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
+    uint64_t get_non_zero_unlock_time(const std::vector<uint64_t>& output_unlock_times);
+
 
     // all locked & unlocked balances of all subaddress accounts
     std::map<std::string, uint64_t> balance_all(bool strict);
@@ -2298,16 +2298,10 @@ namespace boost
       a & x.rct_config;
       if (ver < 5)
       {
-	x.fee = 0;
-	return;
-      }
-      a & x.fee;
-      if (ver < 6)
-      {
-        // initialise x.per_output_unlock?
+        x.fee = 0;
         return;
       }
-      a & x.per_output_unlock;
+      a & x.fee;
     }
 
     template <class Archive>
