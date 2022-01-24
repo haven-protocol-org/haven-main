@@ -14,14 +14,14 @@ jobs:
       with:
         submodules: recursive
     - name: install dependencies
-      run: HOMEBREW_NO_AUTO_UPDATE=1 brew install openssl hidapi zmq libpgm miniupnpc ldns expat libunwind-headers protobuf ccache
-    - name: install boost 1.72
+      run: brew install zmq libpgm miniupnpc ldns expat libunwind-headers protobuf unbound
+    - name: install boost 1.77
       run: |
-        wget https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.gz
-        tar -xvf boost_1_76_0.tar.gz
-        cd boost_1_76_0
+        wget https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.tar.gz
+        tar -xvf boost_1_77_0.tar.gz
+        cd boost_1_77_0
         ./bootstrap.sh
-        ./b2 install
+        ./b2 install -j2
     - name: build
       run: |
         make release-static-mac-x86_64 -j2
