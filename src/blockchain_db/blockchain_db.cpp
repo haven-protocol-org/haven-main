@@ -238,8 +238,18 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
 
   // iterate tx.vout using indices instead of C++11 foreach syntax because
   // we need the index
-  for (uint64_t i = 0; i < tx.vout.size(); ++i)
+  for (size_t i = 0; i < tx.vout.size(); ++i)
   {
+    uint64_t unlock_time = 0;
+    if (tx.version >= POU_TRANSACTION_VERSION)
+    {
+      unlock_time = tx.output_unlock_times[i];
+    }
+    else
+    {
+      unlock_time = tx.unlock_time;
+    }
+
     // miner v2 txes have their coinbase output in one single out to save space,
     // and we store them as rct outputs with an identity mask
     if (miner_tx && tx.version >= 2)
@@ -247,15 +257,15 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
       cryptonote::tx_out vout = tx.vout[i];
       rct::key commitment = rct::zeroCommit(vout.amount);
       vout.amount = 0;
-      amount_output_indices[i] = add_output(tx_hash, vout, i, tx.unlock_time,
+      amount_output_indices[i] = add_output(tx_hash, vout, i, unlock_time,
         &commitment);
     }
     else
     {
       if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
-        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
+        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
       } else {
-        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time,
+        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time,
                                               tx.version > 1 ? ((tx.vout[i].target.type() == typeid(txout_xasset)) ? &tx.rct_signatures.outPk_xasset[i].mask : (tx.vout[i].target.type() == typeid(txout_offshore)) ? &tx.rct_signatures.outPk_usd[i].mask : &tx.rct_signatures.outPk[i].mask) : NULL);
       }
     }

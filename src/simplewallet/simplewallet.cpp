@@ -6769,12 +6769,26 @@ bool simple_wallet::transfer_main(
   }
 
   using tt = cryptonote::transaction_type;
-  if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-    locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
-    transfer_type = TransferLocked;
-  } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
-    locked_blocks = 1440; // ~48 hours
-    transfer_type = TransferLocked;
+  if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+    // Long offshore lock, short onshore lock, no effect from priority
+    if (tx_type == tt::OFFSHORE) {
+      locked_blocks = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // ~21 days
+      transfer_type = TransferLocked;
+    } else if (tx_type == tt::ONSHORE) {
+      locked_blocks = TX_V6_ONSHORE_UNLOCK_BLOCKS; // ~12 hours
+      transfer_type = TransferLocked;
+    } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
+      locked_blocks = TX_V6_XASSET_UNLOCK_BLOCKS; // ~48 hours
+      transfer_type = TransferLocked;
+    }
+  } else {
+    if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
+      locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+      transfer_type = TransferLocked;
+    } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
+      locked_blocks = 1440; // ~48 hours
+      transfer_type = TransferLocked;
+    }
   }
   if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
     if (priority > 1) {
@@ -7048,11 +7062,11 @@ bool simple_wallet::transfer_main(
 
       if (tx_type == tt::OFFSHORE) {
         total_sent = dsts.back().amount;
-        uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
+        uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, false);
         prompt << boost::format(tr("Offshoring %s xUSD by burning %s XHV (plus conversion fee %s XHV).  ")) % print_money(xusd_estimate) % print_money(total_sent) % print_money(offshore_fee);
       } else if (tx_type == tt::ONSHORE) {
         total_sent = dsts.back().amount;
-        uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
+        uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, true);
         prompt << boost::format(tr("Onshoring %s XHV by burning %s xUSD (plus conversion fee %s xUSD).  ")) % print_money(total_sent) % print_money(usd_estimate) % print_money(offshore_fee);
       } else if (tx_type == tt::OFFSHORE_TRANSFER) {
         total_sent = dsts.back().amount;

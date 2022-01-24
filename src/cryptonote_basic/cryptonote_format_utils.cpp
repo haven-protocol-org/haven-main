@@ -959,6 +959,10 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool check_outs_valid(const transaction& tx)
   {
+   if (tx.version >= POU_TRANSACTION_VERSION)
+    {
+      CHECK_AND_ASSERT_MES(tx.vout.size() == tx.output_unlock_times.size(), false, "tx version 6+ must have equal number of output unlock times and outputs");
+    }
     for(const tx_out& out: tx.vout)
     {
       CHECK_AND_ASSERT_MES(out.target.type() == typeid(txout_to_key) ||
@@ -972,7 +976,7 @@ namespace cryptonote
       if(!check_key(out.target.type() == typeid(txout_to_key) ? boost::get<txout_to_key>(out.target).key :
 		    out.target.type() == typeid(txout_offshore) ? boost::get<txout_offshore>(out.target).key :
 		    boost::get<txout_xasset>(out.target).key))
-	return false;
+	      return false;
     }
     return true;
   }

@@ -191,7 +191,9 @@ namespace boost
   inline void serialize(Archive &a, cryptonote::transaction_prefix &x, const boost::serialization::version_type ver)
   {
     a & x.version;
-    a & x.unlock_time;
+    if (x.version < POU_TRANSACTION_VERSION) {
+      a & x.unlock_time;
+    }
     a & x.vin;
     a & x.vout;
     a & x.extra;
@@ -201,6 +203,10 @@ namespace boost
       a & x.amount_minted;
       if (x.version < 5)
         a & x.offshore_data;
+    }
+
+    if (x.version >= POU_TRANSACTION_VERSION) {
+      a & x.output_unlock_times;
     }
   }
 
@@ -208,7 +214,9 @@ namespace boost
   inline void serialize(Archive &a, cryptonote::transaction &x, const boost::serialization::version_type ver)
   {
     a & x.version;
-    a & x.unlock_time;
+    if (x.version < POU_TRANSACTION_VERSION) {
+      a & x.unlock_time;
+    }
     a & x.vin;
     a & x.vout;
     a & x.extra;
@@ -219,6 +227,10 @@ namespace boost
       if (x.version < 5)
         a & x.offshore_data;
     }
+    if (x.version >= POU_TRANSACTION_VERSION) {
+      a & x.output_unlock_times;
+    }
+
     a & (rct::rctSigBase&)x.rct_signatures;
     if (x.rct_signatures.type != rct::RCTTypeNull)
       a & x.rct_signatures.p;
