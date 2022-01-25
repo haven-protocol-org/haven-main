@@ -1462,6 +1462,21 @@ namespace tools
       return false;
     }
 
+    if (!req.asset_type.size()) {
+      er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+      er.message = "Field 'asset_type' Unspecified. Tx contruction is not possible.";
+      return false;
+    }
+
+    cryptonote::transaction_type tx_type;
+    if (req.asset_type == "XHV") {
+      tx_type = cryptonote::transaction_type::TRANSFER;
+    } else  if (req.asset_type == "XUSD") {
+      tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
+    } else {
+      tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
+    }
+
     // validate the transfer requested and populate dsts & extra
     if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
     {
@@ -1473,7 +1488,7 @@ namespace tools
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
-        dsts, mixin, "XHV", "XHV", cryptonote::transaction_type::TRANSFER, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
+        dsts, mixin, req.asset_type, req.asset_type, tx_type, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
 
       if (ptx_vector.empty())
       {
@@ -1532,6 +1547,21 @@ namespace tools
       return false;
     }
 
+    if (!req.asset_type.size()) {
+      er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+      er.message = "Field 'asset_type' Unspecified. Tx contruction is not possible.";
+      return false;
+    }
+ 
+    cryptonote::transaction_type tx_type;
+    if (req.asset_type == "XHV") {
+      tx_type = cryptonote::transaction_type::TRANSFER;
+    } else  if (req.asset_type == "XUSD") {
+      tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
+    } else {
+      tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
+    }
+
     // validate the transfer requested and populate dsts & extra; RPC_TRANSFER::request and RPC_TRANSFER_SPLIT::request are identical types.
     if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
     {
@@ -1544,7 +1574,7 @@ namespace tools
       uint32_t priority = m_wallet->adjust_priority(req.priority);
       LOG_PRINT_L2("on_transfer_split calling create_transactions_2");
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
-        dsts, mixin, "XHV", "XHV", cryptonote::transaction_type::TRANSFER, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
+        dsts, mixin, req.asset_type, req.asset_type, tx_type, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
       LOG_PRINT_L2("on_transfer_split called create_transactions_2");
 
       if (ptx_vector.empty())
