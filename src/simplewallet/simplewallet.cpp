@@ -6041,13 +6041,13 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
   for (auto &asset : balance_total) {
     std::string unlock_time_message;
     if (blocks_to_unlock[asset.first] > 0 && time_to_unlock[asset.first] > 0) 
-      unlock_time_message = (boost::format("(%lu block and %s to unlock)") 
+      unlock_time_message = (boost::format(" (%lu block(s) and %s to unlock)") 
           % blocks_to_unlock[asset.first] 
           % get_human_readable_timespan(time_to_unlock[asset.first])).str();
     else if (blocks_to_unlock[asset.first] > 0)
-      unlock_time_message = (boost::format("(%lu block to unlock)") % blocks_to_unlock[asset.first]).str();
+      unlock_time_message = (boost::format(" (%lu block(s) to unlock)") % blocks_to_unlock[asset.first]).str();
     else if (time_to_unlock[asset.first] > 0)
-      unlock_time_message = (boost::format("(%s to unlock)") % get_human_readable_timespan(time_to_unlock[asset.first])).str();
+      unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock[asset.first])).str();
 
 
     if (r) {
@@ -7115,7 +7115,7 @@ bool simple_wallet::transfer_main(
         float days = locked_blocks / 720.0f;
         prompt << boost::format(tr(".\nThis transaction (including %s change) will unlock on block %llu, in approximately %s days (assuming 2 minutes per block)")) % cryptonote::print_money(change) % ((unsigned long long)unlock_block) % days;
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-          prompt << tr("\n(Priority levels : low|unimportant=5040 blocks, normal=1440 blocks, medium|elevated=720 blocks, high|priority=180 blocks)");
+          prompt << tr("\n(Priority levels : low|unimportant, normal, medium|elevated, high|priority)");
         }
       }
 
