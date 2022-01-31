@@ -7112,8 +7112,18 @@ bool simple_wallet::transfer_main(
                                                    % print_money(dust_not_in_fee);
       if (transfer_type == TransferLocked)
       {
-        float days = locked_blocks / 720.0f;
-        prompt << boost::format(tr(".\nThis transaction (including %s change) will unlock on block %llu, in approximately %s days (assuming 2 minutes per block)")) % cryptonote::print_money(change) % ((unsigned long long)unlock_block) % days;
+        prompt << boost::format(tr(".\nThis transaction will unlock on block %llu, in approximately ")) % ((unsigned long long)unlock_block);
+        if (locked_blocks > 720) {
+          float days = locked_blocks / 720.0f;
+          prompt << boost::format(tr("%s days (assuming 2 minutes per block)")) % days;
+        } else if (locked_blocks > 30) {
+          float hours = locked_blocks / 30.0f;
+          prompt << boost::format(tr("%s hours (assuming 2 minutes per block)")) % hours;
+        } else {
+          float minutes = locked_blocks * 2;
+          prompt << boost::format(tr("%s minutes (assuming 2 minutes per block)")) % minutes;
+        }
+        prompt << boost::format(tr("\nThe change (%s %s) will unlock in 10 blocks.")) % cryptonote::print_money(change) % strSource;
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
           prompt << tr("\n(Priority levels : low|unimportant, normal, medium|elevated, high|priority)");
         }
