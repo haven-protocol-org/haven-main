@@ -318,11 +318,11 @@ namespace cryptonote
           // No - enforce full unlock time
           uint64_t expected_unlock_time = 0;
           if (tx_type == transaction_type::OFFSHORE) {
-            expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days unlock for offshore TXs
+            expected_unlock_time = (m_blockchain.get_nettype() == TESTNET) ? TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days unlock for offshore TXs (testnet = 2h)
           } else if (tx_type == transaction_type::ONSHORE) {
-            expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hours unlock for onshore TXs
+            expected_unlock_time = (m_blockchain.get_nettype() == TESTNET) ? TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hours unlock for onshore TXs (testnet = 1h)
           } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-            expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days unlock for xAsset conversion TXs
+            expected_unlock_time = (m_blockchain.get_nettype() == TESTNET) ? TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET : TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days unlock for xAsset conversion TXs (testnet = 2h)
           } else {
             LOG_ERROR("unexpected tx_type found - rejecting TX");
             tvc.m_verifivation_failed = true;

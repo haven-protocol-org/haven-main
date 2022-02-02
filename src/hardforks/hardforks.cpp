@@ -82,7 +82,7 @@ const hardfork_t stagenet_hard_forks[] = {
   { 16, 230, 0, 1593616244 },
   { 17, 700, 0, 1597456244 },
   { 18, 1000, 0, 1597498244 },
-  { 19, 65175, 0, 1643622330 } // Fork time is on or around 1st February 2022 at 11:15 GMT. Fork time finalised on 2022-01-31.
+  { 19, 66650, 0, 1643817627 } // Fork time is on or around 3rd February 2022 at 12:20 GMT. Fork time finalised on 2022-02-02.
 };
 const size_t num_stagenet_hard_forks = sizeof(stagenet_hard_forks) / sizeof(stagenet_hard_forks[0]);
 const uint64_t stagenet_hard_fork_version_1_till = 24;

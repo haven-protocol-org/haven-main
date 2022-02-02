@@ -57,12 +57,12 @@
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 
 // UNLOCK TIMES
-// #define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    21*720  // 21 day unlock time
-// #define TX_V6_ONSHORE_UNLOCK_BLOCKS                     360     // 12 hour unlock time
-// #define TX_V6_XASSET_UNLOCK_BLOCKS                      1440    // 2 day unlock time
-#define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    60     // 2 hour unlock time - FOR TESTING ONLY
-#define TX_V6_ONSHORE_UNLOCK_BLOCKS                     30     // 1 hour unlock time - FOR TESTING ONLY
-#define TX_V6_XASSET_UNLOCK_BLOCKS                      60     // 2 hour unlock time - FOR TESTING ONLY
+#define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    21*720  // 21 day unlock time
+#define TX_V6_ONSHORE_UNLOCK_BLOCKS                     360     // 12 hour unlock time
+#define TX_V6_XASSET_UNLOCK_BLOCKS                      1440    // 2 day unlock time
+#define TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET            60     // 2 hour unlock time - FOR TESTING ONLY
+#define TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET             30     // 1 hour unlock time - FOR TESTING ONLY
+#define TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET              60     // 2 hour unlock time - FOR TESTING ONLY
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 
