@@ -7123,7 +7123,11 @@ bool simple_wallet::transfer_main(
           float minutes = locked_blocks * 2;
           prompt << boost::format(tr("%s minutes (assuming 2 minutes per block)")) % minutes;
         }
-        prompt << boost::format(tr("\nThe change (%s %s) will unlock in 10 blocks.")) % cryptonote::print_money(change) % strSource;
+        if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+          prompt << boost::format(tr("\nThe change (%s %s) will unlock in 10 blocks.")) % cryptonote::print_money(change) % strSource;
+        } else {
+          prompt << boost::format(tr("\nThe change (%s %s) will unlock at the same time.")) % cryptonote::print_money(change) % strSource;
+        }
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
           prompt << tr("\n(Priority levels : low|unimportant, normal, medium|elevated, high|priority)");
         }
