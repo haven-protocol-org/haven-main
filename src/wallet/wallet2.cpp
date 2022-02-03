@@ -7401,11 +7401,8 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       return false;
     }
 
-    uint32_t fees_version =
-      use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
-      use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
-      use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
-    uint32_t hf_version = get_current_hard_fork();
+    uint32_t fees_version = 4; // latest. not used for transfers.
+    uint32_t hf_version = HF_PER_OUTPUT_UNLOCK_VERSION; // latest. used for tx version only.
     bool r = cryptonote::construct_tx_and_get_tx_key(
       m_account.get_keys(),
       m_subaddresses,

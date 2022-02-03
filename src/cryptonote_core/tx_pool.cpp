@@ -252,7 +252,7 @@ namespace cryptonote
 
       // check whether we have a valid exchange rate (some values in the pr mioght be 0)
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-        if (!tvc.pr.unused1) { // using 24 hr MA in unused1
+        if (!tvc.pr.unused1 || !tvc.pr.xUSD) { // using 24 hr MA in unused1 or spot at xUSD
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
