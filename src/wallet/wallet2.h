@@ -885,9 +885,11 @@ private:
     // Get offshore amount in xAsset
     uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height);
     // Get offshore amount in XUSD, not XHV
-    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height);
+    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height, bool bOnshore);
     // Get onshore amount in XHV, not XUSD
     uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
+    uint64_t get_non_zero_unlock_time(const std::vector<uint64_t>& output_unlock_times);
+
 
     // all locked & unlocked balances of all subaddress accounts
     std::map<std::string, uint64_t> balance_all(bool strict);
@@ -1817,7 +1819,7 @@ BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 18)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
 BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
 BOOST_CLASS_VERSION(tools::wallet2::signed_tx_set, 1)
-BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 5)
+BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 6)
 BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 0)
 
@@ -2296,8 +2298,8 @@ namespace boost
       a & x.rct_config;
       if (ver < 5)
       {
-	x.fee = 0;
-	return;
+        x.fee = 0;
+        return;
       }
       a & x.fee;
     }
