@@ -6041,13 +6041,13 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
   for (auto &asset : balance_total) {
     std::string unlock_time_message;
     if (blocks_to_unlock[asset.first] > 0 && time_to_unlock[asset.first] > 0) 
-      unlock_time_message = (boost::format("(%lu block and %s to unlock)") 
+      unlock_time_message = (boost::format(" (%lu block(s) and %s to unlock)") 
           % blocks_to_unlock[asset.first] 
           % get_human_readable_timespan(time_to_unlock[asset.first])).str();
     else if (blocks_to_unlock[asset.first] > 0)
-      unlock_time_message = (boost::format("(%lu block to unlock)") % blocks_to_unlock[asset.first]).str();
+      unlock_time_message = (boost::format(" (%lu block(s) to unlock)") % blocks_to_unlock[asset.first]).str();
     else if (time_to_unlock[asset.first] > 0)
-      unlock_time_message = (boost::format("(%s to unlock)") % get_human_readable_timespan(time_to_unlock[asset.first])).str();
+      unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock[asset.first])).str();
 
 
     if (r) {
@@ -6769,12 +6769,26 @@ bool simple_wallet::transfer_main(
   }
 
   using tt = cryptonote::transaction_type;
-  if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-    locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
-    transfer_type = TransferLocked;
-  } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
-    locked_blocks = 1440; // ~48 hours
-    transfer_type = TransferLocked;
+  if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+    // Long offshore lock, short onshore lock, no effect from priority
+    if (tx_type == tt::OFFSHORE) {
+      locked_blocks = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_OFFSHORE_UNLOCK_BLOCKS; // ~21 days
+      transfer_type = TransferLocked;
+    } else if (tx_type == tt::ONSHORE) {
+      locked_blocks = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_ONSHORE_UNLOCK_BLOCKS; // ~12 hours
+      transfer_type = TransferLocked;
+    } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+      locked_blocks = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET : TX_V6_XASSET_UNLOCK_BLOCKS; // ~48 hours
+      transfer_type = TransferLocked;
+    }
+  } else {
+    if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
+      locked_blocks = (priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040;
+      transfer_type = TransferLocked;
+    } else if ((tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) && m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2)) {
+      locked_blocks = 1440; // ~48 hours
+      transfer_type = TransferLocked;
+    }
   }
   if (tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
     if (priority > 1) {
@@ -7048,11 +7062,11 @@ bool simple_wallet::transfer_main(
 
       if (tx_type == tt::OFFSHORE) {
         total_sent = dsts.back().amount;
-        uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
+        uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, false);
         prompt << boost::format(tr("Offshoring %s xUSD by burning %s XHV (plus conversion fee %s XHV).  ")) % print_money(xusd_estimate) % print_money(total_sent) % print_money(offshore_fee);
       } else if (tx_type == tt::ONSHORE) {
         total_sent = dsts.back().amount;
-        uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1);
+        uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, true);
         prompt << boost::format(tr("Onshoring %s XHV by burning %s xUSD (plus conversion fee %s xUSD).  ")) % print_money(total_sent) % print_money(usd_estimate) % print_money(offshore_fee);
       } else if (tx_type == tt::OFFSHORE_TRANSFER) {
         total_sent = dsts.back().amount;
@@ -7098,10 +7112,24 @@ bool simple_wallet::transfer_main(
                                                    % print_money(dust_not_in_fee);
       if (transfer_type == TransferLocked)
       {
-        float days = locked_blocks / 720.0f;
-        prompt << boost::format(tr(".\nThis transaction (including %s change) will unlock on block %llu, in approximately %s days (assuming 2 minutes per block)")) % cryptonote::print_money(change) % ((unsigned long long)unlock_block) % days;
+        prompt << boost::format(tr(".\nThis transaction will unlock on block %llu, in approximately ")) % ((unsigned long long)unlock_block);
+        if (locked_blocks > 720) {
+          float days = locked_blocks / 720.0f;
+          prompt << boost::format(tr("%s days (assuming 2 minutes per block)")) % days;
+        } else if (locked_blocks > 30) {
+          float hours = locked_blocks / 30.0f;
+          prompt << boost::format(tr("%s hours (assuming 2 minutes per block)")) % hours;
+        } else {
+          float minutes = locked_blocks * 2;
+          prompt << boost::format(tr("%s minutes (assuming 2 minutes per block)")) % minutes;
+        }
+        if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+          prompt << boost::format(tr("\nThe change (%s %s) will unlock in 10 blocks.")) % cryptonote::print_money(change) % strSource;
+        } else {
+          prompt << boost::format(tr("\nThe change (%s %s) will unlock at the same time.")) % cryptonote::print_money(change) % strSource;
+        }
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-          prompt << tr("\n(Priority levels : low|unimportant=5040 blocks, normal=1440 blocks, medium|elevated=720 blocks, high|priority=180 blocks)");
+          prompt << tr("\n(Priority levels : low|unimportant, normal, medium|elevated, high|priority)");
         }
       }
 

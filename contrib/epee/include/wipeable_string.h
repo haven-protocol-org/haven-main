@@ -32,6 +32,7 @@
 #include <stddef.h>
 #include <vector>
 #include <string>
+#include <limits>
 #include "memwipe.h"
 #include "fnv1.h"
 

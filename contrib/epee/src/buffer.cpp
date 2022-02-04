@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <string.h>
+#include <limits>
 #include "net/buffer.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY

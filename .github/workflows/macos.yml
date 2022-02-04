@@ -8,20 +8,26 @@ jobs:
       CMAKE_OSX_DEPLOYMENT_TARGET: 10.15
       OSX_MIN_VERSION: 10.15
       USE_SINGLE_BUILDDIR: 1
-    runs-on: macOS-latest
+    runs-on: macOS-10.15
     steps:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
     - name: install dependencies
-      run: HOMEBREW_NO_AUTO_UPDATE=1 brew install openssl hidapi zmq libpgm miniupnpc ldns expat libunwind-headers protobuf ccache
-    - name: install boost 1.72
       run: |
-        wget https://boostorg.jfrog.io/artifactory/main/release/1.72.0/source/boost_1_72_0.tar.gz
-        tar -xvf boost_1_72_0.tar.gz
-        cd boost_1_72_0
+        brew install zmq libpgm miniupnpc ldns expat libunwind-headers protobuf unbound openssl
+        brew link --force openssl
+        export LDFLAGS="$LDFLAGS -L/usr/local/opt/openssl@3/lib"
+        export CPPFLAGS="$CPPFLAGS -I/usr/local/opt/openssl@3/include"
+        export PKG_CONFIG_PATH="/usr/local/opt/openssl@3/lib/pkgconfig"
+        pkg-config --modversion openssl
+    - name: install boost 1.77
+      run: |
+        wget https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.tar.gz
+        tar -xvf boost_1_77_0.tar.gz
+        cd boost_1_77_0
         ./bootstrap.sh
-        ./b2 install
+        ./b2 install -j2
     - name: build
       run: |
         make release-static-mac-x86_64 -j2

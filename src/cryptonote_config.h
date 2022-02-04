@@ -45,14 +45,24 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
-#define CURRENT_TRANSACTION_VERSION                     5
+#define CURRENT_TRANSACTION_VERSION                     6
 #define OFFSHORE_TRANSACTION_VERSION                    3
+#define POU_TRANSACTION_VERSION                         6
+
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     1
 #define CRYPTONOTE_V2_POW_BLOCK_VERSION                 2
 #define CRYPTONOTE_V3_POW_BLOCK_VERSION                 3
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              60*60*2
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
+
+// UNLOCK TIMES
+#define TX_V6_OFFSHORE_UNLOCK_BLOCKS                    21*720  // 21 day unlock time
+#define TX_V6_ONSHORE_UNLOCK_BLOCKS                     360     // 12 hour unlock time
+#define TX_V6_XASSET_UNLOCK_BLOCKS                      1440    // 2 day unlock time
+#define TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET            60     // 2 hour unlock time - FOR TESTING ONLY
+#define TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET             30     // 1 hour unlock time - FOR TESTING ONLY
+#define TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET              60     // 2 hour unlock time - FOR TESTING ONLY
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 
@@ -195,9 +205,10 @@
 #define HF_VERSION_XASSET_FULL                  16
 #define HF_VERSION_XASSET_FEES_V2               17
 #define HF_VERSION_HAVEN2                       18
+#define HF_PER_OUTPUT_UNLOCK_VERSION            19
 
 #define STAGENET_VERSION                        0x0e
-#define TESTNET_VERSION                         0x0e
+#define TESTNET_VERSION                         0x0f
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
