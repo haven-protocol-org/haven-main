@@ -70,6 +70,7 @@ namespace offshore
     double xEUR;
     double xGBP;
     double xJPY;
+    double xLTC;
     double xNOK;
     double xNZD;
     double xUSD;
@@ -96,6 +97,7 @@ namespace offshore
       uint64_t xEUR;
       uint64_t xGBP;
       uint64_t xJPY;
+      uint64_t xLTC;
       uint64_t xNOK;
       uint64_t xNZD;
       uint64_t xUSD;
@@ -148,6 +150,7 @@ namespace offshore
     uint64_t xEUR;
     uint64_t xGBP;
     uint64_t xJPY;
+    uint64_t xLTC;
     uint64_t xNOK;
     uint64_t xNZD;
     uint64_t xUSD;
@@ -168,6 +171,7 @@ namespace offshore
       pr.xEUR = xEUR;
       pr.xGBP = xGBP;
       pr.xJPY = xJPY;
+      pr.xLTC = xLTC;
       pr.xNOK = xNOK;
       pr.xNZD = xNZD;
       pr.xUSD = xUSD;
@@ -191,6 +195,7 @@ namespace offshore
       xEUR = pr.xEUR;
       xGBP = pr.xGBP;
       xJPY = pr.xJPY;
+      xLTC = pr.xLTC;
       xNOK = pr.xNOK;
       xNZD = pr.xNZD;
       xUSD = pr.xUSD;

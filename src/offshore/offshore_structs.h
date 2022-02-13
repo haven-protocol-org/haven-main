@@ -42,6 +42,7 @@ namespace offshore {
     double xEUR;
     double xGBP;
     double xJPY;
+    double xLTC;
     double xNOK;
     double xNZD;
     double xUSD;

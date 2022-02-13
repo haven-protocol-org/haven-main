@@ -1191,6 +1191,7 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const offshore::pri
   INSERT_INTO_JSON_OBJECT(dest, xEUR, pricing_record.xEUR);
   INSERT_INTO_JSON_OBJECT(dest, xGBP, pricing_record.xGBP);
   INSERT_INTO_JSON_OBJECT(dest, xJPY, pricing_record.xJPY);
+  INSERT_INTO_JSON_OBJECT(dest, xLTC, pricing_record.xLTC);
   INSERT_INTO_JSON_OBJECT(dest, xNOK, pricing_record.xNOK);
   INSERT_INTO_JSON_OBJECT(dest, xNZD, pricing_record.xNZD);
   INSERT_INTO_JSON_OBJECT(dest, xUSD, pricing_record.xUSD);
@@ -1222,6 +1223,7 @@ void fromJsonValue(const rapidjson::Value& val, offshore::pricing_record& pricin
   GET_FROM_JSON_OBJECT(val, pricing_record.xEUR, xEUR);
   GET_FROM_JSON_OBJECT(val, pricing_record.xGBP, xGBP);
   GET_FROM_JSON_OBJECT(val, pricing_record.xJPY, xJPY);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xLTC, xLTC);
   GET_FROM_JSON_OBJECT(val, pricing_record.xNOK, xNOK);
   GET_FROM_JSON_OBJECT(val, pricing_record.xNZD, xNZD);
   GET_FROM_JSON_OBJECT(val, pricing_record.xUSD, xUSD);
