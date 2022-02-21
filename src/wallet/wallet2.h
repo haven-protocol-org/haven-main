@@ -888,7 +888,6 @@ private:
     uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height, bool bOnshore);
     // Get onshore amount in XHV, not XUSD
     uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
-    uint64_t get_non_zero_unlock_time(const std::vector<uint64_t>& output_unlock_times);
 
 
     // all locked & unlocked balances of all subaddress accounts

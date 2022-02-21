@@ -2202,14 +2202,6 @@ uint64_t wallet2::get_xhv_amount(const uint64_t xusd_amount, const uint64_t heig
   }
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_non_zero_unlock_time(const std::vector<uint64_t>& output_unlock_times)
-{
-  for (const auto& val: output_unlock_times)
-    if (val != 0) return val;
-
-  return 0;
-}
-//----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, const std::vector<uint64_t> &asset_type_output_indices, uint64_t height, uint8_t block_version, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
   PERF_TIMER(process_new_transaction);
@@ -2230,6 +2222,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
   // per receiving subaddress index
   std::unordered_map<cryptonote::subaddress_index, std::map<std::string, uint64_t>> tx_money_got_in_outs;
+  std::unordered_map<cryptonote::subaddress_index, std::map<std::string, uint64_t>> tx_money_got_in_outs_vout_indices;
   std::unordered_map<cryptonote::subaddress_index, std::map<std::string, amounts_container>> tx_amounts_individual_outs;
 
   crypto::public_key tx_pub_key = null_pkey;
@@ -2362,6 +2355,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             if (!tx_scan_info[i].error)
             {
               tx_amounts_individual_outs[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(tx_scan_info[i].money_transfered);
+              tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type] = i;
             }
           }
         }
@@ -2389,6 +2383,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
           if (!tx_scan_info[i].error)
           {
             tx_amounts_individual_outs[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(tx_scan_info[i].money_transfered);
+            tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type] = i;
           }
         }
       }
@@ -2409,6 +2404,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
           if (!tx_scan_info[i].error)
           {
             tx_amounts_individual_outs[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(tx_scan_info[i].money_transfered);
+            tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type] = i;
           }
         }
       }
@@ -2514,12 +2510,12 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
             // set unspent
             td.m_frozen = false;
-	          set_unspent(td);
+            set_unspent(td);
             
             // key image and target_key
             if (td.m_key_image_known)
-	            m_key_images[td.m_key_image] = specific_transfers.size()-1;
-	          m_pub_keys[tx_scan_info[o].in_ephemeral.pub] = specific_transfers.size()-1;
+              m_key_images[td.m_key_image] = specific_transfers.size()-1;
+            m_pub_keys[tx_scan_info[o].in_ephemeral.pub] = specific_transfers.size()-1;
             
             if (output_tracker_cache)
               (*output_tracker_cache)[std::make_pair(tx.vout[o].amount, td.m_global_output_index)] = specific_transfers.size() - 1;
@@ -2584,9 +2580,9 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             transfer_details &td = specific_transfers[kit->second];
             
             // populate td
-	          td.m_block_height = height;
-	          td.m_internal_output_index = o;
-	          td.m_global_output_index = o_indices[o];
+            td.m_block_height = height;
+            td.m_internal_output_index = o;
+            td.m_global_output_index = o_indices[o];
 
             if (asset_type_output_indices.size() > 0)
             {
@@ -2594,8 +2590,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               td.m_asset_type_output_index_known = true;
             }
 
-	          td.m_tx = (const cryptonote::transaction_prefix&)tx;
-	          td.m_txid = txid;
+            td.m_tx = (const cryptonote::transaction_prefix&)tx;
+            td.m_txid = txid;
             td.m_amount = amount;
             td.m_pk_index = pk_index - 1;
             td.m_subaddr_index = tx_scan_info[o].received->index;
@@ -2875,7 +2871,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
           // or 0s and converted asset unlock times(in which case we get the converted one since it will be bigger than 0) 
           // and changens or funds sent to ourselves are already removed above. Meanining we will be only coming here
           // for either transfers from someone else or for converted outputs.
-          payment.m_unlock_time  = get_non_zero_unlock_time(tx.output_unlock_times);
+          payment.m_unlock_time  = tx.output_unlock_times[tx_money_got_in_outs_vout_indices[i.first][asset.first]];
         } else {
           payment.m_unlock_time  = tx.unlock_time;
         }
