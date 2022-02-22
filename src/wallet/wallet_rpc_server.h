@@ -162,6 +162,12 @@ namespace tools
         MAP_JON_RPC_WE("set_log_categories", on_set_log_categories, wallet_rpc::COMMAND_RPC_SET_LOG_CATEGORIES)
         MAP_JON_RPC_WE("estimate_tx_size_and_weight", on_estimate_tx_size_and_weight, wallet_rpc::COMMAND_RPC_ESTIMATE_TX_SIZE_AND_WEIGHT)
         MAP_JON_RPC_WE("get_version",        on_get_version,        wallet_rpc::COMMAND_RPC_GET_VERSION)
+        // -------------- FOLLOWING ENDPOINTS ARE ADDED FOR THORHCAIN INTEGRATION ------------------------- 
+        MAP_JON_RPC_WE("sign_multisig_parallel", on_sign_multisig_parallel, wallet_rpc::COMMAND_RPC_SIGN_MULTISIG_PARALLEL)
+        MAP_JON_RPC_WE("export_sigkeys",      on_export_sigkeys,      wallet_rpc::COMMAND_RPC_EXPORT_SIGNKEY)
+        MAP_JON_RPC_WE("accumulate_multisig",on_accu_multisig,      wallet_rpc::COMMAND_RPC_ACCU_MULTISIG)
+        MAP_JON_RPC_WE("check_transaction",  on_check_transaction,      wallet_rpc::COMMAND_RPC_TRANSACTION_CHECK)
+        MAP_JON_RPC_WE("save_pool_wallet",on_save_pool_wallet,   wallet_rpc::COMMAND_RPC_SAVE_POOL_WALLET)
       END_JSON_RPC_MAP()
     END_URI_MAP2()
 
@@ -256,6 +262,11 @@ namespace tools
       bool on_estimate_tx_size_and_weight(const wallet_rpc::COMMAND_RPC_ESTIMATE_TX_SIZE_AND_WEIGHT::request& req, wallet_rpc::COMMAND_RPC_ESTIMATE_TX_SIZE_AND_WEIGHT::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_get_version(const wallet_rpc::COMMAND_RPC_GET_VERSION::request& req, wallet_rpc::COMMAND_RPC_GET_VERSION::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
 
+      bool on_sign_multisig_parallel(const wallet_rpc::COMMAND_RPC_SIGN_MULTISIG_PARALLEL::request& req, wallet_rpc::COMMAND_RPC_SIGN_MULTISIG_PARALLEL::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_export_sigkeys( const wallet_rpc::COMMAND_RPC_EXPORT_SIGNKEY::request& req,wallet_rpc::COMMAND_RPC_EXPORT_SIGNKEY::response& res,  epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_accu_multisig(const wallet_rpc::COMMAND_RPC_ACCU_MULTISIG::request& req, wallet_rpc::COMMAND_RPC_ACCU_MULTISIG::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_check_transaction(const wallet_rpc::COMMAND_RPC_TRANSACTION_CHECK::request& req, wallet_rpc::COMMAND_RPC_TRANSACTION_CHECK::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_save_pool_wallet(const wallet_rpc::COMMAND_RPC_SAVE_POOL_WALLET::request& req, wallet_rpc::COMMAND_RPC_SAVE_POOL_WALLET::response& res, epee::json_rpc::error& er, const connection_context *ctx=NULL);
       //json rpc v2
       bool on_query_key(const wallet_rpc::COMMAND_RPC_QUERY_KEY::request& req, wallet_rpc::COMMAND_RPC_QUERY_KEY::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
 

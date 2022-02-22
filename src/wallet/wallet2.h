@@ -1235,7 +1235,11 @@ private:
     std::string get_tx_proof(const cryptonote::transaction &tx, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, const cryptonote::account_public_address &address, bool is_subaddress, const std::string &message) const;
     bool check_tx_proof(const crypto::hash &txid, const cryptonote::account_public_address &address, bool is_subaddress, const std::string &message, const std::string &sig_str, std::map<std::string, uint64_t> &received, bool &in_pool, uint64_t &confirmations);
     bool check_tx_proof(const cryptonote::transaction &tx, const cryptonote::account_public_address &address, bool is_subaddress, const std::string &message, const std::string &sig_str, std::map<std::string, uint64_t> &received) const;
-
+    /// ------------- ADDED FOR THORCHAIN -----------
+    bool sign_multisig_tx_base(multisig_tx_set &exported_txs, std::vector<crypto::hash> &txids, std::vector<std::string>& all_pub_keys);
+    bool get_account_signing_pubkeys(std::vector<std::string>& signpubkeys);
+    bool acc_multisig_tx(std::vector <multisig_tx_set >  &in_txs, std::vector<crypto::hash> &txids);
+    /// ----------------------------------------
     std::string get_spend_proof(const crypto::hash &txid, const std::string &message);
     bool check_spend_proof(const crypto::hash &txid, const std::string &message, const std::string &sig_str);
 

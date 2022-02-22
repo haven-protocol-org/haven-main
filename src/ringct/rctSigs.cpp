@@ -1951,6 +1951,50 @@ namespace rct {
       return signMultisigMLSAG(rv, indices, k, msout, secret_key);
   }
 
+  bool accSignMultisigCLSAG(std::vector<rctSig > &rv ,rctSig & rv2, const std::vector<unsigned int> &indices) {
+    CHECK_AND_ASSERT_MES(rv2.type == RCTTypeCLSAG || rv2.type == RCTTypeCLSAGN || rv2.type == RCTTypeHaven2, false, "unsupported rct type");
+    CHECK_AND_ASSERT_MES(rv2.p.MGs.empty(), false, "MGs not empty for CLSAGs");
+    for (size_t n = 0; n < indices.size(); ++n) {
+      CHECK_AND_ASSERT_MES(indices[n] < rv2.p.CLSAGs[n].s.size(), false, "Index out of range");
+    }
+
+    rctSig &rv0=rv.at(0);
+    std::vector<rctSig>::iterator ptr;
+    for (size_t n = 0; n < indices.size(); ++n) {
+      std::vector<rct::key> all_shares;
+      for (ptr = rv.begin() + 1; ptr < rv.end() - 1; ptr++) {
+        sc_add(rv2.p.CLSAGs[n].s[indices[n]].bytes, rv2.p.CLSAGs[n].s[indices[n]].bytes, ptr->p.CLSAGs[n].s[indices[n]].bytes);
+        sc_sub(rv2.p.CLSAGs[n].s[indices[n]].bytes, rv2.p.CLSAGs[n].s[indices[n]].bytes, rv0.p.CLSAGs[n].s[indices[n]].bytes);
+      }
+    }
+    return true;
+  }
+
+  bool accSignMultisigMLSAG(std::vector<rctSig > &rv ,rctSig & rv2,const std::vector<unsigned int> &indices) {
+    CHECK_AND_ASSERT_MES(rv2.type == RCTTypeFull || rv2.type == RCTTypeSimple || rv2.type == RCTTypeBulletproof || rv2.type == RCTTypeBulletproof2, false, "unsupported rct type");
+    CHECK_AND_ASSERT_MES(rv2.p.MGs.empty(), false, "MGs not empty for CLSAGs");
+    for (size_t n = 0; n < indices.size(); ++n) {
+      CHECK_AND_ASSERT_MES(indices[n] < rv2.p.CLSAGs[n].s.size(), false, "Index out of range");
+    }
+
+    rctSig &rv0=rv.at(0);
+    std::vector<rctSig>::iterator ptr;
+    for (size_t n = 0; n < indices.size(); ++n) {
+      for (ptr = rv.begin() + 1; ptr < rv.end() - 1; ptr++) {
+        sc_add(rv2.p.MGs[n].ss[indices[n]][0].bytes, rv2.p.MGs[n].ss[indices[n]][0].bytes, ptr->p.MGs[n].ss[indices[n]][0].bytes);
+        sc_sub(rv2.p.MGs[n].ss[indices[n]][0].bytes, rv2.p.MGs[n].ss[indices[n]][0].bytes, rv0.p.MGs[n].ss[indices[n]][0].bytes);
+      }
+    }
+    return true;
+  }
+
+  bool accMultisig(std::vector<rctSig > &rv,rctSig  &recvrv, const std::vector<unsigned int> &indices) {
+    if (recvrv.type == RCTTypeCLSAG || recvrv.type == RCTTypeCLSAGN || recvrv.type == RCTTypeHaven2)
+      return accSignMultisigCLSAG(rv, recvrv,indices);
+    else
+      return accSignMultisigMLSAG(rv, recvrv,indices);
+  }
+
   bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version) {
 
     if (source == "XHV" && destination == "XUSD") {

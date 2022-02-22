@@ -7925,7 +7925,7 @@ bool wallet2::load_multisig_tx_from_file(const std::string &filename, multisig_t
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto::hash> &txids)
+bool wallet2::sign_multisig_tx_base(multisig_tx_set &exported_txs, std::vector<crypto::hash> &txids, std::vector<std::string>& all_pub_keys)
 {
   THROW_WALLET_EXCEPTION_IF(exported_txs.m_ptx.empty(), error::wallet_internal_error, "No tx found");
 
@@ -7939,6 +7939,16 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
       error::wallet_internal_error, "Transaction is already fully signed");
 
   txids.clear();
+
+  std::unordered_set<crypto::public_key> selected_keys;
+  for(auto &el:all_pub_keys){
+    crypto::public_key pubkey;
+    cryptonote::blobdata temp;
+    THROW_WALLET_EXCEPTION_IF(!epee::string_tools::parse_hexstr_to_binbuff(el,temp), error::wallet_internal_error, "Error parsing pubkey to binbuff.");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::t_serializable_object_from_blob(pubkey,temp), error::wallet_internal_error, "Error creating pubkey obj");
+    selected_keys.insert(pubkey);
+  }
+  bool use_selected = !selected_keys.empty();
 
   // sign the transactions
   for (size_t n = 0; n < exported_txs.m_ptx.size(); ++n)
@@ -8024,11 +8034,16 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
         for (const auto &msk: get_account().get_multisig_keys())
         {
           crypto::public_key pmsk = get_multisig_signing_public_key(msk);
-
-          if (sig.signing_keys.find(pmsk) == sig.signing_keys.end())
-          {
-            sc_add(skey.bytes, skey.bytes, rct::sk2rct(msk).bytes);
-            sig.signing_keys.insert(pmsk);
+          if (use_selected){
+            if ((selected_keys.find(pmsk) != selected_keys.end())) {
+              sc_add(skey.bytes, skey.bytes, rct::sk2rct(msk).bytes);
+              sig.signing_keys.insert(pmsk);
+            }
+          }else{
+            if ((sig.signing_keys.find(pmsk) == sig.signing_keys.end())) {
+              sc_add(skey.bytes, skey.bytes, rct::sk2rct(msk).bytes);
+              sig.signing_keys.insert(pmsk);
+            }
           }
         }
         THROW_WALLET_EXCEPTION_IF(!rct::signMultisig(ptx.tx.rct_signatures, indices, k, sig.msout, skey),
@@ -8089,6 +8104,12 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto::hash> &txids)
+{
+  std::vector<std::string> empty_signers_pubkeys;
+  return sign_multisig_tx_base(exported_txs, txids, empty_signers_pubkeys);
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::sign_multisig_tx_to_file(multisig_tx_set &exported_txs, const std::string &filename, std::vector<crypto::hash> &txids)
 {
   bool r = sign_multisig_tx(exported_txs, txids);
@@ -8096,7 +8117,83 @@ bool wallet2::sign_multisig_tx_to_file(multisig_tx_set &exported_txs, const std:
     return false;
   return save_multisig_tx(exported_txs, filename);
 }
+//----------------------------------------------------------------------------------------------------
+bool wallet2::get_account_signing_pubkeys(std::vector<std::string>& signpubkeys) {
+    for (const auto &msk: get_account().get_multisig_keys()) {
+        crypto::public_key pmsk = get_multisig_signing_public_key(msk);
+        std::string hex_pub_key=epee::string_tools::buff_to_hex_nodelimer(cryptonote::t_serializable_object_to_blob(pmsk));
+        signpubkeys.push_back(hex_pub_key);
+    }
+    return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::acc_multisig_tx(std::vector <multisig_tx_set >  &in_txs, std::vector<crypto::hash> &txids) {
+  multisig_tx_set &tx_last = in_txs.back();
+  THROW_WALLET_EXCEPTION_IF(in_txs.size()<m_multisig_threshold, error::wallet_internal_error, "not enough shares to accumulate");
 
+  // we need to ensure that the shares have the same number of transactions
+  // we define the first signer as the leader and the last signer is the peer
+  // if you do not follow this sequence, your signature may fail
+  size_t transactions_num=in_txs.at(0).m_ptx.size();
+  for (const auto &el:in_txs){
+    THROW_WALLET_EXCEPTION_IF(transactions_num != el.m_ptx.size(), error::wallet_internal_error, "shares transaction num is not consistant");
+  }
+
+  const crypto::public_key local_signer = get_multisig_signer_public_key();
+  txids.clear();
+  std::vector<rct::rctSig> rctSigs;
+  std::vector<unsigned int> indices;
+  for (size_t n = 0; n < tx_last.m_ptx.size(); ++n) {
+    rctSigs.clear();
+    indices.clear();
+
+    tools::wallet2::pending_tx &ptx_last = tx_last.m_ptx[n];
+    auto sources = tx_last.m_ptx[n].construction_data.sources;
+    for (const auto &source: sources)
+        indices.push_back(source.real_output);
+
+    int sig_index=0;
+    for (auto &sig: tx_last.m_ptx[n].multisig_sigs) {
+      tx_last.m_ptx[n].tx.rct_signatures = sig.sigs;
+      if (sig.ignore.find(local_signer) == sig.ignore.end()) {
+        for (auto &tx: in_txs) {
+          tools::wallet2::pending_tx &ptx = tx.m_ptx[n];
+          rctSigs.push_back(ptx.multisig_sigs.at(sig_index).sigs);
+        }
+        THROW_WALLET_EXCEPTION_IF(!rct::accMultisig(rctSigs, tx_last.m_ptx[n].tx.rct_signatures, indices),
+                                  error::wallet_internal_error, "Failed accumulate signatures, transaction likely malformed");
+        sig.sigs = tx_last.m_ptx[n].tx.rct_signatures;
+        THROW_WALLET_EXCEPTION_IF(tx_last.m_ptx.empty(), error::wallet_internal_error, "No tx found");
+        bool found = false;
+        for (const auto &sig:  tx_last.m_ptx[n].multisig_sigs)
+        {
+          if (sig.ignore.find(local_signer) == sig.ignore.end() && !keys_intersect(sig.ignore, tx_last.m_signers))
+          {
+            THROW_WALLET_EXCEPTION_IF(found, error::wallet_internal_error, "More than one transaction is final");
+            tx_last.m_ptx[n].tx.rct_signatures=sig.sigs;
+            found = true;
+          }
+        }
+      }
+      sig_index +=1;
+    }
+
+    const crypto::hash txid = get_transaction_hash(tx_last.m_ptx[n].tx);
+    if (store_tx_info()) {
+      m_tx_keys[txid] = ptx_last.tx_key;
+      m_additional_tx_keys[txid] = ptx_last.additional_tx_keys;
+    }
+    txids.push_back(txid);
+  }
+
+  tx_last.m_signers.insert(get_multisig_signer_public_key());
+  for (const auto &el:in_txs){
+    for (const auto &key:el.m_signers){
+      tx_last.m_signers.insert(key);
+    }
+  }
+  return true;
+}
 //----------------------------------------------------------------------------------------------------
 bool wallet2::sign_multisig_tx_from_file(const std::string &filename, std::vector<crypto::hash> &txids, std::function<bool(const multisig_tx_set&)> accept_func)
 {
