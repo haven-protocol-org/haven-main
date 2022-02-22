@@ -98,12 +98,12 @@ invokes cmake commands as needed.
 
     ```bash
     cd haven-main
-    git checkout v1.3.5
-    ./build-haven.sh release
+    git checkout v2.2.2
+    make release
     ```
 
     *Optional*: If your machine has several cores and enough memory, enable
-    parallel build by running `./build-haven.sh -j<number of threads> release` instead of `./build-haven.sh release`. For
+    parallel build by running `make -j<number of threads> release` instead of `make release`. For
     this to be worthwhile, the machine should have one core and about 2GB of RAM
     available per thread.
 
@@ -188,7 +188,7 @@ application.
 * If you would like a specific [version/tag](https://github.com/haven-protocol-org/haven-main/tags), do a git checkout for that version. eg. 'v1.3.5'. If you don't care about the version and just want binaries from master, skip this step:
 	
     ```bash
-    git checkout v1.3.5
+    git checkout v2.2.2
     ```
 
 * If you are on a 64-bit system, run:
