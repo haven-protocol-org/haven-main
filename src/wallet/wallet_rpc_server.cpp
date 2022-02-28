@@ -789,6 +789,90 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_freeze(const wallet_rpc::COMMAND_RPC_FREEZE::request& req, wallet_rpc::COMMAND_RPC_FREEZE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    try
+    {
+      if (req.key_image.empty())
+      {
+        er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+        er.message = std::string("Must specify key image to freeze");
+        return false;
+      }
+      crypto::key_image ki;
+      if (!epee::string_tools::hex_to_pod(req.key_image, ki))
+      {
+        er.code = WALLET_RPC_ERROR_CODE_WRONG_KEY_IMAGE;
+        er.message = "failed to parse key image";
+        return false;
+      }
+      m_wallet->freeze(ki);
+    }
+    catch (const std::exception& e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR);
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_thaw(const wallet_rpc::COMMAND_RPC_THAW::request& req, wallet_rpc::COMMAND_RPC_THAW::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    try
+    {
+      if (req.key_image.empty())
+      {
+        er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+        er.message = std::string("Must specify key image to thaw");
+        return false;
+      }
+      crypto::key_image ki;
+      if (!epee::string_tools::hex_to_pod(req.key_image, ki))
+      {
+        er.code = WALLET_RPC_ERROR_CODE_WRONG_KEY_IMAGE;
+        er.message = "failed to parse key image";
+        return false;
+      }
+      m_wallet->thaw(ki);
+    }
+    catch (const std::exception& e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR);
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_frozen(const wallet_rpc::COMMAND_RPC_FROZEN::request& req, wallet_rpc::COMMAND_RPC_FROZEN::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    try
+    {
+      if (req.key_image.empty())
+      {
+        er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+        er.message = std::string("Must specify key image to check if frozen");
+        return false;
+      }
+      crypto::key_image ki;
+      if (!epee::string_tools::hex_to_pod(req.key_image, ki))
+      {
+        er.code = WALLET_RPC_ERROR_CODE_WRONG_KEY_IMAGE;
+        er.message = "failed to parse key image";
+        return false;
+      }
+      res.frozen = m_wallet->frozen(ki);
+    }
+    catch (const std::exception& e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR);
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::validate_transfer(const std::list<wallet_rpc::transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination, epee::json_rpc::error& er)
   {
     crypto::hash8 integrated_payment_id = crypto::null_hash8;
@@ -903,10 +987,10 @@ namespace tools
     return amount;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  template<typename Ts, typename Tu>
+  template<typename Ts, typename Tu, typename Tk>
   bool wallet_rpc_server::fill_response(std::vector<tools::wallet2::pending_tx> &ptx_vector,
-    bool get_tx_key, Ts& tx_key, Tu &amount, std::string amount_asset, Tu &fee, Tu &weight, std::string &multisig_txset, std::string &unsigned_txset,
-    bool do_not_relay, Ts &tx_hash, bool get_tx_hex, Ts &tx_blob, bool get_tx_metadata, Ts &tx_metadata, epee::json_rpc::error &er)
+                                        bool get_tx_key, Ts& tx_key, Tu &amount, std::string amount_asset, Tu &fee, Tu &weight, std::string &multisig_txset, std::string &unsigned_txset,
+                                        bool do_not_relay, Ts &tx_hash, bool get_tx_hex, Ts &tx_blob, bool get_tx_metadata, Ts &tx_metadata, Tk &spent_key_images,  epee::json_rpc::error &er)
   {
     for (const auto & ptx : ptx_vector)
     {
@@ -921,6 +1005,44 @@ namespace tools
       fill(amount, ptx.tx.amount_burnt > 0 ? ptx.tx.amount_burnt : total_amount(ptx, amount_asset));
       fill(fee, ptx.fee);
       fill(weight, cryptonote::get_transaction_weight(ptx.tx));
+      
+      // add spent key images
+      tools::wallet_rpc::key_image_list key_image_list;
+      bool all_are_correct_txin_type = false;
+      if (amount_asset == "XHV") {
+        all_are_correct_txin_type = std::all_of(ptx.tx.vin.begin(), ptx.tx.vin.end(), [&](const cryptonote::txin_v& s_e) -> bool
+        {
+          CHECKED_GET_SPECIFIC_VARIANT(s_e, const cryptonote::txin_to_key, in, false);
+          key_image_list.key_images.push_back(epee::string_tools::pod_to_hex(in.k_image));
+          return true;
+        });
+      } else if (amount_asset == "XUSD") {
+        all_are_correct_txin_type = std::all_of(ptx.tx.vin.begin(), ptx.tx.vin.end(), [&](const cryptonote::txin_v& s_e) -> bool
+        {
+          if (s_e.type() == typeid(cryptonote::txin_offshore)) {
+            CHECKED_GET_SPECIFIC_VARIANT(s_e, const cryptonote::txin_offshore, in, false);
+            key_image_list.key_images.push_back(epee::string_tools::pod_to_hex(in.k_image));
+            return true;
+          } else if (s_e.type() == typeid(cryptonote::txin_onshore)) {
+            CHECKED_GET_SPECIFIC_VARIANT(s_e, const cryptonote::txin_onshore, in, false);
+            key_image_list.key_images.push_back(epee::string_tools::pod_to_hex(in.k_image));
+            return true;
+          } else {
+            return false;
+          }
+        });
+      } else {
+        // Only allow xAsset types
+        all_are_correct_txin_type = std::all_of(ptx.tx.vin.begin(), ptx.tx.vin.end(), [&](const cryptonote::txin_v& s_e) -> bool
+        {
+          CHECKED_GET_SPECIFIC_VARIANT(s_e, const cryptonote::txin_xasset, in, false);
+          CHECK_AND_ASSERT_MES(in.asset_type == amount_asset, false, "incorrect input asset type: " << in.asset_type << ", expected: " << amount_asset);
+          key_image_list.key_images.push_back(epee::string_tools::pod_to_hex(in.k_image));
+          return true;
+        });
+      }
+      THROW_WALLET_EXCEPTION_IF(!all_are_correct_txin_type, error::unexpected_txin_type, ptx.tx);
+      fill(spent_key_images, key_image_list);
     }
 
     if (m_wallet->multisig())
@@ -1030,7 +1152,7 @@ namespace tools
       res.amount_asset = "XHV";
       res.fee_asset = "XHV";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1100,7 +1222,7 @@ namespace tools
       res.amount_asset = "XUSD";
       res.fee_asset = "XUSD";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1176,7 +1298,7 @@ namespace tools
       res.amount_asset = "XUSD";
       res.fee_asset = "XUSD";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1258,7 +1380,7 @@ namespace tools
       res.amount_asset = "XUSD";
       res.fee_asset = "XUSD";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1341,7 +1463,7 @@ namespace tools
       res.amount_asset = req.asset_type;
       res.fee_asset = req.asset_type;
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1423,7 +1545,7 @@ namespace tools
       res.amount_asset = req.asset_type;
       res.fee_asset = req.asset_type;
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1509,7 +1631,7 @@ namespace tools
       res.amount_asset = "XHV";
       res.fee_asset = "XHV";
       return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.amount_asset, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
-          res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, er);
+                           res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
     }
     catch (const std::exception& e)
     {
@@ -1588,7 +1710,7 @@ namespace tools
       res.amount_asset = "XHV";
       res.fee_asset = "XHV";
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.amount_asset, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -1950,8 +2072,8 @@ namespace tools
     {
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_unmixable_sweep_transactions();
 
-      return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, "XHV", res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+      return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, req.asset_type, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -2028,7 +2150,7 @@ namespace tools
       );
 
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, req.asset_type, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset,
-			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, er);
+			   req.do_not_relay, res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
     }
     catch (const std::exception& e)
     {
@@ -2103,7 +2225,7 @@ namespace tools
       }
 
       return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, ptx_vector[0].change_dts.asset_type, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
-          res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, er);
+                           res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
     }
     catch (const std::exception& e)
     {
