@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -102,7 +102,8 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
   // gather info to ask the user
   uint64_t amount = 0, change = 0, fee = 0;
   size_t min_ring_size = ~0;
-  std::unordered_map<cryptonote::account_public_address, std::pair<std::string, std::pair<std::string, uint64_t>>> dests;  int first_known_non_zero_change_index = -1;
+  std::unordered_map<cryptonote::account_public_address, std::pair<std::string, std::pair<std::string, uint64_t>>> dests;
+  int first_known_non_zero_change_index = -1;
   std::string payment_id_string = "";
 
   std::string source_asset;

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -92,6 +92,17 @@ std::vector<TransactionInfo *> TransactionHistoryImpl::getAll() const
     return m_history;
 }
 
+void TransactionHistoryImpl::setTxNote(const std::string &txid, const std::string &note)
+{
+    cryptonote::blobdata txid_data;
+    if(!epee::string_tools::parse_hexstr_to_binbuff(txid, txid_data) || txid_data.size() != sizeof(crypto::hash))
+        return;
+    const crypto::hash htxid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
+
+    m_wallet->m_wallet->set_tx_note(htxid, note);
+    refresh();
+}
+
 void TransactionHistoryImpl::refresh()
 {
     // multithreaded access:
@@ -126,11 +137,14 @@ void TransactionHistoryImpl::refresh()
             payment_id = payment_id.substr(0,16);
         TransactionInfoImpl * ti = new TransactionInfoImpl();
         ti->m_paymentid = payment_id;
+        ti->m_coinbase = pd.m_coinbase;
         ti->m_assettype = pd.m_asset_type;
         ti->m_amount    = pd.m_amount;
+        ti->m_fee       = pd.m_fee;
         ti->m_direction = TransactionInfo::Direction_In;
         ti->m_hash      = string_tools::pod_to_hex(pd.m_tx_hash);
         ti->m_blockheight = pd.m_block_height;
+        ti->m_description = m_wallet->m_wallet->get_tx_note(pd.m_tx_hash);
         ti->m_subaddrIndex = { pd.m_subaddr_index.minor };
         ti->m_subaddrAccount = pd.m_subaddr_index.major;
         ti->m_label     = m_wallet->m_wallet->get_subaddress_label(pd.m_subaddr_index);
@@ -175,6 +189,7 @@ void TransactionHistoryImpl::refresh()
         ti->m_direction = TransactionInfo::Direction_Out;
         ti->m_hash = string_tools::pod_to_hex(hash);
         ti->m_blockheight = pd.m_block_height;
+        ti->m_description = m_wallet->m_wallet->get_tx_note(hash);
         ti->m_subaddrIndex = pd.m_subaddr_indices;
         ti->m_subaddrAccount = pd.m_subaddr_account;
         ti->m_label = pd.m_subaddr_indices.size() == 1 ? m_wallet->m_wallet->get_subaddress_label({pd.m_subaddr_account, *pd.m_subaddr_indices.begin()}) : "";
@@ -210,11 +225,16 @@ void TransactionHistoryImpl::refresh()
         ti->m_failed = is_failed;
         ti->m_pending = true;
         ti->m_hash = string_tools::pod_to_hex(hash);
+        ti->m_description = m_wallet->m_wallet->get_tx_note(hash);
         ti->m_subaddrIndex = pd.m_subaddr_indices;
         ti->m_subaddrAccount = pd.m_subaddr_account;
         ti->m_label = pd.m_subaddr_indices.size() == 1 ? m_wallet->m_wallet->get_subaddress_label({pd.m_subaddr_account, *pd.m_subaddr_indices.begin()}) : "";
         ti->m_timestamp = pd.m_timestamp;
         ti->m_confirmations = 0;
+        for (const auto &d : pd.m_dests)
+        {
+            ti->m_transfers.push_back({d.amount, d.address(m_wallet->m_wallet->nettype(), pd.m_payment_id)});
+        }        
         m_history.push_back(ti);
     }
     
@@ -234,6 +254,7 @@ void TransactionHistoryImpl::refresh()
         ti->m_direction = TransactionInfo::Direction_In;
         ti->m_hash      = string_tools::pod_to_hex(pd.m_tx_hash);
         ti->m_blockheight = pd.m_block_height;
+        ti->m_description = m_wallet->m_wallet->get_tx_note(pd.m_tx_hash);
         ti->m_pending = true;
         ti->m_subaddrIndex = { pd.m_subaddr_index.minor };
         ti->m_subaddrAccount = pd.m_subaddr_index.major;
