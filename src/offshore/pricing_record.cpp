@@ -410,9 +410,11 @@ namespace offshore
     }
 
     // verify the signature
-    if (!verifySignature(get_config(nettype).ORACLE_PUBLIC_KEY)) {
-      LOG_ERROR("Invalid pricing record signature.");
-      return false;
+    if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
+      if (!verifySignature(get_config(nettype).ORACLE_PUBLIC_KEY)) {
+        LOG_ERROR("Invalid pricing record signature.");
+        return false;
+      }
     }
   
     // valiadte the timestmap
