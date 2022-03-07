@@ -1743,47 +1743,47 @@ void wallet2::set_offshore_unspent(size_t idx)
   td.m_spent_height = 0;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::freeze(size_t idx, bool use_offshore_outputs)
+size_t wallet2::get_num_transfer_details(std::string asset_type)
 {
-  if (use_offshore_outputs) {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_offshore_transfers.size(), "Invalid transfer_details index");
-    transfer_details &td = m_offshore_transfers[idx];
-    td.m_frozen = true;
-  } else {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid transfer_details index");
-    transfer_details &td = m_transfers[idx];
-    td.m_frozen = true;
-  }
+  CHECK_AND_ASSERT_THROW_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) != offshore::ASSET_TYPES.end(), "Invalid asset type");
+  const transfer_container& specific_transfers = (asset_type == "XHV") ? m_transfers : (asset_type == "XUSD") ? m_offshore_transfers : m_xasset_transfers[asset_type];
+  return specific_transfers.size();
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::thaw(size_t idx, bool use_offshore_outputs)
+void wallet2::freeze(std::string asset_type, size_t idx)
 {
-  if (use_offshore_outputs) {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_offshore_transfers.size(), "Invalid transfer_details index");
-    transfer_details &td = m_offshore_transfers[idx];
-    td.m_frozen = false;
-  } else {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid transfer_details index");
-    transfer_details &td = m_transfers[idx];
-    td.m_frozen = false;
-  }
+  CHECK_AND_ASSERT_THROW_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) != offshore::ASSET_TYPES.end(), "Invalid asset type");
+  transfer_container& specific_transfers = (asset_type == "XHV") ? m_transfers : (asset_type == "XUSD") ? m_offshore_transfers : m_xasset_transfers[asset_type];
+  CHECK_AND_ASSERT_THROW_MES(idx < specific_transfers.size(), "Invalid transfer_details index");
+  specific_transfers[idx].m_frozen = true;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::frozen(size_t idx) const
+void wallet2::thaw(std::string asset_type, size_t idx)
 {
-  CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid transfer_details index");
-  const transfer_details &td = m_transfers[idx];
-  return td.m_frozen;
+  CHECK_AND_ASSERT_THROW_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) != offshore::ASSET_TYPES.end(), "Invalid asset type");
+  transfer_container& specific_transfers = (asset_type == "XHV") ? m_transfers : (asset_type == "XUSD") ? m_offshore_transfers : m_xasset_transfers[asset_type];
+  CHECK_AND_ASSERT_THROW_MES(idx < specific_transfers.size(), "Invalid transfer_details index");
+  specific_transfers[idx].m_frozen = false;
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::frozen(std::string asset_type, size_t idx)
+{
+  CHECK_AND_ASSERT_THROW_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) != offshore::ASSET_TYPES.end(), "Invalid asset type");
+  const transfer_container& specific_transfers = (asset_type == "XHV") ? m_transfers : (asset_type == "XUSD") ? m_offshore_transfers : m_xasset_transfers[asset_type];
+  CHECK_AND_ASSERT_THROW_MES(idx < specific_transfers.size(), "Invalid transfer_details index");
+  return specific_transfers[idx].m_frozen;
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::freeze(const crypto::key_image &ki)
 {
-  freeze(get_transfer_details(ki));
+  std::pair<std::string, size_t> pair = get_transfer_details(ki);
+  freeze(pair.first, pair.second);
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::thaw(const crypto::key_image &ki)
 {
-  thaw(get_transfer_details(ki));
+  std::pair<std::string, size_t> pair = get_transfer_details(ki);
+  thaw(pair.first, pair.second);
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::freeze(transfer_details& td)
@@ -1796,30 +1796,31 @@ void wallet2::thaw(transfer_details& td)
   td.m_frozen = false;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::frozen(const crypto::key_image &ki) const
+bool wallet2::frozen(const crypto::key_image &ki)
 {
-  return frozen(get_transfer_details(ki));
+  std::pair<std::string, size_t> pair = get_transfer_details(ki);
+  return frozen(pair.first, pair.second);
 }
 //----------------------------------------------------------------------------------------------------
-size_t wallet2::get_transfer_details(const crypto::key_image &ki) const
+std::pair<std::string, size_t> wallet2::get_transfer_details(const crypto::key_image &ki) const
 {
   for (size_t idx = 0; idx < m_transfers.size(); ++idx)
   {
     const transfer_details &td = m_transfers[idx];
     if (td.m_key_image_known && td.m_key_image == ki)
-      return idx;
+      return std::pair<std::string, size_t>("XHV", idx);
   }
   for (size_t idx = 0; idx < m_offshore_transfers.size(); ++idx)
   {
     const transfer_details &td = m_offshore_transfers[idx];
     if (td.m_key_image_known && td.m_key_image == ki)
-      return idx;
+      return std::pair<std::string, size_t>("XUSD", idx);
   }
   for (auto &entry: m_xasset_transfers) {
     for (size_t idx = 0; idx < entry.second.size(); ++idx) {
       const transfer_details &td = entry.second[idx];
       if (td.m_key_image_known && td.m_key_image == ki)
-	return idx;
+	      return std::pair<std::string, size_t>(entry.first, idx);
     }
   }
   CHECK_AND_ASSERT_THROW_MES(false, "Key image not found");
@@ -12237,20 +12238,9 @@ uint64_t wallet2::get_num_rct_outputs()
   return resp_t.histogram[0].total_instances;
 }
 //----------------------------------------------------------------------------------------------------
-const wallet2::transfer_details &wallet2::get_transfer_details(size_t idx) const
-{
-  THROW_WALLET_EXCEPTION_IF(idx >= m_transfers.size(), error::wallet_internal_error, "Bad transfer index");
-  return m_transfers[idx];
-}
-//----------------------------------------------------------------------------------------------------
-const wallet2::transfer_details &wallet2::get_offshore_transfer_details(size_t idx) const
-{
-  THROW_WALLET_EXCEPTION_IF(idx >= m_offshore_transfers.size(), error::wallet_internal_error, "Bad transfer index");
-  return m_offshore_transfers[idx];
-}
-//----------------------------------------------------------------------------------------------------
 const wallet2::transfer_details &wallet2::get_transfer_details(std::string asset_type, size_t idx)
 {
+  CHECK_AND_ASSERT_THROW_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) != offshore::ASSET_TYPES.end(), "Invalid asset type");
   transfer_container &specific_transfers =
     (asset_type == "XHV") ? m_transfers :
     (asset_type == "XUSD") ? m_offshore_transfers :
@@ -12319,7 +12309,7 @@ void wallet2::discard_unmixable_outputs()
   std::vector<size_t> unmixable_outputs = select_available_unmixable_outputs();
   for (size_t idx : unmixable_outputs)
   {
-    freeze(idx);
+    freeze("XHV", idx);
   }
 }
 

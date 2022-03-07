@@ -1271,9 +1271,7 @@ private:
     bool delete_address_book_row(std::size_t row_id);
         
     uint64_t get_num_rct_outputs();
-    size_t get_num_transfer_details() const { return m_transfers.size(); }
-    const transfer_details &get_transfer_details(size_t idx) const;
-    const transfer_details &get_offshore_transfer_details(size_t idx) const;
+    size_t get_num_transfer_details(std::string asset_type);
     const transfer_details &get_transfer_details(std::string asset_type, size_t idx);
 
     uint8_t get_current_hard_fork();
@@ -1500,12 +1498,12 @@ private:
     bool unblackball_output(const std::pair<uint64_t, uint64_t> &output);
     bool is_output_blackballed(const std::pair<uint64_t, uint64_t> &output) const;
 
-    void freeze(size_t idx, bool use_offshore_outputs = false);
-    void thaw(size_t idx, bool use_offshore_outputs = false);
-    bool frozen(size_t idx) const;
+    void freeze(std::string asset_type, size_t idx);
+    void thaw(std::string asset_type, size_t idx);
+    bool frozen(std::string asset_type, size_t idx);
     void freeze(const crypto::key_image &ki);
     void thaw(const crypto::key_image &ki);
-    bool frozen(const crypto::key_image &ki) const;
+    bool frozen(const crypto::key_image &ki);
     bool frozen(const transfer_details &td) const;
     void freeze(transfer_details& td);
     void thaw(transfer_details& td);
@@ -1627,7 +1625,7 @@ private:
     bool get_ring(const crypto::chacha_key &key, const crypto::key_image &key_image, std::vector<uint64_t> &outs);
     crypto::chacha_key get_ringdb_key();
     void setup_keys(const epee::wipeable_string &password);
-    size_t get_transfer_details(const crypto::key_image &ki) const;
+    std::pair<std::string, size_t> get_transfer_details(const crypto::key_image &ki) const;
 
     void register_devices();
     hw::device& lookup_device(const std::string & device_descriptor);

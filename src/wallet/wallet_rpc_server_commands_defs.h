@@ -460,6 +460,69 @@ namespace wallet_rpc
     END_KV_SERIALIZE_MAP()
   };
 
+  struct COMMAND_RPC_FREEZE
+  {
+    struct request_t
+    {
+      std::string key_image;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(key_image)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_THAW
+  {
+    struct request_t
+    {
+      std::string key_image;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(key_image)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_FROZEN
+  {
+    struct request_t
+    {
+      std::string key_image;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(key_image)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      bool frozen;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(frozen)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   struct COMMAND_RPC_TRANSFER
   {
     struct request_t
