@@ -31,7 +31,7 @@ make release-static-${TARGETOS}-${build} -j $(($(nproc) + 1))
 
 RUN build/release/bin/havend --version
 
-FROM alpine:3.12 as runner
+FROM alpine:3.15 as runner
 
 RUN apk update
 RUN apk --no-cache add \
@@ -56,15 +56,16 @@ RUN addgroup haven && \
 	chown -R haven:haven /home/haven/.haven && \
 	chown -R haven:haven /wallet
 
-VOLUME /home/haven/.haven
-
-VOLUME /wallet
+#VOLUME /home/haven/.haven
+#VOLUME /wallet
 
 COPY --from=builder /haven-main/build/release/bin/* /usr/local/bin/
+COPY .docker/docker-entrypoint.sh /docker-entrypoint.sh
 
 # switch to user haven
-USER haven
+#USER haven
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["havend", "--p2p-bind-ip=0.0.0.0", "--p2p-bind-port=17749", "--rpc-bind-ip=0.0.0.0", "--rpc-bind-port=17750", "--non-interactive", "--confirm-external-bind"]
 
 EXPOSE 17749 17750
