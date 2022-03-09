@@ -51,19 +51,10 @@ RUN apk --no-cache add \
 
 # Create haven user
 RUN addgroup haven && \
-  adduser --system -G haven --disabled-password haven && \
-	mkdir -p /wallet /home/haven/.haven && \
-	chown -R haven:haven /home/haven/.haven && \
-	chown -R haven:haven /wallet
-
-#VOLUME /home/haven/.haven
-#VOLUME /wallet
+  adduser --system -G haven --disabled-password haven
 
 COPY --from=builder /haven-main/build/release/bin/* /usr/local/bin/
 COPY .docker/docker-entrypoint.sh /docker-entrypoint.sh
-
-# switch to user haven
-#USER haven
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["havend", "--p2p-bind-ip=0.0.0.0", "--p2p-bind-port=17749", "--rpc-bind-ip=0.0.0.0", "--rpc-bind-port=17750", "--non-interactive", "--confirm-external-bind"]
