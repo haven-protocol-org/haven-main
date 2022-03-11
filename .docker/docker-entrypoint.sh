@@ -10,7 +10,7 @@ chmod 700 /wallet
 
 # Check if we already have a blockchain file or download the bootstrap
 if [[ -v "${force_bootstrap}" ]] || [[ (-v  "${start_bootstrap}") && (! -f /home/haven/.haven/lmdb/data.mdb) ]]; then
-    wget https://docs.havenprotocol.org/blockchain/data.mdb -O /home/haven/.haven/lmdb/data.mdb
+     su-exec haven:haven wget https://docs.havenprotocol.org/blockchain/data.mdb -O /home/haven/.haven/lmdb/data.mdb
 fi
 
 su-exec haven:haven "$@"
