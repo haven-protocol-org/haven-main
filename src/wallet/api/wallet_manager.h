@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -30,7 +30,7 @@
 
 
 #include "wallet/api/wallet2_api.h"
-#include "net/http_client.h"
+#include "net/http.h"
 #include <string>
 
 namespace Monero {
@@ -92,11 +92,12 @@ public:
     bool startMining(const std::string &address, uint32_t threads = 1, bool background_mining = false, bool ignore_battery = true) override;
     bool stopMining() override;
     std::string resolveOpenAlias(const std::string &address, bool &dnssec_valid) const override;
+    bool setProxy(const std::string &address) override;
 
 private:
-    WalletManagerImpl() {}
+    WalletManagerImpl();
     friend struct WalletManagerFactory;
-    epee::net_utils::http::http_simple_client m_http_client;
+    net::http::client m_http_client;
     std::string m_errorString;
 };
 

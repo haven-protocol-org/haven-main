@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -48,6 +48,11 @@ namespace epee {
 }
 
 namespace Monero {
+
+WalletManagerImpl::WalletManagerImpl()
+{
+    tools::set_strict_default_file_permissions(true);
+}
 
 Wallet *WalletManagerImpl::createWallet(const std::string &path, const std::string &password,
                                     const std::string &language, NetworkType nettype, uint64_t kdf_rounds)
@@ -375,6 +380,10 @@ std::tuple<bool, std::string, std::string, std::string, std::string> WalletManag
     return std::make_tuple(false, "", "", "", "");
 }
 
+bool WalletManagerImpl::setProxy(const std::string &address)
+{
+    return m_http_client.set_proxy(address);
+}
 
 ///////////////////// WalletManagerFactory implementation //////////////////////
 WalletManager *WalletManagerFactory::getWalletManager()

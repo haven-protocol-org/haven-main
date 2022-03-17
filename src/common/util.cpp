@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -871,10 +871,19 @@ std::string get_nix_version_display_string()
     return max_concurrency;
   }
 
+  bool is_privacy_preserving_network(const std::string &address)
+  {
+    if (boost::ends_with(address, ".onion"))
+      return true;
+    if (boost::ends_with(address, ".i2p"))
+      return true;
+    return false;
+  }
+  
   bool is_local_address(const std::string &address)
   {
     // always assume Tor/I2P addresses to be untrusted by default
-    if (boost::ends_with(address, ".onion") || boost::ends_with(address, ".i2p"))
+    if (is_privacy_preserving_network(address))
     {
       MDEBUG("Address '" << address << "' is Tor/I2P, non local");
       return false;
@@ -1116,7 +1125,7 @@ std::string get_nix_version_display_string()
     static constexpr const byte_map sizes[] =
     {
         {"%.0f B", 1024},
-        {"%.2f KB", 1024 * 1024},
+        {"%.2f kB", 1024 * 1024},
         {"%.2f MB", std::uint64_t(1024) * 1024 * 1024},
         {"%.2f GB", std::uint64_t(1024) * 1024 * 1024 * 1024},
         {"%.2f TB", std::uint64_t(1024) * 1024 * 1024 * 1024 * 1024}
@@ -1346,8 +1355,12 @@ std::string get_nix_version_display_string()
       100743, 92152, 57565, 22533, 37564, 21823, 19980, 18277, 18402, 14344,
       12142, 15842, 13677, 17631, 18294, 22270, 41422, 39296, 36688, 33512,
       33831, 27582, 22276, 27516, 27317, 25505, 24426, 20566, 23045, 26766,
-      28185, 26169, 27011,
-      28642    // Blocks 1,990,000 to 1,999,999 in December 2019
+      28185, 26169, 27011, 28642, 34994, 34442, 30682, 34357, 31640, 41167,
+      41301, 48616, 51075, 55061, 49909, 44606, 47091, 53828, 42520, 39023,
+      55245, 56145, 51119, 60398, 71821, 48142, 60310, 56041, 54176, 66220,
+      56336, 55248, 56656, 63305, 54029, 77136, 71902, 71618, 83587, 81068,
+      69062, 54848, 53681, 53555,
+      50616    // Blocks 2,400,000 to 2,409,999 in July 2021
     };
     const uint64_t block_range_size = 10000;
 
