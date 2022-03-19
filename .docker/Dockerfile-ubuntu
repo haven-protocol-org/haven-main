@@ -1,0 +1,24 @@
+FROM ubuntu:20.04
+
+ARG CXXFLAGS="-DSTACK_TRACE:BOOL -DELPP_FEATURE_CRASH_LOG"
+ARG HAVEN_VERSION=v2.2.3
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+ARG USE_SINGLE_BUILDDIR=1
+ARG DEBIAN_FRONTEND=noninteractive
+
+#RUN apt-get update && apt-get -y install git libcurl4-openssl-dev build-essential cmake libboost-all-dev miniupnpc libunbound-dev graphviz doxygen libunwind8-dev pkg-config libssl-dev libzmq3-dev libsodium-dev libhidapi-dev libnorm-dev libusb-1.0-0-dev libpgm-dev libprotobuf-dev protobuf-compiler ccache libudev-dev
+
+RUN apt-get update && apt-get --no-install-recommends --yes install ca-certificates git wget libcurl4-openssl-dev libboost-all-dev  build-essential cmake pkg-config libssl-dev libunbound-dev libsodium-dev libzmqpp-dev libzmq3-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev libudev-dev
+    
+COPY . /haven-main
+WORKDIR /haven-main
+RUN git submodule update --init --force
+RUN if [ "$TARGETARCH" = "amd64" ]; then export build=x86_64; fi; \
+if  [ "$TARGETARCH" = "386" ]; then export build=i686; fi; \
+if [ "$TARGETARCH" = "arm" ]; then export build=${TARGETARCH}${TARGETVARIANT}; fi; \
+if [ "$TARGETARCH" = "arm64" ]; then export build=armv8; fi; \
+make release-static-${TARGETOS}-${build} -j2
+
+RUN build/release/bin/havend --version
