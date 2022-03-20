@@ -54,12 +54,10 @@ RUN addgroup haven && \
   adduser --system -G haven --disabled-password haven
 
 COPY --from=builder /haven-main/build/release/bin/* /usr/local/bin/
-COPY --from=builder /haven-main/network/* /etc/haven/conf.d/
+COPY .docker/network/* /etc/haven/conf.d/
 COPY .docker/docker-entrypoint.sh /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["havend", "--config-file","/etc/haven/conf.d/mainnet.conf"]
 
 EXPOSE 17749 17750 27749 27750 37749 37750
-
-
