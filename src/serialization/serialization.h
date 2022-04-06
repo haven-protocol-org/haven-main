@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -48,6 +48,7 @@
 #include <string>
 #include <boost/type_traits/is_integral.hpp>
 #include <boost/type_traits/integral_constant.hpp>
+#include <boost/mpl/bool.hpp>
 
 /*! \struct is_blob_type 
  *
@@ -287,6 +288,27 @@ inline bool do_serialize(Archive &ar, bool &v)
     ar.tag(#f);						\
     bool r = ::do_serialize(ar, f, val);			\
     if (!r || !ar.stream().good()) return false;	\
+  } while(0);
+
+/*! \macro MAGIC_FIELD(m)
+ */
+#define MAGIC_FIELD(m)                          \
+  std::string magic = m;                        \
+  do {                                            \
+    ar.tag("magic");                                         \
+    ar.serialize_blob((void*)magic.data(), magic.size());    \
+    if (!ar.stream().good()) return false;                   \
+    if (magic != m) return false;                            \
+  } while(0);
+
+/*! \macro VERSION_FIELD(v)
+ */
+#define VERSION_FIELD(v)                                \
+  uint32_t version = v;                                 \
+  do {                                                  \
+    ar.tag("version");                                  \
+    ar.serialize_varint(version);                       \
+    if (!ar.stream().good()) return false;              \
   } while(0);
 
 namespace serialization {

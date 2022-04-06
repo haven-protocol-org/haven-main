@@ -9,7 +9,7 @@ Passing RPC commands:
 
 */
 
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -73,7 +73,8 @@ public:
 
 private:
   bool help(const std::vector<std::string>& args);
-
+  bool apropos(const std::vector<std::string>& args);
+  
   std::string get_commands_str();
   std::string get_command_usage(const std::vector<std::string> &args);
 };

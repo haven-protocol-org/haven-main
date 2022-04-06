@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -28,6 +28,7 @@
 
 #include "common/dns_utils.h"
 #include "common/command_line.h"
+#include "net/parse.h"
 #include "daemon/command_parser_executor.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -585,7 +586,6 @@ bool t_command_parser_executor::show_bans(const std::vector<std::string>& args)
 bool t_command_parser_executor::ban(const std::vector<std::string>& args)
 {
   if (args.size() != 1 && args.size() != 2) return false;
-  std::string ip = args[0];
   time_t seconds = P2P_IP_BLOCKTIME;
   if (args.size() > 1)
   {
@@ -602,7 +602,51 @@ bool t_command_parser_executor::ban(const std::vector<std::string>& args)
       return false;
     }
   }
-  return m_executor.ban(ip, seconds);
+  if (boost::starts_with(args[0], "@"))
+  {
+    const std::string ban_list = args[0].substr(1);
+    
+    try
+    {
+      const boost::filesystem::path ban_list_path(ban_list);
+      boost::system::error_code ec;
+      if (!boost::filesystem::exists(ban_list_path, ec))
+      {
+        std::cout << "Can't find ban list file " + ban_list + " - " + ec.message() << std::endl;
+        return true;
+      }
+      
+      bool ret = true;
+      std::ifstream ifs(ban_list_path.string());
+      for (std::string line; std::getline(ifs, line); )
+      {
+        auto subnet = net::get_ipv4_subnet_address(line);
+        if (subnet)
+        {
+          ret &= m_executor.ban(subnet->str(), seconds);
+          continue;
+        }
+        const expect<epee::net_utils::network_address> parsed_addr = net::get_network_address(line, 0);
+        if (parsed_addr)
+        {
+          ret &= m_executor.ban(parsed_addr->host_str(), seconds);
+          continue;
+        }
+        std::cout << "Invalid IP address or IPv4 subnet: " << line << std::endl;
+      }
+      return ret;
+    }
+    catch (const std::exception &e)
+    {
+      std::cout << "Error loading ban list: " << e.what() << std::endl;
+      return false;
+    }
+  }
+  else
+  {
+    const std::string ip = args[0];
+    return m_executor.ban(ip, seconds);
+  }
 }
 
 bool t_command_parser_executor::unban(const std::vector<std::string>& args)
@@ -843,16 +887,66 @@ bool t_command_parser_executor::check_blockchain_pruning(const std::vector<std::
 
 bool t_command_parser_executor::set_bootstrap_daemon(const std::vector<std::string>& args)
 {
-  const size_t args_count = args.size();
-  if (args_count < 1 || args_count > 3)
+  struct parsed_t
+  {
+    std::string address;
+    std::string user;
+    std::string password;
+    std::string proxy;
+  };
+  
+  boost::optional<parsed_t> parsed = [&args]() -> boost::optional<parsed_t> {
+    const size_t args_count = args.size();
+    if (args_count == 0)
+    {
+      return {};
+    }
+    if (args[0] == "auto")
+    {
+      if (args_count == 1)
+      {
+        return {{args[0], "", "", ""}};
+      }
+      if (args_count == 2)
+      {
+        return {{args[0], "", "", args[1]}};
+      }
+    }
+    else if (args[0] == "none")
+    {
+      if (args_count == 1)
+      {
+        return {{"", "", "", ""}};
+      }
+    }
+    else
+    {
+      if (args_count == 1)
+      {
+        return {{args[0], "", "", ""}};
+      }
+      if (args_count == 2)
+      {
+        return {{args[0], "", "", args[1]}};
+      }
+      if (args_count == 3)
+      {
+        return {{args[0], args[1], args[2], ""}};
+      }
+      if (args_count == 4)
+      {
+        return {{args[0], args[1], args[2], args[3]}};
+      }
+    }
+    return {};
+  }();
+  
+  if (!parsed)
   {
     return false;
   }
 
-  return m_executor.set_bootstrap_daemon(
-    args[0] != "none" ? args[0] : std::string(),
-    args_count > 1 ? args[1] : std::string(),
-    args_count > 2 ? args[2] : std::string());
+  return m_executor.set_bootstrap_daemon(parsed->address, parsed->user, parsed->password, parsed->proxy);
 }
 
 bool t_command_parser_executor::flush_cache(const std::vector<std::string>& args)

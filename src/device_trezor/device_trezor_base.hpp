@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -165,7 +165,7 @@ namespace trezor {
 
         // Scoped session closer
         BOOST_SCOPE_EXIT_ALL(&, this) {
-          if (open_session){
+          if (open_session && this->get_transport()){
             this->get_transport()->close();
           }
         };

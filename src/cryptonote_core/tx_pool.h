@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -31,6 +31,7 @@
 #pragma once
 #include "include_base_utils.h"
 
+#include <atomic>
 #include <set>
 #include <tuple>
 #include <unordered_map>
@@ -275,6 +276,15 @@ namespace cryptonote
     void get_transaction_backlog(std::vector<tx_backlog_entry>& backlog, bool include_sensitive = false) const;
 
     /**
+     * @brief get (hash, weight, fee) for all transactions in the pool - the minimum required information to create a block template
+     *
+     * @param backlog return-by-reference that data
+     * @param include_sensitive return stempool, anonymity-pool, and unrelayed txes
+     *
+     */
+    void get_block_template_backlog(std::vector<tx_block_template_backlog_entry>& backlog, bool include_sensitive = false) const;
+    
+    /**
      * @brief get a summary statistics of all transaction hashes in the pool
      *
      * @param stats return-by-reference the pool statistics
@@ -339,9 +349,12 @@ namespace cryptonote
      *   isn't old enough that relaying it is considered harmful
      * Note a transaction can be "relayable" even if do_not_relay is true
      *
+     * This function will skip all DB checks if an insufficient amount of
+     * time since the last call.
+     *
      * @param txs return-by-reference the transactions and their hashes
      *
-     * @return true
+     * @return true if DB was checked, false if DB checks skipped.
      */
     bool get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>>& txs) const;
 
@@ -546,6 +559,7 @@ namespace cryptonote
      *
      * @return true if the transaction is good to go, otherwise false
      */
+    bool is_transaction_ready_to_go(txpool_tx_meta_t& txd, const crypto::hash &txid, const cryptonote::blobdata_ref &txblob, transaction&tx) const;
     bool is_transaction_ready_to_go(txpool_tx_meta_t& txd, const crypto::hash &txid, const cryptonote::blobdata &txblob, transaction&tx) const;
 
     /**
@@ -619,6 +633,9 @@ private:
     mutable std::unordered_map<crypto::hash, std::tuple<bool, tx_verification_context, uint64_t, crypto::hash>> m_input_cache;
 
     std::unordered_map<crypto::hash, transaction> m_parsed_tx_cache;
+
+    //! Next timestamp that a DB check for relayable txes is allowed
+    std::atomic<time_t> m_next_check;
   };
 }
 

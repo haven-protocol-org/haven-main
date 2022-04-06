@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -69,7 +69,8 @@ namespace levin
   class notify
   {
     std::shared_ptr<detail::zone> zone_;
-
+    i_core_events* core_;
+    
   public:
     struct status
     {
@@ -80,10 +81,11 @@ namespace levin
     //! Construct an instance that cannot notify.
     notify() noexcept
       : zone_(nullptr)
+      , core_(nullptr)
     {}
 
     //! Construct an instance with available notification `zones`.
-    explicit notify(boost::asio::io_service& service, std::shared_ptr<connections> p2p, epee::byte_slice noise, bool is_public, bool pad_txs);
+    explicit notify(boost::asio::io_service& service, std::shared_ptr<connections> p2p, epee::byte_slice noise, epee::net_utils::zone zone, bool pad_txs, i_core_events& core);
 
     notify(const notify&) = delete;
     notify(notify&&) = default;
@@ -99,6 +101,9 @@ namespace levin
     //! Probe for new outbound connection - skips if not needed.
     void new_out_connection();
 
+    void on_handshake_complete(const boost::uuids::uuid &id, bool is_income);
+    void on_connection_close(const boost::uuids::uuid &id);
+    
     //! Run the logic for the next epoch immediately. Only use in testing.
     void run_epoch();
 
@@ -123,7 +128,7 @@ namespace levin
           particular stem.
 
       \return True iff the notification is queued for sending. */
-    bool send_txs(std::vector<blobdata> txs, const boost::uuids::uuid& source, i_core_events& core, relay_method tx_relay);
+    bool send_txs(std::vector<blobdata> txs, const boost::uuids::uuid& source, relay_method tx_relay);
   };
 } // levin
 } // net

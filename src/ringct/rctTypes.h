@@ -49,7 +49,7 @@ extern "C" {
 #include "hex.h"
 #include "span.h"
 #include "memwipe.h"
-#include "serialization/vector.h"
+#include "serialization/containers.h"
 #include "serialization/debug_archive.h"
 #include "serialization/binary_archive.h"
 #include "serialization/json_archive.h"
@@ -430,6 +430,12 @@ namespace rct {
         template<bool W, template <bool> class Archive>
         bool serialize_rctsig_prunable(Archive<W> &ar, uint8_t type, size_t inputs, size_t outputs, size_t mixin)
         {
+          if (inputs >= 0xffffffff)
+            return false;
+          if (outputs >= 0xffffffff)
+            return false;
+          if (mixin >= 0xffffffff)
+            return false;
           if (type == RCTTypeNull)
             return ar.stream().good();
           if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN && type != RCTTypeHaven2)

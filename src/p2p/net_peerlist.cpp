@@ -288,6 +288,11 @@ namespace nodetool
     copy_peers(peers.gray, m_peers_gray.get<by_addr>());
     copy_peers(peers.anchor, m_peers_anchor.get<by_addr>());
   }
+
+  void peerlist_manager::evict_host_from_peerlist(bool use_white, const peerlist_entry& pr)
+  {
+    filter(use_white, [&pr](const peerlist_entry& pe){ return pe.adr.is_same_host(pr.adr); });
+  }
 }
 
 BOOST_CLASS_VERSION(nodetool::peerlist_types, nodetool::CURRENT_PEERLIST_STORAGE_ARCHIVE_VER);

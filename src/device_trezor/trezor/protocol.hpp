@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -309,7 +309,7 @@ namespace tx {
         throw std::invalid_argument("RV not initialized");
       }
       auto tp = m_ct.rv->type;
-      return tp == rct::RCTTypeBulletproof || tp == rct::RCTTypeBulletproof2;
+      return tp == rct::RCTTypeBulletproof || tp == rct::RCTTypeBulletproof2 || tp == rct::RCTTypeCLSAG || tp == rct::RCTTypeCLSAGN || tp == rct::RCTTypeHaven2;
     }
 
     bool is_offloading() const {

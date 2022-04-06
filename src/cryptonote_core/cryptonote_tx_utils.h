@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -66,10 +66,10 @@ namespace cryptonote
     typedef std::pair<uint64_t, rct::ctkey> output_entry;
 
     std::vector<output_entry> outputs;  //index + key + optional ringct commitment
-    size_t real_output;                 //index in outputs vector of real output_entry
+    uint64_t real_output;               //index in outputs vector of real output_entry
     crypto::public_key real_out_tx_key; //incoming real tx public key
     std::vector<crypto::public_key> real_out_additional_tx_keys; //incoming real tx additional public keys
-    size_t real_output_in_tx_index;     //index in transaction outputs vector
+    uint64_t real_output_in_tx_index;   //index in transaction outputs vector
     uint64_t amount;                    //money
     bool rct;                           //true if the output is rct
     rct::key mask;                      //ringct amount mask
@@ -151,6 +151,15 @@ namespace cryptonote
   };
 
   //---------------------------------------------------------------
+  
+  struct tx_block_template_backlog_entry
+  {
+    crypto::hash id;
+    uint64_t weight;
+    uint64_t fee;
+  };
+  
+  //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
   bool construct_tx_with_tx_key(
     const account_keys& sender_account_keys,
@@ -228,7 +237,10 @@ namespace cryptonote
     );
 
   class Blockchain;
+  bool get_block_longhash(const Blockchain *pb, const blobdata& bd, crypto::hash& res, const uint64_t height,
+                          const int major_version, const crypto::hash *seed_hash, const int miners);
   bool get_block_longhash(const Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const int miners);
+  bool get_block_longhash(const Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const crypto::hash *seed_hash, const int miners);
   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height,
     const uint64_t seed_height, const crypto::hash& seed_hash);
   crypto::hash get_block_longhash(const Blockchain *pb, const block& b, const uint64_t height, const int miners);

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -83,7 +83,9 @@ struct json_archive_base
   void begin_variant() { begin_object(); }
   void end_variant() { end_object(); }
   Stream &stream() { return stream_; }
-
+  
+  bool varint_bug_backward_compatibility_enabled() const { return false; }
+  
 protected:
   void make_indent()
   {

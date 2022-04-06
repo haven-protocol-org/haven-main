@@ -109,3 +109,5 @@ if (ANDROID OR IOS)
   endif()
 endif()
 
+# Must be done last, because it references libraries in this directory
+add_subdirectory(wallet)

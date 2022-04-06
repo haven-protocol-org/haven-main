@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -1439,9 +1439,9 @@ namespace cryptonote
     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
     bl.timestamp = 0;
     bl.nonce = nonce;
-    miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash){
-      return cryptonote::get_block_longhash(NULL, b, hash, height, threads);
-    }, bl, 1, 0);
+    miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, const crypto::hash *seed_hash, unsigned int threads, crypto::hash &hash){
+      return cryptonote::get_block_longhash(NULL, b, hash, height, seed_hash, threads);
+    }, bl, 1, 0, NULL);
     bl.invalidate_hashes();
     return true;
   }
@@ -1452,16 +1452,14 @@ namespace cryptonote
     rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data, 0, 1);
   }
 
-  bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const int miners)
+  bool get_block_longhash(const Blockchain *pbc, const blobdata& bd, crypto::hash& res, const uint64_t height, const int major_version, const crypto::hash *seed_hash, const int miners)
   {
-    block b_local = b; //workaround to avoid const errors with do_serialize
-    blobdata bd = get_block_hashing_blob(b);
     cn_pow_hash_v3 ctx;
-    if(b_local.major_version >= CRYPTONOTE_V3_POW_BLOCK_VERSION)
+    if(major_version >= CRYPTONOTE_V3_POW_BLOCK_VERSION)
     {
       ctx.hash(bd.data(), bd.size(), res.data);
     }
-    else if(b_local.major_version == CRYPTONOTE_V2_POW_BLOCK_VERSION)
+    else if(major_version == CRYPTONOTE_V2_POW_BLOCK_VERSION)
     {
       cn_pow_hash_v2 ctx_v2 = cn_pow_hash_v2::make_borrowed_v2(ctx);
       ctx_v2.hash(bd.data(), bd.size(), res.data);
@@ -1474,6 +1472,17 @@ namespace cryptonote
     return true;
   }
 
+  bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const crypto::hash *seed_hash, const int miners)
+  {
+    blobdata bd = get_block_hashing_blob(b);
+    return get_block_longhash(pbc, bd, res, height, b.major_version, seed_hash, miners);
+  }
+  
+  bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const int miners)
+  {
+    return get_block_longhash(pbc, b, res, height, NULL, miners);
+  }
+  
   crypto::hash get_block_longhash(const Blockchain *pbc, const block& b, const uint64_t height, const int miners)
   {
     crypto::hash p = crypto::null_hash;

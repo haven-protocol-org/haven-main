@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,6 +32,7 @@
 
 #include "device_default.hpp"
 #include "int-util.h"
+#include "crypto/wallet/crypto.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/subaddress_index.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
@@ -120,7 +121,7 @@ namespace hw {
         /* ======================================================================= */
 
         bool device_default::derive_subaddress_public_key(const crypto::public_key &out_key, const crypto::key_derivation &derivation, const std::size_t output_index, crypto::public_key &derived_key) {
-            return crypto::derive_subaddress_public_key(out_key, derivation, output_index,derived_key);
+          return crypto::wallet::derive_subaddress_public_key(out_key, derivation, output_index,derived_key);
         }
 
         crypto::public_key device_default::get_subaddress_spend_public_key(const cryptonote::account_keys& keys, const cryptonote::subaddress_index &index) {
@@ -236,7 +237,7 @@ namespace hw {
         }
 
         bool device_default::generate_key_derivation(const crypto::public_key &key1, const crypto::secret_key &key2, crypto::key_derivation &derivation) {
-            return crypto::generate_key_derivation(key1, key2, derivation);
+          return crypto::wallet::generate_key_derivation(key1, key2, derivation);
         }
 
         bool device_default::derivation_to_scalar(const crypto::key_derivation &derivation, const size_t output_index, crypto::ec_scalar &res){
@@ -401,6 +402,29 @@ namespace hw {
             return true;
         }
 
+        bool device_default::clsag_prepare(const rct::key &p, const rct::key &z, rct::key &I, rct::key &D, const rct::key &H, rct::key &a, rct::key &aG, rct::key &aH) {
+          rct::skpkGen(a,aG); // aG = a*G
+          rct::scalarmultKey(aH,H,a); // aH = a*H
+          rct::scalarmultKey(I,H,p); // I = p*H
+          rct::scalarmultKey(D,H,z); // D = z*H
+          return true;
+        }
+        
+        bool device_default::clsag_hash(const rct::keyV &data, rct::key &hash) {
+          hash = rct::hash_to_scalar(data);
+          return true;
+        }
+        
+        bool device_default::clsag_sign(const rct::key &c, const rct::key &a, const rct::key &p, const rct::key &z, const rct::key &mu_P, const rct::key &mu_C, rct::key &s) {
+          rct::key s0_p_mu_P;
+          sc_mul(s0_p_mu_P.bytes,mu_P.bytes,p.bytes);
+          rct::key s0_add_z_mu_C;
+          sc_muladd(s0_add_z_mu_C.bytes,mu_C.bytes,z.bytes,s0_p_mu_P.bytes);
+          sc_mulsub(s.bytes,c.bytes,s0_add_z_mu_C.bytes,a.bytes);
+          
+          return true;
+        }
+      
         bool device_default::close_tx() {
             return true;
         }

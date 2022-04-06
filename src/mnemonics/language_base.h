@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -129,7 +129,7 @@ namespace Language
         if ((*it).size() < unique_prefix_length)
         {
           if (flags & ALLOW_SHORT_WORDS)
-            MWARNING(language_name << " word '" << *it << "' is shorter than its prefix length, " << unique_prefix_length);
+            MINFO(language_name << " word '" << *it << "' is shorter than its prefix length, " << unique_prefix_length);
           else
             throw std::runtime_error("Too short word in " + language_name + " word list: " + *it);
         }

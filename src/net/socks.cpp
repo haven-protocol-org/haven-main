@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019, The Monero Project
+// Copyright (c) 2018-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -322,8 +322,9 @@ namespace socks
             {
                 if (self && self->proxy_.is_open())
                 {
-                    self->proxy_.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-                    self->proxy_.close();
+                    boost::system::error_code ec;
+                    self->proxy_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+                    self->proxy_.close(ec);
                 }
             });
         }

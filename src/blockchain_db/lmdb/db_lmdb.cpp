@@ -1108,7 +1108,7 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
     // Get the current tally value for the source currency type
     MDB_val_copy<uint64_t> source_idx(cs.source_currency_type);
     boost::multiprecision::int128_t source_tally = read_circulating_supply_data(m_cur_circ_supply_tally, source_idx);
-    boost::multiprecision::int128_t final_source_tally = source_tally - cs.amount_burnt;
+    boost::multiprecision::int128_t final_source_tally = (source_tally > cs.amount_burnt) ? source_tally - cs.amount_burnt : 0;
     write_circulating_supply_data(m_cur_circ_supply_tally, source_idx, final_source_tally);
 
     // Get the current tally value for the dest currency type

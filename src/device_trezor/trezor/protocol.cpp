@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -502,21 +502,9 @@ namespace tx {
   }
 
   void Signer::compute_integrated_indices(TsxData * tsx_data){
-    if (m_aux_data == nullptr || m_aux_data->tx_recipients.empty()){
-      return;
-    }
-
     auto & chg = tsx_data->change_dts();
     std::string change_hash = hash_addr(&chg.addr(), chg.amount(), chg.is_subaddress());
-
     std::vector<uint32_t> integrated_indices;
-    std::set<std::string> integrated_hashes;
-    for (auto & cur : m_aux_data->tx_recipients){
-      if (!cur.has_payment_id){
-        continue;
-      }
-      integrated_hashes.emplace(hash_addr(&cur.address.m_spend_public_key, &cur.address.m_view_public_key));
-    }
 
     ssize_t idx = -1;
     for (auto & cur : tsx_data->outputs()){
@@ -527,8 +515,7 @@ namespace tx {
         continue;
       }
 
-      c_hash = hash_addr(&cur.addr());
-      if (integrated_hashes.find(c_hash) != integrated_hashes.end()){
+      if (cur.is_integrated()){
         integrated_indices.push_back((uint32_t)idx);
       }
     }
@@ -559,11 +546,6 @@ namespace tx {
 
     if (client_version() <= 1){
       assign_to_repeatable(tsx_data.mutable_minor_indices(), tx.subaddr_indices.begin(), tx.subaddr_indices.end());
-    }
-
-    // TODO: use HF_VERSION_CLSAG after CLSAG is merged
-    if (tsx_data.hard_fork() >= 13){
-      throw exc::ProtocolException("CLSAG is not yet implemented");
     }
 
     // Rsig decision
@@ -1017,14 +999,24 @@ namespace tx {
       }
     }
 
-    // CLSAG support comes here once it is merged to the Monero
-    m_ct.rv->p.MGs.reserve(m_ct.signatures.size());
-    for(size_t i = 0; i < m_ct.signatures.size(); ++i) {
-      rct::mgSig mg;
-      if (!cn_deserialize(m_ct.signatures[i], mg)) {
-        throw exc::ProtocolException("Cannot deserialize mg[i]");
+    if (m_ct.rv->type == rct::RCTTypeCLSAG || m_ct.rv->type == rct::RCTTypeCLSAGN || m_ct.rv->type == rct::RCTTypeHaven2){
+      m_ct.rv->p.CLSAGs.reserve(m_ct.signatures.size());
+      for (size_t i = 0; i < m_ct.signatures.size(); ++i) {
+        rct::clsag clsag;
+        if (!cn_deserialize(m_ct.signatures[i], clsag)) {
+          throw exc::ProtocolException("Cannot deserialize clsag[i]");
+        }
+        m_ct.rv->p.CLSAGs.push_back(clsag);
       }
-      m_ct.rv->p.MGs.push_back(mg);
+    } else {
+      m_ct.rv->p.MGs.reserve(m_ct.signatures.size());
+      for (size_t i = 0; i < m_ct.signatures.size(); ++i) {
+        rct::mgSig mg;
+        if (!cn_deserialize(m_ct.signatures[i], mg)) {
+          throw exc::ProtocolException("Cannot deserialize mg[i]");
+        }
+        m_ct.rv->p.MGs.push_back(mg);
+      }
     }
 
     m_ct.tx.rct_signatures = *(m_ct.rv);

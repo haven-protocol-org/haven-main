@@ -18,3 +18,7 @@
 [submodule "haven-blockchain-explorer"]
 	path = haven-blockchain-explorer
 	url = https://github.com/haven-protocol-org/haven-blockchain-explorer.git
+[submodule "external/supercop"]
+	path = external/supercop
+	url = https://github.com/monero-project/supercop
+	branch = monero
