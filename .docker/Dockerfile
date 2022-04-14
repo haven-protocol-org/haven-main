@@ -1,7 +1,7 @@
 FROM alpine:3.12 as builder
 
 ARG CXXFLAGS="-DSTACK_TRACE:BOOL -DELPP_FEATURE_CRASH_LOG"
-ARG HAVEN_VERSION=v2.0.0
+ARG HAVEN_VERSION=v2.2.3
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -31,7 +31,7 @@ make release-static-${TARGETOS}-${build} -j $(($(nproc) + 1))
 
 RUN build/release/bin/havend --version
 
-FROM alpine:3.12 as runner
+FROM alpine:3.15 as runner
 
 RUN apk update
 RUN apk --no-cache add \
@@ -51,20 +51,13 @@ RUN apk --no-cache add \
 
 # Create haven user
 RUN addgroup haven && \
-  adduser --system -G haven --disabled-password haven && \
-	mkdir -p /wallet /home/haven/.haven && \
-	chown -R haven:haven /home/haven/.haven && \
-	chown -R haven:haven /wallet
-
-VOLUME /home/haven/.haven
-
-VOLUME /wallet
+  adduser --system -G haven --disabled-password haven
 
 COPY --from=builder /haven-main/build/release/bin/* /usr/local/bin/
+COPY .docker/network/* /etc/haven/conf.d/
+COPY .docker/docker-entrypoint.sh /docker-entrypoint.sh
 
-# switch to user haven
-USER haven
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["havend", "--config-file","/etc/haven/conf.d/mainnet.conf"]
 
-CMD ["havend", "--p2p-bind-ip=0.0.0.0", "--p2p-bind-port=17749", "--rpc-bind-ip=0.0.0.0", "--rpc-bind-port=17750", "--non-interactive", "--confirm-external-bind"]
-
-EXPOSE 17749 17750
+EXPOSE 17749 17750 27749 27750 37749 37750
