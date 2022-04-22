@@ -15,6 +15,3 @@
 [submodule "external/randomx"]
 	path = external/randomx
 	url = https://github.com/tevador/RandomX
-[submodule "haven-blockchain-explorer"]
-	path = haven-blockchain-explorer
-	url = https://github.com/haven-protocol-org/haven-blockchain-explorer.git
