@@ -60,19 +60,6 @@ jobs:
         name: haven-linux-glibc229.tar.gz
         path: build/release/bin/haven-linux-glibc229.tar.gz
         retention-days: 10
-    - name: build haven explorer
-      run: |
-        cd haven-blockchain-explorer
-        ./build-block-explorer.sh -j3
-    - name: package haven explorer
-      run: |
-        cd haven-blockchain-explorer/onion-monero-blockchain-explorer/build/
-        tar -czvf haven-linux-explorer-glibc229.tar.gz xmrblocks templates
-    - uses: actions/upload-artifact@v2
-      with:
-        name: haven-linux-explorer-glibc229.tar.gz
-        path: haven-blockchain-explorer/onion-monero-blockchain-explorer/build/haven-linux-explorer-glibc229.tar.gz
-        retention-days: 10
 
   upload-linux-glibc-2-29:
     needs: build-linux-glibc-2-29
@@ -103,37 +90,7 @@ jobs:
         export payload='{"username": "Github", "content": "CLI (Linux 2.29) : '${BINARY_URL}${GITHUB_REF##*/}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
         echo $payload
         curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
-  
-  upload-linux-explorer-glibc-2-29:
-    needs: build-linux-glibc-2-29
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/download-artifact@v2
-      with:
-        name: haven-linux-explorer-glibc229.tar.gz
-    - name: Upload Haven CLI
-      uses: goshiz/do-space-sync-action@master
-      with:
-        args: --acl public-read
-      env:
-        SOURCE_DIR: 'haven-linux-explorer-glibc229.tar.gz'
-        SPACE_NAME: ${{ secrets.SPACE_NAME }}
-        SPACE_FOLDER: binaries
-        SPACE_REGION: ${{ secrets.SPACE_REGION}}
-        SPACE_ACCESS_KEY_ID: ${{ secrets.SPACE_ACCESS_KEY_ID }}
-        SPACE_SECRET_ACCESS_KEY: ${{ secrets.SPACE_SECRET_ACCESS_KEY }}
-    - name: notification
-      env:
-        BINARY_NAME: /haven-linux-explorer-glibc229.tar.gz
-        BINARY_URL: https://docs.havenprotocol.org/binaries/
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      shell: bash
-      run: |
-        export checksum=($(sha256sum haven-linux-explorer-glibc229.tar.gz))
-        export payload='{"username": "Github", "content": "Explorer (Linux 2.29) : '${BINARY_URL}${GITHUB_REF##*/}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
-        echo $payload
-        curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
-      
+        
   publish-linux-glibc-2-29:
     needs: build-linux-glibc-2-29
     if: startsWith(github.ref, 'refs/tags/v')
