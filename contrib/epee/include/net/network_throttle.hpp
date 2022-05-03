@@ -2,7 +2,7 @@
 /// @author rfree (current maintainer in monero.cc project)
 /// @brief interface for throttling of connection (count and rate-limit speed etc)
 
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -44,10 +44,7 @@
 #include <boost/shared_ptr.hpp>
 #include <atomic>
 
-#include <boost/asio.hpp>
 #include <boost/array.hpp>
-#include <boost/noncopyable.hpp>
-#include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/interprocess/detail/atomic.hpp>
 #include <boost/thread/thread.hpp>
@@ -63,7 +60,6 @@
 #include <boost/utility/value_init.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/thread/thread.hpp> 
 #include "misc_language.h"
 #include "pragma_comp_defs.h"
 #include <sstream>

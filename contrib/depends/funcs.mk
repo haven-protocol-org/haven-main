@@ -32,7 +32,7 @@ endef
 define fetch_file
     ( test -f $$($(1)_source_dir)/$(4) || \
     ( $(call fetch_file_inner,$(1),$(2),$(3),$(4),$(5)) || \
-      $(call fetch_file_inner,$(1),$(FALLBACK_DOWNLOAD_PATH),$(3),$(4),$(5))))
+      $(call fetch_file_inner,$(1),$(FALLBACK_DOWNLOAD_PATH),$(4),$(4),$(5))))
 endef
 
 define int_get_build_recipe_hash
@@ -132,6 +132,11 @@ $(1)_config_env+=$$($(1)_config_env_$(release_type))
 $(1)_config_env+=$($(1)_config_env_$(host_arch)) $($(1)_config_env_$(host_arch)_$(release_type))
 $(1)_config_env+=$($(1)_config_env_$(host_os)) $($(1)_config_env_$(host_os)_$(release_type))
 $(1)_config_env+=$($(1)_config_env_$(host_arch)_$(host_os)) $($(1)_config_env_$(host_arch)_$(host_os)_$(release_type))
+
+$(1)_build_env+=$$($(1)_build_env_$(release_type))
+$(1)_build_env+=$($(1)_build_env_$(host_arch)) $($(1)_build_env_$(host_arch)_$(release_type))
+$(1)_build_env+=$($(1)_build_env_$(host_os)) $($(1)_build_env_$(host_os)_$(release_type))
+$(1)_build_env+=$($(1)_build_env_$(host_arch)_$(host_os)) $($(1)_build_env_$(host_arch)_$(host_os)_$(release_type))
 
 $(1)_config_env+=PKG_CONFIG_LIBDIR=$($($(1)_type)_prefix)/lib/pkgconfig
 $(1)_config_env+=PKG_CONFIG_PATH=$($($(1)_type)_prefix)/share/pkgconfig

@@ -1,5 +1,5 @@
 ---
-name: "monero-win-0.16"
+name: "monero-win-0.17"
 enable_cache: true
 suites:
 - "bionic"
@@ -20,7 +20,6 @@ packages:
 - "zip"
 - "ca-certificates"
 - "python"
-- "rename"
 - "cmake"
 alternatives:
 -
@@ -54,6 +53,7 @@ script: |
   if test -n "$GBUILD_CACHE_ENABLED"; then
     export SOURCES_PATH=${GBUILD_COMMON_CACHE}
     export BASE_CACHE=${GBUILD_PACKAGE_CACHE}
+    export GITIAN=1
     mkdir -p ${BASE_CACHE} ${SOURCES_PATH}
   fi
 
@@ -127,7 +127,7 @@ script: |
     mkdir build && cd build
     cmake .. -DCMAKE_TOOLCHAIN_FILE=${BASEPREFIX}/${i}/share/toolchain.cmake
     make ${MAKEOPTS}
-    cp ../LICENSE bin
+    cp ../LICENSE ../README.md ../ANONYMITY_NETWORKS.md bin
     DISTNAME=monero-${i}-${version}
     mv bin ${DISTNAME}
     find ${DISTNAME}/ | sort | zip -X@ ${OUTDIR}/${DISTNAME}.zip

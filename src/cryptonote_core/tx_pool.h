@@ -356,7 +356,7 @@ namespace cryptonote
      *
      * @return true if DB was checked, false if DB checks skipped.
      */
-    bool get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>>& txs) const;
+    bool get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>>& txs);
 
     /**
      * @brief tell the pool that certain transactions were just relayed

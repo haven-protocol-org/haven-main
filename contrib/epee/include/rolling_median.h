@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -33,6 +33,8 @@
 // https://ideone.com/XPbl6
 
 #pragma once
+
+#include "misc_language.h"
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -139,7 +141,6 @@ public:
 
   rolling_median_t(rolling_median_t &&m)
   {
-    free(data);
     memcpy(this, &m, sizeof(rolling_median_t));
     m.data = NULL;
   }
@@ -226,7 +227,7 @@ public:
     Item v = data[heap[0]];
     if (minCt < maxCt)
     {
-      v = (v + data[heap[-1]]) / 2;
+      v = get_mid<Item>(v, data[heap[-1]]);
     }
     return v;
   }

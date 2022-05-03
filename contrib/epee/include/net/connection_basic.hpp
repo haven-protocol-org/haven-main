@@ -8,7 +8,7 @@
 // ! (how ever if in some wonderful juristdictions that is not the case, then why not make another sub-class withat that members and licence it as epee part)
 // ! Working on above premise, IF this is valid in your juristdictions, then consider this code as released as:
 
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -132,10 +132,10 @@ class connection_basic { // not-templated base class for rapid developmet of som
 		ssl_support_t get_ssl_support() const { return m_ssl_support; }
 		void disable_ssl() { m_ssl_support = epee::net_utils::ssl_support_t::e_ssl_support_disabled; }
 
-		bool handshake(boost::asio::ssl::stream_base::handshake_type type)
+		bool handshake(boost::asio::ssl::stream_base::handshake_type type, boost::asio::const_buffer buffer = {})
 		{
 			//m_state != nullptr verified in constructor
-			return m_state->ssl_options().handshake(socket_, type);
+			return m_state->ssl_options().handshake(socket_, type, buffer);
 		}
 
 		template<typename MutableBufferSequence, typename ReadHandler>

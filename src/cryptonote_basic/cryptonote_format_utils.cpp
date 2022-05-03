@@ -1140,12 +1140,12 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  void get_blob_hash(const epee::span<const char>& blob, crypto::hash& res)
+  void get_blob_hash(const blobdata_ref& blob, crypto::hash& res)
   {
     cn_fast_hash(blob.data(), blob.size(), res);
   }
   //---------------------------------------------------------------
-  void get_blob_hash(const blobdata_ref& blob, crypto::hash& res)
+  void get_blob_hash(const blobdata& blob, crypto::hash& res)
   {
     cn_fast_hash(blob.data(), blob.size(), res);
   }
@@ -1241,7 +1241,7 @@ namespace cryptonote
     return h;
   }
   //---------------------------------------------------------------
-  crypto::hash get_blob_hash(const epee::span<const char>& blob)
+  crypto::hash get_blob_hash(const blobdata_ref& blob)
   {
     crypto::hash h = null_hash;
     get_blob_hash(blob, h);

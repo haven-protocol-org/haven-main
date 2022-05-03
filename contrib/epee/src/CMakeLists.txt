@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019, The Monero Project
+# Copyright (c) 2014-2020, The Monero Project
 # 
 # All rights reserved.
 # 
@@ -27,7 +27,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-add_library(epee STATIC byte_slice.cpp byte_stream.cpp hex.cpp abstract_http_client.cpp http_auth.cpp mlog.cpp net_helper.cpp net_utils_base.cpp string_tools.cpp
+add_library(epee byte_slice.cpp byte_stream.cpp hex.cpp abstract_http_client.cpp http_auth.cpp mlog.cpp net_helper.cpp net_utils_base.cpp string_tools.cpp
     wipeable_string.cpp levin_base.cpp memwipe.c connection_basic.cpp network_throttle.cpp network_throttle-detail.cpp mlocker.cpp buffer.cpp net_ssl.cpp
     int-util.cpp)
 
@@ -35,9 +35,7 @@ if (USE_READLINE AND (GNU_READLINE_FOUND OR (DEPENDS AND NOT MINGW)))
   add_library(epee_readline STATIC readline_buffer.cpp)
 endif()
 
-if(HAVE_C11)
-SET_PROPERTY(SOURCE memwipe.c PROPERTY COMPILE_FLAGS -std=c11)
-endif()
+set_property(SOURCE memwipe.c PROPERTY C_STANDARD 11)
 
 # Build and install libepee if we're building for GUI
 if (BUILD_GUI_DEPS)
@@ -60,14 +58,23 @@ target_link_libraries(epee
     ${Boost_CHRONO_LIBRARY}
     ${Boost_FILESYSTEM_LIBRARY}
     ${Boost_THREAD_LIBRARY}
-  PRIVATE
+    ${Boost_REGEX_LIBRARY}
+    ${Boost_SYSTEM_LIBRARY}
     ${OPENSSL_LIBRARIES}
+  PRIVATE
     ${EXTRA_LIBRARIES})
 
 if (USE_READLINE AND (GNU_READLINE_FOUND OR (DEPENDS AND NOT MINGW)))
   target_link_libraries(epee_readline
     PUBLIC
       easylogging
+      ${Boost_SYSTEM_LIBRARY}
     PRIVATE
     ${GNU_READLINE_LIBRARY})
 endif()
+
+target_include_directories(epee
+  PUBLIC
+    "${EPEE_INCLUDE_DIR_BASE}"
+    "${OPENSSL_INCLUDE_DIR}")
+

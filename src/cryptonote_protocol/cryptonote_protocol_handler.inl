@@ -988,7 +988,6 @@ namespace cryptonote
       return 1;
     }
 
-    relay_method tx_relay;
     /* If the txes were received over i2p/tor, the default is to "forward"
        with a randomized delay to further enhance the "white noise" behavior,
        potentially making it harder for ISP-level spies to determine which

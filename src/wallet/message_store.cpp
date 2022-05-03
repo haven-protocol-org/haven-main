@@ -750,6 +750,76 @@ void message_store::write_to_file(const multisig_wallet_state &state, const std:
 
   crypto::chacha_key key;
   crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, HAVEN_CHACHA_ROUNDS);
+
+  file_data write_file_data = {};
+  write_file_data.magic_string = "MMS";
+  write_file_data.file_version = 0;
+  write_file_data.iv = crypto::rand<crypto::chacha_iv>();
+  std::string encrypted_data;
+  encrypted_data.resize(buf.size());
+  crypto::chacha20(buf.data(), buf.size(), key, write_file_data.iv, &encrypted_data[0]);
+  write_file_data.encrypted_data = encrypted_data;
+
+  std::stringstream file_oss;
+  binary_archive<true> file_ar(file_oss);
+  THROW_WALLET_EXCEPTION_IF(!::serialization::serialize(file_ar, write_file_data), tools::error::wallet_internal_error, "Failed to serialize MMS state");
+
+  bool success = epee::file_io_utils::save_string_to_file(filename, file_oss.str());
+  THROW_WALLET_EXCEPTION_IF(!success, tools::error::file_save_error, filename);
+}
+
+void message_store::read_from_file(const multisig_wallet_state &state, const std::string &filename, bool load_deprecated_formats)
+{
+  boost::system::error_code ignored_ec;
+  bool file_exists = boost::filesystem::exists(filename, ignored_ec);
+  if (!file_exists)
+  {
+    // Simply do nothing if the file is not there; allows e.g. easy recovery
+    // from problems with the MMS by deleting the file
+    MINFO("No message store file found: " << filename);
+    return;
+  }
+
+  std::string buf;
+  bool success = epee::file_io_utils::load_file_to_string(filename, buf);
+  THROW_WALLET_EXCEPTION_IF(!success, tools::error::file_read_error, filename);
+
+  bool loaded = false;
+  file_data read_file_data;
+  try
+  {
+    std::stringstream iss;
+    iss << buf;
+    binary_archive<false> ar(iss);
+    if (::serialization::serialize(ar, read_file_data))
+      if (::serialization::check_stream_state(ar))
+        loaded = true;
+  }
+  catch (...) {}
+  if (!loaded && load_deprecated_formats)
+  {
+    try
+    {
+      std::stringstream iss;
+      iss << buf;
+      boost::archive::portable_binary_iarchive ar(iss);
+      ar >> read_file_data;
+      loaded = true;
+    }
+    catch (const std::exception &e)
+    {
+      MERROR("MMS file " << filename << " has bad structure <iv,encrypted_data>: " << e.what());
+      THROW_WALLET_EXCEPTION_IF(true, tools::error::file_read_error, filename);
+    }
+  }
+  if (!loaded)
+  {
+    MERROR("MMS file " << filename << " has bad structure <iv,encrypted_data>");
+    THROW_WALLET_EXCEPTION_IF(true, tools::error::file_read_error, filename);
+  }
+
+  crypto::chacha_key key;
+  crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, 1);
   std::string decrypted_data;
   decrypted_data.resize(read_file_data.encrypted_data.size());
   crypto::chacha20(read_file_data.encrypted_data.data(), read_file_data.encrypted_data.size(), key, read_file_data.iv, &decrypted_data[0]);

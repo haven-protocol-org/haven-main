@@ -48,7 +48,7 @@
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/account_boost_serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "net/http_client.h"
+#include "net/http.h"
 #include "storages/http_abstract_invoke.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -282,7 +282,7 @@ private:
     static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key, hw::device &hwdev, uint64_t kdf_rounds);
     static bool query_device(hw::device::device_type& device_type, const std::string& keys_file_name, const epee::wipeable_string& password, uint64_t kdf_rounds = 1);
 
-    wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, uint64_t kdf_rounds = 1, bool unattended = false, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory = std::unique_ptr<epee::net_utils::http::http_simple_client_factory>(new epee::net_utils::http::http_simple_client_factory()));
+    wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, uint64_t kdf_rounds = 1, bool unattended = false, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory = std::unique_ptr<epee::net_utils::http::http_client_factory>(new net::http::client_factory()));
     ~wallet2();
 
     struct multisig_info
@@ -328,7 +328,7 @@ private:
       uint64_t m_block_height;
       cryptonote::transaction_prefix m_tx;
       crypto::hash m_txid;
-      size_t m_internal_output_index;
+      uint64_t m_internal_output_index;
       uint64_t m_global_output_index;
       uint64_t m_asset_type_output_index;
       bool m_asset_type_output_index_known;
@@ -341,7 +341,7 @@ private:
       bool m_rct;
       bool m_key_image_known;
       bool m_key_image_request; // view wallets: we want to request it; cold wallets: it was requested
-      size_t m_pk_index;
+      uint64_t m_pk_index;
       cryptonote::subaddress_index m_subaddr_index;
       bool m_key_image_partial;
       std::vector<rct::key> m_multisig_k;
@@ -406,6 +406,23 @@ private:
       bool m_offshore_to_offshore;
       bool m_onshore;
       cryptonote::subaddress_index m_subaddr_index;
+
+      BEGIN_SERIALIZE_OBJECT()
+        VERSION_FIELD(0)
+        FIELD(m_tx_hash)
+        VARINT_FIELD(m_amount)
+        FIELD(m_asset_type)
+        FIELD(m_amounts)
+        VARINT_FIELD(m_fee)
+        VARINT_FIELD(m_block_height)
+        VARINT_FIELD(m_unlock_time)
+        VARINT_FIELD(m_timestamp)
+        FIELD(m_coinbase)
+        FIELD(m_offshore)
+        FIELD(m_offshore_to_offshore)
+        FIELD(m_onshore)
+        FIELD(m_subaddr_index)
+      END_SERIALIZE()
     };
 
     struct address_tx : payment_details
@@ -445,7 +462,6 @@ private:
       bool m_onshore;
       std::string m_source_currency_type; // we need for the fee asset type
       uint64_t m_fee; // (in source currency)
-    };
 
       BEGIN_SERIALIZE_OBJECT()
         VERSION_FIELD(1)
@@ -559,7 +575,7 @@ private:
     };
 
     typedef std::vector<transfer_details> transfer_container;
-    typedef std::unordered_multimap<crypto::hash, payment_details> payment_container;
+    typedef serializable_unordered_multimap<crypto::hash, payment_details> payment_container;
 
     struct multisig_sig
     {
@@ -618,7 +634,7 @@ private:
     struct unsigned_tx_set
     {
       std::vector<tx_construction_data> txes;
-      std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> transfers;
+      serializable_unordered_map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> transfers;
 
       BEGIN_SERIALIZE_OBJECT()
         VERSION_FIELD(0)
@@ -630,7 +646,7 @@ private:
     struct signed_tx_set
     {
       std::vector<pending_tx> ptx;
-      std::map<std::string, std::vector<crypto::key_image>> key_images;
+      serializable_unordered_map<std::string, std::vector<crypto::key_image>> key_images;
       serializable_unordered_map<crypto::public_key, crypto::key_image> tx_key_images;
 
       BEGIN_SERIALIZE_OBJECT()
@@ -903,7 +919,7 @@ private:
     bool deinit();
     bool init(std::string daemon_address = "http://localhost:8080",
       boost::optional<epee::net_utils::http::login> daemon_login = boost::none,
-      boost::asio::ip::tcp::endpoint proxy = {},
+      const std::string &proxy = "",
       uint64_t upper_transaction_weight_limit = 0,
       bool trusted_daemon = true,
       epee::net_utils::ssl_options_t ssl_options = epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
@@ -1429,13 +1445,15 @@ private:
     const boost::optional<epee::net_utils::http::login>& get_daemon_login() const { return m_daemon_login; }
     uint64_t get_daemon_blockchain_height(std::string& err);
     uint64_t get_daemon_blockchain_target_height(std::string& err);
-   /*!
+    uint64_t get_daemon_adjusted_time();
+
+    /*!
     * \brief Calculates the approximate blockchain height from current date/time.
     */
     uint64_t get_approximate_blockchain_height() const;
     uint64_t estimate_blockchain_height();
     std::vector<size_t> select_available_outputs_from_histogram(uint64_t count, bool atleast, bool unlocked, bool allow_rct);
-    std::vector<size_t> select_available_outputs(const std::function<bool(const transfer_details &td)> &f) const;
+    std::vector<size_t> select_available_outputs(const std::function<bool(const transfer_details &td)> &f);
     std::vector<size_t> select_available_unmixable_outputs();
     std::vector<size_t> select_available_mixable_outputs();
 
@@ -1491,9 +1509,9 @@ private:
     bool verify_with_public_key(const std::string &data, const crypto::public_key &public_key, const std::string &signature) const;
 
     // Import/Export wallet data
-    std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> export_outputs(bool all = false) const;
+    serializable_unordered_map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> export_outputs(bool all = false) const;
     std::string export_outputs_to_str(bool all = false) const;
-    size_t import_outputs(const std::map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> &outputs);
+    size_t import_outputs(const std::unordered_map<std::string, std::pair<size_t, std::vector<tools::wallet2::transfer_details>>> &outputs);
     size_t import_outputs_from_str(const std::string &outputs_st);
     payment_container export_payments() const;
     void import_payments(const payment_container &payments);
@@ -1504,7 +1522,7 @@ private:
     std::pair<size_t, std::vector<std::pair<crypto::key_image, crypto::signature>>> export_key_images(bool all = false) const;
     uint64_t import_key_images(const std::vector<std::pair<crypto::key_image, crypto::signature>> &signed_key_images, size_t offset, uint64_t &spent, uint64_t &unspent, bool check_spent = true);
     uint64_t import_key_images(const std::string &filename, uint64_t &spent, uint64_t &unspent);
-    bool import_key_images(std::map<std::string, std::vector<crypto::key_image>>& key_images, size_t offset=0, boost::optional<std::unordered_set<size_t>> selected_transfers=boost::none);
+    bool import_key_images(std::unordered_map<std::string, std::vector<crypto::key_image>>& key_images, size_t offset=0, boost::optional<std::unordered_set<size_t>> selected_transfers=boost::none);
     bool import_key_images(signed_tx_set & signed_tx, size_t offset=0, bool only_selected_transfers=false);
     crypto::public_key get_tx_pub_key_from_received_outs(const tools::wallet2::transfer_details &td) const;
 
@@ -1675,7 +1693,7 @@ private:
 
     bool is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_height) const;
     void hash_m_transfer(const transfer_details & transfer, crypto::hash &hash) const;
-    uint64_t hash_m_transfers(int64_t transfer_height, crypto::hash &hash) const;
+    uint64_t hash_m_transfers(boost::optional<uint64_t> transfer_height, crypto::hash &hash) const;
     void finish_rescan_bc_keep_key_images(uint64_t transfer_height, const crypto::hash &hash);
     void enable_dns(bool enable) { m_use_dns = enable; }
     void set_offline(bool offline = true);
@@ -1746,7 +1764,7 @@ private:
     bool is_spent(size_t idx, bool strict = true) const;
     void set_offshore_spent(size_t idx, uint64_t height);
     void set_offshore_unspent(size_t idx);
-    void get_outs(const transfer_container &specific_transfers, const std::string rct_asset_type, std::vector<std::vector<get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count);
+    void get_outs(const transfer_container &specific_transfers, const std::string rct_asset_type, std::vector<std::vector<get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count, bool rct);
     void get_outs(const transfer_container &specific_transfers, const std::string rct_asset_type, std::vector<std::vector<get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count, uint64_t &num_spendable_global_outs, uint64_t &num_outs);
     bool tx_add_fake_output(std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, uint64_t global_index, const crypto::public_key& tx_public_key, const rct::key& mask, uint64_t real_index, bool unlocked) const;
     bool should_pick_a_second_output(bool use_rct, size_t n_transfers, const std::vector<size_t> &unused_transfers_indices, const std::vector<size_t> &unused_dust_indices, const transfer_container &specific_transfers) const;
@@ -1826,7 +1844,7 @@ private:
 
     transfer_container m_transfers;
     transfer_container m_offshore_transfers;
-    std::map<std::string, transfer_container> m_xasset_transfers;
+    serializable_map<std::string, transfer_container> m_xasset_transfers;
     payment_container m_payments;
     serializable_unordered_map<crypto::key_image, size_t> m_key_images;
     serializable_unordered_map<crypto::public_key, size_t> m_pub_keys;

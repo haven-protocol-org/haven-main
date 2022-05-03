@@ -1722,11 +1722,6 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
     }
   }
   
-  std::shared_ptr<tools::Notify> block_notify = m_block_notify;
-  if (block_notify)
-    for (const auto &bei: alt_chain)
-      block_notify->notify("%s", epee::string_tools::pod_to_hex(get_block_hash(bei.bl)).c_str(), NULL);
-
   MGINFO_GREEN("REORGANIZE SUCCESS! on height: " << split_height << ", new blockchain size: " << m_db->height());
   return true;
 }
@@ -2456,7 +2451,6 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
 //------------------------------------------------------------------
 bool Blockchain::create_block_template(block& b, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash)
 {
-  return create_block_template(b, NULL, miner_address, diffic, height, expected_reward, ex_nonce);
   return create_block_template(b, NULL, miner_address, diffic, height, expected_reward, ex_nonce, seed_height, seed_hash);
 }
 //------------------------------------------------------------------
@@ -3537,8 +3531,8 @@ bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, cons
 
   db_rtxn_guard rtxn_guard(m_db);
   total_height = get_current_blockchain_height();
-  blocks.reserve(std::min(std::min(max_count, (size_t)10000), (size_t)(total_height - start_height)));
-  CHECK_AND_ASSERT_MES(m_db->get_blocks_from(start_height, 3, max_count, FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE, blocks, pruned, true, get_miner_tx_hash),
+  blocks.reserve(std::min(std::min(max_block_count, (size_t)10000), (size_t)(total_height - start_height)));
+  CHECK_AND_ASSERT_MES(m_db->get_blocks_from(start_height, 3, max_block_count, max_tx_count, FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE, blocks, pruned, true, get_miner_tx_hash),
       false, "Error getting blocks");
 
   return true;

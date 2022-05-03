@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,7 +32,6 @@
 #include <stddef.h>
 #include <vector>
 #include <string>
-#include <limits>
 #include "memwipe.h"
 #include "fnv1.h"
 

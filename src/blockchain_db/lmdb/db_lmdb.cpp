@@ -3565,7 +3565,7 @@ bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_cou
     RCURSOR(txs_prunable);
   }
 
-  blocks.reserve(std::min<size_t>(max_count, 10000)); // guard against very large max count if only checking bytes
+  blocks.reserve(std::min<size_t>(max_block_count, 10000)); // guard against very large max count if only checking bytes
   const uint64_t blockchain_height = height();
   uint64_t size = 0;
   size_t num_txes = 0;
@@ -5529,7 +5529,7 @@ void BlockchainLMDB::migrate_0_1()
         result = mdb_cursor_get(c_txs, &hk, &v, MDB_SET);
         if (result)
           throw0(DB_ERROR(lmdb_error("Failed to get record from txs: ", result).c_str()));
-        bd.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
+        bd = {reinterpret_cast<char*>(v.mv_data), v.mv_size};
         if (!parse_and_validate_tx_from_blob(bd, tx))
           throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
         add_transaction(null_hash, std::make_pair(std::move(tx), bd), &b.tx_hashes[j]);
@@ -6392,7 +6392,7 @@ void BlockchainLMDB::migrate_6_7()
       result = mdb_cursor_open(txn, m_tx_outputs, &c_tx_outputs);
       
       std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
-      bool r = get_blocks_from(i, 1, 1000, (1024*1024*1000), blocks, true, false, true);
+      bool r = get_blocks_from(i, 1, 1000, 10000, (1024*1024*1000), blocks, true, false, true);
       if (!r)
 	      throw0(DB_ERROR("Failed to enumerate block information"));
 
@@ -6664,7 +6664,7 @@ void BlockchainLMDB::migrate_7_8()
       result = mdb_cursor_open(txn, m_output_amounts, &c_output_amounts);
       
       std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
-      bool r = get_blocks_from(i, 1, 1000, (1024*1024*1000), blocks, true, false, true);
+      bool r = get_blocks_from(i, 1, 1000, 10000, (1024*1024*1000), blocks, true, false, true);
       if (!r)
 	      throw0(DB_ERROR("Failed to enumerate block information"));
 

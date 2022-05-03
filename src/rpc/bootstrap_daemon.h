@@ -21,12 +21,12 @@ namespace cryptonote
   public:
     bootstrap_daemon(
       std::function<std::map<std::string, bool>()> get_public_nodes,
-      bool rpc_payment_enabled),
+      bool rpc_payment_enabled,
       const std::string &proxy);
     bootstrap_daemon(
       const std::string &address,
       boost::optional<epee::net_utils::http::login> credentials,
-      bool rpc_payment_enabled),
+      bool rpc_payment_enabled,
       const std::string &proxy);
 
     std::string address() const noexcept;

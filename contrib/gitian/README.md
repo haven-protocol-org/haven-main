@@ -31,6 +31,8 @@ This guide explains how to set up the environment, and how to start the builds.
 
 * Gitian gives you the option of using any of 3 different virtualization tools: `kvm`, `docker` or `lxc`. This documentation will only show how to build with `lxc` and `docker` (documentation for `kvm` is welcome). Building with `lxc` is the default, but is more complicated, so we recommend docker your first time.
 
+* For a shortcut using `docker` follow the instructions in [DOCKRUN.md](DOCKRUN.md) instead
+of following the rest of this document..
 
 ## Create the gitianuser account
 
@@ -126,7 +128,7 @@ Setup for LXC:
 
 ```bash
 GH_USER=fluffypony
-VERSION=v0.16.0.3
+VERSION=v0.17.3.0
 
 ./gitian-build.py --setup $GH_USER $VERSION
 ```
@@ -182,7 +184,7 @@ If you chose to do detached signing using `--detach-sign` above (recommended), y
 
 ```bash
 GH_USER=fluffypony
-VERSION=v0.16.0.3
+VERSION=v0.17.3.0
 
 gpg --detach-sign ${VERSION}-linux/${GH_USER}/monero-linux-*-build.assert
 gpg --detach-sign ${VERSION}-win/${GH_USER}/monero-win-*-build.assert

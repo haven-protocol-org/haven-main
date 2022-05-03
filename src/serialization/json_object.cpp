@@ -1351,7 +1351,7 @@ void fromJsonValue(const rapidjson::Value& val, rct::rctSig& sig)
   if (sig.type != rct::RCTTypeNull)
   {
     GET_FROM_JSON_OBJECT(val, sig.ecdhInfo, encrypted);
-    GET_FROM_JSON_OBJECT(val, commitments, commitments);
+    GET_FROM_JSON_OBJECT(val, sig.outPk, commitments);
     GET_FROM_JSON_OBJECT(val, sig.txnFee, fee);
   }
   

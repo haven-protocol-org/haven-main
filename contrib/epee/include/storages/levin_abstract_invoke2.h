@@ -28,6 +28,7 @@
 
 #include "portable_storage_template_helper.h"
 #include <boost/utility/value_init.hpp>
+#include <functional>
 #include "span.h"
 #include "net/levin_base.h"
 
@@ -49,6 +50,11 @@ namespace
     snprintf(buf, sizeof(buf),  "command-%u", command);
     return on_levin_traffic(context, initiator, sent, error, bytes, buf);
   }
+  static const constexpr epee::serialization::portable_storage::limits_t default_levin_limits = {
+    8192, // objects
+    16384, // fields
+    16384, // strings
+  };
 }
 
 namespace epee
@@ -74,7 +80,7 @@ namespace epee
         return false;
       }
       serialization::portable_storage stg_ret;
-      if(!stg_ret.load_from_binary(buff_to_recv))
+      if(!stg_ret.load_from_binary(buff_to_recv, &default_levin_limits))
       {
         LOG_ERROR("Failed to load_from_binary on command " << command);
         return false;
@@ -120,7 +126,7 @@ namespace epee
         return false;
       }
       typename serialization::portable_storage stg_ret;
-      if(!stg_ret.load_from_binary(buff_to_recv))
+      if(!stg_ret.load_from_binary(buff_to_recv, &default_levin_limits))
       {
         on_levin_traffic(context, true, false, true, buff_to_recv.size(), command);
         LOG_ERROR("Failed to load_from_binary on command " << command);
@@ -151,7 +157,7 @@ namespace epee
           return false;
         }
         serialization::portable_storage stg_ret;
-        if(!stg_ret.load_from_binary(buff))
+        if(!stg_ret.load_from_binary(buff, &default_levin_limits))
         {
           on_levin_traffic(context, true, false, true, buff.size(), command);
           LOG_ERROR("Failed to load_from_binary on command " << command);
@@ -201,7 +207,7 @@ namespace epee
     int buff_to_t_adapter(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, callback_t cb, t_context& context )
     {
       serialization::portable_storage strg;
-      if(!strg.load_from_binary(in_buff))
+      if(!strg.load_from_binary(in_buff, &default_levin_limits))
       {
         on_levin_traffic(context, false, false, true, in_buff.size(), command);
         LOG_ERROR("Failed to load_from_binary in command " << command);
@@ -235,7 +241,7 @@ namespace epee
     int buff_to_t_adapter(t_owner* powner, int command, const epee::span<const uint8_t> in_buff, callback_t cb, t_context& context)
     {
       serialization::portable_storage strg;
-      if(!strg.load_from_binary(in_buff))
+      if(!strg.load_from_binary(in_buff, &default_levin_limits))
       {
         on_levin_traffic(context, false, false, true, in_buff.size(), command);
         LOG_ERROR("Failed to load_from_binary in notify " << command);
@@ -295,20 +301,20 @@ namespace epee
 
 #define HANDLE_INVOKE2(command_id, func, type_name_in, typename_out) \
   if(!is_notify && command_id == command) \
-  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, type_name_in, typename_out>(this, command, in_buff, buff_out, boost::bind(func, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, boost::placeholders::_4), context);}
+  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, type_name_in, typename_out>(this, command, in_buff, buff_out, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4), context);}
 
 #define HANDLE_INVOKE_T2(COMMAND, func) \
   if(!is_notify && COMMAND::ID == command) \
-  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename COMMAND::request, typename COMMAND::response>(command, in_buff, buff_out, boost::bind(func, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, boost::placeholders::_4), context);}
+  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename COMMAND::request, typename COMMAND::response>(command, in_buff, buff_out, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4), context);}
 
 
 #define HANDLE_NOTIFY2(command_id, func, type_name_in) \
   if(is_notify && command_id == command) \
-  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, type_name_in>(this, command, in_buff, boost::bind(func, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3), context);}
+  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, type_name_in>(this, command, in_buff, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), context);}
 
 #define HANDLE_NOTIFY_T2(NOTIFY, func) \
   if(is_notify && NOTIFY::ID == command) \
-  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename NOTIFY::request>(this, command, in_buff, boost::bind(func, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3), context);}
+  {handled=true;return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename NOTIFY::request>(this, command, in_buff, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), context);}
 
 
 #define CHAIN_INVOKE_MAP2(func) \

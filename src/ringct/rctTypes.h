@@ -418,6 +418,34 @@ namespace rct {
         }
         return ar.stream().good();
       }
+
+      BEGIN_SERIALIZE_OBJECT()
+        FIELD(type)
+        FIELD(message)
+        FIELD(mixRing)
+        FIELD(pseudoOuts)
+        FIELD(ecdhInfo)
+        FIELD(outPk)
+        if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN)) {
+          FIELD(outPk_usd)
+          if (type == RCTTypeCLSAGN)
+            FIELD(outPk_xasset)
+        }
+        VARINT_FIELD(txnFee)
+        if (type == RCTTypeHaven2)
+          VARINT_FIELD(txnOffshoreFee)
+        else if ((type == RCTTypeCLSAG) || (type == RCTTypeCLSAGN)) {
+          VARINT_FIELD(txnFee_usd)
+          if (type == RCTTypeCLSAGN)
+            VARINT_FIELD(txnFee_xasset)
+          VARINT_FIELD(txnOffshoreFee)
+          VARINT_FIELD(txnOffshoreFee_usd)
+          if (type == RCTTypeCLSAGN)
+            VARINT_FIELD(txnOffshoreFee_xasset)
+        }
+        if (type == RCTTypeHaven2)
+          FIELD(maskSums)
+      END_SERIALIZE()
     };
     struct rctSigPrunable {
         std::vector<rangeSig> rangeSigs;
@@ -587,6 +615,13 @@ namespace rct {
           return ar.stream().good();
         }
 
+        BEGIN_SERIALIZE_OBJECT()
+          FIELD(rangeSigs)
+          FIELD(bulletproofs)
+          FIELD(MGs)
+          FIELD(CLSAGs)
+          FIELD(pseudoOuts)
+        END_SERIALIZE()
     };
     struct rctSig: public rctSigBase {
         rctSigPrunable p;
@@ -600,6 +635,11 @@ namespace rct {
         {
           return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 ? p.pseudoOuts : pseudoOuts;
         }
+
+        BEGIN_SERIALIZE_OBJECT()
+          FIELDS((rctSigBase&)*this)
+          FIELD(p)
+        END_SERIALIZE()
     };
 
     //other basepoint H = toPoint(cn_fast_hash(G)), G the basepoint

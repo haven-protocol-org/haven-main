@@ -117,6 +117,9 @@ namespace epee
       check(more);
     }
 
+    //! Reset write position, but do not release internal memory. \post `size() == 0`.
+    void clear() noexcept { next_write_ = buffer_.get(); }
+
     /*! Copy `length` bytes starting at `ptr` to end of stream.
         \throw std::range_error If exceeding max size_t value.
         \throw std::bad_alloc If allocation fails. */
@@ -185,7 +188,7 @@ namespace epee
     void put_n(const std::uint8_t ch, const std::size_t count)
     {
       check(count);
-      std::memset(tellp(), count, ch);
+      std::memset(tellp(), ch, count);
       next_write_ += count;
     }
 

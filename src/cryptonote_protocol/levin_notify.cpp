@@ -445,7 +445,6 @@ namespace levin
 
 
         MDEBUG("Queueing " << txs.size() << " transaction(s) for Dandelion++ fluffing");
-
         for (auto &e: zone->contexts)
         {
           auto &id = e.first;
@@ -767,7 +766,7 @@ namespace levin
       return;
 
     zone_->strand.dispatch(
-      update_channels{zone_, get_out_connections(*(zone_->p2p, core_))}
+      update_channels{zone_, get_out_connections(*(zone_->p2p), core_)}
     );
   }
 
@@ -882,11 +881,9 @@ namespace levin
         case relay_method::block:
           return false;
         case relay_method::stem:
-	  tx_relay = relay_method::fluff; // don't set stempool embargo when skipping to fluff
-	  /* fallthrough */
         case relay_method::forward:
         case relay_method::local:
-          if (zone_->is_public)
+          if (zone_->nzone == epee::net_utils::zone::public_)
           {
 	    // this will change a local/forward tx to stem or fluff ...
             zone_->strand.dispatch(
