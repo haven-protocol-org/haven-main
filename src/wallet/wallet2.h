@@ -1123,7 +1123,7 @@ private:
     bool check_connection(uint32_t *version = NULL, bool *ssl = NULL, uint32_t timeout = 200000);
     void get_transfers(wallet2::transfer_container& incoming_transfers) const;
     void get_offshore_transfers(wallet2::transfer_container& incoming_transfers) const;
-    void get_xasset_transfers(std::map<std::string, wallet2::transfer_container>& incoming_transfers) const;
+    void get_xasset_transfers(std::unordered_map<std::string, wallet2::transfer_container>& incoming_transfers) const;
     void get_xasset_transfers(wallet2::transfer_container& incoming_transfers, const std::string& asset_type);
     void get_payments(const crypto::hash& payment_id, std::list<wallet2::payment_details>& payments, uint64_t min_height = 0, const boost::optional<uint32_t>& subaddr_account = boost::none, const std::set<uint32_t>& subaddr_indices = {}) const;
     void get_payments(std::list<std::pair<crypto::hash,wallet2::payment_details>>& payments, uint64_t min_height, uint64_t max_height = (uint64_t)-1, const boost::optional<uint32_t>& subaddr_account = boost::none, const std::set<uint32_t>& subaddr_indices = {}) const;
@@ -1844,7 +1844,7 @@ private:
 
     transfer_container m_transfers;
     transfer_container m_offshore_transfers;
-    serializable_map<std::string, transfer_container> m_xasset_transfers;
+    serializable_unordered_map<std::string, transfer_container> m_xasset_transfers;
     payment_container m_payments;
     serializable_unordered_map<crypto::key_image, size_t> m_key_images;
     serializable_unordered_map<crypto::public_key, size_t> m_pub_keys;
@@ -1856,8 +1856,8 @@ private:
     std::vector<tools::wallet2::address_book_row> m_address_book;
     std::pair<serializable_map<std::string, std::string>, std::vector<std::string>> m_account_tags;
     uint64_t m_upper_transaction_weight_limit; //TODO: auto-calc this value or request from daemon, now use some fixed value
-    serializable_map<std::string, std::vector<std::vector<tools::wallet2::multisig_info>>> m_multisig_rescan_info;
-    serializable_map<std::string, std::vector<std::vector<rct::key>>> m_multisig_rescan_k;
+    serializable_unordered_map<std::string, std::vector<std::vector<tools::wallet2::multisig_info>>> m_multisig_rescan_info;
+    serializable_unordered_map<std::string, std::vector<std::vector<rct::key>>> m_multisig_rescan_k;
     serializable_unordered_map<crypto::public_key, crypto::key_image> m_cold_key_images;
 
     std::atomic<bool> m_run;

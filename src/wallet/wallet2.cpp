@@ -6691,7 +6691,7 @@ void wallet2::get_offshore_transfers(wallet2::transfer_container& incoming_trans
   incoming_transfers = m_offshore_transfers;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_xasset_transfers(std::map<std::string, wallet2::transfer_container>& incoming_transfers) const
+void wallet2::get_xasset_transfers(std::unordered_map<std::string, wallet2::transfer_container>& incoming_transfers) const
 {
   incoming_transfers = m_xasset_transfers;
 }

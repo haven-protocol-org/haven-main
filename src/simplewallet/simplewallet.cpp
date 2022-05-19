@@ -6296,7 +6296,7 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
       } else if (i.first == "XUSD") {
 	m_wallet->get_offshore_transfers(transfers);
       } else {
-	std::map<std::string, tools::wallet2::transfer_container> xasset_transfers;
+	std::unordered_map<std::string, tools::wallet2::transfer_container> xasset_transfers;
 	m_wallet->get_xasset_transfers(xasset_transfers);
 	transfers = xasset_transfers[i.first];
       }

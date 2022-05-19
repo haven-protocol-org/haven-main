@@ -38,6 +38,7 @@
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
+#include "offshore/asset_types.h"
 
 using namespace epee;
 
@@ -1632,4 +1633,171 @@ namespace cryptonote
     sc_sub((unsigned char*)key.data, (const unsigned char*)key.data, (const unsigned char*)hash.data);
     return key;
   }
+
+  /*
+    Returns the input and output asset types for a given tx.
+  */
+  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
+
+    // Clear the source
+    std::set<std::string> source_asset_types;
+    source = "";
+    for (size_t i = 0; i < tx.vin.size(); i++) {
+      if (tx.vin[i].type() == typeid(txin_gen)) {
+        if (!is_miner_tx) {
+          LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert("XHV");
+      } else if (tx.vin[i].type() == typeid(txin_to_key)) {
+        source_asset_types.insert("XHV");
+      } else if (tx.vin[i].type() == typeid(txin_offshore)) {
+        source_asset_types.insert("XUSD");
+      } else if (tx.vin[i].type() == typeid(txin_onshore)) {
+        source_asset_types.insert("XUSD");
+      } else if (tx.vin[i].type() == typeid(txin_xasset)) {
+        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert(xasset);
+      } else {
+        LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
+        return false;
+      }
+    }
+
+    std::vector<std::string> sat;
+    sat.reserve(source_asset_types.size());
+    std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
+    
+    // Sanity check that we only have 1 source asset type
+    if (sat.size() != 1) {
+      LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
+      return false;
+    }
+    source = sat[0];
+    
+    // Clear the destination
+    std::set<std::string> destination_asset_types;
+    destination = "";
+    for (const auto &out: tx.vout) {
+      if (out.target.type() == typeid(txout_to_key)) {
+        destination_asset_types.insert("XHV");
+      } else if (out.target.type() == typeid(txout_offshore)) {
+        destination_asset_types.insert("XUSD");
+      } else if (out.target.type() == typeid(txout_xasset)) {
+        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
+          return false;
+        }
+        destination_asset_types.insert(xasset);
+      } else {
+        LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
+        return false;
+      }
+    }
+
+    std::vector<std::string> dat;
+    dat.reserve(destination_asset_types.size());
+    std::copy(destination_asset_types.begin(), destination_asset_types.end(), std::back_inserter(dat));
+    
+    // Check that we have at least 1 destination_asset_type
+    if (!dat.size()) {
+      LOG_ERROR("No supported destinations asset types detected. Rejecting..");
+      return false;
+    }
+    
+    // Handle miner_txs differently - full validation is performed in validate_miner_transaction()
+    if (is_miner_tx) {
+      destination = "XHV";
+    } else {
+    
+      // Sanity check that we only have 1 or 2 destination asset types
+      if (dat.size() > 2) {
+        LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
+        return false;
+      } else if (dat.size() == 1) {
+        if (dat[0] != source) {
+          LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
+          return false;
+        }
+        destination = dat[0];
+      } else {
+        if (dat[0] == source) {
+          destination = dat[1];
+        } else if (dat[1] == source) {
+          destination = dat[0];
+        } else {
+          LOG_ERROR("Conversion outputs are incorrect asset types (source asset type not found - [" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
+          return false;
+        }
+      }
+    }
+    
+    // check both strSource and strDest are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
+      return false;
+    }
+
+    // Check for the 3 known exploited TXs that converted XJPY to XBTC
+    const std::vector<std::string> exploit_txs = {"4c87e7245142cb33a8ed4f039b7f33d4e4dd6b541a42a55992fd88efeefc40d1",
+                                                  "7089a8faf5bddf8640a3cb41338f1ec2cdd063b1622e3b27923e2c1c31c55418",
+                                                  "ad5d15085594b8f2643f058b05931c3e60966128b4c33298206e70bdf9d41c22"};
+
+    std::string tx_hash = epee::string_tools::pod_to_hex(txid);
+    if (std::find(exploit_txs.begin(), exploit_txs.end(), tx_hash) != exploit_txs.end()) {
+      destination = "XJPY";
+    }
+    return true;
+  }
+
+  //---------------------------------------------------------------
+  bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type) {
+
+    // check both source and destination are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
+      return false;
+    }
+
+    // Find the tx type
+    if (source == destination) {
+      if (source == "XHV") {
+        type = transaction_type::TRANSFER;
+      } else if (source == "XUSD") {
+        type = transaction_type::OFFSHORE_TRANSFER;
+      } else {
+        type = transaction_type::XASSET_TRANSFER;
+      }
+    } else {
+      if (source == "XHV" && destination == "XUSD") {
+        type = transaction_type::OFFSHORE;
+      } else if (source == "XUSD" && destination == "XHV") {
+        type = transaction_type::ONSHORE;
+      } else if (source == "XUSD" && destination != "XHV") {
+        type = transaction_type::XUSD_TO_XASSET;
+      } else if (destination == "XUSD" && source != "XHV") {
+        type = transaction_type::XASSET_TO_XUSD;
+      } else {
+        LOG_ERROR("Invalid conversion from " << source << "to" << destination << ". Rejecting..");
+        return false;
+      }
+    }
+
+    // Return success to caller
+    return true;
+  }
+
 }

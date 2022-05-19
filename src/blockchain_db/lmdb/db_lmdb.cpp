@@ -44,6 +44,7 @@
 #include "file_io_utils.h"
 #include "common/util.h"
 #include "common/pruning.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "crypto/crypto.h"

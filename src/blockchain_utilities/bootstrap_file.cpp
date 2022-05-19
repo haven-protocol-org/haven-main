@@ -113,7 +113,6 @@ bool BootstrapFile::open_writer(const boost::filesystem::path& file_path, uint64
   return true;
 }
 
-
 bool BootstrapFile::initialize_file(uint64_t first_block, uint64_t last_block)
 {
   const uint32_t file_magic = blockchain_raw_magic;
@@ -327,7 +326,7 @@ bool BootstrapFile::store_blockchain_raw(Blockchain* _blockchain_storage, tx_mem
 }
 
 uint64_t BootstrapFile::seek_to_first_chunk(std::ifstream& import_file, uint8_t &major_version, uint8_t &minor_version,
-                                            uint64_t &block_first, uint64_t &block_last)
+	uint64_t &block_first, uint64_t &block_last)
 {
   uint32_t file_magic;
 
@@ -373,7 +372,7 @@ uint64_t BootstrapFile::seek_to_first_chunk(std::ifstream& import_file, uint8_t 
   MINFO("bootstrap header size: " << bfi.header_size);
 
   uint32_t buflen_blocks_info;
-  
+
   import_file.read(buf1, sizeof(buflen_blocks_info));
   str1.assign(buf1, sizeof(buflen_blocks_info));
   if (! import_file)
@@ -381,7 +380,7 @@ uint64_t BootstrapFile::seek_to_first_chunk(std::ifstream& import_file, uint8_t 
   if (! ::serialization::parse_binary(str1, buflen_blocks_info))
     throw std::runtime_error("Error in deserialization of buflen_blocks_info");
   MINFO("bootstrap::blocks_info size: " << buflen_blocks_info);
-  
+
   if (buflen_blocks_info > sizeof(buf1))
     throw std::runtime_error("Error: bootstrap::blocks_info size exceeds buffer size");
   import_file.read(buf1, buflen_blocks_info);
@@ -393,7 +392,7 @@ uint64_t BootstrapFile::seek_to_first_chunk(std::ifstream& import_file, uint8_t 
     throw std::runtime_error("Error in deserialization of bootstrap::blocks_info");
   MINFO("bootstrap first block:" << bbi.block_first);
   MINFO("bootstrap last block:" << bbi.block_last);
-  
+
   uint64_t full_header_size = sizeof(file_magic) + bfi.header_size;
   import_file.seekg(full_header_size);
 
@@ -464,14 +463,14 @@ uint64_t BootstrapFile::count_blocks(const std::string& import_file_path)
 {
   std::streampos dummy_pos;
   uint64_t dummy_height = 0;
-  return count_blocks(import_file_path, dummy_pos, dummy_height);
+  return count_blocks(import_file_path, dummy_pos, dummy_height, dummy_height);
 }
 
 // If seek_height is non-zero on entry, return a stream position <= this height when finished.
 // And return the actual height corresponding to this position. Allows the caller to locate its
 // starting position without having to reread the entire file again.
 uint64_t BootstrapFile::count_blocks(const std::string& import_file_path, std::streampos &start_pos,
-                                     +       uint64_t& seek_height, uint64_t &block_first)
+	uint64_t& seek_height, uint64_t &block_first)
 {
   boost::filesystem::path raw_file_path(import_file_path);
   boost::system::error_code ec;

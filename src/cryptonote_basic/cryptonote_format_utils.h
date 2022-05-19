@@ -39,6 +39,7 @@
 #include "crypto/hash.h"
 #include <unordered_map>
 #include <boost/multiprecision/cpp_int.hpp>
+#include "cryptonote_protocol/enums.h"
 
 namespace epee
 {
@@ -267,4 +268,8 @@ namespace cryptonote
 #define CHECKED_GET_SPECIFIC_VARIANT(variant_var, specific_type, variable_name, fail_return_val) \
   CHECK_AND_ASSERT_MES(variant_var.type() == typeid(specific_type), fail_return_val, "wrong variant type: " << variant_var.type().name() << ", expected " << typeid(specific_type).name()); \
   specific_type& variable_name = boost::get<specific_type>(variant_var);
+
+  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx);
+  bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
+
 }
