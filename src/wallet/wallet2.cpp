@@ -14936,12 +14936,6 @@ cryptonote::blobdata wallet2::export_multisig()
       (asset_type == "XUSD") ? m_offshore_transfers :
       m_xasset_transfers[asset_type];
 
-    // Write out the asset type
-    //ar << asset_type;
-
-    // Write out the number of transfers for this asset type
-    //ar << specific_transfers.size();
-    
     std::vector<tools::wallet2::multisig_info> info;
     info.resize(specific_transfers.size());
     for (size_t n = 0; n < specific_transfers.size(); ++n)
@@ -14974,6 +14968,16 @@ cryptonote::blobdata wallet2::export_multisig()
       info[n].m_signer = signer;
     }
 
+    // Write out the asset type
+    //ar << asset_type;
+    //CHECK_AND_ASSERT_THROW_MES(::serialization::serialize(ar, asset_type), "Failed to serialize multisig data asset type");
+
+    // Write out the number of transfers for this asset type
+    //ar << specific_transfers.size();
+    size_t vec_size = specific_transfers.size();
+    CHECK_AND_ASSERT_THROW_MES(::serialization::serialize(ar, vec_size), "Failed to serialize multisig data vector size");
+
+    // Write out the actual data
     CHECK_AND_ASSERT_THROW_MES(::serialization::serialize(ar, info), "Failed to serialize multisig data");
   }
   
@@ -15055,10 +15059,11 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
     std::map<std::string, std::vector<tools::wallet2::multisig_info>> i_xasset;
     boost::archive::portable_binary_iarchive ar(iss);
     uint64_t asset_count = std::stoull(str_asset_count);
-    for (int i=0; i<asset_count; i++) {
-      std::string asset_type;
+    for (auto &asset_type: offshore::ASSET_TYPES) {
+      //for (int i=0; i<asset_count; i++) {
+      //std::string asset_type;
       uint64_t entry_count;
-      ar >> asset_type;
+      //ar >> asset_type;
       ar >> entry_count;
       ar >> i_xasset[asset_type];
       THROW_WALLET_EXCEPTION_IF(i_xasset[asset_type].size() != entry_count,
