@@ -148,6 +148,7 @@
 
 #define COMMAND_RPC_GET_BLOCKS_FAST_MAX_BLOCK_COUNT     1000
 #define COMMAND_RPC_GET_BLOCKS_FAST_MAX_TX_COUNT        20000
+#define MAX_RPC_CONTENT_LENGTH                          1048576 // 1 MB
 
 #define P2P_LOCAL_WHITE_PEERLIST_LIMIT                  1000
 #define P2P_LOCAL_GRAY_PEERLIST_LIMIT                   5000
@@ -279,12 +280,16 @@ namespace config
     "-----END PUBLIC KEY-----\n";
 
   // Hash domain separators
+  const unsigned char HASH_KEY_MULTISIG_KEY_AGGREGATION[] = "Multisig_key_agg";
   const unsigned char HASH_KEY_TXPROOF_V2[] = "TXPROOF_V2";
   const unsigned char HASH_KEY_CLSAG_ROUND[] = "CLSAG_round";
   const unsigned char HASH_KEY_CLSAG_AGG_0[] = "CLSAG_agg_0";
   const unsigned char HASH_KEY_CLSAG_AGG_1[] = "CLSAG_agg_1";
   const char HASH_KEY_MESSAGE_SIGNING[] = "MoneroMessageSignature";
 
+  // Multisig
+  const uint32_t MULTISIG_MAX_SIGNERS{16};
+  
   namespace testnet
   {
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 0x59f4; //hvt

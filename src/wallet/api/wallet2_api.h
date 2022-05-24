@@ -792,7 +792,7 @@ struct Wallet
     /**
      * @brief makeMultisig - switches wallet in multisig state. The one and only creation phase for N / N wallets
      * @param info - vector of multisig infos from other participants obtained with getMulitisInfo call
-     * @param threshold - number of required signers to make valid transaction. Must be equal to number of participants (N) or N - 1
+     * @param threshold - number of required signers to make valid transaction. Must be <= to number of participants
      * @return in case of N / N wallets returns empty string since no more key exchanges needed. For N - 1 / N wallets returns base58 encoded extra multisig info
      */
     virtual std::string makeMultisig(const std::vector<std::string>& info, uint32_t threshold) = 0;
@@ -805,12 +805,6 @@ struct Wallet
     /**
      * @brief finalizeMultisig - finalizes N - 1 / N multisig wallets creation
      * @param extraMultisigInfo - wallet participants' extra multisig info obtained with makeMultisig call
-     * @return true if success
-     */
-    virtual bool finalizeMultisig(const std::vector<std::string>& extraMultisigInfo) = 0;
-    /**
-     * @brief exportMultisigImages - exports transfers' key images
-     * @param images - output paramter for hex encoded array of images
      * @return true if success
      */
     virtual bool exportMultisigImages(std::string& images) = 0;
