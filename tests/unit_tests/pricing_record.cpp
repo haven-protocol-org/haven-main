@@ -57,6 +57,7 @@ TEST(pricing_record, verify_known_good)
   pr.xEUR = 13059317798903;
   pr.xGBP = 11162715471325;
   pr.xJPY = 1690137827184892;
+  pr.xLTC = 0;
   pr.xNOK = 0;
   pr.xNZD = 0;
   pr.xUSD = 15393775330000;
@@ -89,6 +90,7 @@ TEST(pricing_record, verify_known_good_fail_if_edited)
   pr.xEUR = 13059317798903;
   pr.xGBP = 11162715471325;
   pr.xJPY = 1690137827184892;
+  pr.xLTC = 0;
   pr.xNOK = 0;
   pr.xNZD = 0;
   pr.xUSD = 15393775330000;

@@ -2087,6 +2087,7 @@ uint64_t wallet2::get_xasset_amount(const uint64_t xusd_amount, const std::strin
       asset_type == "XEUR" ? res.block_header.pricing_record.xEUR :
       asset_type == "XGBP" ? res.block_header.pricing_record.xGBP :
       asset_type == "XJPY" ? res.block_header.pricing_record.xJPY :
+      asset_type == "XLTC" ? res.block_header.pricing_record.xLTC :
       asset_type == "XNOK" ? res.block_header.pricing_record.xNOK :
       asset_type == "XNZD" ? res.block_header.pricing_record.xNZD :
       asset_type == "XUSD" ? res.block_header.pricing_record.xUSD :
@@ -2133,6 +2134,7 @@ uint64_t wallet2::get_xusd_amount(const uint64_t amount, const std::string asset
       asset_type == "XEUR" ? res.block_header.pricing_record.xEUR :
       asset_type == "XGBP" ? res.block_header.pricing_record.xGBP :
       asset_type == "XJPY" ? res.block_header.pricing_record.xJPY :
+      asset_type == "XLTC" ? res.block_header.pricing_record.xLTC :
       asset_type == "XNOK" ? res.block_header.pricing_record.xNOK :
       asset_type == "XNZD" ? res.block_header.pricing_record.xNZD :
       asset_type == "XHV" ? res.block_header.pricing_record.unused1 :

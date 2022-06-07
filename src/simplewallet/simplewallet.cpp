@@ -2360,7 +2360,7 @@ bool simple_wallet::get_prices(const std::vector<std::string> &args)
   }
 
   std::vector<std::string> local_args = args;
-  std::vector<std::string> currencies = {"xag", "xau", "xaud", "xbtc", "xcad", "xchf", "xcny", "xeur", "xgbp", "xjpy", "xnok", "xnzd"};
+  std::vector<std::string> currencies = {"xag", "xau", "xaud", "xbtc", "xcad", "xchf", "xcny", "xeur", "xgbp", "xjpy", "xltc", "xnok", "xnzd"};
   local_args.insert(local_args.end(), currencies.begin(), currencies.end());
   return get_price(local_args);
 }
@@ -2418,6 +2418,8 @@ bool simple_wallet::get_price(const std::vector<std::string> &args)
       message_writer(i%2 ? console_color_green : console_color_blue, false) << boost::format(tr("\txGBP %d")) % print_money(pr.xGBP * xusd);
     else if (lowercase == "xjpy")
       message_writer(i%2 ? console_color_green : console_color_blue, false) << boost::format(tr("\txJPY %d")) % print_money(pr.xJPY * xusd);
+    else if (lowercase == "xltc")
+      message_writer(i%2 ? console_color_green : console_color_blue, false) << boost::format(tr("\txLTC %d")) % print_money(pr.xLTC * xusd);
     else if (lowercase == "xnok")
       message_writer(i%2 ? console_color_green : console_color_blue, false) << boost::format(tr("\txNOK %d")) % print_money(pr.xNOK * xusd);
     else if (lowercase == "xnzd")
@@ -6079,6 +6081,7 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
         asset.first == "XEUR" ? pr.xEUR :
         asset.first == "XGBP" ? pr.xGBP :
         asset.first == "XJPY" ? pr.xJPY :
+        asset.first == "XLTC" ? pr.xLTC :
         asset.first == "XNOK" ? pr.xNOK :
         asset.first == "XNZD" ? pr.xNZD :
         asset.first == "XUSD" ? pr.xUSD :

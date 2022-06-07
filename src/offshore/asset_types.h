@@ -31,7 +31,7 @@
 
 namespace offshore {
 
-  const std::vector<std::string> ASSET_TYPES = {"XHV", "XAG", "XAU", "XAUD", "XBTC", "XCAD", "XCHF", "XCNY", "XEUR", "XGBP", "XJPY", "XNOK", "XNZD", "XUSD"};
+  const std::vector<std::string> ASSET_TYPES = {"XHV", "XAG", "XAU", "XAUD", "XBTC", "XCAD", "XCHF", "XCNY", "XEUR", "XGBP", "XJPY", "XLTC", "XNOK", "XNZD", "XUSD"};
 
   class asset_type_counts
   {
@@ -50,6 +50,7 @@ namespace offshore {
       uint64_t XEUR;
       uint64_t XGBP;
       uint64_t XJPY;
+      uint64_t XLTC;
       uint64_t XNOK;
       uint64_t XNZD;
       uint64_t XUSD;
@@ -66,6 +67,7 @@ namespace offshore {
         , XEUR(0)
         , XGBP(0)
         , XJPY(0)
+        , XLTC(0)
         , XNOK(0)
         , XNZD(0)
         , XUSD(0)
@@ -98,6 +100,8 @@ namespace offshore {
           return XGBP;
         } else if (asset_type == "XJPY") {
           return XJPY;
+        } else if (asset_type == "XLTC") {
+          return XLTC;
         } else if (asset_type == "XNOK") {
           return XNOK;
         } else if (asset_type == "XNZD") {
@@ -133,6 +137,8 @@ namespace offshore {
           XGBP += val;
         } else if (asset_type == "XJPY") {
           XJPY += val;
+        } else if (asset_type == "XLTC") {
+          XLTC += val;
         } else if (asset_type == "XNOK") {
           XNOK += val;
         } else if (asset_type == "XNZD") {

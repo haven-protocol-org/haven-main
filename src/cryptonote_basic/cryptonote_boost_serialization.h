@@ -532,6 +532,7 @@ namespace boost
     a & x.xEUR;
     a & x.xGBP;
     a & x.xJPY;
+    a & x.xLTC;
     a & x.xNOK;
     a & x.xNZD;
     a & x.xUSD;
