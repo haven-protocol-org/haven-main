@@ -1133,11 +1133,14 @@ namespace tools
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
       uint64_t unlock_time = 0;
-      if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
-	      unlock_time = ((priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040) + m_wallet->get_blockchain_current_height();
+      if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+        unlock_time = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_OFFSHORE_UNLOCK_BLOCKS; // ~21 days
+      } else if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
+        unlock_time = ((priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040);
       } else {
-	      unlock_time = 60 * pow(3, std::max((uint32_t)0, 4-priority)) + m_wallet->get_blockchain_current_height();
+        unlock_time = 60 * pow(3, std::max((uint32_t)0, 4-priority));
       }
+      unlock_time += m_wallet->get_blockchain_current_height();
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
         dsts, mixin, "XHV", "XUSD", cryptonote::transaction_type::OFFSHORE, unlock_time, priority, extra, req.account_index, req.subaddr_indices);
 
@@ -1279,11 +1282,14 @@ namespace tools
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
       uint64_t unlock_time = 0;
-      if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
-	      unlock_time = ((priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040) + m_wallet->get_blockchain_current_height();
+      if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+        unlock_time = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_ONSHORE_UNLOCK_BLOCKS; // ~12 hours
+      } else if (m_wallet->use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
+        unlock_time = ((priority == 4) ? 180 : (priority == 3) ? 720 : (priority == 2) ? 1440 : 5040);
       } else {
-	      unlock_time = 60 * pow(3, std::max((uint32_t)0, 4-priority)) + m_wallet->get_blockchain_current_height();
+        unlock_time = 60 * pow(3, std::max((uint32_t)0, 4-priority));
       }
+      unlock_time += m_wallet->get_blockchain_current_height();
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
         dsts, mixin, "XUSD", "XHV", cryptonote::transaction_type::ONSHORE, unlock_time, priority, extra, req.account_index, req.subaddr_indices);
 
@@ -1365,7 +1371,11 @@ namespace tools
     {
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
-      uint64_t unlock_time = m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 1440 : 10;
+      uint64_t unlock_time =
+        m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ?
+        ((m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET : TX_V6_XASSET_UNLOCK_BLOCKS) :
+        m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 1440 : 10;
+      unlock_time += m_wallet->get_blockchain_current_height();
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
         dsts, mixin, "XUSD", req.asset_type, cryptonote::transaction_type::XUSD_TO_XASSET, unlock_time, priority, extra, req.account_index, req.subaddr_indices);
 
@@ -1448,7 +1458,11 @@ namespace tools
     {
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
-      uint64_t unlock_time = m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 1440 : 10;
+      uint64_t unlock_time =
+        m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ?
+        ((m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET : TX_V6_XASSET_UNLOCK_BLOCKS) :
+        m_wallet->use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 1440 : 10;
+      unlock_time += m_wallet->get_blockchain_current_height();
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
         dsts, mixin, req.asset_type, "XUSD", cryptonote::transaction_type::XASSET_TO_XUSD, unlock_time, priority, extra, req.account_index, req.subaddr_indices);
 
