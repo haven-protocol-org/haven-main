@@ -1019,10 +1019,12 @@ bool simple_wallet::prepare_multisig_main(const std::vector<std::string> &args, 
     return false;
   }
 
-  if(m_wallet->get_num_transfer_details())
-  {
-    fail_msg_writer() << tr("This wallet has been used before, please use a new wallet to create a multisig wallet");
-    return false;
+  for (const auto& asset: offshore::ASSET_TYPES) {
+    if(m_wallet->get_num_transfer_details(asset))
+    {
+      fail_msg_writer() << tr("This wallet has been used before, please use a new wallet to create a multisig wallet");
+      return false;
+    }
   }
 
   SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return false;);
@@ -1064,10 +1066,12 @@ bool simple_wallet::make_multisig_main(const std::vector<std::string> &args, boo
     return false;
   }
 
-  if(m_wallet->get_num_transfer_details())
-  {
-    fail_msg_writer() << tr("This wallet has been used before, please use a new wallet to create a multisig wallet");
-    return false;
+  for (const auto& asset: offshore::ASSET_TYPES) {
+    if(m_wallet->get_num_transfer_details(asset))
+    {
+      fail_msg_writer() << tr("This wallet has been used before, please use a new wallet to create a multisig wallet");
+      return false;
+    }
   }
 
   if (args.size() < 2)
@@ -2176,13 +2180,17 @@ bool simple_wallet::frozen(const std::vector<std::string> &args)
 {
   if (args.empty())
   {
-    size_t ntd = m_wallet->get_num_transfer_details();
-    for (size_t i = 0; i < ntd; ++i)
-    {
-      if (!m_wallet->frozen(i))
+    for(const auto& asset: offshore::ASSET_TYPES) {
+      size_t ntd = m_wallet->get_num_transfer_details(asset);
+      if (!ntd)
         continue;
-      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(i);
-      message_writer() << tr("Frozen: ") << td.m_key_image << " " << cryptonote::print_money(td.amount());
+      for (size_t i = 0; i < ntd; ++i)
+      {
+        if (!m_wallet->frozen(asset, i))
+          continue;
+        const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(asset, i);
+        message_writer() << tr("Frozen: ") << td.m_key_image << " " << cryptonote::print_money(td.amount()) << " " << asset;
+      }
     }
   }
   else
@@ -6050,7 +6058,7 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     {
       m_wallet->finish_rescan_bc_keep_key_images(height_pre, transfer_hash_pre);
 
-      height_post = m_wallet->get_num_transfer_details();
+      height_post = m_wallet->get_num_transfer_details("XHV");
       if (height_pre != height_post)
       {
         message_writer() << tr("New transfer received since rescan was started. Key images are incomplete.");
@@ -6584,7 +6592,7 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
       if (tx.vin[i].type() != typeid(cryptonote::txin_to_key))
         continue;
       const cryptonote::txin_to_key& in_key = boost::get<cryptonote::txin_to_key>(tx.vin[i]);
-      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(construction_data.selected_transfers[i]);
+      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(construction_data.sources[0].asset_type, construction_data.selected_transfers[i]);
       const cryptonote::tx_source_entry *sptr = NULL;
       for (const auto &src: construction_data.sources)
         if (src.outputs[src.real_output].second.dest == td.get_public_key())
@@ -6679,25 +6687,25 @@ bool simple_wallet::prompt_if_old(const std::vector<tools::wallet2::pending_tx> 
     for (const auto i: ptx.selected_transfers)
     {
       if (ptx.tx.vin[0].type() == typeid(txin_offshore)) {
-	const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details("XUSD", i);
-	uint64_t age = bc_height - td.m_block_height;
-	if (age > OLD_AGE_WARN_THRESHOLD)
-	  ++n_old;
+        const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details("XUSD", i);
+        uint64_t age = bc_height - td.m_block_height;
+        if (age > OLD_AGE_WARN_THRESHOLD)
+	        ++n_old;
       } else if (ptx.tx.vin[0].type() == typeid(txin_onshore)) {
-	const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details("XUSD", i);
-	uint64_t age = bc_height - td.m_block_height;
-	if (age > OLD_AGE_WARN_THRESHOLD)
-	  ++n_old;
+        const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details("XUSD", i);
+        uint64_t age = bc_height - td.m_block_height;
+        if (age > OLD_AGE_WARN_THRESHOLD)
+          ++n_old;
       } else if (ptx.tx.vin[0].type() == typeid(txin_xasset)) {
-	const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(boost::get<txin_xasset>(ptx.tx.vin[0]).asset_type, i);
-	uint64_t age = bc_height - td.m_block_height;
-	if (age > OLD_AGE_WARN_THRESHOLD)
-	  ++n_old;
+        const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(boost::get<txin_xasset>(ptx.tx.vin[0]).asset_type, i);
+        uint64_t age = bc_height - td.m_block_height;
+        if (age > OLD_AGE_WARN_THRESHOLD)
+          ++n_old;
       } else {
-	const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details("XHV", i);
-	uint64_t age = bc_height - td.m_block_height;
-	if (age > OLD_AGE_WARN_THRESHOLD)
-	  ++n_old;
+        const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details("XHV", i);
+        uint64_t age = bc_height - td.m_block_height;
+        if (age > OLD_AGE_WARN_THRESHOLD)
+          ++n_old;
       }
     }
     max_n_old = std::max(max_n_old, n_old);
@@ -7411,7 +7419,7 @@ bool simple_wallet::sweep_unmixable(const std::vector<std::string> &args_)
     {
       total_fee += ptx_vector[n].fee;
       for (auto i: ptx_vector[n].selected_transfers)
-        total_unmixable += m_wallet->get_transfer_details(i).amount();
+        total_unmixable += m_wallet->get_transfer_details(ptx_vector[n].construction_data.sources[0].asset_type, i).amount();
     }
 
     std::string prompt_str = tr("Sweeping ") + print_money(total_unmixable);

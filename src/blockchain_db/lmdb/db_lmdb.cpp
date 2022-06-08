@@ -1109,7 +1109,13 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
     // Get the current tally value for the source currency type
     MDB_val_copy<uint64_t> source_idx(cs.source_currency_type);
     boost::multiprecision::int128_t source_tally = read_circulating_supply_data(m_cur_circ_supply_tally, source_idx);
-    boost::multiprecision::int128_t final_source_tally = (source_tally > cs.amount_burnt) ? source_tally - cs.amount_burnt : 0;
+    boost::multiprecision::int128_t final_source_tally = source_tally - cs.amount_burnt;
+    boost::multiprecision::int128_t coinbase = get_block_already_generated_coins(m_height-1);
+    if ((strSource == "XHV" && (coinbase + final_source_tally < 0)) ||
+        (strSource != "XHV" && final_source_tally < 0)) {
+      LOG_ERROR(__func__ << " : mint/burn underflow detected for " << strSource << " : correcting supply tally by " << final_source_tally);
+      final_source_tally = 0;
+    }
     write_circulating_supply_data(m_cur_circ_supply_tally, source_idx, final_source_tally);
 
     // Get the current tally value for the dest currency type
@@ -1129,6 +1135,7 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
 // passing it in to functions like this
 void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx, bool miner_tx)
 {
+  uint64_t m_height = height();
   int result;
 
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -1215,6 +1222,12 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
     MDB_val_copy<uint64_t> dest_idx(cs.dest_currency_type);
     boost::multiprecision::int128_t dest_tally = read_circulating_supply_data(m_cur_circ_supply_tally, dest_idx);
     boost::multiprecision::int128_t final_dest_tally = dest_tally - cs.amount_minted;
+    boost::multiprecision::int128_t coinbase = get_block_already_generated_coins(m_height-1);
+    if ((strDest == "XHV" && (coinbase + final_dest_tally < 0)) ||
+        (strDest != "XHV" && final_dest_tally < 0)) {
+      LOG_ERROR(__func__ << " : mint/burn underflow detected for " << strDest << " : correcting supply tally by " << final_dest_tally);
+      final_dest_tally = 0;
+    }
     write_circulating_supply_data(m_cur_circ_supply_tally, dest_idx, final_dest_tally);
 
     // Update the circ_supply table
