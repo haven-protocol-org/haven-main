@@ -2202,6 +2202,61 @@ uint64_t wallet2::get_xhv_amount(const uint64_t xusd_amount, const uint64_t heig
     return 0;
   }
 }
+bool wallet2::get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
+{
+  PERF_TIMER(get_collateral_requirements);
+  using tt = cryptonote::transaction_type;
+  THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported TX Type!");
+
+  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
+  uint64_t current_height = get_blockchain_current_height()-1;
+  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response res = AUTO_VAL_INIT(res);
+  m_daemon_rpc_mutex.lock();
+  req.height = current_height;
+  bool r = invoke_http_json_rpc("/json_rpc", "getblockheaderbyheight", req, res, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  if (!r || res.status != CORE_RPC_STATUS_OK)
+  {
+    MERROR("Failed to request block header from daemon");
+    return false;
+  }
+
+  // Got the block header - verify the pricing record
+  THROW_WALLET_EXCEPTION_IF(res.block_header.pricing_record.empty(), error::wallet_internal_error, "Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
+
+  // Issue an RPC call to get the circulating supply
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::request reqcs = AUTO_VAL_INIT(reqcs);
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::response rescs = AUTO_VAL_INIT(rescs);
+  m_daemon_rpc_mutex.lock();
+  r = invoke_http_json_rpc("/json_rpc", "get_circulating_supply", reqcs, rescs, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  if (!r || res.status != CORE_RPC_STATUS_OK)
+  {
+    MERROR("Failed to request circulating supply from daemon");
+    return false;
+  }
+  
+  // Do the right thing based upon TX type
+  if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+    collateral = 0;
+  } else if (tx_type == tt::OFFSHORE) {
+    // Dummy 1:2 collateral requirements for now
+    collateral = amount << 1;
+  } else if (tx_type == tt::ONSHORE) {
+    // Dummy 1:1 collateral requirements for now
+    collateral = amount;
+  } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+    collateral = 0;
+  } else {
+    // Throw a wallet exception - should never happen
+    MERROR("Invalid TX type");
+    THROW_WALLET_EXCEPTION(error::wallet_internal_error, "invalid TX type");
+    return false;
+  }
+
+  return true;
+}
 //----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, const std::vector<uint64_t> &asset_type_output_indices, uint64_t height, uint8_t block_version, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
@@ -10807,7 +10862,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // calculate total amount being sent to all destinations IN THE CORRECT CURRENCY
   // throw if total amount overflows uint64_t
   needed_money = 0;
-  for(auto& dt: dsts)
+  const bool need_collateral = use_fork_rules(HF_VERSION_USE_COLLATERAL, 0);
+  std::vector<cryptonote::tx_destination_entry> collateral_dsts;
+  const account_public_address address = get_subaddress({subaddr_account, 0});
+  const bool is_subaddress = (subaddr_account != 0);
+  for (auto& dt: dsts)
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_destination);
     if (strSource != strDest) {
@@ -10823,6 +10882,16 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       dt.asset_type = "XUSD";
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, 0, m_nettype);
+
+      // Calculate the collateral
+      if (need_collateral) {
+	uint64_t collateral_amount = 0;
+	bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
+	LOG_PRINT_L2("transfer: adding " << print_money(collateral_amount) << " collateral, for offshore of " << print_money(dt.amount) << " XHV");
+	THROW_WALLET_EXCEPTION_IF(!bOK || collateral_amount == 0, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
+	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress));
+      }
+  
     } else if (tx_type == tt::ONSHORE) {
       // Input amount is in XHV - convert so we have both
       dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height, true);
@@ -10831,6 +10900,16 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       dt.asset_type = "XHV";
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_usd) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_usd, error::tx_sum_overflow, dsts, 0, m_nettype);
+
+      // Calculate the collateral
+      if (need_collateral) {
+	uint64_t collateral_amount = 0;
+	bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
+	LOG_PRINT_L2("transfer: adding " << print_money(collateral_amount) << " collateral, for offshore of " << print_money(dt.amount_usd) << " xUSD");
+	THROW_WALLET_EXCEPTION_IF(!bOK || collateral_amount == 0, error::wallet_internal_error, "Failed to obtain collateral amount for onshore TX");
+	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress));
+      }
+      
     } else if (tx_type == tt::OFFSHORE_TRANSFER) {
       // Input amount is in USD
       dt.amount_usd = dt.amount;
@@ -10879,9 +10958,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // throw if attempting a transaction with no money
   THROW_WALLET_EXCEPTION_IF(needed_money == 0, error::zero_destination);
 
-  // keep the orig dsts for sanity check
-  auto original_dsts = dsts;
-
   // Calculate the offshore fee
   std::vector<transfer_details> empty;
   uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(dsts, priority, empty)
@@ -10892,6 +10968,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     : (tx_type == tt::XASSET_TRANSFER) ? get_xasset_transfer_fee(dsts, priority, empty)
     : 0;
   
+  // Add collateral to the dsts
+  dsts.insert(dsts.end(), collateral_dsts.begin(), collateral_dsts.end());
+  
+  // keep the orig dsts for sanity check
+  auto original_dsts = dsts;
+
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr ;
   std::map<uint32_t, uint64_t> balance_per_subaddr;
 
@@ -11154,7 +11236,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         } else if (tx_type == tt::XASSET_TO_XUSD) {
           tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height, false);
         }
-        tx.dsts.back().asset_type = strDest;
+        tx.dsts.back().asset_type = dsts[0].asset_type;
         pop_index(dsts, 0);
         ++original_output_index;
       }

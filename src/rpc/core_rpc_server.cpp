@@ -2632,7 +2632,7 @@ namespace cryptonote
   {
     PERF_TIMER(on_get_circulating_supply);
     std::vector<std::pair<std::string, std::string>> amounts = m_core.get_blockchain_storage().get_db().get_circulating_supply();
-    for (const auto i: amounts)
+    for (const auto &i: amounts)
     {
       COMMAND_RPC_GET_CIRCULATING_SUPPLY::supply_entry se(i.first, i.second);
       res.supply_tally.push_back(se);

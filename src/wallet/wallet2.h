@@ -34,6 +34,9 @@
 
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
+#if BOOST_VERSION >= 107400
+#include <boost/serialization/library_version_type.hpp>
+#endif
 #include <boost/serialization/list.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/deque.hpp>
@@ -889,6 +892,8 @@ private:
     // Get onshore amount in XHV, not XUSD
     uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
 
+    // Get collateral
+    bool get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral);
 
     // all locked & unlocked balances of all subaddress accounts
     std::map<std::string, uint64_t> balance_all(bool strict);
