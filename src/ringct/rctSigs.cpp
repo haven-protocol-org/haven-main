@@ -1488,6 +1488,38 @@ namespace rct {
           return false;
         }
       }
+
+      for (const auto& colKey : masks_C) {
+        // validate the colleteral
+        if (type == tx_type::OFFSHORE) {
+
+          // get the aH from the colleteral amount
+          uint64_t col_amount = amount_burnt * 2;
+          key colAmountKey;
+          genC(colAmountKey, zero(), col_amount);
+          key scalerkey;
+          subKeys(scalerkey, colKey, colAmountKey);
+          key origColAmountKey;
+          subKeys(origColAmountKey, colKey, scalerkey);
+
+          // get the aH of the sum of inputs
+          key sumInputScalerKey; // stores the scalet for sum of inputs
+          genC(sumInputScalerKey, rv.maskSums[0], 0);
+          key C_n;
+          genC(C_n, rv.maskSums[1], 0);
+          sumC = addKeys(sumC, C_n);
+          key sumInputAmountKey;
+          subKeys(sumInputAmountKey, sumC, sumInputScalerKey);
+
+          // add the colleteral that is subtracted back to inputs
+          sumInputAmountKey = scalarmultKey(sumInputAmountKey, d2h(2));
+
+          // check whether they are equal
+          if (!equalKeys(sumInputAmountKey, origColAmountKey)) {
+            LOG_ERROR("Tx amount burnt/minted validation failed.");
+          }
+        }
+      }
         
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
         proofs.push_back(&rv.p.bulletproofs[i]);
