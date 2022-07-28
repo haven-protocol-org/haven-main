@@ -112,16 +112,19 @@ namespace cryptonote
     account_public_address addr;        //destination address
     bool is_subaddress;
     bool is_integrated;
+    bool is_collateral;
 
-    tx_destination_entry() : amount(0), amount_usd(0), amount_xasset(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type(currency) { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), asset_type(currency) { }
+    tx_destination_entry() : amount(0), amount_usd(0), amount_xasset(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type(currency) { }
+    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type(currency) { }
  
     std::string address(network_type nettype, const crypto::hash &payment_id) const
     {

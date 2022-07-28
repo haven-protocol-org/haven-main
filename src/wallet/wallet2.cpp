@@ -1901,6 +1901,7 @@ static uint64_t decodeRct(const rct::rctSig & rv, const crypto::key_derivation &
     case rct::RCTTypeCLSAG:
     case rct::RCTTypeCLSAGN:
     case rct::RCTTypeHaven2:
+    case rct::RCTTypeHaven3:
       return rct::decodeRctSimple(rv, rct::sk2rct(scalar1), i, mask, hwdev);
     case rct::RCTTypeFull:
       return rct::decodeRct(rv, rct::sk2rct(scalar1), i, mask, hwdev);
@@ -2808,7 +2809,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   // set the fee
   uint64_t fee = 0;
   if (!miner_tx) {
-    if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+    if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
       fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
     } else {
       fee = (source == "XHV") ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee :
@@ -2983,7 +2984,7 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
 {
   std::pair<std::unordered_map<crypto::hash, confirmed_transfer_details>::iterator, bool> entry = m_confirmed_txs.insert(std::make_pair(txid, confirmed_transfer_details()));
 
-  if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+  if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
     entry.first->second.m_fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
   } else {
     entry.first->second.m_fee =
@@ -7144,7 +7145,7 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
   utd.m_source_currency_type = input_asset;
 
   //get the tx fee
-  if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+  if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
     utd.m_fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
   } else {
     utd.m_fee = input_asset == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
@@ -10797,7 +10798,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   const rct::RCTConfig rct_config {
     bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
+    bulletproof ? (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
+                  use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
                   use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : 
                   use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : 
                   use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0
@@ -10889,7 +10891,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 	bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
 	LOG_PRINT_L2("transfer: adding " << print_money(collateral_amount) << " collateral, for offshore of " << print_money(dt.amount) << " XHV");
 	THROW_WALLET_EXCEPTION_IF(!bOK || collateral_amount == 0, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
-	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress));
+	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress, true));
       }
   
     } else if (tx_type == tt::ONSHORE) {
@@ -10907,7 +10909,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 	bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
 	LOG_PRINT_L2("transfer: adding " << print_money(collateral_amount) << " collateral, for offshore of " << print_money(dt.amount_usd) << " xUSD");
 	THROW_WALLET_EXCEPTION_IF(!bOK || collateral_amount == 0, error::wallet_internal_error, "Failed to obtain collateral amount for onshore TX");
-	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress));
+	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress, true));
       }
       
     } else if (tx_type == tt::OFFSHORE_TRANSFER) {
@@ -11819,7 +11821,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   const rct::RCTConfig rct_config {
     bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
+    bulletproof ? (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
+                  use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
                   use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : 
                   use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : 
                   use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0
@@ -12882,9 +12885,9 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
         crypto::secret_key scalar1;
         crypto::derivation_to_scalar(found_derivation, n, scalar1);
         rct::ecdhTuple ecdh_info = tx.rct_signatures.ecdhInfo[n];
-        rct::ecdhDecode(ecdh_info, rct::sk2rct(scalar1), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeCLSAGN || tx.rct_signatures.type == rct::RCTTypeHaven2);
+        rct::ecdhDecode(ecdh_info, rct::sk2rct(scalar1), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeCLSAGN || tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3);
         rct::key C;
-        if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+        if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
           C = tx.rct_signatures.outPk[n].mask;
         } else {
           C = (offshore ? tx.rct_signatures.outPk_usd[n].mask : xasset ? tx.rct_signatures.outPk_xasset[n].mask : tx.rct_signatures.outPk[n].mask);
@@ -13509,7 +13512,7 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
       crypto::secret_key shared_secret;
       crypto::derivation_to_scalar(derivation, proof.index_in_tx, shared_secret);
       rct::ecdhTuple ecdh_info = tx.rct_signatures.ecdhInfo[proof.index_in_tx];
-      rct::ecdhDecode(ecdh_info, rct::sk2rct(shared_secret), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeCLSAGN || tx.rct_signatures.type == rct::RCTTypeHaven2);
+      rct::ecdhDecode(ecdh_info, rct::sk2rct(shared_secret), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeCLSAGN || tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3);
       amount = rct::h2d(ecdh_info.amount);
     }
     total += amount;

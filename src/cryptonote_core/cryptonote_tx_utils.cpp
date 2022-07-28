@@ -1083,7 +1083,7 @@ namespace cryptonote
     uint64_t summary_outs_money = 0, summary_outs_money_usd = 0, summary_outs_money_xasset = 0;
 
 
-    std::vector<std::pair<std::string, uint64_t>> outamounts;
+    std::vector<std::pair<std::string, std::pair<uint64_t, bool>>> outamounts;
     rct::keyV destination_keys;
     uint64_t amount_out = 0;
 
@@ -1119,20 +1119,20 @@ namespace cryptonote
         txout_to_key tk;
         tk.key = out_eph_public_key;
         out.target = tk;
-        outamounts.push_back(std::pair<std::string, uint64_t>("XHV", dst_entr_clone.amount));
+        outamounts.push_back(std::pair<std::string, std::pair<uint64_t,bool>>("XHV", {dst_entr_clone.amount, dst_entr_clone.is_collateral}));
       } else if (dst_entr_clone.asset_type == "XUSD") {
         txout_offshore tk;
         tk.key = out_eph_public_key;
         out.target = tk;
         out.amount = dst_entr_clone.amount_usd;
-        outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", dst_entr_clone.amount_usd));
+        outamounts.push_back(std::pair<std::string, std::pair<uint64_t,bool>>("XUSD", {dst_entr_clone.amount_usd, dst_entr_clone.is_collateral}));
       } else {
         txout_xasset tk;
         tk.key = out_eph_public_key;
         tk.asset_type = dst_entr_clone.asset_type;
         out.target = tk;
         out.amount = dst_entr_clone.amount_xasset;
-        outamounts.push_back(std::pair<std::string, uint64_t>(dst_entr_clone.asset_type, dst_entr_clone.amount_xasset));
+        outamounts.push_back(std::pair<std::string, std::pair<uint64_t,bool>>(dst_entr_clone.asset_type, {dst_entr_clone.amount_xasset, dst_entr_clone.is_collateral}));
       }
 
       // Check for per-output-unlocks
@@ -1141,8 +1141,13 @@ namespace cryptonote
           // Destination amount - needs a full unlock time
           tx.output_unlock_times.push_back(tx.unlock_time);
         } else if (dst_entr_clone.asset_type == strSource) {
-          // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
-          tx.output_unlock_times.push_back(0);
+	  if (dst_entr_clone.is_collateral) {
+	    // Collateral amount - needs a full unlock time
+	    tx.output_unlock_times.push_back(tx.unlock_time);
+	  } else {
+	    // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
+	    tx.output_unlock_times.push_back(0);
+	  }
         } else {
           // Should never happen
           LOG_ERROR("Invalid asset type detected: source = " << strSource << ", dest = " << strDest << ", detected " << dst_entr_clone.asset_type);

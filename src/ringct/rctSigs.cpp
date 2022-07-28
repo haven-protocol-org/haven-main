@@ -494,7 +494,7 @@ namespace rct {
     hashes.push_back(hash2rct(h));
 
     keyV kv;
-    if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2)
+    if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3)
     {
       kv.reserve((6*2+9) * rv.p.bulletproofs.size());
       for (const auto &p: rv.p.bulletproofs)
@@ -815,7 +815,7 @@ namespace rct {
     const keyV & destinations, 
     const std::vector<xmr_amount> & inamounts, 
     const std::string in_asset_type, 
-    const std::vector<std::pair<std::string,xmr_amount>> & outamounts, 
+    const std::vector<std::pair<std::string,std::pair<xmr_amount,bool>>> & outamounts, 
     xmr_amount txnFee, 
     xmr_amount txnFee_usd, 
     xmr_amount txnFee_xasset, 
@@ -868,7 +868,7 @@ namespace rct {
     bool xhv_received = false, usd_received = false, xasset_received = false; 
     for (size_t i = 0 ; i < outamounts.size(); i++) {
       if (outamounts[i].first == "XHV") {
-        outamounts_rangesig.push_back(outamounts[i].second);
+        outamounts_rangesig.push_back(outamounts[i].second.first);
         xhv_received = true;
       } else if (outamounts[i].first == "XUSD") {
         outamounts_rangesig.push_back(0);
@@ -878,9 +878,9 @@ namespace rct {
         xasset_received = true;
       }
       // The second value is always non-zero - just copy it in all conditions so we can build bulletproof vector
-      outamounts_flat_amounts.push_back(outamounts[i].second);
-	  }
-
+      outamounts_flat_amounts.push_back(outamounts[i].second.first);
+    }
+    
     // Determine the tx direction
     bool offshore = (xhv_sent && !usd_sent && usd_received && xhv_received);
     bool onshore = (usd_sent && !xhv_sent && usd_received && xhv_received);
@@ -894,6 +894,9 @@ namespace rct {
     switch (rct_config.bp_version)
     {
       case 0:
+      case 6:
+        rv.type = RCTTypeHaven3;
+        break;
       case 5:
         rv.type = RCTTypeHaven2;
         break;
@@ -932,7 +935,12 @@ namespace rct {
     // do the bulletproofs
     key zerokey = rct::identity();
     rv.p.bulletproofs.clear();
-    if (rv.type == RCTTypeHaven2) {
+    if (rv.type == RCTTypeHaven3) {
+      rv.maskSums.resize(3);
+      rv.maskSums[0] = zero();
+      rv.maskSums[1] = zero();
+      rv.maskSums[2] = zero();
+    } else if (rv.type == RCTTypeHaven2) {
       rv.maskSums.resize(2);
       rv.maskSums[0] = zero();
       rv.maskSums[1] = zero();
@@ -958,7 +966,7 @@ namespace rct {
 
       for (i = 0; i < outamounts.size(); ++i)
       {
-        if (rv.type == RCTTypeHaven2) {
+        if (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3) {
           rv.outPk[i].mask = rct::scalarmult8(C[i]);
           if (outamounts[i].first == "XHV" && offshore) {
             // we know these are change outputs
@@ -972,6 +980,16 @@ namespace rct {
             // we know these are change outputs
             sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
           }
+
+	  // HERE BE DRAGONS!!!
+	  // NEAC : Sum the non-change output masks
+	  if (outamounts[i].second.second ||
+	      (outamounts[i].first == "XUSD" && offshore) ||
+	      (outamounts[i].first == "XHV" && onshore)) {
+	    sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
+	  }
+	  // LAND AHOY!!!
+	  
         } else {
           if (outamounts[i].first == "XHV") {
             rv.outPk[i].mask = rct::scalarmult8(C[i]);
@@ -1017,7 +1035,7 @@ namespace rct {
       }
       for (i = 0; i < batch_size; ++i)
       {
-        if (rv.type == RCTTypeHaven2) {
+        if (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3) {
           rv.outPk[i + amounts_proved].mask = rct::scalarmult8(C[i]);
           if ((outamounts[i + amounts_proved].first == "XHV") && offshore) {
             // we know these are change outputs
@@ -1104,11 +1122,11 @@ namespace rct {
       //mask amount and mask
       rv.ecdhInfo[i].mask = copy(outSk[i].mask);
       rv.ecdhInfo[i].amount = d2h(outamounts_flat_amounts[i]);
-      hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2);
+      hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3);
     }
             
     //set txn fee
-    if (rv.type == RCTTypeHaven2) {
+    if (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3) {
       rv.txnFee = txnFee + txnFee_usd + txnFee_xasset;
       rv.txnOffshoreFee = txnOffshoreFee + txnOffshoreFee_usd + txnOffshoreFee_xasset;
     } else {
@@ -1126,7 +1144,7 @@ namespace rct {
     pseudoOuts.resize(inamounts.size());
 
     // prepare CLSAGs or MLSAGs vectors
-    if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2))
+    if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3))
         rv.p.CLSAGs.resize(inamounts.size());
     else
         rv.p.MGs.resize(inamounts.size());
@@ -1147,7 +1165,7 @@ namespace rct {
     DP(pseudoOuts[i]);
 
     // set the sum of input blinding factors
-    if ((offshore || onshore || xusd_to_xasset || xasset_to_xusd) && (rv.type == RCTTypeHaven2)) {
+    if ((offshore || onshore || xusd_to_xasset || xasset_to_xusd) && (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3)) {
       sc_add(rv.maskSums[0].bytes, a[i].bytes, sumpouts.bytes);
     }
 
@@ -1155,7 +1173,7 @@ namespace rct {
     if (msout)
     {
       msout->c.resize(inamounts.size());
-      msout->mu_p.resize((rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2) ? inamounts.size() : 0);
+      msout->mu_p.resize((rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3) ? inamounts.size() : 0);
     }
 
     // do a CLSAG signing for each input
@@ -1174,7 +1192,7 @@ namespace rct {
     const keyV & destinations, 
     const std::vector<xmr_amount> & inamounts, 
     const std::string in_asset_type, 
-    const std::vector<std::pair<std::string,xmr_amount>> & outamounts, 
+    const std::vector<std::pair<std::string,std::pair<xmr_amount,bool>>> & outamounts, 
     const keyV &amount_keys, 
     const std::vector<multisig_kLRki> *kLRki, 
     multisig_out *msout, 
@@ -1291,7 +1309,8 @@ namespace rct {
     const std::string& strDest,
     uint64_t amount_burnt,
     const std::vector<cryptonote::tx_out> &vout,
-    const uint8_t version
+    const uint8_t version,
+    const std::vector<uint64_t> &output_unlock_times
   ){
 
     try
@@ -1304,7 +1323,7 @@ namespace rct {
       std::vector<const Bulletproof*> proofs;
       size_t max_non_bp_proofs = 0, offset = 0;
 
-      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
+      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
         
       const bool bulletproof = is_rct_bulletproof(rv.type);
       CHECK_AND_ASSERT_MES(bulletproof, false, "Only bulletproofs supported for Haven2");
@@ -1313,7 +1332,7 @@ namespace rct {
       CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
       CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
       CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
-      CHECK_AND_ASSERT_MES(rv.maskSums.size() == 2, false, "maskSums size is not 2");
+      CHECK_AND_ASSERT_MES((rv.type == RCTTypeHaven2 && rv.maskSums.size() == 2) || (rv.type == RCTTypeHaven3 && rv.maskSums.size() == 3), false, "maskSums size is not correct");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
       CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
@@ -1465,7 +1484,7 @@ namespace rct {
         }
 
         // m = sum of all masks of inputs
-        // n = sum of masks of change outputs
+        // n = sum of masks of change + collateral outputs
         // rv.maskSums[0] = m
         // rv.maskSums[1] = n
         // The value the current sumC is C = xG + aH where 
@@ -1489,36 +1508,42 @@ namespace rct {
         }
       }
 
-      for (const auto& colKey : masks_C) {
-        // validate the colleteral
-        if (type == tx_type::OFFSHORE) {
+      // validate the colleteral
+      if (type == tx_type::OFFSHORE) {
 
-          // get the aH from the colleteral amount
-          uint64_t col_amount = amount_burnt * 2;
-          key colAmountKey;
-          genC(colAmountKey, zero(), col_amount);
-          key scalerkey;
-          subKeys(scalerkey, colKey, colAmountKey);
-          key origColAmountKey;
-          subKeys(origColAmountKey, colKey, scalerkey);
+	// rv.maskSums[2] = sum of masks of real converted output (outPks[r]) + dummy converted output (outPks[d]) + collateral output (outPks[c])
+	// We can prove the collateral amount (a_coll) is correct by performing the following calculation
+	//
+	// sumCollMasks = outPks[r].mask + outPks[d].mask + outPks[c].mask
+	// a_coll = sumCollPks - genC(rv.maskSums[2]) - genC(amount_minted)
 
-          // get the aH of the sum of inputs
-          key sumInputScalerKey; // stores the scalet for sum of inputs
-          genC(sumInputScalerKey, rv.maskSums[0], 0);
-          key C_n;
-          genC(C_n, rv.maskSums[1], 0);
-          sumC = addKeys(sumC, C_n);
-          key sumInputAmountKey;
-          subKeys(sumInputAmountKey, sumC, sumInputScalerKey);
+	// Sum the output pks
+	key sumCollPks = zero();
+	for (size_t i = 0; i < output_unlock_times.size(); i++) {
+	  if (output_unlock_times[i] != 0)
+	    sumCollPks = addKeys(sumCollPks, rv.outPk[i].mask);
+	}
 
-          // add the colleteral that is subtracted back to inputs
-          sumInputAmountKey = scalarmultKey(sumInputAmountKey, d2h(2));
+	// Subtract the masks from the pks
+	key Cmasks;
+	genC(Cmasks, rv.maskSums[2], 0);
+	subKeys(sumCollPks, sumCollPks, Cmasks);
 
-          // check whether they are equal
-          if (!equalKeys(sumInputAmountKey, origColAmountKey)) {
-            LOG_ERROR("Tx amount burnt/minted validation failed.");
-          }
-        }
+	// Subtract the amount_minted
+	boost::multiprecision::uint128_t xhv_128 = amount_burnt;
+	boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;
+	boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
+	xusd_128 /= COIN;
+	uint64_t amount_minted = (uint64_t)xusd_128;
+
+	key Cminted = scalarmultH(d2h(amount_minted));
+	subKeys(sumCollPks, sumCollPks, Cminted);
+
+	key Ccoll = scalarmultH(d2h(amount_burnt*2));
+	if (!equalKeys(sumCollPks, Ccoll)) {
+          LOG_PRINT_L1("Tx collateral verification failed.");
+          return false;
+	}
       }
         
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)

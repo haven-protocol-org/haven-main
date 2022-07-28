@@ -262,7 +262,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
     else
     {
-      if (tx.rct_signatures.type == rct::RCTTypeHaven2) {
+      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
       } else {
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time,
