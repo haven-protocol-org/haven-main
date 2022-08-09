@@ -981,14 +981,12 @@ namespace rct {
             sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
           }
 
-	  // HERE BE DRAGONS!!!
-	  // NEAC : Sum the non-change output masks
-	  if (outamounts[i].second.second ||
-	      (outamounts[i].first == "XUSD" && offshore) ||
-	      (outamounts[i].first == "XHV" && onshore)) {
-	    sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
-	  }
-	  // LAND AHOY!!!
+          // HERE BE DRAGONS!!!
+          // NEAC : save the colleteral output mask
+          if (outamounts[i].second.second) {
+            sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
+          }
+          // LAND AHOY!!!
 	  
         } else {
           if (outamounts[i].first == "XHV") {
@@ -1511,39 +1509,21 @@ namespace rct {
       // validate the colleteral
       if (type == tx_type::OFFSHORE) {
 
-	// rv.maskSums[2] = sum of masks of real converted output (outPks[r]) + dummy converted output (outPks[d]) + collateral output (outPks[c])
-	// We can prove the collateral amount (a_coll) is correct by performing the following calculation
-	//
-	// sumCollMasks = outPks[r].mask + outPks[d].mask + outPks[c].mask
-	// a_coll = sumCollPks - genC(rv.maskSums[2]) - genC(amount_minted)
+        // get colletera commitmen
+        key C_col;
+        for (size_t i = 0; i < output_unlock_times.size(); i++) {
+          if (output_unlock_times[i] != 0 && vout[i].target.type() == typeid(cryptonote::txout_to_key)) {
+            C_col = rv.outPk[i].mask;
+          }
+        }
+        
+        key pseudoC_col;
+        genC(pseudoC_col, rv.maskSums[2], amount_burnt * 2);
 
-	// Sum the output pks
-	key sumCollPks = zero();
-	for (size_t i = 0; i < output_unlock_times.size(); i++) {
-	  if (output_unlock_times[i] != 0)
-	    sumCollPks = addKeys(sumCollPks, rv.outPk[i].mask);
-	}
-
-	// Subtract the masks from the pks
-	key Cmasks;
-	genC(Cmasks, rv.maskSums[2], 0);
-	subKeys(sumCollPks, sumCollPks, Cmasks);
-
-	// Subtract the amount_minted
-	boost::multiprecision::uint128_t xhv_128 = amount_burnt;
-	boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;
-	boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
-	xusd_128 /= COIN;
-	uint64_t amount_minted = (uint64_t)xusd_128;
-
-	key Cminted = scalarmultH(d2h(amount_minted));
-	subKeys(sumCollPks, sumCollPks, Cminted);
-
-	key Ccoll = scalarmultH(d2h(amount_burnt*2));
-	if (!equalKeys(sumCollPks, Ccoll)) {
-          LOG_PRINT_L1("Tx collateral verification failed.");
+        if (!equalKeys(pseudoC_col, C_col)) {
+          LOG_ERROR("Tx collateral verification failed.");
           return false;
-	}
+        }
       }
         
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
