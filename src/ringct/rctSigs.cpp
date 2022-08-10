@@ -1800,7 +1800,7 @@ namespace rct {
     {
       PERF_TIMER(verRctNonSemanticsSimple);
 
-      CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2,
+      CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3,
           false, "verRctNonSemanticsSimple called on non simple rctSig");
       const bool bulletproof = is_rct_bulletproof(rv.type);
       // semantics check is early, and mixRing/MGs aren't resolved yet
@@ -1823,7 +1823,7 @@ namespace rct {
       results.resize(rv.mixRing.size());
       for (size_t i = 0 ; i < rv.mixRing.size() ; i++) {
         tpool.submit(&waiter, [&, i] {
-        if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2))
+        if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2) || (rv.type == RCTTypeHaven3))
             {
                 results[i] = verRctCLSAGSimple(message, rv.p.CLSAGs[i], rv.mixRing[i], pseudoOuts[i]);
             }

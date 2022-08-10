@@ -744,7 +744,8 @@ namespace cryptonote
   bool construct_tx_with_tx_key(
     const account_keys& sender_account_keys, 
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, 
-    std::vector<tx_source_entry>& sources, 
+    std::vector<tx_source_entry>& sources,
+    const std::vector<tx_source_entry>& sources_col,
     std::vector<tx_destination_entry>& destinations, 
     const boost::optional<cryptonote::account_public_address>& change_addr, 
     const std::vector<uint8_t> &extra, 
@@ -1001,6 +1002,54 @@ namespace cryptonote
       }
     }
 
+    //fill colleteral
+    if (tx_type == transaction_type::ONSHORE) {
+      idx = -1;
+      for(const tx_source_entry& src_entr:  sources_col)
+      {
+        ++idx;
+        if(src_entr.real_output >= src_entr.outputs.size())
+        {
+          LOG_ERROR("real_output index (" << src_entr.real_output << ")bigger than output_keys.size()=" << src_entr.outputs.size());
+          return false;
+        }
+        
+        //key_derivation recv_derivation;
+        in_contexts.push_back(input_generation_context_data());
+        keypair& in_ephemeral = in_contexts.back().in_ephemeral;
+        crypto::key_image img;
+        const auto& out_key = reinterpret_cast<const crypto::public_key&>(src_entr.outputs[src_entr.real_output].second.dest);
+        if(!generate_key_image_helper(sender_account_keys, subaddresses, out_key, src_entr.real_out_tx_key, src_entr.real_out_additional_tx_keys, src_entr.real_output_in_tx_index, in_ephemeral,img, hwdev))
+        {
+          LOG_ERROR("Key image generation failed!");
+          return false;
+        }
+
+        //check that derivated key is equal with real output key (if non multisig)
+        if(!msout && !(in_ephemeral.pub == src_entr.outputs[src_entr.real_output].second.dest) )
+        {
+          LOG_ERROR("derived public key mismatch with output public key at index " << idx << ", real out " << src_entr.real_output << "! "<< ENDL << "derived_key:"
+            << string_tools::pod_to_hex(in_ephemeral.pub) << ENDL << "real output_public_key:"
+            << string_tools::pod_to_hex(src_entr.outputs[src_entr.real_output].second.dest) );
+          LOG_ERROR("amount " << src_entr.amount << ", rct " << src_entr.rct);
+          LOG_ERROR("tx pubkey " << src_entr.real_out_tx_key << ", real_output_in_tx_index " << src_entr.real_output_in_tx_index);
+          return false;
+        }
+
+        // xhv input
+        txin_to_key input_to_key;
+        input_to_key.amount = src_entr.amount;
+        input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
+        
+        //fill outputs array and use relative offsets
+        for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
+          input_to_key.key_offsets.push_back(out_entry.first);
+        
+        input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
+        tx.vin.push_back(input_to_key);
+      }
+    }
+
     // calculate offshore fees before shuffling destinations
     uint64_t fee = 0;
     uint64_t fee_usd = 0;
@@ -1141,13 +1190,13 @@ namespace cryptonote
           // Destination amount - needs a full unlock time
           tx.output_unlock_times.push_back(tx.unlock_time);
         } else if (dst_entr_clone.asset_type == strSource) {
-	  if (dst_entr_clone.is_collateral) {
-	    // Collateral amount - needs a full unlock time
-	    tx.output_unlock_times.push_back(tx.unlock_time);
-	  } else {
-	    // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
-	    tx.output_unlock_times.push_back(0);
-	  }
+          if (dst_entr_clone.is_collateral) {
+            // Collateral amount - needs a full unlock time
+            tx.output_unlock_times.push_back(tx.unlock_time);
+          } else {
+            // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
+            tx.output_unlock_times.push_back(0);
+          }
         } else {
           // Should never happen
           LOG_ERROR("Invalid asset type detected: source = " << strSource << ", dest = " << strDest << ", detected " << dst_entr_clone.asset_type);
@@ -1162,10 +1211,12 @@ namespace cryptonote
       tx.vout.push_back(out);
       output_index++;
 
-      // calculate total monry
-      summary_outs_money += dst_entr_clone.amount;
-      summary_outs_money_usd += dst_entr_clone.amount_usd;
-      summary_outs_money_xasset += dst_entr_clone.amount_xasset;
+      // calculate total money, exclude the onshore collateral
+      if (tx_type != transaction_type::ONSHORE || !dst_entr_clone.is_collateral) {
+        summary_outs_money += dst_entr_clone.amount;
+        summary_outs_money_usd += dst_entr_clone.amount_usd;
+        summary_outs_money_xasset += dst_entr_clone.amount_xasset;
+      }
       if (strSource != strDest) {
         if (dst_entr_clone.asset_type == strDest) {
           tx.amount_minted += out.amount;
@@ -1231,9 +1282,6 @@ namespace cryptonote
       MDEBUG("Null secret key, skipping signatures");
     }
 
-    size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
-
-    uint64_t amount_in = 0;
     rct::ctkeyV inSk;
     inSk.reserve(sources.size());
     // mixRing indexing is done the other way round for simple
@@ -1269,6 +1317,44 @@ namespace cryptonote
       for (size_t n = 0; n < sources[i].outputs.size(); ++n)
       {
         mixRing[i][n] = sources[i].outputs[n].second;
+      }
+    }
+
+    if (tx_type == transaction_type::ONSHORE) {
+
+      // resize the vectors to add thr col inputs
+      inSk.resize(inSk.size() + sources_col.size());
+      mixRing.resize(mixRing.size() + sources_col.size());
+
+      for (size_t i = 0; i < sources_col.size(); ++i)
+      {
+        rct::ctkey ctkey;
+        rct::ctkeyV ctkeyV; // LA
+        
+        inamounts.push_back(sources_col[i].amount);
+        index.push_back(sources_col[i].real_output);
+        // inSk: (secret key, mask)
+        ctkey.dest = rct::sk2rct(in_contexts[sources.size() + i].in_ephemeral.sec);
+        ctkey.mask = sources_col[i].mask;
+        ctkeyV.push_back(ctkey);
+        inSk.push_back(ctkey);
+        memwipe(&ctkey, sizeof(rct::ctkey));
+        // inPk: (public key, commitment)
+        // will be done when filling in mixRing
+        if (msout)
+        {
+          kLRki.push_back(sources_col[i].multisig_kLRki);
+        }
+      }
+
+      // mixRing indexing is done the other way round for simple
+      for (size_t i = 0; i < sources_col.size(); ++i)
+      {
+        mixRing[i + sources.size()].resize(sources_col[i].outputs.size());
+        for (size_t n = 0; n < sources_col[i].outputs.size(); ++n)
+        {
+          mixRing[i + sources.size()][n] = sources_col[i].outputs[n].second;
+        }
       }
     }
 
@@ -1351,6 +1437,7 @@ namespace cryptonote
     const account_keys& sender_account_keys,
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
     std::vector<tx_source_entry>& sources,
+    const std::vector<tx_source_entry>& sources_col,
     std::vector<tx_destination_entry>& destinations,
     const boost::optional<cryptonote::account_public_address>& change_addr,
     const std::vector<uint8_t> &extra,
@@ -1390,6 +1477,7 @@ namespace cryptonote
         sender_account_keys,
         subaddresses,
         sources,
+        sources_col,
         destinations,
         change_addr,
         extra, 
