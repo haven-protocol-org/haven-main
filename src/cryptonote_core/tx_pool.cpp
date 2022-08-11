@@ -2439,8 +2439,14 @@ namespace cryptonote
             LOG_PRINT_L2("error: failed to get block containing pricing record");
             continue;
           }
+	  // Get the collateral requirement for the tx
+	  uint64_t collateral = 0;
+	  if (!m_blockchain.get_collateral_requirements(tx_type, tx.amount_burnt, collateral)) {
+            LOG_PRINT_L2("error: failed to get collateral requirements");
+            continue;
+	  }
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, version, tx.output_unlock_times))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, version, tx.output_unlock_times, collateral))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

@@ -2209,6 +2209,21 @@ bool wallet2::get_collateral_requirements(const cryptonote::transaction_type &tx
   using tt = cryptonote::transaction_type;
   THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported TX Type!");
 
+  cryptonote::COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::response res = AUTO_VAL_INIT(res);
+  req.tx_type = (tx_type == tt::OFFSHORE) ? "offshore" : (tx_type == tt::ONSHORE) ? "onshore" : "";
+  req.amount = amount;
+  bool r = invoke_http_json_rpc("/json_rpc", "get_collateral_requirements", req, res, rpc_timeout); 
+  if (!r || res.status != CORE_RPC_STATUS_OK)
+  {
+    MERROR("Failed to request block header from daemon");
+    MERROR(res.status);
+    return false;
+  }
+  collateral = res.collateral;
+  return true;
+  
+  /*
   // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
   uint64_t current_height = get_blockchain_current_height()-1;
   cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
@@ -2255,7 +2270,7 @@ bool wallet2::get_collateral_requirements(const cryptonote::transaction_type &tx
     THROW_WALLET_EXCEPTION(error::wallet_internal_error, "invalid TX type");
     return false;
   }
-
+  */
   return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -11329,16 +11344,19 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 	      available_amount -= DSTS_FRONT_AMOUNT;
         DSTS_FRONT_AMOUNT = 0;
 
-        if (tx_type == tt::OFFSHORE) {
-          tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height, false);
-        } else if (tx_type == tt::ONSHORE) {
-          tx.dsts.back().amount = get_xhv_amount(tx.dsts.back().amount_usd, current_height);
-        } else if (tx_type == tt::XUSD_TO_XASSET) {
-          tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, strDest, current_height);
-        } else if (tx_type == tt::XASSET_TO_XUSD) {
-          tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height, false);
-        }
+	if (!dsts[0].is_collateral) {
+	  if (tx_type == tt::OFFSHORE) {
+	    tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height, false);
+	  } else if (tx_type == tt::ONSHORE) {
+	    tx.dsts.back().amount = get_xhv_amount(tx.dsts.back().amount_usd, current_height);
+	  } else if (tx_type == tt::XUSD_TO_XASSET) {
+	    tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, strDest, current_height);
+	  } else if (tx_type == tt::XASSET_TO_XUSD) {
+	    tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height, false);
+	  }
+	}
         tx.dsts.back().asset_type = dsts[0].asset_type;
+        tx.dsts.back().is_collateral = dsts[0].is_collateral;
         pop_index(dsts, 0);
         ++original_output_index;
       }

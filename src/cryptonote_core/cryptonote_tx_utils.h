@@ -247,7 +247,6 @@ namespace cryptonote
   bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx);
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash);
- 
 }
 
 BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)

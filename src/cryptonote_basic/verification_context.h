@@ -58,6 +58,7 @@ namespace cryptonote
     std::string m_dest_asset;
     transaction_type m_type;
     offshore::pricing_record pr;
+    uint64_t m_collateral;
     bool tx_pr_height_verified = false;
   };
 

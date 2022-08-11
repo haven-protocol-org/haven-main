@@ -3380,6 +3380,45 @@ void Blockchain::flush_invalid_blocks()
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   m_invalid_blocks.clear();
 }
+
+//-----------------------------------------------------------------------------------------------
+bool Blockchain::get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
+{
+  // Get the pricing record
+  block blk;
+  if (!get_block_by_hash(get_block_id_by_height(get_current_blockchain_height()-1), blk)) {
+    // Failed to get the block report error and abort
+    return false;
+  }
+    
+  // Get the circulating supply data
+  std::vector<std::pair<std::string, std::string>> amounts = get_db().get_circulating_supply();
+  for (const auto &i: amounts)
+    {
+      COMMAND_RPC_GET_CIRCULATING_SUPPLY::supply_entry se(i.first, i.second);
+    }
+
+  // Do the right thing based upon TX type
+  using tt = cryptonote::transaction_type;
+  if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+    collateral = 0;
+  } else if (tx_type == tt::OFFSHORE) {
+    // Dummy 1:2 collateral requirements for now
+    collateral = amount << 1;
+  } else if (tx_type == tt::ONSHORE) {
+    // Dummy 1:1 collateral requirements for now
+    collateral = amount;
+  } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+    collateral = 0;
+  } else {
+    // Throw a wallet exception - should never happen
+    MERROR("Invalid TX type");
+    return false;
+  }
+
+  return true;
+}
+  
 //------------------------------------------------------------------
 bool Blockchain::have_block(const crypto::hash& id) const
 {
@@ -5433,8 +5472,17 @@ leave: {
           bvc.m_verifivation_failed = true;
           goto leave;
         }
+	// Get the collateral requirements
+	uint64_t collateral = 0;
+	bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral);
+	if (!r) {
+	  LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+	}
+	
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, hf_version, tx.output_unlock_times))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, hf_version, tx.output_unlock_times, collateral))
         {
           LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
           bvc.m_verifivation_failed = true;

@@ -936,6 +936,16 @@ namespace cryptonote
           }
           tx_info[n].tvc.pr = blocks_pr[0].second.pricing_record;
         }
+
+	// Get the collateral requirements
+	bool r = get_collateral_requirements(tx_info[n].tvc.m_type, tx_info[n].tx->amount_burnt, tx_info[n].tvc.m_collateral);
+	if (!r) {
+	  MERROR_VER("Failed to obtain collateral requirements");
+	  set_semantics_failed(tx_info[n].tx_hash);
+	  tx_info[n].tvc.m_verifivation_failed = true;
+	  tx_info[n].result = false;
+	  continue;
+	}
       }
 
       if (!check_tx_semantic(*tx_info[n].tx, keeped_by_block))
@@ -1013,7 +1023,7 @@ namespace cryptonote
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven3)
           continue;
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven3) {
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, hf_version, tx_info[n].tx->output_unlock_times))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, hf_version, tx_info[n].tx->output_unlock_times, tx_info[n].tvc.m_collateral))
           {
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
@@ -2059,6 +2069,11 @@ namespace cryptonote
   bool core::get_txpool_complement(const std::vector<crypto::hash> &hashes, std::vector<cryptonote::blobdata> &txes)
   {
     return m_mempool.get_complement(hashes, txes);
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
+  {
+    return m_blockchain_storage.get_collateral_requirements(tx_type, amount, collateral);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::update_blockchain_pruning()
