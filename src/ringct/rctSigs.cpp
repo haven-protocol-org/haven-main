@@ -813,7 +813,9 @@ namespace rct {
     const key & message, 
     const ctkeyV & inSk, 
     const keyV & destinations, 
-    const std::vector<xmr_amount> & inamounts, 
+    const std::vector<xmr_amount> & inamounts,
+    const std::vector<size_t>& inamounts_col_indices,
+    const uint64_t onshore_col_amount,
     const std::string in_asset_type, 
     const std::vector<std::pair<std::string,std::pair<xmr_amount,bool>>> & outamounts, 
     xmr_amount txnFee, 
@@ -916,6 +918,8 @@ namespace rct {
         ASSERT_MES_AND_THROW("Unsupported BP version: " << rct_config.bp_version);
     }
 
+    bool use_onshore_col = (onshore && rv.type == RCTTypeHaven3);
+
     // prepare the rct data structures
     rv.message = message;
     rv.outPk.resize(destinations.size());
@@ -981,15 +985,15 @@ namespace rct {
             sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
           }
 
-	  // HERE BE DRAGONS!!!
-	  // NEAC : Sum the non-change output masks
-	  if (outamounts[i].second.second/* ||
-	      (outamounts[i].first == "XUSD" && offshore) ||
-	      (outamounts[i].first == "XHV" && onshore)*/) {
-	    sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
-	  }
-	  // LAND AHOY!!!
-	  
+          // save the col output mask for offshore
+          if (offshore && outamounts[i].second.second) {
+            sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
+          }
+          
+          // save the actual col output(not change) mask for onshore
+          if (use_onshore_col && outamounts[i].second.second && outamounts[i].second.first == onshore_col_amount) {
+            rv.maskSums[2] = masks[i];
+          }
         } else {
           if (outamounts[i].first == "XHV") {
             rv.outPk[i].mask = rct::scalarmult8(C[i]);
@@ -1070,6 +1074,7 @@ namespace rct {
 
     // do the output encryption and asset conversions
     key sumout = zero();
+    key sumout_onshore_col = zero();
     key atomic = d2h(COIN);
     key inverse_atomic = invert(atomic);
     for (i = 0; i < outSk.size(); ++i)
@@ -1092,16 +1097,19 @@ namespace rct {
         if (outamounts[i].first == "XUSD") {
           // Output amount in USD already - no conversion required
           outSk_scaled = outSk[i].mask;
-        } else if (outamounts[i].first == "XHV") {
+        } else if (outamounts[i].first == "XHV" && !outamounts[i].second.second) { 
           // ONSHORE - convert output amount to USD for equalKeys() testing
           key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
           sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
           sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
-        } else {
+        } else if (outamounts[i].first != "XHV" &&  outamounts[i].first != "XUSD") {
           // xAsset equivalent to OFFSHORE - convert output amount to USD for equalKeys() testing
           key inverse_rate_xasset = invert(d2h(pr[outamounts[i].first]));
           sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
           sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate_xasset.bytes);
+        } else {
+          // onshore col output
+          outSk_scaled = outSk[i].mask;
         }
       } else {
         // SPENDING XASSET
@@ -1117,7 +1125,13 @@ namespace rct {
           outSk_scaled = outSk[i].mask;
         }
       }
-      sc_add(sumout.bytes, outSk_scaled.bytes, sumout.bytes);
+
+      // exclude the onshore collateral outs(actual + change)
+      if (use_onshore_col && outamounts[i].second.second) {
+        sc_add(sumout_onshore_col.bytes, outSk_scaled.bytes, sumout_onshore_col.bytes);
+      } else {
+        sc_add(sumout.bytes, outSk_scaled.bytes, sumout.bytes);
+      }
       
       //mask amount and mask
       rv.ecdhInfo[i].mask = copy(outSk[i].mask);
@@ -1145,29 +1159,56 @@ namespace rct {
 
     // prepare CLSAGs or MLSAGs vectors
     if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN) || (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3))
-        rv.p.CLSAGs.resize(inamounts.size());
+      rv.p.CLSAGs.resize(inamounts.size());
     else
-        rv.p.MGs.resize(inamounts.size());
+      rv.p.MGs.resize(inamounts.size());
+
     
+    // separete the actual and colleteral inputs
+    std::vector<std::pair<size_t, uint64_t>> actual_in_amounts;
+    std::vector<std::pair<size_t, uint64_t>> onshore_col_in_amounts;
+    for (i = 0; i < inamounts.size(); i++) {
+      auto it = std::find(inamounts_col_indices.begin(), inamounts_col_indices.end(), i);
+      if (it != inamounts_col_indices.end())
+        onshore_col_in_amounts.push_back(std::pair<size_t, uint64_t>(i, inamounts[i]));
+      else
+        actual_in_amounts.push_back(std::pair<size_t, uint64_t>(i, inamounts[i]));
+    }
+
     // generate commitments per input
     key sumpouts = zero(); //sum pseudoOut masks
     keyV a(inamounts.size());
-    for (i = 0 ; i < inamounts.size() - 1; i++) {
+    for (i = 0 ; i < actual_in_amounts.size() - 1; i++) {
       // Generate a random key
-      skGen(a[i]);
+      skGen(a[actual_in_amounts[i].first]);
       // Sum the random keys as we iterate
-      sc_add(sumpouts.bytes, a[i].bytes, sumpouts.bytes);
+      sc_add(sumpouts.bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
       // Generate a commitment to the amount with the random key
-      genC(pseudoOuts[i], a[i], inamounts[i]);
+      genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
     }
-    sc_sub(a[i].bytes, sumout.bytes, sumpouts.bytes);
-    genC(pseudoOuts[i], a[i], inamounts[i]);
-    DP(pseudoOuts[i]);
+    sc_sub(a[actual_in_amounts[i].first].bytes, sumout.bytes, sumpouts.bytes);
+    genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
 
     // set the sum of input blinding factors
     if ((offshore || onshore || xusd_to_xasset || xasset_to_xusd) && (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3)) {
-      sc_add(rv.maskSums[0].bytes, a[i].bytes, sumpouts.bytes);
+      sc_add(rv.maskSums[0].bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
     }
+
+    // generate the commitments for collateral inputs
+    if (use_onshore_col) {
+      sumpouts = zero();
+      for (i = 0; i < onshore_col_in_amounts.size() - 1; i++) {
+        // Generate a random key
+        skGen(a[onshore_col_in_amounts[i].first]);
+        // Sum the random keys as we iterate
+        sc_add(sumpouts.bytes, a[onshore_col_in_amounts[i].first].bytes, sumpouts.bytes);
+        // Generate a commitment to the amount with the random key
+        genC(pseudoOuts[onshore_col_in_amounts[i].first], a[onshore_col_in_amounts[i].first], onshore_col_in_amounts[i].second);
+      }
+      sc_sub(a[onshore_col_in_amounts[i].first].bytes, sumout_onshore_col.bytes, sumpouts.bytes);
+      genC(pseudoOuts[onshore_col_in_amounts[i].first], a[onshore_col_in_amounts[i].first], onshore_col_in_amounts[i].second);
+    }
+    DP(pseudoOuts[onshore_col_in_amounts[i].first]);
 
     key full_message = get_pre_mlsag_hash(rv,hwdev);
     if (msout)
@@ -1190,7 +1231,9 @@ namespace rct {
     const ctkeyV & inSk, 
     const ctkeyV & inPk, 
     const keyV & destinations, 
-    const std::vector<xmr_amount> & inamounts, 
+    const std::vector<xmr_amount> & inamounts,
+    const std::vector<size_t>& inamounts_col_indices,
+    const uint64_t onshore_col_amount,
     const std::string in_asset_type, 
     const std::vector<std::pair<std::string,std::pair<xmr_amount,bool>>> & outamounts, 
     const keyV &amount_keys, 
@@ -1217,7 +1260,7 @@ namespace rct {
       mixRing[i].resize(mixin+1);
       index[i] = populateFromBlockchainSimple(mixRing[i], inPk[i], mixin);
     }
-    return genRctSimple(message, inSk, destinations, inamounts, in_asset_type, outamounts, txnFee, txnFee_usd, txnFee_xasset, txnOffshoreFee, txnOffshoreFee_usd, txnOffshoreFee_xasset, mixRing, amount_keys, kLRki, msout, index, outSk, rct_config, hwdev, pr, tx_version);
+    return genRctSimple(message, inSk, destinations, inamounts, inamounts_col_indices, onshore_col_amount, in_asset_type, outamounts, txnFee, txnFee_usd, txnFee_xasset, txnOffshoreFee, txnOffshoreFee_usd, txnOffshoreFee_xasset, mixRing, amount_keys, kLRki, msout, index, outSk, rct_config, hwdev, pr, tx_version);
   }
 
   //RingCT protocol
@@ -1309,6 +1352,7 @@ namespace rct {
     const std::string& strDest,
     uint64_t amount_burnt,
     const std::vector<cryptonote::tx_out> &vout,
+    const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
     const std::vector<uint64_t> &output_unlock_times,
     const uint64_t amount_collateral
@@ -1350,6 +1394,7 @@ namespace rct {
       // Calculate sum of all C' and D'
       rct::keyV masks_C;
       rct::keyV masks_D;
+      rct::keyV masks_Col_Out_Onshore;
       size_t i = 0;
       for (auto &output: vout) {
         std::string output_asset_type;
@@ -1366,8 +1411,10 @@ namespace rct {
 
         if (output_asset_type == strSource) {
           masks_C.push_back(rv.outPk[i].mask);
-        } else if (output_asset_type == strDest) {
+        } else if (output_asset_type == strDest && output_unlock_times[i] != 0) {
           masks_D.push_back(rv.outPk[i].mask);
+        } else if (output_asset_type == strDest && output_unlock_times[i] == 0) {
+          masks_Col_Out_Onshore.push_back(rv.outPk[i].mask);
         } else {
           LOG_PRINT_L1("Invalid output detected (wrong asset type)");
           return false;
@@ -1412,8 +1459,22 @@ namespace rct {
         D_final = sumXASSET * 1/ exchange_rate_in_usd = -total_output_value_in_USD
         Zi = sumUSD + D_final = 0
       */
+      using tx_type = cryptonote::transaction_type;
 
-      key sumPseudoOuts = addKeys(rv.p.pseudoOuts);
+      // exclude the onshore collateral from proof-of-value calculation
+      key sumPseudoOuts = zerokey;
+      key sumColIns = zerokey;
+      if (type == tx_type::ONSHORE && version >= HF_VERSION_USE_COLLATERAL) {
+        for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
+          if (vin[i].type() == typeid(cryptonote::txin_to_key)) {
+            sumColIns = addKeys(sumColIns, rv.p.pseudoOuts[i]);
+          } else {
+            sumPseudoOuts = addKeys(sumPseudoOuts, rv.p.pseudoOuts[i]);
+          }
+        }
+      } else {
+        sumPseudoOuts = addKeys(rv.p.pseudoOuts);
+      }
       DP(sumPseudoOuts);
 
       // C COLOUR
@@ -1430,7 +1491,6 @@ namespace rct {
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
-      using tx_type = cryptonote::transaction_type;
       if (type == tx_type::OFFSHORE) {
         key D_scaled = scalarmultKey(sumD, d2h(COIN));
         key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
@@ -1510,64 +1570,47 @@ namespace rct {
       }
 
       // validate the colleteral
-      if (type == tx_type::OFFSHORE) {
+      if (version >= HF_VERSION_USE_COLLATERAL) {
+        if (type == tx_type::OFFSHORE) {
+          // get colletera commitmen
+          key C_col;
+          for (size_t i = 0; i < output_unlock_times.size(); i++) {
+            if (output_unlock_times[i] != 0 && vout[i].target.type() == typeid(cryptonote::txout_to_key)) {
+              C_col = rv.outPk[i].mask;
+            }
+          }
+          
+          key pseudoC_col;
+          genC(pseudoC_col, rv.maskSums[2], amount_collateral);
 
-        // get colletera commitmen
-        key C_col;
-        for (size_t i = 0; i < output_unlock_times.size(); i++) {
-          if (output_unlock_times[i] != 0 && vout[i].target.type() == typeid(cryptonote::txout_to_key)) {
-            C_col = rv.outPk[i].mask;
+          if (!equalKeys(pseudoC_col, C_col)) {
+            LOG_ERROR("Offshore collateral verification failed.");
+            return false;
+          }
+        } else if (type == tx_type::ONSHORE) {
+          
+          key col_C;
+          genC(col_C, rv.maskSums[2], amount_collateral);
+          
+          // try to match with one of the col outputs(other one should be the chnage)
+          bool match = false;
+          for (size_t i = 0; i < masks_Col_Out_Onshore.size(); ++i) {
+            if (equalKeys(col_C, masks_Col_Out_Onshore[i])) {
+              match = true;
+            }
+          }
+          if (!match) {
+            LOG_PRINT_L1("Onshore collateral check failed.");
+            return false;
+          }
+
+          // check inputs == outputs
+          key sumColOut = addKeys(masks_Col_Out_Onshore);
+          if (!equalKeys(sumColOut, sumColIns)) {
+            LOG_PRINT_L1("Onshore collateral inputs != outputs");
+            return false;
           }
         }
-        
-        key pseudoC_col;
-        genC(pseudoC_col, rv.maskSums[2], amount_collateral);
-
-        if (!equalKeys(pseudoC_col, C_col)) {
-          LOG_ERROR("Tx collateral verification failed.");
-          return false;
-        }
-	
-	// rv.maskSums[2] = sum of masks of real converted output (outPks[r]) + dummy converted output (outPks[d]) + collateral output (outPks[c])
-	// We can prove the collateral amount (a_coll) is correct by performing the following calculation
-	//
-	// sumCollMasks = outPks[r].mask + outPks[d].mask + outPks[c].mask
-	// a_coll = sumCollPks - genC(rv.maskSums[2]) - genC(amount_minted)
-	/*
-	// Sum the output pks
-	key sumCollPks = zero();
-	for (size_t i = 0; i < output_unlock_times.size(); i++) {
-	  if (output_unlock_times[i] != 0) {
-	    if (vout[i].target.type() == typeid(cryptonote::txout_to_key)) {
- 	      sumCollPks = addKeys(sumCollPks, rv.outPk[i].mask);
-	    } else if (vout[i].target.type() == typeid(cryptonote::txout_offshore)) {
- 	      //sumCollPks = addKeys(sumCollPks, rv.outPk[i].mask);
-	    }
-	  }
-	}
-	sumCollPks = addKeys(sumCollPks, sumC);
-
-	// Subtract the masks from the pks
-	key Cmasks;
-	genC(Cmasks, rv.maskSums[2], 0);
-	subKeys(sumCollPks, sumCollPks, Cmasks);
-
-	// Subtract the amount_minted
-	boost::multiprecision::uint128_t xhv_128 = amount_burnt;
-	boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;
-	boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
-	xusd_128 /= COIN;
-	uint64_t amount_minted = (uint64_t)xusd_128;
-
-	key Cminted = scalarmultH(d2h(amount_minted));
-	subKeys(sumCollPks, sumCollPks, Cminted);
-
-	key Ccoll = scalarmultH(d2h(amount_collateral));
-	if (!equalKeys(sumCollPks, Ccoll)) {
-          LOG_PRINT_L1("Tx collateral verification failed.");
-          return false;
-	}
-	*/
       }
         
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)

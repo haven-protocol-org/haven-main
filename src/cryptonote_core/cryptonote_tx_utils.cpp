@@ -401,7 +401,7 @@ namespace cryptonote
       //   return false;
       // }
       // Filter out the change, which is never converted
-      if (dt.amount_usd != 0) {
+      if (dt.amount_usd != 0 && !dt.is_collateral) {
         amount += dt.amount;
       }
     }
@@ -442,7 +442,7 @@ namespace cryptonote
       //   return false;
       // }
       // Filter out the change, which is never converted
-      if (dt.amount != 0) {
+      if (dt.amount != 0 && !dt.is_collateral) {
         amount_usd += dt.amount_usd;
       }
     }
@@ -600,11 +600,20 @@ namespace cryptonote
     std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
     
     // Sanity check that we only have 1 source asset type
-    if (sat.size() != 1) {
+    if (sat.size() == 2) {
+      // this is only possible for an onshore tx.
+      if ((sat[0] == "XHV" && sat[1] == "XUSD") || (sat[0] == "XUSD" && sat[1] == "XHV")) {
+        source = "XUSD";
+      } else {
+        LOG_ERROR("Impossible input asset types. Rejecting..");
+        return false;
+      }
+    } else if (sat.size() == 1) {
+      source = sat[0];
+    } else {
       LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
       return false;
     }
-    source = sat[0];
     
     // Clear the destination
     std::set<std::string> destination_asset_types;
@@ -745,7 +754,6 @@ namespace cryptonote
     const account_keys& sender_account_keys, 
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, 
     std::vector<tx_source_entry>& sources,
-    const std::vector<tx_source_entry>& sources_col,
     std::vector<tx_destination_entry>& destinations, 
     const boost::optional<cryptonote::account_public_address>& change_addr, 
     const std::vector<uint8_t> &extra, 
@@ -760,6 +768,7 @@ namespace cryptonote
     offshore::pricing_record pr, 
     uint32_t fees_version,
     uint32_t hf_version,
+    const uint64_t onshore_col_amount,
     bool rct, 
     const rct::RCTConfig &rct_config, 
     rct::multisig_out *msout, 
@@ -912,7 +921,7 @@ namespace cryptonote
         return false;
       }
 
-      if (src_entr.asset_type == "XHV") {
+      if (src_entr.asset_type == "XHV" && (hf_version < HF_VERSION_USE_COLLATERAL || tx_type != transaction_type::ONSHORE)) {
         summary_inputs_money += src_entr.amount;
       } else if (src_entr.asset_type == "XUSD") {
         summary_inputs_money_usd += src_entr.amount;
@@ -959,17 +968,34 @@ namespace cryptonote
 	
       } else if (tx_type == transaction_type::ONSHORE) {   // input is xUSD
 
-        // Onshoring
-        txin_onshore input_to_key;
-        input_to_key.amount = src_entr.amount;
-        input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
-        
-        //fill outputs array and use relative offsets
-        for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
-          input_to_key.key_offsets.push_back(out_entry.first);
-        
-        input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
-        tx.vin.push_back(input_to_key);
+        if (src_entr.asset_type == "XUSD") {
+          // Onshoring
+          txin_onshore input_to_key;
+          input_to_key.amount = src_entr.amount;
+          input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
+          
+          //fill outputs array and use relative offsets
+          for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
+            input_to_key.key_offsets.push_back(out_entry.first);
+          
+          input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
+          tx.vin.push_back(input_to_key);
+        } else if (src_entr.asset_type == "XHV") {
+          // colleteral input
+          txin_to_key input_to_key;
+          input_to_key.amount = src_entr.amount;
+          input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
+          
+          //fill outputs array and use relative offsets
+          for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
+            input_to_key.key_offsets.push_back(out_entry.first);
+          
+          input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
+          tx.vin.push_back(input_to_key);
+        } else {
+          LOG_ERROR("unsupported input asset for onshore " << src_entr.asset_type);
+          return false;
+        }
         
       } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {  // input is xAsset
 
@@ -989,54 +1015,6 @@ namespace cryptonote
       } else {
 
         // NEAC - bOffshoreTx doesn't matter if it's an OFFSHORE TX - the IN will still be txin_to_key
-        txin_to_key input_to_key;
-        input_to_key.amount = src_entr.amount;
-        input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
-        
-        //fill outputs array and use relative offsets
-        for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
-          input_to_key.key_offsets.push_back(out_entry.first);
-        
-        input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
-        tx.vin.push_back(input_to_key);
-      }
-    }
-
-    //fill colleteral
-    if (tx_type == transaction_type::ONSHORE) {
-      idx = -1;
-      for(const tx_source_entry& src_entr:  sources_col)
-      {
-        ++idx;
-        if(src_entr.real_output >= src_entr.outputs.size())
-        {
-          LOG_ERROR("real_output index (" << src_entr.real_output << ")bigger than output_keys.size()=" << src_entr.outputs.size());
-          return false;
-        }
-        
-        //key_derivation recv_derivation;
-        in_contexts.push_back(input_generation_context_data());
-        keypair& in_ephemeral = in_contexts.back().in_ephemeral;
-        crypto::key_image img;
-        const auto& out_key = reinterpret_cast<const crypto::public_key&>(src_entr.outputs[src_entr.real_output].second.dest);
-        if(!generate_key_image_helper(sender_account_keys, subaddresses, out_key, src_entr.real_out_tx_key, src_entr.real_out_additional_tx_keys, src_entr.real_output_in_tx_index, in_ephemeral,img, hwdev))
-        {
-          LOG_ERROR("Key image generation failed!");
-          return false;
-        }
-
-        //check that derivated key is equal with real output key (if non multisig)
-        if(!msout && !(in_ephemeral.pub == src_entr.outputs[src_entr.real_output].second.dest) )
-        {
-          LOG_ERROR("derived public key mismatch with output public key at index " << idx << ", real out " << src_entr.real_output << "! "<< ENDL << "derived_key:"
-            << string_tools::pod_to_hex(in_ephemeral.pub) << ENDL << "real output_public_key:"
-            << string_tools::pod_to_hex(src_entr.outputs[src_entr.real_output].second.dest) );
-          LOG_ERROR("amount " << src_entr.amount << ", rct " << src_entr.rct);
-          LOG_ERROR("tx pubkey " << src_entr.real_out_tx_key << ", real_output_in_tx_index " << src_entr.real_output_in_tx_index);
-          return false;
-        }
-
-        // xhv input
         txin_to_key input_to_key;
         input_to_key.amount = src_entr.amount;
         input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
@@ -1082,9 +1060,9 @@ namespace cryptonote
         const txin_offshore &tk1 = boost::get<txin_offshore>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
       } else if (tx_type == transaction_type::ONSHORE) {
-        const txin_onshore &tk0 = boost::get<txin_onshore>(tx.vin[i0]);
-        const txin_onshore &tk1 = boost::get<txin_onshore>(tx.vin[i1]);
-        return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
+        crypto::key_image tk0_img = (tx.vin[i0].type() == typeid(txin_to_key) ?  boost::get<txin_to_key>(tx.vin[i0]).k_image :  boost::get<txin_onshore>(tx.vin[i0]).k_image);
+        crypto::key_image tk1_img = (tx.vin[i1].type() == typeid(txin_to_key) ?  boost::get<txin_to_key>(tx.vin[i1]).k_image :  boost::get<txin_onshore>(tx.vin[i1]).k_image);
+        return memcmp(&tk0_img, &tk1_img, sizeof(tk0_img)) > 0;
       } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {
         const txin_xasset &tk0 = boost::get<txin_xasset>(tx.vin[i0]);
         const txin_xasset &tk1 = boost::get<txin_xasset>(tx.vin[i1]);
@@ -1188,7 +1166,12 @@ namespace cryptonote
       if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && strSource != strDest) {
         if (dst_entr_clone.asset_type == strDest) {
           // Destination amount - needs a full unlock time
-          tx.output_unlock_times.push_back(tx.unlock_time);
+          if (tx_type == transaction_type::ONSHORE && dst_entr_clone.is_collateral) {
+            // temporary for detection  on the daemon side for now.
+            tx.output_unlock_times.push_back(0);
+          } else {
+            tx.output_unlock_times.push_back(tx.unlock_time);
+          }
         } else if (dst_entr_clone.asset_type == strSource) {
           if (dst_entr_clone.is_collateral) {
             // Collateral amount - needs a full unlock time
@@ -1218,7 +1201,7 @@ namespace cryptonote
         summary_outs_money_xasset += dst_entr_clone.amount_xasset;
       }
       if (strSource != strDest) {
-        if (dst_entr_clone.asset_type == strDest) {
+        if (dst_entr_clone.asset_type == strDest && !dst_entr_clone.is_collateral) {
           tx.amount_minted += out.amount;
           if (tx_type == transaction_type::OFFSHORE) {
             tx.amount_burnt += dst_entr_clone.amount;
@@ -1287,12 +1270,17 @@ namespace cryptonote
     // mixRing indexing is done the other way round for simple
     rct::ctkeyM mixRing(sources.size());
     std::vector<uint64_t> inamounts;
+    std::vector<size_t> inamounts_col_indices;
     std::vector<unsigned int> index;
     std::vector<rct::multisig_kLRki> kLRki;
     for (size_t i = 0; i < sources.size(); ++i)
     {
       rct::ctkey ctkey;
       rct::ctkeyV ctkeyV; // LA
+
+      if (sources[i].asset_type == "XHV" && tx_type == transaction_type::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
+        inamounts_col_indices.push_back(i);
+      }
       
       inamounts.push_back(sources[i].amount);
       index.push_back(sources[i].real_output);
@@ -1317,44 +1305,6 @@ namespace cryptonote
       for (size_t n = 0; n < sources[i].outputs.size(); ++n)
       {
         mixRing[i][n] = sources[i].outputs[n].second;
-      }
-    }
-
-    if (tx_type == transaction_type::ONSHORE) {
-
-      // resize the vectors to add thr col inputs
-      inSk.resize(inSk.size() + sources_col.size());
-      mixRing.resize(mixRing.size() + sources_col.size());
-
-      for (size_t i = 0; i < sources_col.size(); ++i)
-      {
-        rct::ctkey ctkey;
-        rct::ctkeyV ctkeyV; // LA
-        
-        inamounts.push_back(sources_col[i].amount);
-        index.push_back(sources_col[i].real_output);
-        // inSk: (secret key, mask)
-        ctkey.dest = rct::sk2rct(in_contexts[sources.size() + i].in_ephemeral.sec);
-        ctkey.mask = sources_col[i].mask;
-        ctkeyV.push_back(ctkey);
-        inSk.push_back(ctkey);
-        memwipe(&ctkey, sizeof(rct::ctkey));
-        // inPk: (public key, commitment)
-        // will be done when filling in mixRing
-        if (msout)
-        {
-          kLRki.push_back(sources_col[i].multisig_kLRki);
-        }
-      }
-
-      // mixRing indexing is done the other way round for simple
-      for (size_t i = 0; i < sources_col.size(); ++i)
-      {
-        mixRing[i + sources.size()].resize(sources_col[i].outputs.size());
-        for (size_t n = 0; n < sources_col[i].outputs.size(); ++n)
-        {
-          mixRing[i + sources.size()][n] = sources_col[i].outputs[n].second;
-        }
       }
     }
 
@@ -1403,6 +1353,8 @@ namespace cryptonote
       inSk,
       destination_keys,
       inamounts,
+      inamounts_col_indices,
+      onshore_col_amount,
       strSource,
       outamounts,
       fee,
@@ -1437,7 +1389,6 @@ namespace cryptonote
     const account_keys& sender_account_keys,
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
     std::vector<tx_source_entry>& sources,
-    const std::vector<tx_source_entry>& sources_col,
     std::vector<tx_destination_entry>& destinations,
     const boost::optional<cryptonote::account_public_address>& change_addr,
     const std::vector<uint8_t> &extra,
@@ -1452,6 +1403,7 @@ namespace cryptonote
     offshore::pricing_record pr,
     uint32_t fees_version,
     uint32_t hf_version,
+    const uint64_t onshore_col_amount,
     bool rct,
     const rct::RCTConfig &rct_config,
     rct::multisig_out *msout
@@ -1477,7 +1429,6 @@ namespace cryptonote
         sender_account_keys,
         subaddresses,
         sources,
-        sources_col,
         destinations,
         change_addr,
         extra, 
@@ -1492,6 +1443,7 @@ namespace cryptonote
         pr,
         fees_version,
         hf_version,
+        onshore_col_amount,
         rct,
         rct_config,
         msout,

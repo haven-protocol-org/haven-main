@@ -386,7 +386,7 @@ namespace rct {
           FIELDS(maskSums[2])
           ar.end_array();
 
-	} else if (type == RCTTypeHaven2) {
+        } else if (type == RCTTypeHaven2) {
 
           ar.tag("maskSums");
           ar.begin_array();

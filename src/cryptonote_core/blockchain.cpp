@@ -3857,24 +3857,27 @@ bool Blockchain::have_tx_keyimges_as_spent(const transaction &tx) const
   LOG_PRINT_L3("Blockchain::" << __func__);
   for (const txin_v& in: tx.vin)
   {
-    if (tx.vin[0].type() == typeid(txin_to_key)) {
+    if (in.type() == typeid(txin_to_key)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
         return true;
     }
-    else if (tx.vin[0].type() == typeid(txin_offshore)) {
+    else if (in.type() == typeid(txin_offshore)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
 	      return true;
     }
-    else if (tx.vin[0].type() == typeid(txin_onshore)) {
+    else if (in.type() == typeid(txin_onshore)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
 	      return true;
-    } else {
+    } else if (in.type() == typeid(txin_xasset)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
 	      return true;
+    } else {
+      MERROR_VER("wrong input type");
+      return false;
     }
   }
   return false;
@@ -5460,8 +5463,9 @@ leave: {
       }
       if (hf_version >= HF_VERSION_HAVEN2) {
         // get tx type and pricing record
+        using tt = cryptonote::transaction_type;
         block bl;
-        cryptonote::transaction_type tx_type;
+        tt tx_type;
         if (!get_tx_type(source, dest, tx_type)) {
           LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
           bvc.m_verifivation_failed = true;
@@ -5472,17 +5476,20 @@ leave: {
           bvc.m_verifivation_failed = true;
           goto leave;
         }
-	// Get the collateral requirements
-	uint64_t collateral = 0;
-	bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral);
-	if (!r) {
-	  LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
-          bvc.m_verifivation_failed = true;
-          goto leave;
-	}
+
+        // Get the collateral requirements
+        uint64_t collateral = 0;
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+          bool r = get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral);
+          if (!r) {
+            LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+        }
 	
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, hf_version, tx.output_unlock_times, collateral))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.output_unlock_times, collateral))
         {
           LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
           bvc.m_verifivation_failed = true;
