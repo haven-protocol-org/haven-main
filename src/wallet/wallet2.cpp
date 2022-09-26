@@ -2209,52 +2209,18 @@ bool wallet2::get_collateral_requirements(const cryptonote::transaction_type &tx
   using tt = cryptonote::transaction_type;
   THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported TX Type!");
 
-  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
-  uint64_t current_height = get_blockchain_current_height()-1;
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response res = AUTO_VAL_INIT(res);
-  m_daemon_rpc_mutex.lock();
-  req.height = current_height;
-  bool r = invoke_http_json_rpc("/json_rpc", "getblockheaderbyheight", req, res, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
+  cryptonote::COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::response res = AUTO_VAL_INIT(res);
+  req.tx_type = (tx_type == tt::OFFSHORE) ? "offshore" : (tx_type == tt::ONSHORE) ? "onshore" : "";
+  req.amount = amount;
+  bool r = invoke_http_json_rpc("/json_rpc", "get_collateral_requirements", req, res, rpc_timeout); 
   if (!r || res.status != CORE_RPC_STATUS_OK)
   {
     MERROR("Failed to request block header from daemon");
+    MERROR(res.status);
     return false;
   }
-
-  // Got the block header - verify the pricing record
-  THROW_WALLET_EXCEPTION_IF(res.block_header.pricing_record.empty(), error::wallet_internal_error, "Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
-
-  // Issue an RPC call to get the circulating supply
-  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::request reqcs = AUTO_VAL_INIT(reqcs);
-  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::response rescs = AUTO_VAL_INIT(rescs);
-  m_daemon_rpc_mutex.lock();
-  r = invoke_http_json_rpc("/json_rpc", "get_circulating_supply", reqcs, rescs, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  if (!r || res.status != CORE_RPC_STATUS_OK)
-  {
-    MERROR("Failed to request circulating supply from daemon");
-    return false;
-  }
-  
-  // Do the right thing based upon TX type
-  if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
-    collateral = 0;
-  } else if (tx_type == tt::OFFSHORE) {
-    // Dummy 1:2 collateral requirements for now
-    collateral = amount << 1;
-  } else if (tx_type == tt::ONSHORE) {
-    // Dummy 1:1 collateral requirements for now
-    collateral = amount;
-  } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
-    collateral = 0;
-  } else {
-    // Throw a wallet exception - should never happen
-    MERROR("Invalid TX type");
-    THROW_WALLET_EXCEPTION(error::wallet_internal_error, "invalid TX type");
-    return false;
-  }
+  collateral = res.collateral;
 
   return true;
 }
@@ -7474,6 +7440,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       offshore::pricing_record(),
       fees_version,
       hf_version,
+      0,
       sd.use_rct,
       rct_config,
       m_multisig ? &msout : NULL
@@ -8060,6 +8027,7 @@ bool wallet2::sign_multisig_tx_base(multisig_tx_set &exported_txs, std::vector<c
       offshore::pricing_record(),
       fees_version,
       hf_version,
+      0,
       sd.use_rct,
       rct_config,
       &msout,
@@ -8980,7 +8948,6 @@ void wallet2::get_outs(const transfer_container &specific_transfers, const std::
 void wallet2::get_outs(const transfer_container &specific_transfers, const std::string rct_asset_type, std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count,  uint64_t &num_spendable_global_outs, uint64_t &num_outs)
 {
   LOG_PRINT_L2("fake_outputs_count: " << fake_outputs_count);
-  outs.clear();
 
   if(m_light_wallet && fake_outputs_count > 0) {
     light_wallet_get_outs(outs, selected_transfers, fake_outputs_count);
@@ -9669,7 +9636,8 @@ void wallet2::transfer_selected_rct(
   const rct::RCTConfig &rct_config,
   const cryptonote::transaction_type tx_type,
   const std::string strSource,
-  const std::string strDest
+  const std::string strDest,
+  const std::vector<size_t>& selected_transfers_onshore_colleteral
 ){
 
   using namespace cryptonote;
@@ -9685,6 +9653,7 @@ void wallet2::transfer_selected_rct(
   
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   uint64_t needed_money = fee;
+  uint64_t needed_col = 0;
   LOG_PRINT_L2("transfer_selected_rct: starting with fee " << print_money (needed_money));
   LOG_PRINT_L2("selected transfers: " << strjoin(selected_transfers, " "));
 
@@ -9698,7 +9667,7 @@ void wallet2::transfer_selected_rct(
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_xasset) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_xasset, error::tx_sum_overflow, dsts, fee, m_nettype);      
     } else if (use_offshore_outputs) {
-      THROW_WALLET_EXCEPTION_IF(0 == dt.amount_usd, error::zero_destination);
+      THROW_WALLET_EXCEPTION_IF((0 == dt.amount_usd) && (0 == dt.amount), error::zero_destination);
       needed_money += dt.amount_usd;
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_usd) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_usd, error::tx_sum_overflow, dsts, fee, m_nettype);
@@ -9707,6 +9676,15 @@ void wallet2::transfer_selected_rct(
       needed_money += dt.amount;
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_nettype);
+    }
+  }
+
+  // calculate total collateral
+  if (tx_type == cryptonote::transaction_type::ONSHORE) {
+    for(auto& dt: dsts) {
+      if (dt.is_collateral) {
+        needed_col += dt.amount;
+      }
     }
   }
 
@@ -9772,15 +9750,30 @@ void wallet2::transfer_selected_rct(
     found_money += specific_transfers[idx].amount();
   }
 
+  uint64_t found_col = 0;
+  if (tx_type == cryptonote::transaction_type::ONSHORE) {
+    for(size_t idx: selected_transfers_onshore_colleteral)
+    {
+      found_col += m_transfers[idx].amount();
+    }
+  }
+
   LOG_PRINT_L2("wanted " << print_money(needed_money) << ", found " << print_money(found_money) << ", fee " << print_money(fee));
   THROW_WALLET_EXCEPTION_IF(found_money < needed_money, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
+  LOG_PRINT_L2("wanted collateral" << print_money(needed_col) << ", found collateral " << print_money(found_col) << ", fee " << print_money(fee));
+  THROW_WALLET_EXCEPTION_IF(found_col < needed_col, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
 
   uint32_t subaddr_account = specific_transfers[*selected_transfers.begin()].m_subaddr_index.major;
   for (auto i = ++selected_transfers.begin(); i != selected_transfers.end(); ++i)
     THROW_WALLET_EXCEPTION_IF(subaddr_account != specific_transfers[*i].m_subaddr_index.major, error::wallet_internal_error, "the tx uses funds from multiple accounts");
 
-  if (outs.empty())
+  if (outs.empty()) {
     get_outs(specific_transfers, strSource, outs, selected_transfers, fake_outputs_count); // may throw
+    // get the outs for col inputs as well
+    if (tx_type == cryptonote::transaction_type::ONSHORE) {
+      get_outs(m_transfers, "XHV", outs, selected_transfers_onshore_colleteral, fake_outputs_count); // may throw
+    }
+  }
 
   //prepare inputs
   LOG_PRINT_L2("preparing outputs");
@@ -9842,6 +9835,65 @@ void wallet2::transfer_selected_rct(
     detail::print_source_entry(src);
     ++out_index;
   }
+
+  if (tx_type == cryptonote::transaction_type::ONSHORE) {
+    for(size_t idx: selected_transfers_onshore_colleteral)
+    {
+      sources.resize(sources.size()+1);
+      cryptonote::tx_source_entry& src = sources.back();
+      const transfer_details& td = m_transfers[idx];
+
+      src.amount = td.amount();
+      src.mask = td.m_mask;
+      src.asset_type = "XHV";
+      src.rct = td.is_rct();
+      src.height = td.m_block_height;
+      //paste mixin transaction
+
+      THROW_WALLET_EXCEPTION_IF(outs.size() < out_index + 1 ,  error::wallet_internal_error, "outs.size() < out_index + 1"); 
+      THROW_WALLET_EXCEPTION_IF(outs[out_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
+        
+      typedef cryptonote::tx_source_entry::output_entry tx_output_entry;
+      for (size_t n = 0; n < fake_outputs_count + 1; ++n)
+      {
+        tx_output_entry oe;
+        oe.first = std::get<0>(outs[out_index][n]);
+        oe.second.dest = rct::pk2rct(std::get<1>(outs[out_index][n]));
+        oe.second.mask = std::get<2>(outs[out_index][n]);
+        src.outputs.push_back(oe);
+      }
+
+      //paste real transaction to the random index
+      auto it_to_replace = std::find_if(src.outputs.begin(), src.outputs.end(), [&](const tx_output_entry& a)
+      {
+        return a.first == td.m_global_output_index;
+      });
+      THROW_WALLET_EXCEPTION_IF(it_to_replace == src.outputs.end(), error::wallet_internal_error,
+          "real output not found");
+
+      tx_output_entry real_oe;
+      real_oe.first = td.m_global_output_index;
+      real_oe.second.dest = rct::pk2rct(td.get_public_key());
+      real_oe.second.mask = rct::commit(td.amount(), td.m_mask);
+      *it_to_replace = real_oe;
+      src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
+      src.real_out_additional_tx_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
+      src.real_output = it_to_replace - src.outputs.begin();
+      src.real_output_in_tx_index = td.m_internal_output_index;
+
+      if (m_multisig)
+      {
+        auto ignore_set = ignore_sets.empty() ? std::unordered_set<crypto::public_key>() : ignore_sets.front();
+        src.multisig_kLRki = get_multisig_composite_kLRki(m_transfers, idx, ignore_set, used_L, used_L);
+      }
+      else
+        src.multisig_kLRki = rct::multisig_kLRki({rct::zero(), rct::zero(), rct::zero(), rct::zero()});
+      detail::print_source_entry(src);
+      ++out_index;
+    }
+  }
+
+
   LOG_PRINT_L2("outputs prepared");
 
   // we still keep a copy, since we want to keep dsts free of change for user feedback purposes
@@ -9910,6 +9962,17 @@ void wallet2::transfer_selected_rct(
     splitted_dsts.push_back(change_dts_2);
   }
 
+  if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) && tx_type == cryptonote::transaction_type::ONSHORE) {
+    // add the colleteral change
+    cryptonote::tx_destination_entry change_dst_col = AUTO_VAL_INIT(change_dst_col);
+    change_dst_col.amount = found_col - needed_col;
+    change_dst_col.asset_type = "XHV";
+    change_dst_col.addr = get_subaddress({subaddr_account, 0});
+    change_dst_col.is_subaddress = subaddr_account != 0;
+    change_dst_col.is_collateral = true;
+    splitted_dsts.push_back(change_dst_col);
+  }
+
   // construct the tx
   crypto::secret_key tx_key;
   std::vector<crypto::secret_key> additional_tx_keys;
@@ -9945,6 +10008,7 @@ void wallet2::transfer_selected_rct(
     pr,
     fees_version,
     hf_version,
+    needed_col,
     true,
     rct_config,
     m_multisig ? &msout : NULL
@@ -10022,6 +10086,7 @@ void wallet2::transfer_selected_rct(
           pr,
           fees_version,
           hf_version,
+          0,
           true,
           rct_config,
           &msout,
@@ -10075,7 +10140,8 @@ void wallet2::transfer_selected_rct(
   ptx.tx = tx;
   ptx.change_dts = change_dts;
   ptx.selected_transfers = selected_transfers;
-  tools::apply_permutation(ins_order, ptx.selected_transfers);
+  if (!use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) || tx_type != cryptonote::transaction_type::ONSHORE)
+    tools::apply_permutation(ins_order, ptx.selected_transfers);
   ptx.tx_key = tx_key;
   ptx.additional_tx_keys = additional_tx_keys;
   ptx.dests = dsts;
@@ -10864,8 +10930,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // calculate total amount being sent to all destinations IN THE CORRECT CURRENCY
   // throw if total amount overflows uint64_t
   needed_money = 0;
-  const bool need_collateral = use_fork_rules(HF_VERSION_USE_COLLATERAL, 0);
-  std::vector<cryptonote::tx_destination_entry> collateral_dsts;
+  uint64_t needed_col = 0;
+  const bool need_collateral = use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE);
   const account_public_address address = get_subaddress({subaddr_account, 0});
   const bool is_subaddress = (subaddr_account != 0);
   for (auto& dt: dsts)
@@ -10887,13 +10953,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       // Calculate the collateral
       if (need_collateral) {
-	uint64_t collateral_amount = 0;
-	bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
-	LOG_PRINT_L2("transfer: adding " << print_money(collateral_amount) << " collateral, for offshore of " << print_money(dt.amount) << " XHV");
-	THROW_WALLET_EXCEPTION_IF(!bOK || collateral_amount == 0, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
-	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress, true));
+        uint64_t collateral_amount = 0;
+        bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
+        THROW_WALLET_EXCEPTION_IF(!bOK, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
+        needed_col += collateral_amount;
       }
-  
+
     } else if (tx_type == tt::ONSHORE) {
       // Input amount is in XHV - convert so we have both
       dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height, true);
@@ -10902,16 +10967,15 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       dt.asset_type = "XHV";
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount_usd) << ", for a total of " << print_money (needed_money));
       THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount_usd, error::tx_sum_overflow, dsts, 0, m_nettype);
-
+      
       // Calculate the collateral
       if (need_collateral) {
-	uint64_t collateral_amount = 0;
-	bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
-	LOG_PRINT_L2("transfer: adding " << print_money(collateral_amount) << " collateral, for offshore of " << print_money(dt.amount_usd) << " xUSD");
-	THROW_WALLET_EXCEPTION_IF(!bOK || collateral_amount == 0, error::wallet_internal_error, "Failed to obtain collateral amount for onshore TX");
-	collateral_dsts.push_back(tx_destination_entry(collateral_amount, address, is_subaddress, true));
+        uint64_t collateral_amount = 0;
+        bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
+        THROW_WALLET_EXCEPTION_IF(!bOK, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
+        needed_col += collateral_amount;
       }
-      
+
     } else if (tx_type == tt::OFFSHORE_TRANSFER) {
       // Input amount is in USD
       dt.amount_usd = dt.amount;
@@ -10969,10 +11033,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(dsts, priority, empty)
     : (tx_type == tt::XASSET_TRANSFER) ? get_xasset_transfer_fee(dsts, priority, empty)
     : 0;
-  
+
   // Add collateral to the dsts
-  dsts.insert(dsts.end(), collateral_dsts.begin(), collateral_dsts.end());
-  
+  if (need_collateral) {
+    LOG_PRINT_L2("transfer: adding " << print_money(needed_col));
+    THROW_WALLET_EXCEPTION_IF(needed_col == 0, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
+    dsts.push_back(tx_destination_entry(needed_col, address, is_subaddress, true));
+  }
+
   // keep the orig dsts for sanity check
   auto original_dsts = dsts;
 
@@ -11229,16 +11297,19 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 	      available_amount -= DSTS_FRONT_AMOUNT;
         DSTS_FRONT_AMOUNT = 0;
 
-        if (tx_type == tt::OFFSHORE) {
-          tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height, false);
-        } else if (tx_type == tt::ONSHORE) {
-          tx.dsts.back().amount = get_xhv_amount(tx.dsts.back().amount_usd, current_height);
-        } else if (tx_type == tt::XUSD_TO_XASSET) {
-          tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, strDest, current_height);
-        } else if (tx_type == tt::XASSET_TO_XUSD) {
-          tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height, false);
+        if (!dsts[0].is_collateral) {
+          if (tx_type == tt::OFFSHORE) {
+            tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height, false);
+          } else if (tx_type == tt::ONSHORE) {
+            tx.dsts.back().amount = get_xhv_amount(tx.dsts.back().amount_usd, current_height);
+          } else if (tx_type == tt::XUSD_TO_XASSET) {
+            tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, strDest, current_height);
+          } else if (tx_type == tt::XASSET_TO_XUSD) {
+            tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height, false);
+          }
         }
         tx.dsts.back().asset_type = dsts[0].asset_type;
+        tx.dsts.back().is_collateral = dsts[0].is_collateral;
         pop_index(dsts, 0);
         ++original_output_index;
       }
@@ -11312,6 +11383,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       LOG_PRINT_L1("inputs = " << inputs << ", outputs = " << outputs);
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
         tx.selected_transfers.size() << " inputs");
+
+      std::vector<size_t> col_ins;
+      if (tx_type == tt::ONSHORE) {
+        col_ins = get_onshore_colleteral_inputs(needed_col);
+      }
+      
       // try to create a tx now
       transfer_selected_rct(
         tx.dsts,
@@ -11326,7 +11403,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         rct_config,
         tx_type,
         strSource,
-        strDest
+        strDest,
+        col_ins
       );
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
       needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_multiplier, fee_quantization_mask);
@@ -11380,7 +11458,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
             rct_config,
             tx_type,
             strSource,
-            strDest
+            strDest,
+            col_ins
           );
 
           txBlob = t_serializable_object_to_blob(test_ptx.tx);
@@ -11449,6 +11528,12 @@ skip_tx:
     cryptonote::transaction test_tx;
     pending_tx test_ptx;
 
+    // get the inputs for collateral
+    std::vector<size_t> col_ins;
+    if (tx_type == tt::ONSHORE) {
+      col_ins = get_onshore_colleteral_inputs(needed_col);
+    }
+
     transfer_selected_rct(
       tx.dsts,                    /* NOMOD std::vector<cryptonote::tx_destination_entry> dsts,*/
       tx.selected_transfers,      /* const std::list<size_t> selected_transfers */
@@ -11462,7 +11547,8 @@ skip_tx:
       rct_config,
       tx_type,
       strSource,
-      strDest
+      strDest,
+      col_ins
     );
     auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
     tx.tx = test_tx;
@@ -15710,7 +15796,7 @@ uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> 
   // Calculate the amount being sent
   uint64_t amount_usd = 0;
   for (auto dt: dsts) {
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount_usd, error::zero_destination);
+    THROW_WALLET_EXCEPTION_IF((0 == dt.amount) && (0 == dt.amount_usd), error::zero_destination);
     amount_usd += dt.amount_usd;
   }
 
@@ -15830,6 +15916,43 @@ uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_
   }
 
   return 0;
+}
+//----------------------------------------------------------------------------------------------------
+// go through the xhv inputs and pick the smallest amount of inputs >= col_amount
+std::vector<size_t> wallet2::get_onshore_colleteral_inputs(uint64_t col_amount) {
+
+  std::vector<size_t> picked_inputs; 
+  auto copy = m_transfers;
+
+  // sort the transfers by amount
+  std::sort(copy.begin(), copy.end(), [](transfer_details a, transfer_details b){
+    return a.amount() > b.amount();
+  });
+
+
+  // find how many inputs we need from beginning
+  uint64_t amount = 0;
+  size_t i = 0;
+  for (; i < copy.size(); i++) {
+    if (!copy[i].m_spent && !copy[i].m_frozen) {
+      amount += copy[i].amount();
+    }
+
+    if (amount >= col_amount)
+      break;
+  }
+
+  // find the actual index in the original array
+  for (size_t k = 0; k < m_transfers.size(); k++) {
+    for (size_t j = 0; j <= i; j++) {
+      if (copy[j].m_key_image == m_transfers[k].m_key_image) {
+        picked_inputs.push_back(k);
+        break;
+      }
+    }
+  }
+
+  return picked_inputs;
 }
 //----------------------------------------------------------------------------------------------------
 std::vector<cryptonote::public_node> wallet2::get_public_nodes(bool white_only)

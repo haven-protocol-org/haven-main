@@ -2055,6 +2055,33 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
   
+  struct COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS
+  {
+    struct request_t
+    {
+      std::string tx_type;
+      uint64_t amount;
+      
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(tx_type)
+        KV_SERIALIZE(amount);
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+    struct response_t
+    {
+      std::string status;
+      uint64_t collateral;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(collateral)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  
   struct COMMAND_RPC_GET_OUTPUT_HISTOGRAM
   {
     struct request_t: public rpc_access_request_base

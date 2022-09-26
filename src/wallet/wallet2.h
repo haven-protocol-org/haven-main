@@ -920,7 +920,8 @@ private:
       const rct::RCTConfig &rct_config,
       const cryptonote::transaction_type tx_type,
       const std::string strSource,
-      const std::string strDest
+      const std::string strDest,
+      const std::vector<size_t>& selected_transfers_onshore_colleteral = {}
     );
 
     void commit_tx(pending_tx& ptx_vector);
@@ -1247,7 +1248,7 @@ private:
     /// ----------------------------------------
     std::string get_spend_proof(const crypto::hash &txid, const std::string &message);
     bool check_spend_proof(const crypto::hash &txid, const std::string &message, const std::string &sig_str);
-
+    std::vector<size_t> get_onshore_colleteral_inputs(uint64_t col_amount);
     /*!
      * \brief  Generates a proof that proves the reserve of unspent funds
      * \param  account_minreserve       When specified, collect outputs only belonging to the given account and prove the smallest reserve above the given amount

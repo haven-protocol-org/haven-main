@@ -401,7 +401,7 @@ namespace cryptonote
       //   return false;
       // }
       // Filter out the change, which is never converted
-      if (dt.amount_usd != 0) {
+      if (dt.amount_usd != 0 && !dt.is_collateral) {
         amount += dt.amount;
       }
     }
@@ -442,7 +442,7 @@ namespace cryptonote
       //   return false;
       // }
       // Filter out the change, which is never converted
-      if (dt.amount != 0) {
+      if (dt.amount != 0 && !dt.is_collateral) {
         amount_usd += dt.amount_usd;
       }
     }
@@ -600,11 +600,20 @@ namespace cryptonote
     std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
     
     // Sanity check that we only have 1 source asset type
-    if (sat.size() != 1) {
+    if (sat.size() == 2) {
+      // this is only possible for an onshore tx.
+      if ((sat[0] == "XHV" && sat[1] == "XUSD") || (sat[0] == "XUSD" && sat[1] == "XHV")) {
+        source = "XUSD";
+      } else {
+        LOG_ERROR("Impossible input asset types. Rejecting..");
+        return false;
+      }
+    } else if (sat.size() == 1) {
+      source = sat[0];
+    } else {
       LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
       return false;
     }
-    source = sat[0];
     
     // Clear the destination
     std::set<std::string> destination_asset_types;
@@ -744,7 +753,7 @@ namespace cryptonote
   bool construct_tx_with_tx_key(
     const account_keys& sender_account_keys, 
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, 
-    std::vector<tx_source_entry>& sources, 
+    std::vector<tx_source_entry>& sources,
     std::vector<tx_destination_entry>& destinations, 
     const boost::optional<cryptonote::account_public_address>& change_addr, 
     const std::vector<uint8_t> &extra, 
@@ -759,6 +768,7 @@ namespace cryptonote
     offshore::pricing_record pr, 
     uint32_t fees_version,
     uint32_t hf_version,
+    const uint64_t onshore_col_amount,
     bool rct, 
     const rct::RCTConfig &rct_config, 
     rct::multisig_out *msout, 
@@ -911,7 +921,7 @@ namespace cryptonote
         return false;
       }
 
-      if (src_entr.asset_type == "XHV") {
+      if (src_entr.asset_type == "XHV" && (hf_version < HF_VERSION_USE_COLLATERAL || tx_type != transaction_type::ONSHORE)) {
         summary_inputs_money += src_entr.amount;
       } else if (src_entr.asset_type == "XUSD") {
         summary_inputs_money_usd += src_entr.amount;
@@ -958,17 +968,34 @@ namespace cryptonote
 	
       } else if (tx_type == transaction_type::ONSHORE) {   // input is xUSD
 
-        // Onshoring
-        txin_onshore input_to_key;
-        input_to_key.amount = src_entr.amount;
-        input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
-        
-        //fill outputs array and use relative offsets
-        for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
-          input_to_key.key_offsets.push_back(out_entry.first);
-        
-        input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
-        tx.vin.push_back(input_to_key);
+        if (src_entr.asset_type == "XUSD") {
+          // Onshoring
+          txin_onshore input_to_key;
+          input_to_key.amount = src_entr.amount;
+          input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
+          
+          //fill outputs array and use relative offsets
+          for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
+            input_to_key.key_offsets.push_back(out_entry.first);
+          
+          input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
+          tx.vin.push_back(input_to_key);
+        } else if (src_entr.asset_type == "XHV") {
+          // colleteral input
+          txin_to_key input_to_key;
+          input_to_key.amount = src_entr.amount;
+          input_to_key.k_image = msout ? rct::rct2ki(src_entr.multisig_kLRki.ki) : img;
+          
+          //fill outputs array and use relative offsets
+          for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
+            input_to_key.key_offsets.push_back(out_entry.first);
+          
+          input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
+          tx.vin.push_back(input_to_key);
+        } else {
+          LOG_ERROR("unsupported input asset for onshore " << src_entr.asset_type);
+          return false;
+        }
         
       } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {  // input is xAsset
 
@@ -1033,9 +1060,9 @@ namespace cryptonote
         const txin_offshore &tk1 = boost::get<txin_offshore>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
       } else if (tx_type == transaction_type::ONSHORE) {
-        const txin_onshore &tk0 = boost::get<txin_onshore>(tx.vin[i0]);
-        const txin_onshore &tk1 = boost::get<txin_onshore>(tx.vin[i1]);
-        return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
+        crypto::key_image tk0_img = (tx.vin[i0].type() == typeid(txin_to_key) ?  boost::get<txin_to_key>(tx.vin[i0]).k_image :  boost::get<txin_onshore>(tx.vin[i0]).k_image);
+        crypto::key_image tk1_img = (tx.vin[i1].type() == typeid(txin_to_key) ?  boost::get<txin_to_key>(tx.vin[i1]).k_image :  boost::get<txin_onshore>(tx.vin[i1]).k_image);
+        return memcmp(&tk0_img, &tk1_img, sizeof(tk0_img)) > 0;
       } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {
         const txin_xasset &tk0 = boost::get<txin_xasset>(tx.vin[i0]);
         const txin_xasset &tk1 = boost::get<txin_xasset>(tx.vin[i1]);
@@ -1139,15 +1166,20 @@ namespace cryptonote
       if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && strSource != strDest) {
         if (dst_entr_clone.asset_type == strDest) {
           // Destination amount - needs a full unlock time
-          tx.output_unlock_times.push_back(tx.unlock_time);
+          if (tx_type == transaction_type::ONSHORE && dst_entr_clone.is_collateral) {
+            // temporary for detection  on the daemon side for now.
+            tx.output_unlock_times.push_back(0);
+          } else {
+            tx.output_unlock_times.push_back(tx.unlock_time);
+          }
         } else if (dst_entr_clone.asset_type == strSource) {
-	  if (dst_entr_clone.is_collateral) {
-	    // Collateral amount - needs a full unlock time
-	    tx.output_unlock_times.push_back(tx.unlock_time);
-	  } else {
-	    // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
-	    tx.output_unlock_times.push_back(0);
-	  }
+          if (dst_entr_clone.is_collateral) {
+            // Collateral amount - needs a full unlock time
+            tx.output_unlock_times.push_back(tx.unlock_time);
+          } else {
+            // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
+            tx.output_unlock_times.push_back(0);
+          }
         } else {
           // Should never happen
           LOG_ERROR("Invalid asset type detected: source = " << strSource << ", dest = " << strDest << ", detected " << dst_entr_clone.asset_type);
@@ -1162,12 +1194,14 @@ namespace cryptonote
       tx.vout.push_back(out);
       output_index++;
 
-      // calculate total monry
-      summary_outs_money += dst_entr_clone.amount;
-      summary_outs_money_usd += dst_entr_clone.amount_usd;
-      summary_outs_money_xasset += dst_entr_clone.amount_xasset;
+      // calculate total money, exclude the onshore collateral
+      if (tx_type != transaction_type::ONSHORE || !dst_entr_clone.is_collateral) {
+        summary_outs_money += dst_entr_clone.amount;
+        summary_outs_money_usd += dst_entr_clone.amount_usd;
+        summary_outs_money_xasset += dst_entr_clone.amount_xasset;
+      }
       if (strSource != strDest) {
-        if (dst_entr_clone.asset_type == strDest) {
+        if (dst_entr_clone.asset_type == strDest && !dst_entr_clone.is_collateral) {
           tx.amount_minted += out.amount;
           if (tx_type == transaction_type::OFFSHORE) {
             tx.amount_burnt += dst_entr_clone.amount;
@@ -1231,20 +1265,22 @@ namespace cryptonote
       MDEBUG("Null secret key, skipping signatures");
     }
 
-    size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
-
-    uint64_t amount_in = 0;
     rct::ctkeyV inSk;
     inSk.reserve(sources.size());
     // mixRing indexing is done the other way round for simple
     rct::ctkeyM mixRing(sources.size());
     std::vector<uint64_t> inamounts;
+    std::vector<size_t> inamounts_col_indices;
     std::vector<unsigned int> index;
     std::vector<rct::multisig_kLRki> kLRki;
     for (size_t i = 0; i < sources.size(); ++i)
     {
       rct::ctkey ctkey;
       rct::ctkeyV ctkeyV; // LA
+
+      if (sources[i].asset_type == "XHV" && tx_type == transaction_type::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
+        inamounts_col_indices.push_back(i);
+      }
       
       inamounts.push_back(sources[i].amount);
       index.push_back(sources[i].real_output);
@@ -1317,6 +1353,8 @@ namespace cryptonote
       inSk,
       destination_keys,
       inamounts,
+      inamounts_col_indices,
+      onshore_col_amount,
       strSource,
       outamounts,
       fee,
@@ -1365,6 +1403,7 @@ namespace cryptonote
     offshore::pricing_record pr,
     uint32_t fees_version,
     uint32_t hf_version,
+    const uint64_t onshore_col_amount,
     bool rct,
     const rct::RCTConfig &rct_config,
     rct::multisig_out *msout
@@ -1404,6 +1443,7 @@ namespace cryptonote
         pr,
         fees_version,
         hf_version,
+        onshore_col_amount,
         rct,
         rct_config,
         msout,

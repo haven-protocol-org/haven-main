@@ -870,6 +870,7 @@ namespace cryptonote
       return true;
     }
     const uint8_t hf_version = m_blockchain_storage.get_current_hard_fork_version();
+    using tt = cryptonote::transaction_type;
     std::vector<const rct::rctSig*> rvv;
     for (size_t n = 0; n < tx_info.size(); ++n)
     {
@@ -935,6 +936,22 @@ namespace cryptonote
             continue;
           }
           tx_info[n].tvc.pr = blocks_pr[0].second.pricing_record;
+        }
+
+        // Get the collateral requirements
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_info[n].tvc.m_type == tt::OFFSHORE || tx_info[n].tvc.m_type == tt::ONSHORE)) {
+          bool r = get_collateral_requirements(
+            tx_info[n].tvc.m_type, 
+            tx_info[n].tvc.m_type == tt::OFFSHORE ? tx_info[n].tx->amount_burnt : tx_info[n].tx->amount_minted,
+            tx_info[n].tvc.m_collateral
+          );
+          if (!r) {
+            MERROR_VER("Failed to obtain collateral requirements");
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            continue;
+          }
         }
       }
 
@@ -1013,7 +1030,7 @@ namespace cryptonote
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven3)
           continue;
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven3) {
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, hf_version, tx_info[n].tx->output_unlock_times))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tx->output_unlock_times, tx_info[n].tvc.m_collateral))
           {
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
@@ -1267,32 +1284,26 @@ namespace cryptonote
   bool core::check_tx_inputs_keyimages_diff(const transaction& tx) const
   {
     std::unordered_set<crypto::key_image> ki;
-    if (tx.vin[0].type() == typeid(txin_to_key)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
-	if(!ki.insert(tokey_in.k_image).second)
-	  return false;
-      }
-    }
-    else if (tx.vin[0].type() == typeid(txin_offshore)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
-	if(!ki.insert(tokey_in.k_image).second)
-	  return false;
-      }
-    }
-    else if (tx.vin[0].type() == typeid(txin_onshore)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
-	if(!ki.insert(tokey_in.k_image).second)
-	  return false;
-      }
-    }
-    else if (tx.vin[0].type() == typeid(txin_xasset)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
-	if(!ki.insert(tokey_in.k_image).second)
-	  return false;
+    for(const auto& in: tx.vin) {
+      if (in.type() == typeid(txin_to_key)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+        if(!ki.insert(tokey_in.k_image).second)
+          return false;
+      } else if (in.type() == typeid(txin_offshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
+        if(!ki.insert(tokey_in.k_image).second)
+          return false;
+      } else if (in.type() == typeid(txin_onshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
+        if(!ki.insert(tokey_in.k_image).second)
+          return false;
+      } else if (in.type() == typeid(txin_xasset)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
+        if(!ki.insert(tokey_in.k_image).second)
+          return false;
+      } else {
+        MERROR_VER("wrong input type");
+        return false;
       }
     }
     return true;
@@ -1300,77 +1311,63 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_inputs_ring_members_diff(const transaction& tx) const
   {
-    const uint8_t version = m_blockchain_storage.get_current_hard_fork_version();
-    if (tx.vin[0].type() == typeid(txin_to_key)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
-	for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
-	  if (tokey_in.key_offsets[n] == 0)
-	    return false;
+
+    for(const auto& in: tx.vin) {
+      if (in.type() == typeid(txin_to_key)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+        for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
+          if (tokey_in.key_offsets[n] == 0)
+            return false;
+      } else if (in.type() == typeid(txin_offshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
+        for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
+          if (tokey_in.key_offsets[n] == 0)
+            return false;
+      } else if (in.type() == typeid(txin_onshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
+        for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
+          if (tokey_in.key_offsets[n] == 0)
+            return false;
+      } else if (in.type() == typeid(txin_xasset)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
+        for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
+          if (tokey_in.key_offsets[n] == 0)
+            return false;
+      } else {
+        MERROR_VER("wrong input type");
+        return false;
       }
     }
-    else if (tx.vin[0].type() == typeid(txin_offshore)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
-	for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
-	  if (tokey_in.key_offsets[n] == 0)
-	    return false;
-      }
-    }
-    else if (tx.vin[0].type() == typeid(txin_onshore)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
-	for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
-	  if (tokey_in.key_offsets[n] == 0)
-	    return false;
-      }
-    }
-    else if (tx.vin[0].type() == typeid(txin_xasset)) {
-      for(const auto& in: tx.vin) {
-	CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
-	for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
-	  if (tokey_in.key_offsets[n] == 0)
-	    return false;
-      }
-    }
+
     return true;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_inputs_keyimages_domain(const transaction& tx) const
   {
-    std::unordered_set<crypto::key_image> ki;
-    if (tx.vin[0].type() == typeid(txin_to_key)) {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
-	  if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
-	    return false;
-	}
+
+    for(const auto& in: tx.vin) {
+      if (in.type() == typeid(txin_to_key)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+        if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
+          return false;
+      } else if (in.type() == typeid(txin_offshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
+        if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
+          return false;
+      } else if (in.type() == typeid(txin_onshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
+        if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
+          return false;
+      } else if (in.type() == typeid(txin_xasset)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
+        if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
+          return false;
+      } else {
+        MERROR_VER("wrong input type");
+        return false;
+      }
     }
-    else if (tx.vin[0].type() == typeid(txin_offshore)) {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
-	  if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
-	    return false;
-	}
-    }
-    else if (tx.vin[0].type() == typeid(txin_onshore)) {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
-	  if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
-	    return false;
-	}
-    }
-    else if (tx.vin[0].type() == typeid(txin_xasset)) {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
-	  if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
-	    return false;
-	}
-    }
+
     return true;
   }
   //-----------------------------------------------------------------------------------------------
@@ -2059,6 +2056,11 @@ namespace cryptonote
   bool core::get_txpool_complement(const std::vector<crypto::hash> &hashes, std::vector<cryptonote::blobdata> &txes)
   {
     return m_mempool.get_complement(hashes, txes);
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
+  {
+    return m_blockchain_storage.get_collateral_requirements(tx_type, amount, collateral);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::update_blockchain_pruning()

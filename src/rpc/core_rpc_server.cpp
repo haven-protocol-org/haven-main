@@ -2641,6 +2641,30 @@ namespace cryptonote
     return true;    
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_collateral_requirements(const COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::request& req, COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    PERF_TIMER(on_get_collateral_requirements);
+    bool r;
+    using tt = cryptonote::transaction_type;
+    cryptonote::transaction_type tx_type;
+    if (req.tx_type == "offshore")
+      tx_type = tt::OFFSHORE;
+    else if (req.tx_type == "onshore")
+      tx_type = tt::ONSHORE;
+    else {
+      res.status = "Invalid TX type - only offshore and onshore TXs require collateral";
+      res.collateral = 0;
+      return true;
+    }
+    r = m_core.get_collateral_requirements(tx_type, req.amount, res.collateral);
+    if (!r) {
+      res.status = "Error retrieving collateral information";
+      return true;
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;    
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_base_fee_estimate(const COMMAND_RPC_GET_BASE_FEE_ESTIMATE::request& req, COMMAND_RPC_GET_BASE_FEE_ESTIMATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_base_fee_estimate);
