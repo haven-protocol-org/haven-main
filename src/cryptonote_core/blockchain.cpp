@@ -3384,30 +3384,124 @@ void Blockchain::flush_invalid_blocks()
 //-----------------------------------------------------------------------------------------------
 bool Blockchain::get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
 {
+  LOG_PRINT_L3("Blockchain::" << __func__);
+  using tt = cryptonote::transaction_type;
+
   // Get the pricing record
   block blk;
   if (!get_block_by_hash(get_block_id_by_height(get_current_blockchain_height()-1), blk)) {
     // Failed to get the block report error and abort
+    LOG_ERROR("Failed to get block information");
     return false;
   }
     
   // Get the circulating supply data
   std::vector<std::pair<std::string, std::string>> amounts = get_db().get_circulating_supply();
+  std::map<std::string, uint64_t> map_amounts;
+  boost::multiprecision::uint128_t mcap_xassets = 0;
   for (const auto &i: amounts)
-    {
-      COMMAND_RPC_GET_CIRCULATING_SUPPLY::supply_entry se(i.first, i.second);
-    }
+  {
+    COMMAND_RPC_GET_CIRCULATING_SUPPLY::supply_entry se(i.first, i.second);
 
+    // Copy into the map for expediency
+    map_amounts[i.first] = std::stoull(i.second.c_str());
+    
+    // Skip XHV
+    if (i.first == "XHV") continue;
+    
+    // Get the pricing data for the xAsset
+    boost::multiprecision::uint128_t price_xasset = (i.first == "XUSD") ? COIN : blk.pricing_record[i.first];
+
+    // Multiply by the amount of coin in circulation
+    boost::multiprecision::uint128_t amount_xasset = std::stoull(i.second.c_str());
+    amount_xasset *= price_xasset;
+
+    // Sum into our total for all xAssets
+    mcap_xassets += amount_xasset;
+  }
+  // Divide by COIN to return to correct scale
+  mcap_xassets /= COIN;
+
+  // Calculate the XHV market cap
+  boost::multiprecision::uint128_t price_xhv =
+    (tx_type == tt::OFFSHORE) ? std::min(blk.pricing_record.unused1, blk.pricing_record.xUSD) :
+    (tx_type == tt::ONSHORE)  ? std::max(blk.pricing_record.unused1, blk.pricing_record.xUSD) :
+    0;
+  boost::multiprecision::uint128_t mcap_xhv = map_amounts["XHV"];
+  mcap_xhv *= price_xhv;
+  mcap_xhv /= COIN;
+
+  // Calculate the market cap ratio
+  double ratio_mcap = mcap_xassets.convert_to<double>() / mcap_xhv.convert_to<double>();
+
+  // Calculate the VBS rate
+  double rate_vbs = std::sqrt(ratio_mcap) * 18.0;
+  const double min_vbs = 1.0;
+  const double max_vbs = 20.0;
+  rate_vbs = std::min(std::max(rate_vbs, min_vbs), max_vbs);
+
+  // Convert amount to 128 bit
+  boost::multiprecision::uint128_t amount_128 = amount;
+  
   // Do the right thing based upon TX type
   using tt = cryptonote::transaction_type;
   if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
     collateral = 0;
   } else if (tx_type == tt::OFFSHORE) {
-    // Dummy 1:2 collateral requirements for now
-    collateral = amount << 1;
+
+    // Calculate MCRI
+    boost::multiprecision::uint128_t amount_usd_128 = amount;
+    amount_usd_128 *= price_xhv;
+    amount_usd_128 /= COIN;
+    double ratio_mcap_new = ((amount_usd_128.convert_to<double>() + mcap_xassets.convert_to<double>()) / (mcap_xhv.convert_to<double>() - amount_usd_128.convert_to<double>()));
+    double ratio_mcri = (ratio_mcap_new - ratio_mcap) / ratio_mcap;
+
+    // Set the MCRIM
+    double mcrim = 10.0;
+    if (ratio_mcap <= 0.1) mcrim = 3.0;
+  
+    // Calculate OFFSVBS
+    double rate_offsvbs = std::sqrt(ratio_mcri) * mcrim;
+
+    // Calculate the combined VBS (collateral + "slippage")
+    double vbs = rate_vbs + rate_offsvbs;
+    vbs *= COIN;
+    boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
+    collateral_128 *= amount_128;
+    collateral_128 /= COIN;
+    collateral = collateral_128.convert_to<uint64_t>();
+
+    LOG_PRINT_L1("Offshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money(amount) << " XHV");
+    
   } else if (tx_type == tt::ONSHORE) {
-    // Dummy 1:1 collateral requirements for now
-    collateral = amount;
+
+    // Calculate SRI
+    double ratio_mcap_new = ((mcap_xassets.convert_to<double>() - amount_128.convert_to<double>()) / (mcap_xhv.convert_to<double>() + amount_128.convert_to<double>()));
+    double ratio_sri = ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1;
+    
+    // Set the MCRIM
+    double mcrim = 10.0;
+    if (ratio_mcap <= 0.1) mcrim = 3.0;
+  
+    // Calculate the SR VBS rate
+    double rate_srvbs = std::sqrt(1.0 - ratio_mcap) * 5.0;
+    const double min_srvbs = 1.0;
+    const double max_srvbs = 10.0;
+    rate_srvbs = std::min(std::max(rate_srvbs, min_srvbs), max_srvbs);
+
+    // Calculate ONSVBS
+    double rate_onsvbs = std::sqrt(ratio_sri) * mcrim;
+  
+    // Calculate the combined VBS (collateral + "slippage")
+    double vbs = std::max(rate_vbs, rate_srvbs) + rate_onsvbs;
+    vbs *= COIN;
+    boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
+    collateral_128 *= amount_128;
+    collateral_128 /= COIN;
+    collateral = collateral_128.convert_to<uint64_t>();
+
+    LOG_PRINT_L1("Onshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money(amount) << " xUSD");
+    
   } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
     collateral = 0;
   } else {
