@@ -838,11 +838,11 @@ size_t estimate_rct_tx_size(int n_inputs, int mixin, int n_outputs, size_t extra
   // first few bytes
   size += 1 + 6;
 
-  // vin
-  size += n_inputs * (1+6+(mixin+1)*2+32);
+  // vin (+4 for the asset-type)
+  size += n_inputs * (1+6+(mixin+1)*2+32+4);
 
-  // vout
-  size += n_outputs * (6+32);
+  // vout (+4 is for the asset-type)
+  size += n_outputs * (6+32+4);
 
   // extra
   size += extra_size;
@@ -877,9 +877,11 @@ size_t estimate_rct_tx_size(int n_inputs, int mixin, int n_outputs, size_t extra
   // ecdhInfo
   size += 8 * n_outputs;
   // outPk/_usd/_xasset - only commitment is saved
-  size += 32 * n_outputs * 3;
-  // txnFee / txnOffshoreFee for all 3 units (XHV, XUSD, xAsset)
-  size += (4 * 6);
+  size += 32 * n_outputs;
+  // txnFee + txnOffshoreFee
+  size += (4 * 2);
+  // maskSums - 3 key
+  size += (32 * 3)
 
   LOG_PRINT_L2("estimated " << (bulletproof ? "bulletproof" : "borromean") << " rct tx size for " << n_inputs << " inputs with ring size " << (mixin+1) << " and " << n_outputs << " outputs: " << size << " (" << ((32 * n_inputs/*+1*/) + 2 * 32 * (mixin+1) * n_inputs + 32 * n_outputs) << " saved)");
   return size;
@@ -8308,10 +8310,6 @@ uint64_t wallet2::get_dynamic_base_fee_estimate()
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_base_fee()
 {
-  if (use_fork_rules(HF_VERSION_PER_BYTE_FEE))
-  {
-    return FEE_PER_BYTE;
-  }
   if(m_light_wallet)
   {
     if (use_fork_rules(HF_VERSION_PER_BYTE_FEE))
@@ -10921,7 +10919,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       }
     }
   }
-  const uint64_t fee_multiplier = get_fee_multiplier(priority, get_fee_algorithm());
+  const uint64_t fee_multiplier = get_fee_multiplier(priority);
   const uint64_t fee_quantization_mask = get_fee_quantization_mask();
 
   // throw if attempting a transaction with no destinations
@@ -11025,13 +11023,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   THROW_WALLET_EXCEPTION_IF(needed_money == 0, error::zero_destination);
 
   // Calculate the offshore fee
-  std::vector<transfer_details> empty;
-  uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(dsts, priority, empty)
-    : (tx_type == tt::ONSHORE) ? get_onshore_fee(dsts, priority, empty)
-    : (tx_type == tt::OFFSHORE_TRANSFER) ? get_offshore_to_offshore_fee(dsts, 4, empty)
-    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(dsts, priority, empty)
-    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(dsts, priority, empty)
-    : (tx_type == tt::XASSET_TRANSFER) ? get_xasset_transfer_fee(dsts, priority, empty)
+  uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(dsts, priority)
+    : (tx_type == tt::ONSHORE) ? get_onshore_fee(dsts, priority)
+    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(dsts, priority)
+    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(dsts, priority)
     : 0;
 
   // Add collateral to the dsts
@@ -11358,18 +11353,16 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       needed_fee = estimate_fee(use_per_byte_fee, use_rct ,tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag, base_fee, fee_multiplier, fee_quantization_mask);
       uint64_t inputs = 0;
       uint64_t outputs = 0;
-      std::vector<transfer_details> fee_sources;
       for (size_t idx: tx.selected_transfers) {
 	      inputs += specific_transfers[idx].amount();
-	      fee_sources.push_back(specific_transfers[idx]);
       }
       for (const auto &o: tx.dsts) 
         outputs += (strSource != "XHV" && strSource != "XUSD") ? o.amount_xasset : (strSource == "XUSD") ? o.amount_usd : o.amount;
 
-      offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(tx.dsts, priority, fee_sources)
-                    : (tx_type == tt::ONSHORE) ? get_onshore_fee(tx.dsts, priority, fee_sources)
-                    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(tx.dsts, priority, fee_sources)
-                    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(tx.dsts, priority, fee_sources)
+      offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(tx.dsts, priority)
+                    : (tx_type == tt::ONSHORE) ? get_onshore_fee(tx.dsts, priority)
+                    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(tx.dsts, priority)
+                    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(tx.dsts, priority)
                     : 0;
       needed_fee += offshore_fee;
 
@@ -11382,7 +11375,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       LOG_PRINT_L1("inputs = " << inputs << ", outputs = " << outputs);
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
-        tx.selected_transfers.size() << " inputs");
+      tx.selected_transfers.size() << " inputs");
 
       std::vector<size_t> col_ins;
       if (tx_type == tt::ONSHORE) {
@@ -11424,10 +11417,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         THROW_WALLET_EXCEPTION_IF(i == tx.dsts.end(), error::wallet_internal_error, "paid address not found in outputs");
         if (use_xasset_outputs ? i->amount_xasset : use_offshore_outputs ? i->amount_usd : i->amount  > needed_fee)
         {
-          // uint64_t new_paid_amount = i->amount /*+ test_ptx.fee*/ - needed_fee;
-          // LOG_PRINT_L2("Adjusting amount paid to " << get_account_address_as_str(m_nettype, i->is_subaddress, i->addr) << " from " <<
-          //   print_money(i->amount) << " to " << print_money(new_paid_amount) << " to accommodate " <<
-          //   print_money(needed_fee) << " fee");
           DSTS_FRONT_AMOUNT += needed_fee;
           (use_xasset_outputs ? i->amount_xasset : use_offshore_outputs ? i->amount_usd : i->amount) -= needed_fee;
           test_ptx.fee = needed_fee;
@@ -15727,7 +15716,7 @@ uint64_t wallet2::get_bytes_received() const
 {
   return m_http_client->get_bytes_received();
 }
-uint64_t wallet2::get_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
+uint64_t wallet2::get_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
 {
   // Calculate the amount being sent
   uint64_t amount = 0, amount_usd = 0;
@@ -15791,7 +15780,7 @@ uint64_t wallet2::get_offshore_fee(std::vector<cryptonote::tx_destination_entry>
   }
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
+uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
 {
   // Calculate the amount being sent
   uint64_t amount_usd = 0;
@@ -15854,7 +15843,7 @@ uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> 
   }
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
+uint64_t wallet2::get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
 {
   // Calculate the amount being sent
   for (auto dt: dsts) {
@@ -15865,7 +15854,7 @@ uint64_t wallet2::get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destin
   return 0;
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
+uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
 {
   // Calculate the amount being sent
   uint64_t amount_xasset = 0;
@@ -15889,12 +15878,12 @@ uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_
   return 0;
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xasset_transfer_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
+uint64_t wallet2::get_xasset_transfer_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
 {
   return 0;
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources)
+uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
 {
   // Calculate the amount being sent
   uint64_t amount_usd = 0;
