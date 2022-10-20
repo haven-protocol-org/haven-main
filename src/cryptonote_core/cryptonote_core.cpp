@@ -940,10 +940,13 @@ namespace cryptonote
 
         // Get the collateral requirements
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_info[n].tvc.m_type == tt::OFFSHORE || tx_info[n].tvc.m_type == tt::ONSHORE)) {
+	  std::vector<std::pair<std::string, std::string>> amounts = m_blockchain_storage.get_db().get_circulating_supply();
           bool r = get_collateral_requirements(
             tx_info[n].tvc.m_type, 
             tx_info[n].tvc.m_type == tt::OFFSHORE ? tx_info[n].tx->amount_burnt : tx_info[n].tx->amount_minted,
-            tx_info[n].tvc.m_collateral
+            tx_info[n].tvc.m_collateral,
+	    tx_info[n].tvc.pr,
+	    amounts
           );
           if (!r) {
             MERROR_VER("Failed to obtain collateral requirements");
@@ -2056,11 +2059,6 @@ namespace cryptonote
   bool core::get_txpool_complement(const std::vector<crypto::hash> &hashes, std::vector<cryptonote::blobdata> &txes)
   {
     return m_mempool.get_complement(hashes, txes);
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
-  {
-    return m_blockchain_storage.get_collateral_requirements(tx_type, amount, collateral);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::update_blockchain_pruning()

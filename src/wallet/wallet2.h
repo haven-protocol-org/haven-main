@@ -521,6 +521,7 @@ private:
       bool dust_added_to_fee;
       cryptonote::tx_destination_entry change_dts;
       std::vector<size_t> selected_transfers;
+      std::vector<size_t> selected_transfers_collateral;
       std::string key_images;
       crypto::secret_key tx_key;
       std::vector<crypto::secret_key> additional_tx_keys;
@@ -536,6 +537,7 @@ private:
         FIELD(dust_added_to_fee)
         FIELD(change_dts)
         FIELD(selected_transfers)
+        FIELD(selected_transfers_collateral)
         FIELD(key_images)
         FIELD(tx_key)
         FIELD(additional_tx_keys)
@@ -892,6 +894,9 @@ private:
     // Get onshore amount in XHV, not XUSD
     uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
 
+    // Get circulating supply
+    bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
+    
     // Get collateral
     bool get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral);
 

@@ -2061,6 +2061,29 @@ bool wallet2::get_pricing_record(offshore::pricing_record& pr, const uint64_t he
   }
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts)
+{
+  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::response res = AUTO_VAL_INIT(res);
+  m_daemon_rpc_mutex.lock();
+  bool r = invoke_http_json_rpc("/json_rpc", "get_circulating_supply", req, res, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  if (r && res.status == CORE_RPC_STATUS_OK)
+  {
+    // Got the supply data - convert to a meaningful format
+    for (auto i: res.supply_tally) {
+      amounts.push_back(std::make_pair(std::string(i.currency_label), std::string(i.amount)));
+    }
+    return true;
+  }
+  else
+  {
+    MERROR("Failed to retrieve circulating supply from daemon");
+    return false;
+  }
+}
+//----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height)
 {
   // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
@@ -7241,6 +7264,15 @@ void wallet2::commit_tx(pending_tx& ptx)
   for (size_t idx: ptx.selected_transfers)
     memwipe(specific_transfers[idx].m_multisig_k.data(), specific_transfers[idx].m_multisig_k.size() * sizeof(specific_transfers[idx].m_multisig_k[0]));
 
+  for(size_t idx: ptx.selected_transfers_collateral)
+  {
+    set_spent(m_transfers[idx], 0);
+  }
+
+  // tx generated, get rid of used k values
+  for (size_t idx: ptx.selected_transfers_collateral)
+    memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
+
   //fee includes dust if dust policy specified it.
   LOG_PRINT_L1("Transaction successfully sent. <" << txid << ">" << ENDL
             << "Commission: " << print_money(ptx.fee) << " (dust sent to dust addr: " << print_money((ptx.dust_added_to_fee ? 0 : ptx.dust)) << ")" << ENDL
@@ -10140,6 +10172,7 @@ void wallet2::transfer_selected_rct(
   ptx.tx = tx;
   ptx.change_dts = change_dts;
   ptx.selected_transfers = selected_transfers;
+  ptx.selected_transfers_collateral = selected_transfers_onshore_colleteral;
   if (!use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) || tx_type != cryptonote::transaction_type::ONSHORE)
     tools::apply_permutation(ins_order, ptx.selected_transfers);
   ptx.tx_key = tx_key;
@@ -11294,7 +11327,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 		     " for " << print_money(DSTS_FRONT_AMOUNT));
         tx.add(dsts[0], dsts[0].amount, dsts[0].amount_usd, dsts[0].amount_xasset, original_output_index, m_merge_destinations);
 
-	      available_amount -= DSTS_FRONT_AMOUNT;
+	available_amount -= DSTS_FRONT_AMOUNT;
         DSTS_FRONT_AMOUNT = 0;
 
         if (!dsts[0].is_collateral) {
@@ -11326,8 +11359,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 	       m_merge_destinations
         );
 
-	      DSTS_FRONT_AMOUNT -= available_amount;
-        available_amount = 0;
+	DSTS_FRONT_AMOUNT -= available_amount;
+	available_amount = 0;
       }
     }
 
@@ -11360,8 +11393,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       uint64_t outputs = 0;
       std::vector<transfer_details> fee_sources;
       for (size_t idx: tx.selected_transfers) {
-	      inputs += specific_transfers[idx].amount();
-	      fee_sources.push_back(specific_transfers[idx]);
+	inputs += specific_transfers[idx].amount();
+	fee_sources.push_back(specific_transfers[idx]);
       }
       for (const auto &o: tx.dsts) 
         outputs += (strSource != "XHV" && strSource != "XUSD") ? o.amount_xasset : (strSource == "XUSD") ? o.amount_usd : o.amount;
@@ -11443,6 +11476,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       }
       else
       {
+	// Sanity check - don't allow split conversion TXs
+	THROW_WALLET_EXCEPTION_IF((!dsts.empty()) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE), error::wallet_internal_error, "cannot split conversion TXs");
+	
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
           transfer_selected_rct(
@@ -15732,12 +15768,19 @@ uint64_t wallet2::get_offshore_fee(std::vector<cryptonote::tx_destination_entry>
   // Calculate the amount being sent
   uint64_t amount = 0, amount_usd = 0;
   for (auto dt: dsts) {
+    if (dt.is_collateral) continue;
     THROW_WALLET_EXCEPTION_IF((0 == dt.amount) && (0 == dt.amount_usd), error::zero_destination);
     amount += dt.amount;
     amount_usd += dt.amount_usd;
   }
 
-  if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+  if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+
+    uint64_t fee_estimate = (amount > 0) ? amount : amount_usd;
+    fee_estimate = (fee_estimate * 3) / 200; // 1.5% flat fee for conversions
+    return fee_estimate;
+  
+  } else if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
 
     uint64_t fee_estimate = (amount > 0) ? amount : amount_usd;
     fee_estimate /= 200; // 0.5% flat fee for conversions
@@ -15796,13 +15839,19 @@ uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> 
   // Calculate the amount being sent
   uint64_t amount_usd = 0;
   for (auto dt: dsts) {
+    if (dt.is_collateral) continue;
     THROW_WALLET_EXCEPTION_IF((0 == dt.amount) && (0 == dt.amount_usd), error::zero_destination);
     amount_usd += dt.amount_usd;
   }
 
-  if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+  uint64_t fee_estimate = amount_usd;
+  if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
 
-    uint64_t fee_estimate = amount_usd;
+    fee_estimate = (amount_usd * 3) / 200; // 1.5% flat fee for conversions
+    return fee_estimate;
+  
+  } else if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+
     fee_estimate /= 200; // 0.5% flat fee for conversions
     return fee_estimate;
 
@@ -15874,6 +15923,12 @@ uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_
     amount_xasset += dt.amount_xasset;
   }
 
+  if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+    boost::multiprecision::uint128_t amount_128 = amount_xasset;
+    amount_128 = (amount_128 * 15) / 1000; // 1.5%
+    return (uint64_t)amount_128;
+  }
+
   if (use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
     boost::multiprecision::uint128_t amount_128 = amount_xasset;
     amount_128 = (amount_128 * 5) / 1000; // 0.5%
@@ -15901,6 +15956,12 @@ uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_
   for (auto dt: dsts) {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount_usd, error::zero_destination);
     amount_usd += dt.amount_usd;
+  }
+
+  if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+    boost::multiprecision::uint128_t amount_128 = amount_usd;
+    amount_128 = (amount_128 * 15) / 1000; // 1.5%
+    return (uint64_t)amount_128;
   }
 
   if (use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
