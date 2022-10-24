@@ -2236,13 +2236,28 @@ namespace cryptonote
   }
   //---------------------------------------------------------------------------------
   //TODO: investigate whether boolean return is appropriate
-  bool tx_memory_pool::fill_block_template(block &bl, size_t median_weight, uint64_t already_generated_coins, size_t &total_weight, std::map<std::string, uint64_t> &fee_map, std::map<std::string, uint64_t> &offshore_fee_map, std::map<std::string, uint64_t> &xasset_fee_map, uint64_t &expected_reward, uint8_t version)
-  {
+  bool tx_memory_pool::fill_block_template(
+    block &bl,
+    size_t median_weight,
+    uint64_t already_generated_coins,
+    size_t &total_weight,
+    std::map<std::string, uint64_t> &fee_map,
+    std::map<std::string, uint64_t> &offshore_fee_map,
+    std::map<std::string, uint64_t> &xasset_fee_map,
+    uint64_t &expected_reward,
+    uint8_t version
+  ){
+
     CRITICAL_REGION_LOCAL(m_transactions_lock);
     CRITICAL_REGION_LOCAL1(m_blockchain);
 
     uint64_t best_coinbase = 0, coinbase = 0;
     total_weight = 0;
+    
+    // this holds the total fee amount in XHV for calculation of block reward. 
+    // All fees collected in other assets(both regular & conversion fees)
+    // is converted and added this.
+    uint64_t total_fee_xhv = 0;
     
     //baseline empty block
     if (!get_block_reward(median_weight, total_weight, already_generated_coins, best_coinbase, version))
@@ -2259,6 +2274,28 @@ namespace cryptonote
     LOG_PRINT_L2("Filling block template, median weight " << median_weight << ", " << m_txs_by_fee_and_receive_time.size() << " txes in the pool");
 
     LockedTXN lock(m_blockchain.get_db());
+
+    // grap the lates pricing record for conversion of fee values
+    uint64_t current_height = m_blockchain.get_current_blockchain_height();
+    block latest_bl;
+    for (size_t i = 1; i <= 10; i++) {
+      if (!m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(current_height - i), latest_bl)) {
+        MERROR("Failed to get block for pricing record h: " << current_height - i);
+        continue;
+      }
+
+      if (!latest_bl.pricing_record.empty()) {
+        break;
+      }
+    }
+    offshore::pricing_record &latest_pr = latest_bl.pricing_record;
+
+    // ignore the fee converison if cant have a pricing record
+    bool use_old_algo = false;
+    if (latest_pr.empty()) {
+      MERROR("Failed to find a acceptable pricing record for conversion of tx fees. Using the old algo.");
+      use_old_algo = true;
+    }
 
     auto sorted_it = m_txs_by_fee_and_receive_time.begin();
     for (; sorted_it != m_txs_by_fee_and_receive_time.end(); ++sorted_it)
@@ -2292,6 +2329,7 @@ namespace cryptonote
       }
 
       // start using the optimal filling algorithm from v5
+      uint64_t total_fee_this_tx_xhv = 0;
       if (version >= 5)
       {
         // If we're getting lower coinbase tx,
@@ -2302,14 +2340,38 @@ namespace cryptonote
           LOG_PRINT_L2("  would exceed maximum block weight");
           continue;
         }
-        if (strcmp(meta.fee_asset_type, "XHV") == 0) {
-          coinbase = block_reward + fee_map["XHV"] + meta.fee;
+
+        if (version >= HF_VERSION_USE_COLLATERAL && !use_old_algo) {
+          if (strcmp(meta.fee_asset_type, "XHV") == 0) {
+            total_fee_this_tx_xhv = meta.fee + meta.offshore_fee;
+          } else if (strcmp(meta.fee_asset_type, "XUSD") == 0) {
+            // convert the fee into xhv
+            boost::multiprecision::uint128_t xusd_128 =  meta.fee + meta.offshore_fee;
+            boost::multiprecision::uint128_t exchange_128 = latest_pr["XUSD"];
+            boost::multiprecision::uint128_t xhv_128 = xusd_128 * COIN;
+            xhv_128 /= exchange_128;
+            total_fee_this_tx_xhv = (uint64_t)xhv_128;
+          } else {
+            // conver xasset to xusd
+            boost::multiprecision::uint128_t amount_128 =  meta.fee + meta.offshore_fee;
+            boost::multiprecision::uint128_t exchange_128 = latest_pr[meta.fee_asset_type];
+            boost::multiprecision::uint128_t xusd_128 = amount_128 * 1000000000000;
+            xusd_128 /= exchange_128;
+
+            // convert to xhv
+            exchange_128 = latest_pr["XUSD"];
+            boost::multiprecision::uint128_t xhv_128 = xusd_128 * COIN;
+            xhv_128 /= exchange_128;
+            total_fee_this_tx_xhv = (uint64_t)xhv_128;
+          }
+          coinbase = block_reward + total_fee_xhv + total_fee_this_tx_xhv;
         } else {
-          coinbase = block_reward + fee_map["XHV"];
+          if (strcmp(meta.fee_asset_type, "XHV") == 0) {
+            coinbase = block_reward + fee_map["XHV"] + meta.fee;
+          } else {
+            coinbase = block_reward + fee_map["XHV"];
+          }
         }
-	      /*
-          if (coinbase < template_accept_threshold(best_coinbase))
-        */
         if (coinbase < best_coinbase)
         {
           LOG_PRINT_L2("  would decrease coinbase to " << print_money(coinbase));
@@ -2380,7 +2442,7 @@ namespace cryptonote
       if (source != dest)
       {
         // Validate that pricing record has not grown too old since it was first included in the pool
-        if (!tx_pr_height_valid(m_blockchain.get_current_blockchain_height(), tx.pricing_record_height, sorted_it->second)) {
+        if (!tx_pr_height_valid(current_height, tx.pricing_record_height, sorted_it->second)) {
           LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
           continue;
         }
@@ -2418,6 +2480,7 @@ namespace cryptonote
 
       bl.tx_hashes.push_back(sorted_it->second);
       total_weight += meta.weight;
+      total_fee_xhv += total_fee_this_tx_xhv;
       fee_map[meta.fee_asset_type] += meta.fee;
       if (source != dest) {
         if (version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
