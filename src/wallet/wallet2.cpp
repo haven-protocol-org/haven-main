@@ -7422,7 +7422,6 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       return false;
     }
 
-    uint32_t fees_version = 4; // latest. not used for transfers.
     uint32_t hf_version = HF_PER_OUTPUT_UNLOCK_VERSION; // latest. used for tx version only.
     bool r = cryptonote::construct_tx_and_get_tx_key(
       m_account.get_keys(),
@@ -7440,7 +7439,6 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       additional_tx_keys,
       current_height,
       offshore::pricing_record(),
-      fees_version,
       hf_version,
       0,
       sd.use_rct,
@@ -8006,10 +8004,6 @@ bool wallet2::sign_multisig_tx_base(multisig_tx_set &exported_txs, std::vector<c
       return false;
     }
 
-    uint32_t fees_version =
-      use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
-      use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
-      use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
     uint32_t hf_version = get_current_hard_fork();
     bool r = cryptonote::construct_tx_with_tx_key(
       m_account.get_keys(),
@@ -8027,7 +8021,6 @@ bool wallet2::sign_multisig_tx_base(multisig_tx_set &exported_txs, std::vector<c
       ptx.additional_tx_keys,
       current_height,
       offshore::pricing_record(),
-      fees_version,
       hf_version,
       0,
       sd.use_rct,
@@ -9983,10 +9976,6 @@ void wallet2::transfer_selected_rct(
     bool b = get_pricing_record(pr, current_height);
     THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
   }
-  uint32_t fees_version =
-    use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
-    use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
-    use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
   uint32_t hf_version = get_current_hard_fork();
   bool r = cryptonote::construct_tx_and_get_tx_key(
     m_account.get_keys(),
@@ -10004,7 +9993,6 @@ void wallet2::transfer_selected_rct(
     additional_tx_keys,
     current_height,
     pr,
-    fees_version,
     hf_version,
     needed_col,
     true,
@@ -10061,10 +10049,6 @@ void wallet2::transfer_selected_rct(
           bool b = get_pricing_record(pr, current_height);
           THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
         }
-        uint32_t fees_version =
-          use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0) ? 4 :
-          use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0) ? 3 :
-          use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0) ? 2 : 1;
         uint32_t hf_version = get_current_hard_fork();
         bool r = cryptonote::construct_tx_with_tx_key(
           m_account.get_keys(),
@@ -10082,7 +10066,6 @@ void wallet2::transfer_selected_rct(
           additional_tx_keys,
           current_height,
           pr,
-          fees_version,
           hf_version,
           0,
           true,
@@ -11023,10 +11006,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   THROW_WALLET_EXCEPTION_IF(needed_money == 0, error::zero_destination);
 
   // Calculate the offshore fee
-  uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(dsts, priority)
-    : (tx_type == tt::ONSHORE) ? get_onshore_fee(dsts, priority)
-    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(dsts, priority)
-    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(dsts, priority)
+  uint32_t hf_version = get_current_hard_fork();
+  uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? cryptonote::get_offshore_fee(dsts, unlock_time - current_height - 1, hf_version)
+    : (tx_type == tt::ONSHORE) ? cryptonote::get_onshore_fee(dsts, unlock_time - current_height - 1, hf_version)
+    : (tx_type == tt::XUSD_TO_XASSET) ? cryptonote::get_xusd_to_xasset_fee(dsts, hf_version)
+    : (tx_type == tt::XASSET_TO_XUSD) ? cryptonote::get_xasset_to_xusd_fee(dsts, hf_version)
     : 0;
 
   // Add collateral to the dsts
@@ -11358,12 +11342,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       }
       for (const auto &o: tx.dsts) 
         outputs += (strSource != "XHV" && strSource != "XUSD") ? o.amount_xasset : (strSource == "XUSD") ? o.amount_usd : o.amount;
-
-      offshore_fee = (tx_type == tt::OFFSHORE) ? get_offshore_fee(tx.dsts, priority)
-                    : (tx_type == tt::ONSHORE) ? get_onshore_fee(tx.dsts, priority)
-                    : (tx_type == tt::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(tx.dsts, priority)
-                    : (tx_type == tt::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(tx.dsts, priority)
-                    : 0;
       needed_fee += offshore_fee;
 
       if (inputs < outputs + needed_fee)
@@ -15715,196 +15693,6 @@ uint64_t wallet2::get_bytes_sent() const
 uint64_t wallet2::get_bytes_received() const
 {
   return m_http_client->get_bytes_received();
-}
-uint64_t wallet2::get_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
-{
-  // Calculate the amount being sent
-  uint64_t amount = 0, amount_usd = 0;
-  for (auto dt: dsts) {
-    THROW_WALLET_EXCEPTION_IF((0 == dt.amount) && (0 == dt.amount_usd), error::zero_destination);
-    amount += dt.amount;
-    amount_usd += dt.amount_usd;
-  }
-
-  if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
-
-    uint64_t fee_estimate = (amount > 0) ? amount : amount_usd;
-    fee_estimate /= 200; // 0.5% flat fee for conversions
-    return fee_estimate;
-  
-  } else if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
-
-    uint64_t fee_estimate = (amount > 0) ? amount : amount_usd;
-    switch(priority) {
-    case 4:
-      fee_estimate /= 5; // 20% - "workday rush"
-      break;
-    case 3:
-      fee_estimate /= 10; // 10% "1-day rush"
-      break;
-    case 2:
-      fee_estimate /= 20; // 5% - "premium mint"
-      break;
-    default:
-      fee_estimate /= 500; // 0.2% - "standard mint"
-      break;
-    }
-    
-    // Return the fee
-    return fee_estimate;
-
-  } else {
-    
-    // Get the latest pricing records from the top block
-    cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::request req_last = AUTO_VAL_INIT(req_last);
-    cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::response res_last = AUTO_VAL_INIT(res_last);
-    bool r = invoke_http_json_rpc("/json_rpc", "get_last_block_header", req_last, res_last);
-    THROW_WALLET_EXCEPTION_IF(!r, tools::error::wallet_internal_error, "failed to get last block header");
-    THROW_WALLET_EXCEPTION_IF(res_last.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "get_offshore_fee");
-    THROW_WALLET_EXCEPTION_IF(res_last.status != CORE_RPC_STATUS_OK, tools::error::wallet_generic_rpc_error, "get_offshore_fee", res_last.status);
-
-    // Get the delta
-    uint64_t pricing_average = res_last.block_header.pricing_record.unused1;
-
-    // abs() implementation for uint64_t's
-    uint64_t delta = (pricing_average > res_last.block_header.pricing_record.xUSD)
-      ? pricing_average - res_last.block_header.pricing_record.xUSD
-      : res_last.block_header.pricing_record.xUSD - pricing_average;
-
-    // Estimate the fee
-    uint64_t unlock_time = 60 * pow(3, 4-priority);
-    uint64_t fee_estimate = delta * exp((M_PI / -1000.0) * (unlock_time - 60) * 1.2) * (amount>0 ? amount : amount_usd) / 1000000000000;
-
-    // Return the fee
-    return fee_estimate;
-  }
-}
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_onshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
-{
-  // Calculate the amount being sent
-  uint64_t amount_usd = 0;
-  for (auto dt: dsts) {
-    THROW_WALLET_EXCEPTION_IF((0 == dt.amount) && (0 == dt.amount_usd), error::zero_destination);
-    amount_usd += dt.amount_usd;
-  }
-
-  if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
-
-    uint64_t fee_estimate = amount_usd;
-    fee_estimate /= 200; // 0.5% flat fee for conversions
-    return fee_estimate;
-
-  } else if (use_fork_rules(HF_VERSION_OFFSHORE_FEES_V2, 0)) {
-
-    uint64_t fee_estimate = amount_usd;
-    switch(priority) {
-    case 4:
-      fee_estimate /= 5; // 20% - "workday rush"
-      break;
-    case 3:
-      fee_estimate /= 10; // 10% "1-day rush"
-      break;
-    case 2:
-      fee_estimate /= 20; // 5% - "premium mint"
-      break;
-    default:
-      fee_estimate /= 500; // 0.2% - "standard mint"
-      break;
-    }
-    
-    // Return the fee
-    return fee_estimate;
-
-  } else {
-
-    // Get the latest pricing records from the top block
-    cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::request req_last = AUTO_VAL_INIT(req_last);
-    cryptonote::COMMAND_RPC_GET_LAST_BLOCK_HEADER::response res_last = AUTO_VAL_INIT(res_last);
-    bool r = invoke_http_json_rpc("/json_rpc", "get_last_block_header", req_last, res_last);
-    THROW_WALLET_EXCEPTION_IF(!r, tools::error::wallet_internal_error, "failed to get last block header");
-    THROW_WALLET_EXCEPTION_IF(res_last.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "get_onshore_fee");
-    THROW_WALLET_EXCEPTION_IF(res_last.status != CORE_RPC_STATUS_OK, tools::error::wallet_generic_rpc_error, "get_onshore_fee", res_last.status);
-
-    // Get the delta
-    uint64_t pricing_average = res_last.block_header.pricing_record.unused1;
-
-    // abs() implementation for uint64_t's
-    uint64_t delta = (pricing_average > res_last.block_header.pricing_record.xUSD)
-      ? pricing_average - res_last.block_header.pricing_record.xUSD
-      : res_last.block_header.pricing_record.xUSD - pricing_average;
-
-    // Estimate the fee
-    uint64_t unlock_time = 60 * pow(3, 4-priority);
-    uint64_t fee_estimate = (delta * exp((M_PI / -1000.0) * (unlock_time - 60) * 1.2) * amount_usd) / 1000000000000;
-
-    // Return the fee
-    return fee_estimate;
-  }
-}
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
-{
-  // Calculate the amount being sent
-  for (auto dt: dsts) {
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount_usd, error::zero_destination);
-  }
-
-  // No fee for offshore-to-offshore prior to v3
-  return 0;
-}
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
-{
-  // Calculate the amount being sent
-  uint64_t amount_xasset = 0;
-  for (auto dt: dsts) {
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount_xasset, error::zero_destination);
-    amount_xasset += dt.amount_xasset;
-  }
-
-  if (use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
-    boost::multiprecision::uint128_t amount_128 = amount_xasset;
-    amount_128 = (amount_128 * 5) / 1000; // 0.5%
-    return (uint64_t)amount_128;
-  }
-
-  if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-    boost::multiprecision::uint128_t amount_128 = amount_xasset;
-    amount_128 = (amount_128 * 3) / 1000;
-    return (uint64_t)amount_128;
-  }
-
-  return 0;
-}
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xasset_transfer_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
-{
-  return 0;
-}
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority)
-{
-  // Calculate the amount being sent
-  uint64_t amount_usd = 0;
-  for (auto dt: dsts) {
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount_usd, error::zero_destination);
-    amount_usd += dt.amount_usd;
-  }
-
-  if (use_fork_rules(HF_VERSION_XASSET_FEES_V2, 0)) {
-    boost::multiprecision::uint128_t amount_128 = amount_usd;
-    amount_128 = (amount_128 * 5) / 1000; // 0.5%
-    return (uint64_t)amount_128;
-  }
-
-  if (use_fork_rules(HF_VERSION_XASSET_FULL, 0)) {
-    boost::multiprecision::uint128_t amount_128 = amount_usd;
-    amount_128 = (amount_128 * 3) / 1000;
-    return (uint64_t)amount_128;
-  }
-
-  return 0;
 }
 //----------------------------------------------------------------------------------------------------
 // go through the xhv inputs and pick the smallest amount of inputs >= col_amount

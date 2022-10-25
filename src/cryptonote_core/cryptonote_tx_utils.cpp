@@ -391,27 +391,22 @@ namespace cryptonote
     return addr.m_view_public_key;
   }
   //---------------------------------------------------------------
-  bool get_offshore_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t current_height) {
+  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount = 0;
     for (auto dt: dsts) {
-      // if (0 == dt.amount) {
-      //   MERROR("No XHV amount specified for destination");
-      //   return false;
-      // }
       // Filter out the change, which is never converted
       if (dt.amount_usd != 0 && !dt.is_collateral) {
         amount += dt.amount;
       }
     }
 
-    if (fees_version >= 4) {
-
+    uint64_t fee_estimate = 0;
+    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
       // Flat 0.5% fee
       fee_estimate = amount / 200;
-      
-    } else if (fees_version >= 2) {
+    } else {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
@@ -420,39 +415,27 @@ namespace cryptonote
       (unlock_time >= 1440) ? (amount / 20) :
       (unlock_time >= 720) ? (amount / 10) :
       amount / 5;
-    } else {
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Estimate the fee
-      fee_estimate = delta * exp((M_PI / -1000.0) * (unlock_time - 60) * 1.2) * amount / 1000000000000;
     }
-    // Return success
-    return true;
+
+    return fee_estimate;
   }
   //---------------------------------------------------------------
-  bool get_onshore_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t current_height) {
+  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
     for (auto dt: dsts) {
-      // if (0 == dt.amount_usd) {
-      //   MERROR("No USD amount specified for destination");
-      //   return false;
-      // }
       // Filter out the change, which is never converted
       if (dt.amount != 0 && !dt.is_collateral) {
         amount_usd += dt.amount_usd;
       }
     }
 
-    if (fees_version >= 4) {
-
+    uint64_t fee_estimate = 0;
+    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
       // Flat 0.5% fee
       fee_estimate = amount_usd / 200;
-      
-    } else if (fees_version >= 2) {
+    } else {
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
@@ -462,57 +445,24 @@ namespace cryptonote
       (unlock_time >= 720) ? (amount_usd / 10) :
       amount_usd / 5;
 
-    } else {
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Estimate the fee
-      fee_estimate = delta * exp((M_PI / -1000.0) * (unlock_time - 60) * 1.2) * amount_usd / 1000000000000;
     }
-    
-    // Return success
-    return true;
+
+    return fee_estimate;
   }
   //---------------------------------------------------------------
-  bool get_offshore_to_offshore_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t current_height) {
-
-    // // Calculate the amount being sent
-    // auto dsts_copy = dsts;
-    // // Exclude the change
-    // dsts_copy.pop_back();
-    // uint64_t amount_usd = 0;
-    // for (auto dt: dsts_copy) {
-    //   // if (0 == dt.amount_usd) {
-    //   //   MERROR("No USD amount specified for destination");
-    //   //   return false;
-    //   // }
-    //   amount_usd += dt.amount_usd;
-    // }
-
-    // Only conventional TX fees prior to fees v3
-    fee_estimate = 0;
-    
-    // Return success
-    return true;
-  }
-  //---------------------------------------------------------------
-  bool get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
+  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_xasset = 0;
     for (auto dt: dsts) {
-      // if (0 == dt.amount_xasset) {
-      //   MERROR("No xAsset amount specified for destination");
-      //   return false;
-      // }
       // Filter out the change, which is never converted
       if (dt.amount_usd != 0) {
         amount_xasset += dt.amount_xasset;
       }
     }
 
-    if (fees_version >= 3) {
+    uint64_t fee_estimate = 0;
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
       // Calculate 0.5% of the total being sent
       boost::multiprecision::uint128_t amount_128 = amount_xasset;
       amount_128 = (amount_128 * 5) / 1000; // 0.5%
@@ -524,19 +474,14 @@ namespace cryptonote
       fee_estimate = (uint64_t)amount_128;
     }
 
-    // Return success
-    return true;
+   return fee_estimate;
   }
   //---------------------------------------------------------------
-  bool get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
+  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
     for (auto dt: dsts) {
-      // if (0 == dt.amount_usd) {
-      //   MERROR("No USD amount specified for destination");
-      //   return false;
-      // }
       // Filter out the change, which is never converted
       // All other destinations should have both pre and post converted amounts set so far except
       // the change destinations.
@@ -545,7 +490,8 @@ namespace cryptonote
       }
     }
 
-    if (fees_version >= 3) {
+    uint64_t fee_estimate = 0;
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
       // Calculate 0.5% of the total being sent
       boost::multiprecision::uint128_t amount_128 = amount_usd;
       amount_128 = (amount_128 * 5) / 1000; // 0.5%
@@ -557,8 +503,7 @@ namespace cryptonote
       fee_estimate = (uint64_t)amount_128;
     }
 
-    // Return success
-    return true;
+    return fee_estimate;
   }
 
   /*
@@ -765,8 +710,7 @@ namespace cryptonote
     const crypto::secret_key &tx_key, 
     const std::vector<crypto::secret_key> &additional_tx_keys, 
     uint64_t current_height, 
-    offshore::pricing_record pr, 
-    uint32_t fees_version,
+    offshore::pricing_record pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount,
     bool rct, 
@@ -1030,20 +974,11 @@ namespace cryptonote
 
     // calculate offshore fees before shuffling destinations
     uint64_t fee = 0;
-    uint64_t fee_usd = 0;
-    uint64_t fee_xasset = 0;
-    uint64_t offshore_fee = 0;
-    uint64_t offshore_fee_usd = 0;
-    uint64_t offshore_fee_xasset = 0;
-    bool r =
-      (tx_type == transaction_type::OFFSHORE) ? get_offshore_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee, sources, current_height) :
-      (tx_type == transaction_type::ONSHORE) ? get_onshore_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (tx_type == transaction_type::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (tx_type == transaction_type::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee_xasset, sources, current_height) : true;
-    if (!r) {
-      LOG_ERROR("failed to get offshore fee - aborting");
-      return false;
-    }
+    uint64_t offshore_fee = 
+      (tx_type == transaction_type::OFFSHORE) ? get_offshore_fee(destinations, unlock_time - current_height - 1, hf_version) :
+      (tx_type == transaction_type::ONSHORE) ? get_onshore_fee(destinations, unlock_time - current_height - 1, hf_version) :
+      (tx_type == transaction_type::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(destinations, hf_version) :
+      (tx_type == transaction_type::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(destinations, hf_version) : 0;
 
     if (shuffle_outs)
     {
@@ -1234,12 +1169,8 @@ namespace cryptonote
     }
 
     // Add 80% of the conversion fee to the amount burnt
-    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
-      if (tx_type == transaction_type::XUSD_TO_XASSET) {
-        tx.amount_burnt += (offshore_fee_usd * 4) / 5;
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
-        tx.amount_burnt += (offshore_fee_xasset * 4) / 5;
-      }
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2 && (tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD)) {
+      tx.amount_burnt += (offshore_fee * 4) / 5;
     }
     
     //check money
@@ -1311,9 +1242,9 @@ namespace cryptonote
     if (summary_inputs_money > summary_outs_money) {
       fee = summary_inputs_money - summary_outs_money - offshore_fee;
     } else if (summary_inputs_money_usd > summary_outs_money_usd) {
-      fee_usd = summary_inputs_money_usd - summary_outs_money_usd - offshore_fee_usd;
+      fee = summary_inputs_money_usd - summary_outs_money_usd - offshore_fee;
     } else if (summary_inputs_money_xasset > summary_outs_money_xasset) {
-      fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
+      fee = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee;
     }
 
     // zero out all amounts to mask rct outputs, real amounts are now encrypted
@@ -1358,11 +1289,7 @@ namespace cryptonote
       strSource,
       outamounts,
       fee,
-      fee_usd,
-      fee_xasset,
       offshore_fee,
-      offshore_fee_usd,
-      offshore_fee_xasset,
       mixRing,
       amount_keys,
       msout ? &kLRki : NULL,
@@ -1401,7 +1328,6 @@ namespace cryptonote
     std::vector<crypto::secret_key> &additional_tx_keys,
     uint64_t current_height,
     offshore::pricing_record pr,
-    uint32_t fees_version,
     uint32_t hf_version,
     const uint64_t onshore_col_amount,
     bool rct,
@@ -1441,7 +1367,6 @@ namespace cryptonote
         additional_tx_keys,
         current_height,
         pr,
-        fees_version,
         hf_version,
         onshore_col_amount,
         rct,

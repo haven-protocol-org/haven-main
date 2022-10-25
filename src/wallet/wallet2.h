@@ -1393,12 +1393,6 @@ private:
     uint64_t estimate_fee(bool use_per_byte_fee, bool use_rct, int n_inputs, int mixin, int n_outputs, size_t extra_size, bool bulletproof, bool clsag, uint64_t base_fee, uint64_t fee_multiplier, uint64_t fee_quantization_mask);
     uint64_t get_fee_multiplier(uint32_t priority, int fee_algorithm = -1);
     uint64_t get_base_fee();
-    uint64_t get_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority);
-    uint64_t get_onshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority);
-    uint64_t get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority);
-    uint64_t get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority);
-    uint64_t get_xasset_transfer_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority);
-    uint64_t get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority);
     uint64_t get_fee_quantization_mask();
     uint64_t get_min_ring_size();
     uint64_t get_max_ring_size();
