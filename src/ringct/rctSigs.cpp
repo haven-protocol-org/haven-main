@@ -818,12 +818,8 @@ namespace rct {
     const uint64_t onshore_col_amount,
     const std::string in_asset_type, 
     const std::vector<std::pair<std::string,std::pair<xmr_amount,bool>>> & outamounts, 
-    xmr_amount txnFee, 
-    xmr_amount txnFee_usd, 
-    xmr_amount txnFee_xasset, 
-    xmr_amount txnOffshoreFee, 
-    xmr_amount txnOffshoreFee_usd, 
-    xmr_amount txnOffshoreFee_xasset, 
+    xmr_amount txnFee,
+    xmr_amount txnOffshoreFee,
     const ctkeyM & mixRing, 
     const keyV &amount_keys, 
     const std::vector<multisig_kLRki> *kLRki, 
@@ -1141,15 +1137,19 @@ namespace rct {
             
     //set txn fee
     if (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3) {
-      rv.txnFee = txnFee + txnFee_usd + txnFee_xasset;
-      rv.txnOffshoreFee = txnOffshoreFee + txnOffshoreFee_usd + txnOffshoreFee_xasset;
-    } else {
       rv.txnFee = txnFee;
       rv.txnOffshoreFee = txnOffshoreFee;
-      rv.txnFee_usd = txnFee_usd;
-      rv.txnFee_xasset = txnFee_xasset;
-      rv.txnOffshoreFee_usd = txnOffshoreFee_usd;
-      rv.txnOffshoreFee_xasset = txnOffshoreFee_xasset;
+    } else {
+      if  (in_asset_type == "XHV") {
+        rv.txnFee = txnFee;
+        rv.txnOffshoreFee = txnOffshoreFee;
+      } else if (in_asset_type == "XUSD") {
+        rv.txnFee_usd = txnFee;
+        rv.txnOffshoreFee_usd = txnOffshoreFee;
+      } else {
+        rv.txnFee_xasset = txnFee;
+        rv.txnOffshoreFee_xasset = txnOffshoreFee;
+      }
     }
 
     // set the ring and pseudoOuts
@@ -1239,12 +1239,8 @@ namespace rct {
     const keyV &amount_keys, 
     const std::vector<multisig_kLRki> *kLRki, 
     multisig_out *msout, 
-    xmr_amount txnFee, 
-    xmr_amount txnFee_usd, 
-    xmr_amount txnFee_xasset, 
-    xmr_amount txnOffshoreFee, 
-    xmr_amount txnOffshoreFee_usd, 
-    xmr_amount txnOffshoreFee_xasset, 
+    xmr_amount txnFee,
+    xmr_amount txnOffshoreFee,
     unsigned int mixin, 
     const RCTConfig &rct_config, 
     hw::device &hwdev, 
@@ -1260,7 +1256,28 @@ namespace rct {
       mixRing[i].resize(mixin+1);
       index[i] = populateFromBlockchainSimple(mixRing[i], inPk[i], mixin);
     }
-    return genRctSimple(message, inSk, destinations, inamounts, inamounts_col_indices, onshore_col_amount, in_asset_type, outamounts, txnFee, txnFee_usd, txnFee_xasset, txnOffshoreFee, txnOffshoreFee_usd, txnOffshoreFee_xasset, mixRing, amount_keys, kLRki, msout, index, outSk, rct_config, hwdev, pr, tx_version);
+    return  genRctSimple(
+      message,
+      inSk,
+      destinations,
+      inamounts,
+      inamounts_col_indices,
+      onshore_col_amount,
+      in_asset_type,
+      outamounts,
+      txnFee,
+      txnOffshoreFee,
+      mixRing,
+      amount_keys,
+      kLRki,
+      msout,
+      index,
+      outSk,
+      rct_config,
+      hwdev,
+      pr,
+      tx_version
+    );
   }
 
   //RingCT protocol
