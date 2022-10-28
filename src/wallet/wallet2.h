@@ -474,6 +474,7 @@ private:
       cryptonote::tx_destination_entry change_dts;
       std::vector<cryptonote::tx_destination_entry> splitted_dsts; // split, includes change
       std::vector<size_t> selected_transfers;
+      std::vector<size_t> selected_transfers_collateral;
       std::vector<uint8_t> extra;
       uint64_t unlock_time;
       bool use_rct;
@@ -488,6 +489,7 @@ private:
         FIELD(change_dts)
         FIELD(splitted_dsts)
         FIELD(selected_transfers)
+        FIELD(selected_transfers_collateral)
         FIELD(extra)
         FIELD(unlock_time)
         FIELD(use_rct)
@@ -917,7 +919,8 @@ private:
       const std::vector<size_t>& selected_transfers,
       size_t fake_outputs_count,
       std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
-			uint64_t unlock_time,
+      std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs_collateral,
+      uint64_t unlock_time,
       uint64_t fee,
       const std::vector<uint8_t>& extra,
       cryptonote::transaction& tx,
@@ -1831,8 +1834,8 @@ BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 18)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
 BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
 BOOST_CLASS_VERSION(tools::wallet2::signed_tx_set, 1)
-BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 6)
-BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
+BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 7)
+BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 4)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 0)
 
 namespace boost
@@ -2314,6 +2317,9 @@ namespace boost
         return;
       }
       a & x.fee;
+      if (ver < 7)
+	return;
+      a & x.selected_transfers_collateral;
     }
 
     template <class Archive>
@@ -2357,6 +2363,9 @@ namespace boost
       if (ver < 3)
         return;
       a & x.multisig_sigs;
+      if (ver < 4)
+	return;
+      a & x.selected_transfers_collateral;
     }
   }
 }

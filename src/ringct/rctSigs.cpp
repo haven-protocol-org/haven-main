@@ -1570,7 +1570,7 @@ namespace rct {
       }
 
       // validate the colleteral
-      if (version >= HF_VERSION_USE_COLLATERAL) {
+      if ((version >= HF_VERSION_USE_COLLATERAL) && (amount_collateral > 0)) {
         if (type == tx_type::OFFSHORE) {
           // get colletera commitmen
           key C_col;

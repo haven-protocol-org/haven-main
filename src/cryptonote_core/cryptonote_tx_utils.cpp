@@ -406,7 +406,12 @@ namespace cryptonote
       }
     }
 
-    if (fees_version >= 4) {
+    if (fees_version >= 5) {
+
+      // Flat 0.5% fee
+      fee_estimate = (amount * 3) / 200;
+      
+    } else if (fees_version >= 4) {
 
       // Flat 0.5% fee
       fee_estimate = amount / 200;
@@ -447,7 +452,12 @@ namespace cryptonote
       }
     }
 
-    if (fees_version >= 4) {
+    if (fees_version >= 5) {
+
+      // Flat 0.5% fee
+      fee_estimate = (amount_usd * 3) / 200;
+      
+    } else if (fees_version >= 4) {
 
       // Flat 0.5% fee
       fee_estimate = amount_usd / 200;
@@ -826,7 +836,6 @@ namespace cryptonote
       double ratio_sri = ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1;
     
       // Calculate the SR VBS rate
-      double rate_srvbs = std::sqrt(1.0 - ratio_mcap) * 5.0;
       const double min_srvbs = 1.0;
       const double max_srvbs = 10.0;
       rate_srvbs = std::min(std::max(rate_srvbs, min_srvbs), max_srvbs);
@@ -842,7 +851,10 @@ namespace cryptonote
       collateral_128 /= COIN;
       collateral = collateral_128.convert_to<uint64_t>();
 
-      LOG_PRINT_L1("Onshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money(amount) << " xUSD");
+      boost::multiprecision::uint128_t amount_usd_128 = amount;
+      amount_usd_128 *= price_xhv;
+      amount_usd_128 /= COIN;
+      LOG_PRINT_L1("Onshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money((uint64_t)amount_usd_128) << " xUSD");
     
     } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
       collateral = 0;
