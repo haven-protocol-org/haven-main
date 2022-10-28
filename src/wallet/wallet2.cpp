@@ -2063,6 +2063,29 @@ bool wallet2::get_pricing_record(offshore::pricing_record& pr, const uint64_t he
   }
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts)
+{
+  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::response res = AUTO_VAL_INIT(res);
+  m_daemon_rpc_mutex.lock();
+  bool r = invoke_http_json_rpc("/json_rpc", "get_circulating_supply", req, res, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  if (r && res.status == CORE_RPC_STATUS_OK)
+  {
+    // Got the supply data - convert to a meaningful format
+    for (auto i: res.supply_tally) {
+      amounts.push_back(std::make_pair(std::string(i.currency_label), std::string(i.amount)));
+    }
+    return true;
+  }
+  else
+  {
+    MERROR("Failed to retrieve circulating supply from daemon");
+    return false;
+  }
+}
+//----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height)
 {
   // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
@@ -2121,9 +2144,6 @@ uint64_t wallet2::get_xusd_amount(const uint64_t amount, const std::string asset
     THROW_WALLET_EXCEPTION_IF(res.block_header.pricing_record.empty(), error::wallet_internal_error, "Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
 
     // Now work out the amount
-    //double d_xhv_amount = boost::lexical_cast<double>(xhv_amount) / 1000000000000.0;
-    //double d_exchange_rate = boost::lexical_cast<double>(res.block_header.pricing_record.unused1);
-    //uint64_t xusd_amount = (uint64_t)(d_xhv_amount * d_exchange_rate);
     boost::multiprecision::uint128_t amount_128 = amount;
     boost::multiprecision::uint128_t exchange_128 =
       asset_type == "XAG" ? res.block_header.pricing_record.xAG :
@@ -2181,9 +2201,6 @@ uint64_t wallet2::get_xhv_amount(const uint64_t xusd_amount, const uint64_t heig
     THROW_WALLET_EXCEPTION_IF(res.block_header.pricing_record.empty(), error::wallet_internal_error, "Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
 
     // Now work out the amount
-    //double d_xusd_amount = boost::lexical_cast<double>(xusd_amount);
-    //double d_exchange_rate = boost::lexical_cast<double>(res.block_header.pricing_record.unused1);
-    //uint64_t xhv_amount = (uint64_t)((d_xusd_amount / d_exchange_rate) * 1000000000000.0);
     boost::multiprecision::uint128_t xusd_128 = xusd_amount;
     boost::multiprecision::uint128_t exchange_128 = res.block_header.pricing_record.unused1;
     boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
@@ -2192,11 +2209,6 @@ uint64_t wallet2::get_xhv_amount(const uint64_t xusd_amount, const uint64_t heig
       exchange_128 = std::max(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
     }
     xhv_128 /= exchange_128;
-    //if (xhv_128 != xhv_amount) {
-    //  MERROR("Conversion error detected in get_xhv_amount() : double=" << xhv_amount << ", 128-bit=" << xhv_128);
-    //  THROW_WALLET_EXCEPTION_IF(xhv_128 != xhv_amount, error::wallet_internal_error, "get_xhv_amount() conversion error");
-    //}
-    //LOG_PRINT_L0("XHV = " << xhv_amount << ", USD = " << xusd_amount << ", ER = " << res.block_header.pricing_record.unused1);
     return (uint64_t)xhv_128;
   }
   else
@@ -7243,6 +7255,15 @@ void wallet2::commit_tx(pending_tx& ptx)
   for (size_t idx: ptx.selected_transfers)
     memwipe(specific_transfers[idx].m_multisig_k.data(), specific_transfers[idx].m_multisig_k.size() * sizeof(specific_transfers[idx].m_multisig_k[0]));
 
+  for(size_t idx: ptx.selected_transfers_collateral)
+  {
+    set_spent(m_transfers[idx], 0);
+  }
+
+  // tx generated, get rid of used k values
+  for (size_t idx: ptx.selected_transfers_collateral)
+    memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
+
   //fee includes dust if dust policy specified it.
   LOG_PRINT_L1("Transaction successfully sent. <" << txid << ">" << ENDL
             << "Commission: " << print_money(ptx.fee) << " (dust sent to dust addr: " << print_money((ptx.dust_added_to_fee ? 0 : ptx.dust)) << ")" << ENDL
@@ -9619,6 +9640,7 @@ void wallet2::transfer_selected_rct(
   const std::vector<size_t>& selected_transfers,
   size_t fake_outputs_count,
   std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
+  std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs_collateral,
   uint64_t unlock_time,
   uint64_t fee,
   const std::vector<uint8_t>& extra,
@@ -9760,9 +9782,11 @@ void wallet2::transfer_selected_rct(
 
   if (outs.empty()) {
     get_outs(specific_transfers, strSource, outs, selected_transfers, fake_outputs_count); // may throw
-    // get the outs for col inputs as well
-    if (tx_type == cryptonote::transaction_type::ONSHORE) {
-      get_outs(m_transfers, "XHV", outs, selected_transfers_onshore_colleteral, fake_outputs_count); // may throw
+  }
+  if (tx_type == cryptonote::transaction_type::ONSHORE) {
+    if (outs_collateral.empty()) {
+      // get the outs for col inputs as well
+      get_outs(m_transfers, "XHV", outs_collateral, selected_transfers_onshore_colleteral, fake_outputs_count); // may throw
     }
   }
 
@@ -9828,6 +9852,7 @@ void wallet2::transfer_selected_rct(
   }
 
   if (tx_type == cryptonote::transaction_type::ONSHORE) {
+    out_index = 0;
     for(size_t idx: selected_transfers_onshore_colleteral)
     {
       sources.resize(sources.size()+1);
@@ -9841,16 +9866,16 @@ void wallet2::transfer_selected_rct(
       src.height = td.m_block_height;
       //paste mixin transaction
 
-      THROW_WALLET_EXCEPTION_IF(outs.size() < out_index + 1 ,  error::wallet_internal_error, "outs.size() < out_index + 1"); 
-      THROW_WALLET_EXCEPTION_IF(outs[out_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
+      THROW_WALLET_EXCEPTION_IF(outs_collateral.size() < out_index + 1 ,  error::wallet_internal_error, "outs.size() < out_index + 1"); 
+      THROW_WALLET_EXCEPTION_IF(outs_collateral[out_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
         
       typedef cryptonote::tx_source_entry::output_entry tx_output_entry;
       for (size_t n = 0; n < fake_outputs_count + 1; ++n)
       {
         tx_output_entry oe;
-        oe.first = std::get<0>(outs[out_index][n]);
-        oe.second.dest = rct::pk2rct(std::get<1>(outs[out_index][n]));
-        oe.second.mask = std::get<2>(outs[out_index][n]);
+        oe.first = std::get<0>(outs_collateral[out_index][n]);
+        oe.second.dest = rct::pk2rct(std::get<1>(outs_collateral[out_index][n]));
+        oe.second.mask = std::get<2>(outs_collateral[out_index][n]);
         src.outputs.push_back(oe);
       }
 
@@ -10121,6 +10146,7 @@ void wallet2::transfer_selected_rct(
   ptx.tx = tx;
   ptx.change_dts = change_dts;
   ptx.selected_transfers = selected_transfers;
+  ptx.selected_transfers_collateral = selected_transfers_onshore_colleteral;
   if (!use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) || tx_type != cryptonote::transaction_type::ONSHORE)
     tools::apply_permutation(ins_order, ptx.selected_transfers);
   ptx.tx_key = tx_key;
@@ -10131,6 +10157,7 @@ void wallet2::transfer_selected_rct(
   ptx.construction_data.change_dts = change_dts;
   ptx.construction_data.splitted_dsts = splitted_dsts;
   ptx.construction_data.selected_transfers = ptx.selected_transfers;
+  ptx.construction_data.selected_transfers_collateral = ptx.selected_transfers_collateral;
   ptx.construction_data.extra = tx.extra;
   ptx.construction_data.unlock_time = unlock_time;
   ptx.construction_data.use_rct = true;
@@ -10797,6 +10824,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     size_t weight;
     uint64_t needed_fee;
     std::vector<std::vector<tools::wallet2::get_outs_entry>> outs;
+    std::vector<std::vector<tools::wallet2::get_outs_entry>> outs_collateral;
 
     TX() : weight(0), needed_fee(0) {}
 
@@ -10895,7 +10923,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   } else {
     if (strSource != strDest) {
       // Convert fee to xUSD
-      base_fee = get_xusd_amount(base_fee_orig, "XHV", current_height, false);
+      base_fee = get_xusd_amount(base_fee_orig, "XHV", current_height, tx_type == tt::ONSHORE);
       if (strSource != "XUSD") {
         // Convert fee to xAsset
         base_fee = get_xasset_amount(base_fee, strSource, current_height);
@@ -11014,9 +11042,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     : 0;
 
   // Add collateral to the dsts
-  if (need_collateral) {
+  if (needed_col > 0) {
     LOG_PRINT_L2("transfer: adding " << print_money(needed_col));
-    THROW_WALLET_EXCEPTION_IF(needed_col == 0, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
     dsts.push_back(tx_destination_entry(needed_col, address, is_subaddress, true));
   }
 
@@ -11141,6 +11168,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   adding_fee = false;
   needed_fee = 0;
   std::vector<std::vector<tools::wallet2::get_outs_entry>> outs;
+  std::vector<std::vector<tools::wallet2::get_outs_entry>> outs_collateral;
 
   // for rct, since we don't see the amounts, we will try to make all transactions
   // look the same, with 1 or 2 inputs, and 2 outputs. One input is preferable, as
@@ -11258,6 +11286,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
     // clear any fake outs we'd already gathered, since we'll need a new set
     outs.clear();
+    outs_collateral.clear();
 
     if (adding_fee)
     {
@@ -11305,7 +11334,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 	       m_merge_destinations
         );
 
-	      DSTS_FRONT_AMOUNT -= available_amount;
+        DSTS_FRONT_AMOUNT -= available_amount;
         available_amount = 0;
       }
     }
@@ -11366,6 +11395,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         tx.selected_transfers,
         fake_outs_count,
         outs,
+	      outs_collateral,
         unlock_time,
         needed_fee,
         extra,
@@ -11410,6 +11440,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       }
       else
       {
+	// Sanity check - don't allow split conversion TXs
+	THROW_WALLET_EXCEPTION_IF((!dsts.empty()) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE), error::wallet_internal_error, "cannot split conversion TXs");
+	
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
           transfer_selected_rct(
@@ -11417,6 +11450,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
             tx.selected_transfers,
             fake_outs_count,
             outs,
+            outs_collateral,
             unlock_time,
             needed_fee,
             extra,
@@ -11448,6 +11482,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         tx.ptx = test_ptx;
         tx.weight = get_transaction_weight(test_tx, txBlob.size());
         tx.outs = outs;
+        tx.outs_collateral = outs_collateral;
         tx.needed_fee = test_ptx.fee;
         accumulated_fee += test_ptx.fee;
         accumulated_change += test_ptx.change_dts.amount;
@@ -11506,6 +11541,7 @@ skip_tx:
       tx.selected_transfers,      /* const std::list<size_t> selected_transfers */
       fake_outs_count,            /* CONST size_t fake_outputs_count, */
       tx.outs,                    /* MOD   std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, */
+      tx.outs_collateral,         /* MOD   std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs_collateral, */
       unlock_time,                /* CONST uint64_t unlock_time,  */
       tx.needed_fee,              /* CONST uint64_t fee, */
       extra,                      /* const std::vector<uint8_t>& extra, */
@@ -11860,6 +11896,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
     size_t weight;
     uint64_t needed_fee;
     std::vector<std::vector<get_outs_entry>> outs;
+    std::vector<std::vector<get_outs_entry>> outs_collateral;
 
     TX() : weight(0), needed_fee(0) {}
   };
@@ -11867,6 +11904,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
   uint64_t needed_fee, available_for_fee = 0;
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   std::vector<std::vector<get_outs_entry>> outs;
+  std::vector<std::vector<get_outs_entry>> outs_collateral;
 
   const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE);
   const bool use_rct = fake_outs_count > 0 && use_fork_rules(4, 0);
@@ -11955,7 +11993,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
 
     // clear any fake outs we'd already gathered, since we'll need a new set
     outs.clear();
-
+    outs_collateral.clear();
+    
     // here, check if we need to sent tx and start a new one
     LOG_PRINT_L2("Considering whether to create a tx now, " << tx.selected_transfers.size() << " inputs, tx limit "
       << upper_transaction_weight_limit);
@@ -11985,6 +12024,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
         tx.selected_transfers,
         fake_outs_count,
         outs,
+        outs_collateral,
         unlock_time,
         needed_fee,
         extra,
@@ -12045,7 +12085,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
           tx.dsts, 
           tx.selected_transfers, 
           fake_outs_count, 
-          outs, 
+          outs,
+          outs_collateral,
           unlock_time, 
           needed_fee, 
           extra, 
@@ -12069,6 +12110,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
       tx.ptx = test_ptx;
       tx.weight = get_transaction_weight(test_tx, txBlob.size());
       tx.outs = outs;
+      tx.outs_collateral = outs_collateral;
       tx.needed_fee = test_ptx.fee;
       accumulated_fee += test_ptx.fee;
       accumulated_change += test_ptx.change_dts.amount;
@@ -12093,7 +12135,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
       tx.dsts, 
       tx.selected_transfers, 
       fake_outs_count, 
-      tx.outs, 
+      tx.outs,
+      tx.outs_collateral,
       unlock_time, 
       tx.needed_fee, 
       extra,
@@ -15699,34 +15742,28 @@ uint64_t wallet2::get_bytes_received() const
 std::vector<size_t> wallet2::get_onshore_colleteral_inputs(uint64_t col_amount) {
 
   std::vector<size_t> picked_inputs; 
-  auto copy = m_transfers;
+  std::vector<std::pair<size_t, const transfer_details*>> transfers_copy;
 
-  // sort the transfers by amount
-  std::sort(copy.begin(), copy.end(), [](transfer_details a, transfer_details b){
-    return a.amount() > b.amount();
-  });
-
-
-  // find how many inputs we need from beginning
-  uint64_t amount = 0;
-  size_t i = 0;
-  for (; i < copy.size(); i++) {
-    if (!copy[i].m_spent && !copy[i].m_frozen) {
-      amount += copy[i].amount();
-    }
-
-    if (amount >= col_amount)
-      break;
+  // save m_transfers indexes
+  for (size_t i = 0; i<m_transfers.size(); i++) {
+    transfers_copy.push_back(make_pair(i, &m_transfers[i]));
   }
 
-  // find the actual index in the original array
-  for (size_t k = 0; k < m_transfers.size(); k++) {
-    for (size_t j = 0; j <= i; j++) {
-      if (copy[j].m_key_image == m_transfers[k].m_key_image) {
-        picked_inputs.push_back(k);
-        break;
-      }
+  // sort the copy array
+  std::sort(transfers_copy.begin(), transfers_copy.end(), [](std::pair<size_t, const transfer_details*> a, std::pair<size_t, const transfer_details*> b){
+    return a.second->amount() > b.second->amount();
+  });
+  
+  // find how many inputs we need from beginning
+  uint64_t amount_accumulated = 0;
+  for (size_t i = 0; i < transfers_copy.size(); i++) {
+    if (!transfers_copy[i].second->m_spent && !transfers_copy[i].second->m_frozen && is_transfer_unlocked(*transfers_copy[i].second)) {
+      amount_accumulated += transfers_copy[i].second->amount();
+      picked_inputs.push_back(transfers_copy[i].first);
     }
+
+    if (amount_accumulated >= col_amount)
+      break;
   }
 
   return picked_inputs;

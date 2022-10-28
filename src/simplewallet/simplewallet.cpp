@@ -2427,6 +2427,133 @@ bool simple_wallet::get_price(const std::vector<std::string> &args)
 }
 
 
+bool simple_wallet::get_max_destination_amount(const cryptonote::transaction_type tx_type, uint64_t &amount)
+{
+  // Get the current blockchain height
+  uint64_t current_height = m_wallet->get_blockchain_current_height()-1;
+
+  // Get the pricing record for the current height
+  offshore::pricing_record pr;
+  if (!m_wallet->get_pricing_record(pr, current_height)) {
+    fail_msg_writer() << boost::format(tr("Failed to get prices at height %d - maybe pricing record is missing?")) % current_height;
+    return false;
+  }
+
+  // Get the circulating supply data
+  std::vector<std::pair<std::string, std::string>> amounts;
+  bool r = m_wallet->get_circulating_supply(amounts);
+  if (!r) {
+    fail_msg_writer() << boost::format(tr("Failed to get prices at height %d - maybe pricing record is missing?")) % current_height;
+    return false;
+  }
+  
+  // Get the total unlocked balance
+  // NEAC: should we only consider confirmed TX amounts? If so, change "false" to "true" in unlocked_balance_all() call
+  std::map<std::string, uint64_t> unlocked_balances = m_wallet->unlocked_balance_all(false);
+  uint64_t unlocked_xhv_balance = unlocked_balances["XHV"];
+  uint64_t unlocked_xusd_balance = unlocked_balances["XUSD"];
+
+  using tt = cryptonote::transaction_type;
+  if (tx_type == tt::OFFSHORE) {
+  
+    // Discount the fees off the top
+    unlocked_xhv_balance = (unlocked_xhv_balance * 99) / 100;
+
+    // Set a threshold for success - 1%
+    uint64_t tolerance = unlocked_xhv_balance / 100;
+  
+    // Loop until we find an acceptable value for the max
+    bool error = false, found = false;
+    uint64_t collateral = 0;
+    uint64_t last_amount = unlocked_xhv_balance / 2;
+    uint64_t left = 0, right = unlocked_xhv_balance;
+    while (!error && !found) {
+      last_amount = (left + right) / 2;
+      r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+      if (!r) {
+        fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
+        return false;
+      }
+      if ((last_amount + collateral) > unlocked_xhv_balance) {
+        right = last_amount;
+      } else if ((last_amount + collateral) < (unlocked_xhv_balance - tolerance)) {
+        left = last_amount;
+      } else {
+        // Found the result
+        found = true;
+      }
+    }
+    if (error) {
+      fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
+      return false;
+    }
+    if (found) {
+      amount = last_amount - (last_amount % 100000000);
+      return true;
+    }
+    
+  } else if (tx_type == tt::ONSHORE) {
+
+    // Set a threshold for success - 1%
+    uint64_t tolerance = unlocked_xusd_balance / 100;
+    uint64_t tolerance_xhv = unlocked_xhv_balance / 100;
+  
+    // Discount the 1.5% fees off the top of the xUSD (source) balance
+    boost::multiprecision::uint128_t balance_128 = unlocked_xusd_balance;
+    balance_128 *= 985;
+    balance_128 /= 1000;
+    unlocked_xusd_balance = (uint64_t)balance_128;
+
+    // Loop until we find an acceptable value for the max
+    bool error = false, found = false;
+    uint64_t collateral = 0;
+    uint64_t last_amount = 0;
+    uint64_t left = 0, right = unlocked_xusd_balance;
+    while (!error && !found) {
+      last_amount = (left + right) / 2;
+      r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+      if (!r) {
+        fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
+        return false;
+      }
+      if (collateral > unlocked_xhv_balance) {
+        // Required collateral is too high - reduce amount
+        right = last_amount;
+      } else if (((unlocked_xhv_balance >= collateral) && ((unlocked_xhv_balance - collateral) <= tolerance_xhv)) ||
+                ((unlocked_xhv_balance < collateral) && ((collateral - unlocked_xhv_balance) <= tolerance_xhv))) {
+        // Found the most collateral we can afford
+        found = true;
+      } else if (right-left < tolerance) {
+        if (collateral < unlocked_xhv_balance) {
+          // Found the most collateral we can afford based on xUSD
+          found = true;
+        } else {
+          // Didnt succeed in finding a solution
+          error = true;
+        }
+      } else {
+        left = last_amount;
+      }
+    }
+    if (error) {
+      fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
+      return false;
+    }
+    if (found) {
+      amount = last_amount - (last_amount % 100000000);
+      boost::multiprecision::uint128_t xhv_amount_128 = amount;
+      xhv_amount_128 *= COIN;
+      xhv_amount_128 /= pr.unused1;
+      amount = (uint64_t)xhv_amount_128;
+      amount -= (amount % 100000000);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+
 bool simple_wallet::xasset_to_xusd(const std::vector<std::string> &args)
 {
   // Verify the arguments provided
@@ -6464,12 +6591,44 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
     // for each input
     std::vector<uint64_t>     spent_key_height(tx.vin.size());
     std::vector<crypto::hash> spent_key_txid  (tx.vin.size());
+    size_t tx_input_count = 0;
+    size_t tx_collateral_count = 0;
     for (size_t i = 0; i < tx.vin.size(); ++i)
     {
-      if (tx.vin[i].type() != typeid(cryptonote::txin_to_key))
-        continue;
-      const cryptonote::txin_to_key& in_key = boost::get<cryptonote::txin_to_key>(tx.vin[i]);
-      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(construction_data.sources[0].asset_type, construction_data.selected_transfers[i]);
+      uint64_t input_amount;
+      std::vector<uint64_t> input_key_offsets;
+      crypto::key_image input_key_image;
+      std::string input_asset_type;
+      
+      if (tx.vin[i].type() == typeid(cryptonote::txin_to_key)) {
+        const cryptonote::txin_to_key& in_key = boost::get<cryptonote::txin_to_key>(tx.vin[i]);
+        input_amount = in_key.amount;
+        input_key_offsets = in_key.key_offsets;
+        input_key_image = in_key.k_image;
+        input_asset_type = "XHV";
+      } else if (tx.vin[i].type() == typeid(cryptonote::txin_onshore)) {
+        const cryptonote::txin_onshore& in_key = boost::get<cryptonote::txin_onshore>(tx.vin[i]);
+        input_amount = in_key.amount;
+        input_key_offsets = in_key.key_offsets;
+        input_key_image = in_key.k_image;
+        input_asset_type = "XUSD";
+      } else if (tx.vin[i].type() == typeid(cryptonote::txin_offshore)) {
+        const cryptonote::txin_offshore& in_key = boost::get<cryptonote::txin_offshore>(tx.vin[i]);
+        input_amount = in_key.amount;
+        input_key_offsets = in_key.key_offsets;
+        input_key_image = in_key.k_image;
+        input_asset_type = "XUSD";
+      } else {
+        const cryptonote::txin_xasset& in_key = boost::get<cryptonote::txin_xasset>(tx.vin[i]);
+        input_amount = in_key.amount;
+        input_key_offsets = in_key.key_offsets;
+        input_key_image = in_key.k_image;
+        input_asset_type = in_key.asset_type;
+      }
+      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(input_asset_type,
+										  (!ptx_vector[n].selected_transfers_collateral.empty() && input_asset_type == "XHV")
+										  ? construction_data.selected_transfers_collateral[tx_collateral_count++]
+										  : construction_data.selected_transfers[tx_input_count++]);
       const cryptonote::tx_source_entry *sptr = NULL;
       for (const auto &src: construction_data.sources)
         if (src.outputs[src.real_output].second.dest == td.get_public_key())
@@ -6482,15 +6641,15 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
       const cryptonote::tx_source_entry& source = *sptr;
 
       if (verbose)
-        ostr << boost::format(tr("\nInput %llu/%llu (%s): amount=%s")) % (i + 1) % tx.vin.size() % epee::string_tools::pod_to_hex(in_key.k_image) % print_money(source.amount);
+        ostr << boost::format(tr("\nInput %llu/%llu (%s): amount=%s")) % (i + 1) % tx.vin.size() % epee::string_tools::pod_to_hex(input_key_image) % print_money(source.amount);
       // convert relative offsets of ring member keys into absolute offsets (indices) associated with the amount
-      std::vector<uint64_t> absolute_offsets = cryptonote::relative_output_offsets_to_absolute(in_key.key_offsets);
+      std::vector<uint64_t> absolute_offsets = cryptonote::relative_output_offsets_to_absolute(input_key_offsets);
       // get block heights from which those ring member keys originated
       COMMAND_RPC_GET_OUTPUTS_BIN::request req = AUTO_VAL_INIT(req);
       req.outputs.resize(absolute_offsets.size());
       for (size_t j = 0; j < absolute_offsets.size(); ++j)
       {
-        req.outputs[j].amount = in_key.amount;
+        req.outputs[j].amount = input_amount;
         req.outputs[j].index = absolute_offsets[j];
       }
       COMMAND_RPC_GET_OUTPUTS_BIN::response res = AUTO_VAL_INIT(res);
@@ -6862,9 +7021,19 @@ bool simple_wallet::transfer_main(
       bool ok = cryptonote::parse_amount(amount, local_args[i + 1]);
       if(!ok || 0 == amount)
       {
-        fail_msg_writer() << tr("amount is wrong: ") << local_args[i] << ' ' << local_args[i + 1] <<
-          ", " << tr("expected number from 0 to ") << print_money(std::numeric_limits<uint64_t>::max());
-        return false;
+        // Check to see if arg == "MAX"
+        if (boost::algorithm::to_lower_copy(local_args[i + 1]) == "max") {
+          ok = get_max_destination_amount(tx_type, amount);
+          if (!ok) {
+            fail_msg_writer() << tr("failed to get max destination amount: ") << local_args[i] << ' ' << local_args[i + 1];
+            return false;
+          }
+          de.asset_type = strDest;
+        } else {
+          fail_msg_writer() << tr("amount is wrong: ") << local_args[i] << ' ' << local_args[i + 1] <<
+            ", " << tr("expected number from 0 to ") << print_money(std::numeric_limits<uint64_t>::max());
+          return false;
+        }
       }
       de.amount = amount;
       de.original = local_args[i];
@@ -7022,6 +7191,7 @@ bool simple_wallet::transfer_main(
       uint64_t dust_in_fee = 0;
       uint64_t change = 0;
       uint64_t offshore_fee = 0;
+      uint64_t collateral = 0;
       for (size_t n = 0; n < ptx_vector.size(); ++n)
       {
         total_fee += ptx_vector[n].fee;
@@ -7035,9 +7205,9 @@ bool simple_wallet::transfer_main(
         }
 
         for (auto i: ptx_vector[n].selected_transfers) {
-	        total_sent += m_wallet->get_transfer_details(strSource, i).amount();
-	      }
-
+          total_sent += m_wallet->get_transfer_details(strSource, i).amount();
+        }
+	
         if (strSource == "XHV") {
           total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
           change += ptx_vector[n].change_dts.amount;
@@ -7066,16 +7236,29 @@ bool simple_wallet::transfer_main(
           prompt << boost::format(tr("Spending from address index %d\n")) % i;
         if (subaddr_indices.size() > 1)
           prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
+        if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+          for (auto &dst: ptx_vector[n].dests) {
+            if (dst.is_collateral) {
+              collateral += dst.amount;
+            }
+          }
+        }
       }
 
       if (tx_type == tt::OFFSHORE) {
         total_sent = dsts.back().amount;
         uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, false);
         prompt << boost::format(tr("Offshoring %s xUSD by burning %s XHV (plus conversion fee %s XHV).  ")) % print_money(xusd_estimate) % print_money(total_sent) % print_money(offshore_fee);
+        if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+          prompt << boost::format(tr("\nTransaction requires %s XHV as collateral.  ")) % print_money(collateral);
+        }
       } else if (tx_type == tt::ONSHORE) {
         total_sent = dsts.back().amount;
         uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, true);
         prompt << boost::format(tr("Onshoring %s XHV by burning %s xUSD (plus conversion fee %s xUSD).  ")) % print_money(total_sent) % print_money(usd_estimate) % print_money(offshore_fee);
+        if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+          prompt << boost::format(tr("\nTransaction requires %s XHV as collateral.  ")) % print_money(collateral);
+        }
       } else if (tx_type == tt::OFFSHORE_TRANSFER) {
         total_sent = dsts.back().amount;
         prompt << boost::format(tr("Sending %s xUSD.  ")) % print_money(total_sent);
@@ -7120,7 +7303,7 @@ bool simple_wallet::transfer_main(
                                                    % print_money(dust_not_in_fee);
       if (transfer_type == TransferLocked)
       {
-        prompt << boost::format(tr(".\nThis transaction will unlock on block %llu, in approximately ")) % ((unsigned long long)unlock_block);
+        prompt << boost::format(tr(".\nThis transaction (including any collateral) will unlock on block %llu, in approximately ")) % ((unsigned long long)unlock_block);
         if (locked_blocks > 720) {
           float days = locked_blocks / 720.0f;
           prompt << boost::format(tr("%s days (assuming 2 minutes per block)")) % days;

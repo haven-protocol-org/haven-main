@@ -1037,17 +1037,6 @@ namespace cryptonote
      */
     void flush_invalid_blocks();
 
-     /**
-      * @brief returns the information regarding collateral requirements
-      *
-      * @param tx_type the enumerated type of the transaction
-      * @param amount the value of the payment being sent in the transaction
-      * @param collateral the amount of collateral required to support the transaction
-      *
-      * @return true iff success, false otherwise
-      */
-     bool get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral);
-
 #ifndef IN_UNIT_TESTS
   private:
 #endif

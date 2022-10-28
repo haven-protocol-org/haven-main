@@ -360,18 +360,32 @@ namespace cryptonote
       uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;
       if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-        if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+        if (version >= HF_VERSION_USE_COLLATERAL) {
+          // Flat 1.5% fee
+          boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+          amount_128 *= 3;
+          amount_128 /= 200;
+          conversion_fee_check = (uint64_t)amount_128;
+        } else if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
           // Flat 0.5% fee
           conversion_fee_check = tx.amount_burnt / 200;
         } else {
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         }
       } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-        // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
-        // for the tx.amount_burnt containing the 80% burnt fee proportion as well
-        boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
-        amount_128 = (amount_128 * 10) / (2000 + 8);
-        conversion_fee_check = (uint64_t)amount_128;
+        if (version >= HF_VERSION_USE_COLLATERAL) {
+          // Flat 1.5% conversion fee for xAsset TXs after the collateral fork
+          boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+          amount_128 *= 3;
+          amount_128 /= 200;
+          conversion_fee_check = (uint64_t)amount_128;
+        } else {
+          // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
+          // for the tx.amount_burnt containing the 80% burnt fee proportion as well
+          boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+          amount_128 = (amount_128 * 10) / (2000 + 8);
+          conversion_fee_check = (uint64_t)amount_128;
+        }
       }
 
       if (conversion_fee_check != tx.rct_signatures.txnOffshoreFee) {
@@ -2461,9 +2475,10 @@ namespace cryptonote
           }
 
           // Get the collateral requirement for the tx
+          std::vector<std::pair<std::string, std::string>> amounts = m_blockchain.get_db().get_circulating_supply();
           uint64_t collateral = 0;
           if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-            if (!m_blockchain.get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral)) {
+            if (!get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral, bl.pricing_record, amounts)) {
               LOG_PRINT_L2("error: failed to get collateral requirements");
               continue;
             }

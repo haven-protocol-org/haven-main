@@ -2656,7 +2656,16 @@ namespace cryptonote
       res.collateral = 0;
       return true;
     }
-    r = m_core.get_collateral_requirements(tx_type, req.amount, res.collateral);
+    crypto::hash block_hash;
+    block_hash = m_core.get_block_id_by_height(m_core.get_current_blockchain_height()-1);
+    block blk;
+    r = m_core.get_block_by_hash(block_hash, blk);
+    if (!r) {
+      res.status = "Error retrieving block information";
+      return true;
+    }
+    std::vector<std::pair<std::string, std::string>> amounts = m_core.get_blockchain_storage().get_db().get_circulating_supply();
+    r = cryptonote::get_collateral_requirements(tx_type, req.amount, res.collateral, blk.pricing_record, amounts);
     if (!r) {
       res.status = "Error retrieving collateral information";
       return true;

@@ -1587,13 +1587,14 @@ namespace rct {
       }
 
       // validate the colleteral
-      if (version >= HF_VERSION_USE_COLLATERAL) {
+      if ((version >= HF_VERSION_USE_COLLATERAL) && (amount_collateral > 0)) {
         if (type == tx_type::OFFSHORE) {
-          // get colletera commitmen
+          // get colletera commitment
           key C_col;
           for (size_t i = 0; i < output_unlock_times.size(); i++) {
             if (output_unlock_times[i] != 0 && vout[i].target.type() == typeid(cryptonote::txout_to_key)) {
               C_col = rv.outPk[i].mask;
+              break;
             }
           }
           
@@ -1604,7 +1605,9 @@ namespace rct {
             LOG_ERROR("Offshore collateral verification failed.");
             return false;
           }
-        } else if (type == tx_type::ONSHORE) {
+        }
+        
+        if (type == tx_type::ONSHORE) {
           
           key col_C;
           genC(col_C, rv.maskSums[2], amount_collateral);
@@ -1614,6 +1617,7 @@ namespace rct {
           for (size_t i = 0; i < masks_Col_Out_Onshore.size(); ++i) {
             if (equalKeys(col_C, masks_Col_Out_Onshore[i])) {
               match = true;
+              break;
             }
           }
           if (!match) {
