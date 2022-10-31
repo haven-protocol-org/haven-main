@@ -878,14 +878,6 @@ namespace rct {
       // The second value is always non-zero - just copy it in all conditions so we can build bulletproof vector
       outamounts_flat_amounts.push_back(outamounts[i].second.first);
     }
-    
-    // Determine the tx direction
-    bool offshore = (xhv_sent && !usd_sent && usd_received && xhv_received);
-    bool onshore = (usd_sent && !xhv_sent && usd_received && xhv_received);
-    bool offshore_to_offshore = (usd_sent && !xhv_sent && usd_received && !xhv_received);
-    bool xasset_to_xusd = (xasset_sent && xasset_received && usd_received);
-    bool xusd_to_xasset = (usd_sent && xasset_received && usd_received);
-    bool xasset_transfer = (xasset_sent && xasset_received && !usd_received);
 
     // Set the transaction type.
     rctSig rv;
@@ -913,7 +905,15 @@ namespace rct {
       default:
         ASSERT_MES_AND_THROW("Unsupported BP version: " << rct_config.bp_version);
     }
-
+    
+    // Determine the tx direction
+    bool offshore = (xhv_sent && !usd_sent && usd_received && xhv_received);
+    bool onshore = (usd_sent && !xhv_sent && usd_received && xhv_received);
+    bool offshore_to_offshore = (usd_sent && !xhv_sent && usd_received && !xhv_received);
+    bool xasset_to_xusd = (xasset_sent && xasset_received && usd_received);
+    bool xusd_to_xasset = (usd_sent && xasset_received && usd_received);
+    bool xasset_transfer = (xasset_sent && xasset_received && !usd_received);
+    bool conversion_tx = (offshore || onshore || xusd_to_xasset || xasset_to_xusd);
     bool use_onshore_col = (onshore && rv.type == RCTTypeHaven3);
 
     // prepare the rct data structures
@@ -935,7 +935,7 @@ namespace rct {
     // do the bulletproofs
     key zerokey = rct::identity();
     rv.p.bulletproofs.clear();
-    if (rv.type == RCTTypeHaven3) {
+    if (rv.type == RCTTypeHaven3 && conversion_tx) {
       rv.maskSums.resize(3);
       rv.maskSums[0] = zero();
       rv.maskSums[1] = zero();
@@ -981,14 +981,16 @@ namespace rct {
             sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
           }
 
-          // save the col output mask for offshore
-          if (offshore && outamounts[i].second.second) {
-            sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
-          }
-          
-          // save the actual col output(not change) mask for onshore
-          if (use_onshore_col && outamounts[i].second.second && outamounts[i].second.first == onshore_col_amount) {
-            rv.maskSums[2] = masks[i];
+          if (rv.type == RCTTypeHaven3) {
+            // save the col output mask for offshore
+            if (offshore && outamounts[i].second.second) {
+              sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
+            }
+            
+            // save the actual col output(not change) mask for onshore
+            if (use_onshore_col && outamounts[i].second.second && outamounts[i].second.first == onshore_col_amount) {
+              rv.maskSums[2] = masks[i];
+            }
           }
         } else {
           if (outamounts[i].first == "XHV") {
@@ -1190,7 +1192,7 @@ namespace rct {
     genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
 
     // set the sum of input blinding factors
-    if ((offshore || onshore || xusd_to_xasset || xasset_to_xusd) && (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3)) {
+    if (conversion_tx && (rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3)) {
       sc_add(rv.maskSums[0].bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
     }
 
@@ -1394,13 +1396,17 @@ namespace rct {
       CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
       CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
       CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
-      CHECK_AND_ASSERT_MES((rv.type == RCTTypeHaven2 && rv.maskSums.size() == 2) || (rv.type == RCTTypeHaven3 && rv.maskSums.size() == 3), false, "maskSums size is not correct");
+      if (rv.type == RCTTypeHaven2) 
+        CHECK_AND_ASSERT_MES(rv.maskSums.size() == 2, false, "maskSums size is not 2");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
       CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
       if (strSource != strDest) {
         CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
+        if (rv.type == RCTTypeHaven3) {
+          CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
+        }
       }
       
       // OUTPUTS SUMMED FOR EACH COLOUR

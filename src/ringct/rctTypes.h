@@ -282,7 +282,7 @@ namespace rct {
       xmr_amount txnOffshoreFee = 0;
       xmr_amount txnOffshoreFee_usd = 0;
       xmr_amount txnOffshoreFee_xasset = 0;
-      keyV maskSums; // contains 2 elements. 1. is the sum of masks of inputs. 2. is the sum of masks of changes.
+      keyV maskSums; // contains 2 or 3 elements. 1. is the sum of masks of inputs. 2. is the sum of masks of change outputs. 3. mask of the col output.
 
       template<bool W, template <bool> class Archive>
       bool serialize_rctsig_base(Archive<W> &ar, size_t inputs, size_t outputs)
@@ -372,7 +372,8 @@ namespace rct {
         }
         ar.end_array();
         
-        if (type == RCTTypeHaven3) {
+        // if txnOffshoreFee is not 0, it is a conversion tx
+        if (type == RCTTypeHaven3 && txnOffshoreFee) {
 
           ar.tag("maskSums");
           ar.begin_array();
