@@ -551,7 +551,7 @@ namespace cryptonote
     std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
     
     // Sanity check that we only have 1 source asset type
-    if (sat.size() == 2) {
+    if (tx.version >= COLLATERAL_TRANSACTION_VERSION && sat.size() == 2) {
       // this is only possible for an onshore tx.
       if ((sat[0] == "XHV" && sat[1] == "XUSD") || (sat[0] == "XUSD" && sat[1] == "XHV")) {
         source = "XUSD";
@@ -559,11 +559,12 @@ namespace cryptonote
         LOG_ERROR("Impossible input asset types. Rejecting..");
         return false;
       }
-    } else if (sat.size() == 1) {
-      source = sat[0];
     } else {
-      LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
-      return false;
+      if (sat.size() != 1) {
+        LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
+        return false;
+      }
+      source = sat[0];
     }
     
     // Clear the destination
@@ -607,12 +608,22 @@ namespace cryptonote
         LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
         return false;
       } else if (dat.size() == 1) {
+        if (sat.size() != 1) {
+          LOG_ERROR("Impossible input asset types. Rejecting..");
+          return false;
+        }
         if (dat[0] != source) {
           LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
           return false;
         }
         destination = dat[0];
       } else {
+        if (sat.size() == 2) {
+          if (!((dat[0] == "XHV" && dat[1] == "XUSD") || (dat[0] == "XUSD" && dat[1] == "XHV"))) {
+            LOG_ERROR("Impossible input asset types. Rejecting..");
+            return false;
+          }
+        }
         if (dat[0] == source) {
           destination = dat[1];
         } else if (dat[1] == source) {
@@ -864,8 +875,10 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION){
-      tx.version = 6;
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      tx.version = COLLATERAL_TRANSACTION_VERSION;
+    } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION){
+      tx.version = POU_TRANSACTION_VERSION;
     } else if (hf_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
     } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
@@ -1228,18 +1241,34 @@ namespace cryptonote
 
       // Check for per-output-unlocks
       if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && strSource != strDest) {
+        // initialize collateral indices vector
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && tx.collateral_indices.size() != 2) {
+          tx.collateral_indices.resize(2);
+          tx.collateral_indices[0] = 0;
+          tx.collateral_indices[1] = 0;
+        }
+
+        // set unlcok times and indiviual collateral indeces.
         if (dst_entr_clone.asset_type == strDest) {
           // Destination amount - needs a full unlock time
-          if (tx_type == transaction_type::ONSHORE && dst_entr_clone.is_collateral) {
-            // temporary for detection  on the daemon side for now.
-            tx.output_unlock_times.push_back(0);
+          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr_clone.is_collateral) {
+            // lock collateral ouput full and change as 0
+            if (dst_entr_clone.amount == onshore_col_amount) {
+              tx.output_unlock_times.push_back(tx.unlock_time);
+              tx.collateral_indices[0] = output_index;
+            } else {
+              tx.output_unlock_times.push_back(0);
+              tx.collateral_indices[1] = output_index;
+            }
           } else {
             tx.output_unlock_times.push_back(tx.unlock_time);
           }
         } else if (dst_entr_clone.asset_type == strSource) {
-          if (dst_entr_clone.is_collateral) {
-            // Collateral amount - needs a full unlock time
+          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::OFFSHORE && dst_entr_clone.is_collateral) {
+            // Collateral output - needs a full unlock time
+            // offshores doesnt have collaterasl change since it is merged with actual change.
             tx.output_unlock_times.push_back(tx.unlock_time);
+            tx.collateral_indices[0] = output_index; 
           } else {
             // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
             tx.output_unlock_times.push_back(0);

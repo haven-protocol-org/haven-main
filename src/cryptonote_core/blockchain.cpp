@@ -1711,8 +1711,7 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
   if ((hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) && (b.miner_tx.version >= POU_TRANSACTION_VERSION)) {
     // HF19, TXv6+ - use per_output unlock times vector
-    CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() >= 2, false, "coinbase transaction in the block has too few unlock times");
-    CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() % 2 == 0, false, "coinbase transaction in the block has incorrect count of unlock times (" << b.miner_tx.output_unlock_times.size() << ")");
+    CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() == b.miner_tx.vout.size(), false, "coinbase transaction in the block has wrong number unlock times");
     for (const auto pou: b.miner_tx.output_unlock_times) {
       CHECK_AND_ASSERT_MES(pou == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, false, "coinbase transaction transaction has the wrong unlock time=" << pou << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
     }
@@ -5451,7 +5450,7 @@ leave: {
         }
 	
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.output_unlock_times, collateral))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.collateral_indices, collateral))
         {
           LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
           bvc.m_verifivation_failed = true;

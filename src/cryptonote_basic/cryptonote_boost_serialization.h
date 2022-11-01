@@ -208,6 +208,10 @@ namespace boost
     if (x.version >= POU_TRANSACTION_VERSION) {
       a & x.output_unlock_times;
     }
+
+    if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+      a & x.collateral_indices;
+    }
   }
 
   template <class Archive>
@@ -229,6 +233,10 @@ namespace boost
     }
     if (x.version >= POU_TRANSACTION_VERSION) {
       a & x.output_unlock_times;
+    }
+
+    if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+      a & x.collateral_indices;
     }
 
     a & (rct::rctSigBase&)x.rct_signatures;
