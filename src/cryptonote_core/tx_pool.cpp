@@ -180,6 +180,12 @@ namespace cryptonote
       return false;
     }
 
+    if (version >= HF_VERSION_USE_COLLATERAL && tx.version < COLLATERAL_TRANSACTION_VERSION) {
+      LOG_ERROR("Only 7+ transaction version are permitted after Haven3 hardfork(v20)");
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+
     // fees
     uint64_t fee = tx.rct_signatures.txnFee;
     uint64_t offshore_fee = tx.rct_signatures.txnOffshoreFee;
@@ -300,6 +306,46 @@ namespace cryptonote
 
       if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
 
+        if (version >= HF_VERSION_USE_COLLATERAL) {
+
+          // validate collateral_indices vector
+          if (tx.collateral_indices.size() != 2) {
+            LOG_ERROR("error: Invalid Tx found. Collateral output indices not correct");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+          for (const auto vout_idx: tx.collateral_indices) {
+            if (vout_idx >= tx.vout.size()) {
+              LOG_ERROR("error: Invalid Tx found. Invalid collateral output indices");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          }
+
+          // If collateral requirement is 0, we expect there not to be collateral ouputs..
+          if ((tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) && tvc.m_collateral > 0) {
+            
+            // validate that collateral ouput is XHV
+            if (tx.vout[tx.collateral_indices[0]].target.type() != typeid(txout_to_key)) {
+              LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+            
+            // validate collateral output lock times
+            unlock_time = get_tx_unlock_time(tx.output_unlock_times[tx.collateral_indices[0]], tx.pricing_record_height, current_height);
+            uint64_t expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
+            if (m_blockchain.get_nettype() == TESTNET)
+              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
+            
+            if (unlock_time < expected_unlock_time) {
+              LOG_ERROR("output_unlock_times[" << tx.collateral_indices[0] << "] is too short for collateral output: required unlock period is " << TX_V7_ONSHORE_UNLOCK_BLOCKS << " blocks but output unlock period is " << unlock_time << " blocks");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+          }
+        }
+
         // Make sure that we have a suitable vector of unlock times for all the outputs
         if (tx.output_unlock_times.size() != tx.vout.size()) {
           LOG_PRINT_L1("output_unlock_times vector is too short: " << tx.output_unlock_times.size() << " found, but we have " << tx.vout.size() << " outputs.");
@@ -310,29 +356,40 @@ namespace cryptonote
         // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
         for (size_t i = 0; i < tx.vout.size(); ++i) {
 
-          // Get the correct unlock time for this output
-          unlock_time = get_tx_unlock_time(tx.output_unlock_times[i], tx.pricing_record_height, current_height);
-
           // Check if the output asset type is the same as the source
           if (((tx.vout[i].target.type() == typeid(txout_to_key)) && (source == "XHV")) ||
               ((tx.vout[i].target.type() == typeid(txout_offshore)) && (source == "XUSD")) ||
               ((tx.vout[i].target.type() == typeid(txout_xasset)) && (source == boost::get<txout_xasset>(tx.vout[i].target).asset_type))) {
             continue;
           }
-          
+
+          // Get the correct unlock time for this output
+          unlock_time = get_tx_unlock_time(tx.output_unlock_times[i], tx.pricing_record_height, current_height);
+
           // No - enforce full unlock time
           uint64_t expected_unlock_time = 0;
           if (tx_type == transaction_type::OFFSHORE) {
-            expected_unlock_time = (m_blockchain.get_nettype() == TESTNET) ? TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days unlock for offshore TXs (testnet = 2h)
+            expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days
+            if (m_blockchain.get_nettype() == TESTNET)
+              expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET; // 60 blocks
           } else if (tx_type == transaction_type::ONSHORE) {
-            expected_unlock_time = (m_blockchain.get_nettype() == TESTNET) ? TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hours unlock for onshore TXs (testnet = 1h)
+            if (version >= HF_VERSION_USE_COLLATERAL) {
+              expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
+            } else {
+              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hrs
+            }
+            if (m_blockchain.get_nettype() == TESTNET)
+              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
           } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-            expected_unlock_time = (m_blockchain.get_nettype() == TESTNET) ? TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET : TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days unlock for xAsset conversion TXs (testnet = 2h)
+            expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days
+            if (m_blockchain.get_nettype() == TESTNET)
+              expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET; // 60 blocks
           } else {
             LOG_ERROR("unexpected tx_type found - rejecting TX");
             tvc.m_verifivation_failed = true;
             return false;
           }
+
           if (unlock_time < expected_unlock_time) {
             LOG_ERROR("output_unlock_times[" << i << "] is too short for converted output: required unlock period is " << expected_unlock_time << " blocks but output unlock period is " << unlock_time << " blocks");
             tvc.m_verifivation_failed = true;
@@ -2294,7 +2351,7 @@ namespace cryptonote
     block latest_bl;
     for (size_t i = 1; i <= 10; i++) {
       if (!m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(current_height - i), latest_bl)) {
-        MERROR("Failed to get block for pricing record h: " << current_height - i);
+        MWARNING("Failed to get block for pricing record h: " << current_height - i);
         continue;
       }
 
@@ -2307,7 +2364,7 @@ namespace cryptonote
     // ignore the fee converison if cant have a pricing record
     bool use_old_algo = false;
     if (latest_pr.empty()) {
-      MERROR("Failed to find a acceptable pricing record for conversion of tx fees. Using the old algo.");
+      MWARNING("Failed to find a acceptable pricing record for conversion of tx fees. Using the old algo.");
       use_old_algo = true;
     }
 
@@ -2485,7 +2542,7 @@ namespace cryptonote
           }
 
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, tx.output_unlock_times, collateral))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, tx.collateral_indices, collateral))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;
