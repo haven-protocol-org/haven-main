@@ -271,16 +271,28 @@ namespace cryptonote
             governance_reward_xasset += offshore_fee_map[fee_map_entry.first];
           }
           
-          // we got 0.5% from xasset conversions. Here we wanna burn 80%(0.4% of the initial whole) of it and 
-          // spilit the rest between governance wallet and the miner
+          // handle xasset converion fees
           if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
             if (xasset_fee_map[fee_map_entry.first] != 0) {
-              uint64_t fee = xasset_fee_map[fee_map_entry.first];
-              // burn 80%
-              fee -= (fee * 4) / 5;
-              // split the rest
-              block_reward_xasset += fee / 2;
-              governance_reward_xasset += fee / 2;
+              if (hard_fork_version >= HF_VERSION_USE_COLLATERAL) {
+                // we got 1.5% from xasset conversions.
+                // 80% of it(1.2% of the inital value) goes to governance wallet
+                // 20% of it(0.3% of the inital value) goes to miners
+                boost::multiprecision::uint128_t fee = xasset_fee_map[fee_map_entry.first];
+                // 80%
+                governance_reward_xasset += (uint64_t)((fee * 4) / 5);
+                // 20%
+                block_reward_xasset += (uint64_t)(fee /5);
+              } else {
+                // we got 0.5% from xasset conversions. Here we wanna burn 80%(0.4% of the initial whole) of it and 
+                // spilit the rest between governance wallet and the miner
+                uint64_t fee = xasset_fee_map[fee_map_entry.first];
+                // burn 80%
+                fee -= (fee * 4) / 5;
+                // split the rest
+                block_reward_xasset += fee / 2;
+                governance_reward_xasset += fee / 2;
+              }
             }
           }
 
@@ -467,8 +479,13 @@ namespace cryptonote
       }
     }
 
-    uint64_t fee_estimate = 0;
-    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+    uint64_t fee_estimate = 0;  
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      // Calculate 1.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 15) / 1000; // 1.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
       // Calculate 0.5% of the total being sent
       boost::multiprecision::uint128_t amount_128 = amount_xasset;
       amount_128 = (amount_128 * 5) / 1000; // 0.5%
@@ -497,7 +514,12 @@ namespace cryptonote
     }
 
     uint64_t fee_estimate = 0;
-    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      // Calculate 1.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 15) / 1000; // 1.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
       // Calculate 0.5% of the total being sent
       boost::multiprecision::uint128_t amount_128 = amount_usd;
       amount_128 = (amount_128 * 5) / 1000; // 0.5%
@@ -511,10 +533,7 @@ namespace cryptonote
 
     return fee_estimate;
   }
-
-  /*
-    Returns the input and output asset types for a given tx.
-  */
+  //---------------------------------------------------------------
   bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
 
     // Clear the source
@@ -656,7 +675,6 @@ namespace cryptonote
     }
     return true;
   }
-
   //---------------------------------------------------------------
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type) {
 
@@ -697,7 +715,7 @@ namespace cryptonote
     // Return success to caller
     return true;
   }
-
+  //---------------------------------------------------------------
   bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts)
   {
     using tt = transaction_type;
@@ -714,7 +732,7 @@ namespace cryptonote
       if (i.first == "XHV") continue;
       
       // Get the pricing data for the xAsset
-      boost::multiprecision::uint128_t price_xasset = (i.first == "XUSD") ? COIN : pr[i.first];
+      boost::multiprecision::uint128_t price_xasset = pr[i.first];
       
       // Multiply by the amount of coin in circulation
       boost::multiprecision::uint128_t amount_xasset = std::stoull(i.second.c_str());
@@ -818,9 +836,68 @@ namespace cryptonote
 
     return true;
   }
-  
+  //---------------------------------------------------------------
+  uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr)
+  {
+    boost::multiprecision::uint128_t xusd_128 = xusd_amount;
+    boost::multiprecision::uint128_t exchange_128 = pr[to_asset_type]; 
+    // Now work out the amount
+    boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
+    xasset_128 /= 1000000000000;
 
-  
+    return (uint64_t)xasset_128;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  {
+
+    if (amount_asset_type == "XUSD") {
+      return amount;
+    }
+
+    boost::multiprecision::uint128_t amount_128 = amount;
+    boost::multiprecision::uint128_t exchange_128 = pr[amount_asset_type];
+    if (amount_asset_type == "XHV") {
+      // xhv -> xusd
+      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+        if (tx_type == transaction_type::ONSHORE) {
+          // Eliminate MA/spot advantage for onshore conversion
+          exchange_128 = std::max(pr.unused1, pr.xUSD);
+        } else {
+          // Eliminate MA/spot advantage for offshore conversion
+          exchange_128 = std::min(pr.unused1, pr.xUSD);
+        }
+      }
+      boost::multiprecision::uint128_t xusd_128 = amount_128 * exchange_128;
+      xusd_128 /= 1000000000000;
+      return (uint64_t)xusd_128;
+    } else {
+      // xasset -> xusd
+      boost::multiprecision::uint128_t xusd_128 = amount_128 * 1000000000000;
+      xusd_128 /= exchange_128;
+      return (uint64_t)xusd_128;
+    }
+  }
+  //---------------------------------------------------------------
+  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  {
+    // Now work out the amount
+    boost::multiprecision::uint128_t xusd_128 = xusd_amount;
+    boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+    boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
+    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+      if (tx_type == transaction_type::ONSHORE) {
+        // Eliminate MA/spot advantage for onshore conversion
+        exchange_128 = std::max(pr.unused1, pr.xUSD);
+      } else {
+        // Eliminate MA/spot advantage for offshore conversion
+        exchange_128 = std::min(pr.unused1, pr.xUSD);
+      }
+    }
+    xhv_128 /= exchange_128;
+    return (uint64_t)xhv_128;
+  }
+  //----------------------------------------------------------------------------------------------------
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash) {
     if (pr_height >= current_height) {
       return false;
@@ -850,7 +927,7 @@ namespace cryptonote
     const crypto::secret_key &tx_key, 
     const std::vector<crypto::secret_key> &additional_tx_keys, 
     uint64_t current_height, 
-    offshore::pricing_record pr,
+    const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount,
     bool rct, 
@@ -1328,7 +1405,9 @@ namespace cryptonote
 
     // Add 80% of the conversion fee to the amount burnt
     if (hf_version >= HF_VERSION_XASSET_FEES_V2 && (tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD)) {
-      tx.amount_burnt += (offshore_fee * 4) / 5;
+      if (hf_version < HF_VERSION_USE_COLLATERAL) {
+        tx.amount_burnt += (offshore_fee * 4) / 5;
+      }
     }
     
     //check money
@@ -1485,7 +1564,7 @@ namespace cryptonote
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
     uint64_t current_height,
-    offshore::pricing_record pr,
+    const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount,
     bool rct,

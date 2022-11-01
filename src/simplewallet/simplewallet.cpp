@@ -7245,16 +7245,27 @@ bool simple_wallet::transfer_main(
         }
       }
 
+      // TODO: pricing record actually should be in the construcion data or ptx
+      offshore::pricing_record pr;
+      if (strSource != strDest) {
+        bool b = m_wallet->get_pricing_record(pr, bc_height - 1);
+        if (!b) {
+          fail_msg_writer() << tr("Tx created but couldnt fetch  the pricing record for displayin of numbers");
+          return false;
+        }
+      }
+      uint8_t hf_version = m_wallet->get_current_hard_fork();
+
       if (tx_type == tt::OFFSHORE) {
         total_sent = dsts.back().amount;
-        uint64_t xusd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, false);
+        uint64_t xusd_estimate = cryptonote::get_xusd_amount(total_sent, "XHV", pr, tx_type, hf_version);
         prompt << boost::format(tr("Offshoring %s xUSD by burning %s XHV (plus conversion fee %s XHV).  ")) % print_money(xusd_estimate) % print_money(total_sent) % print_money(offshore_fee);
         if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
           prompt << boost::format(tr("\nTransaction requires %s XHV as collateral.  ")) % print_money(collateral);
         }
       } else if (tx_type == tt::ONSHORE) {
         total_sent = dsts.back().amount;
-        uint64_t usd_estimate = m_wallet->get_xusd_amount(total_sent, "XHV", bc_height-1, true);
+        uint64_t usd_estimate = cryptonote::get_xusd_amount(total_sent, "XHV", pr, tx_type, hf_version);
         prompt << boost::format(tr("Onshoring %s XHV by burning %s xUSD (plus conversion fee %s xUSD).  ")) % print_money(total_sent) % print_money(usd_estimate) % print_money(offshore_fee);
         if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
           prompt << boost::format(tr("\nTransaction requires %s XHV as collateral.  ")) % print_money(collateral);
@@ -7266,7 +7277,7 @@ bool simple_wallet::transfer_main(
         total_sent = dsts.back().amount;
         prompt << boost::format(tr("Converting %s %s into %s %s (plus conversion fee %s %s).\n"))
           % print_money(total_sent) % strSource
-          % print_money(m_wallet->get_xasset_amount(total_sent, strDest, bc_height-1)) % strDest
+          % print_money(cryptonote::get_xasset_amount(total_sent, strDest, pr)) % strDest
           % print_money(offshore_fee) % strSource;
         offshore::pricing_record pr;
         bool r = m_wallet->get_pricing_record(pr, bc_height-1);
@@ -7276,7 +7287,7 @@ bool simple_wallet::transfer_main(
       } else if (tx_type == tt::XASSET_TO_XUSD) {
         total_sent = dsts.back().amount;
         prompt << boost::format(tr("Converting %s %s into %s %s (plus conversion fee %s %s).\n"))
-          % print_money(m_wallet->get_xasset_amount(total_sent, strSource, bc_height-1)) % strSource
+          % print_money(cryptonote::get_xasset_amount(total_sent, strSource, pr)) % strSource
           % print_money(total_sent) % strDest
           % print_money(offshore_fee) % strSource;
         offshore::pricing_record pr;
@@ -7303,7 +7314,7 @@ bool simple_wallet::transfer_main(
                                                    % print_money(dust_not_in_fee);
       if (transfer_type == TransferLocked)
       {
-        prompt << boost::format(tr(".\nThis transaction (including any collateral) will unlock on block %llu, in approximately ")) % ((unsigned long long)unlock_block);
+        prompt << boost::format(tr(".\nThis transaction (including collateral if exist) will unlock on block %llu, in approximately ")) % ((unsigned long long)unlock_block);
         if (locked_blocks > 720) {
           float days = locked_blocks / 720.0f;
           prompt << boost::format(tr("%s days (assuming 2 minutes per block)")) % days;

@@ -1890,12 +1890,20 @@ bool Blockchain::validate_miner_transaction(
 
           // xAsset fees change fork
           if (version >= HF_VERSION_XASSET_FEES_V2) {
-            uint64_t fee =  xasset_fee_map[asset_type];  
-            // burn 80%
-            fee -= (fee * 4) / 5;
-            // split the rest
-            miner_reward_xasset += fee / 2;
-            governance_reward_xasset += fee / 2;
+            if (version >= HF_VERSION_USE_COLLATERAL) {
+              boost::multiprecision::uint128_t fee =  xasset_fee_map[asset_type];
+              // 80% to governance wallet
+              governance_reward_xasset += (uint64_t)((fee * 4) / 5);
+              // 20% to miners
+              miner_reward_xasset += (uint64_t)(fee / 5);
+            } else {
+              uint64_t fee =  xasset_fee_map[asset_type];
+              // burn 80%
+              fee -= (fee * 4) / 5;
+              // split the rest
+              miner_reward_xasset += fee / 2;
+              governance_reward_xasset += fee / 2;
+            }
           }
 
           // the Nth(vout[N]) output is xAsset fee that goes to miner
@@ -4588,7 +4596,7 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
 }
 
 //------------------------------------------------------------------
-bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest) const
+bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest, const transaction_type tx_type) const
 {
   const uint8_t version = get_current_hard_fork_version();
 
@@ -4634,22 +4642,11 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   }
   
   // convert fee to asset type value
-  if (source == "XHV") {
-  } else {
-    if (source != dest) {
-      // get_xusd_amount()
-      boost::multiprecision::uint128_t amount_128 = needed_fee;
-      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1;
-      boost::multiprecision::uint128_t result_128 = (amount_128 * exchange_128) / 1000000000000;
-      needed_fee = (uint64_t)result_128;
-
-      // get_xasset_amount() if fee is paid in xasset
-      if (source != "XUSD") {
-        amount_128 = needed_fee;
-        exchange_128 = pr[source];
-        result_128 = (amount_128 * exchange_128) / 1000000000000;
-        needed_fee = (uint64_t)result_128;
-      }
+  if (source != "XHV" && source != dest) {
+    needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
+    // xasset amount if fee is paid in xasset
+    if (source != "XUSD") {
+      needed_fee = get_xasset_amount(needed_fee, source, pr);
     }
   }
 

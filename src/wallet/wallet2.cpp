@@ -2086,137 +2086,6 @@ bool wallet2::get_circulating_supply(std::vector<std::pair<std::string, std::str
   }
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height)
-{
-  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response res = AUTO_VAL_INIT(res);
-  m_daemon_rpc_mutex.lock();
-  req.height = height;
-  bool r = invoke_http_json_rpc("/json_rpc", "getblockheaderbyheight", req, res, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  if (r && res.status == CORE_RPC_STATUS_OK)
-  {
-    // Got the block header - verify the pricing record
-    THROW_WALLET_EXCEPTION_IF(res.block_header.pricing_record.empty(), error::wallet_internal_error, "Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
-
-    // Now work out the amount
-    boost::multiprecision::uint128_t xusd_128 = xusd_amount;
-    boost::multiprecision::uint128_t exchange_128 =
-      asset_type == "XAG" ? res.block_header.pricing_record.xAG :
-      asset_type == "XAU" ? res.block_header.pricing_record.xAU :
-      asset_type == "XAUD" ? res.block_header.pricing_record.xAUD :
-      asset_type == "XBTC" ? res.block_header.pricing_record.xBTC :
-      asset_type == "XCAD" ? res.block_header.pricing_record.xCAD :
-      asset_type == "XCHF" ? res.block_header.pricing_record.xCHF :
-      asset_type == "XCNY" ? res.block_header.pricing_record.xCNY :
-      asset_type == "XEUR" ? res.block_header.pricing_record.xEUR :
-      asset_type == "XGBP" ? res.block_header.pricing_record.xGBP :
-      asset_type == "XJPY" ? res.block_header.pricing_record.xJPY :
-      asset_type == "XNOK" ? res.block_header.pricing_record.xNOK :
-      asset_type == "XNZD" ? res.block_header.pricing_record.xNZD :
-      asset_type == "XUSD" ? res.block_header.pricing_record.xUSD :
-      res.block_header.pricing_record.unused1;
-    boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
-    xasset_128 /= 1000000000000;
-
-    return (uint64_t)xasset_128;
-  }
-  else
-  {
-    MERROR("Failed to request block header from daemon");
-    return 0;
-  }
-}
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xusd_amount(const uint64_t amount, const std::string asset_type, const uint64_t height, bool bOnshore)
-{
-  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response res = AUTO_VAL_INIT(res);
-  m_daemon_rpc_mutex.lock();
-  req.height = height;
-  bool r = invoke_http_json_rpc("/json_rpc", "getblockheaderbyheight", req, res, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  if (r && res.status == CORE_RPC_STATUS_OK)
-  {
-    // Got the block header - verify the pricing record
-    THROW_WALLET_EXCEPTION_IF(res.block_header.pricing_record.empty(), error::wallet_internal_error, "Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
-
-    // Now work out the amount
-    boost::multiprecision::uint128_t amount_128 = amount;
-    boost::multiprecision::uint128_t exchange_128 =
-      asset_type == "XAG" ? res.block_header.pricing_record.xAG :
-      asset_type == "XAU" ? res.block_header.pricing_record.xAU :
-      asset_type == "XAUD" ? res.block_header.pricing_record.xAUD :
-      asset_type == "XBTC" ? res.block_header.pricing_record.xBTC :
-      asset_type == "XCAD" ? res.block_header.pricing_record.xCAD :
-      asset_type == "XCHF" ? res.block_header.pricing_record.xCHF :
-      asset_type == "XCNY" ? res.block_header.pricing_record.xCNY :
-      asset_type == "XEUR" ? res.block_header.pricing_record.xEUR :
-      asset_type == "XGBP" ? res.block_header.pricing_record.xGBP :
-      asset_type == "XJPY" ? res.block_header.pricing_record.xJPY :
-      asset_type == "XNOK" ? res.block_header.pricing_record.xNOK :
-      asset_type == "XNZD" ? res.block_header.pricing_record.xNZD :
-      asset_type == "XHV" ? res.block_header.pricing_record.unused1 :
-      res.block_header.pricing_record.unused1;
-    if (asset_type == "XHV") {
-      if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
-        if (bOnshore) {
-          // Eliminate MA/spot advantage for onshore conversion
-          exchange_128 = std::max(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
-        } else {
-          // Eliminate MA/spot advantage for offshore conversion
-          exchange_128 = std::min(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
-        }
-      }
-      boost::multiprecision::uint128_t xusd_128 = amount_128 * exchange_128;
-      xusd_128 /= 1000000000000;
-      return (uint64_t)xusd_128;
-    } else {
-      boost::multiprecision::uint128_t xusd_128 = amount_128 * 1000000000000;
-      xusd_128 /= exchange_128;
-      return (uint64_t)xusd_128;
-    }
-  }
-  else
-  {
-    MERROR("Failed to request block header from daemon");
-    return 0;
-  }
-}
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_xhv_amount(const uint64_t xusd_amount, const uint64_t height)
-{
-  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
-  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response res = AUTO_VAL_INIT(res);
-  m_daemon_rpc_mutex.lock();
-  req.height = height;
-  bool r = invoke_http_json_rpc("/json_rpc", "getblockheaderbyheight", req, res, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  if (r && res.status == CORE_RPC_STATUS_OK)
-  {
-    // Got the block header - verify the pricing record
-    THROW_WALLET_EXCEPTION_IF(res.block_header.pricing_record.empty(), error::wallet_internal_error, "Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
-
-    // Now work out the amount
-    boost::multiprecision::uint128_t xusd_128 = xusd_amount;
-    boost::multiprecision::uint128_t exchange_128 = res.block_header.pricing_record.unused1;
-    boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
-    if (use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
-      // Eliminate MA/spot advantage for onshore conversion
-      exchange_128 = std::max(res.block_header.pricing_record.unused1, res.block_header.pricing_record.xUSD);
-    }
-    xhv_128 /= exchange_128;
-    return (uint64_t)xhv_128;
-  }
-  else
-  {
-    MERROR("Failed to request block header from daemon");
-    return 0;
-  }
-}
 bool wallet2::get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
 {
   PERF_TIMER(get_collateral_requirements);
@@ -10911,6 +10780,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const bool use_xasset_outputs = (strSource != "XHV" && strSource != "XUSD");
   transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
   uint64_t current_height = get_blockchain_current_height()-1;
+  uint32_t hf_version = get_current_hard_fork();
+  offshore::pricing_record pricing_record;
+  if (strSource != strDest) {
+    bool b = get_pricing_record(pricing_record, current_height);
+    THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
+  }
   
   const uint64_t base_fee_orig  = get_base_fee();
   uint64_t base_fee = base_fee_orig;
@@ -10919,15 +10794,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // but we still want assets to be transferable even in the absence of oracle.
   // so we don't try to adjust the fee according to usd equivalent.
   // the only donwnside is fees are little bit higher for the assets that has high usd value.
-  if (strSource == "XHV") {
-  } else {
-    if (strSource != strDest) {
-      // Convert fee to xUSD
-      base_fee = get_xusd_amount(base_fee_orig, "XHV", current_height, tx_type == tt::ONSHORE);
-      if (strSource != "XUSD") {
-        // Convert fee to xAsset
-        base_fee = get_xasset_amount(base_fee, strSource, current_height);
-      }
+  if (strSource != "XHV" && strSource != strDest) {
+    // Convert fee to xUSD
+    base_fee = cryptonote::get_xusd_amount(base_fee_orig, "XHV", pricing_record, tx_type, hf_version);
+    if (strSource != "XUSD") {
+      // Convert fee to xAsset
+      base_fee = cryptonote::get_xasset_amount(base_fee, strSource, pricing_record);
     }
   }
   const uint64_t fee_multiplier = get_fee_multiplier(priority);
@@ -10953,7 +10825,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     
     if (tx_type == tt::OFFSHORE) {
       // Input amount is in XHV - convert so we have both
-      dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height, false);
+      dt.amount_usd = cryptonote::get_xusd_amount(dt.amount, "XHV", pricing_record, tx_type, hf_version);
       THROW_WALLET_EXCEPTION_IF(dt.amount_usd == 0, error::wallet_internal_error, "Failed to convert needed_money to xUSD");
       needed_money += dt.amount;
       dt.asset_type = "XUSD";
@@ -10970,7 +10842,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
     } else if (tx_type == tt::ONSHORE) {
       // Input amount is in XHV - convert so we have both
-      dt.amount_usd = get_xusd_amount(dt.amount, "XHV", current_height, true);
+      dt.amount_usd = cryptonote::get_xusd_amount(dt.amount, "XHV", pricing_record, tx_type, hf_version);
       THROW_WALLET_EXCEPTION_IF(dt.amount_usd == 0, error::wallet_internal_error, "Failed to convert needed_money back to xUSD");
       needed_money += dt.amount_usd;
       dt.asset_type = "XHV";
@@ -10997,7 +10869,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       // Input amount is in XUSD - convert so we have xasset_amount
       dt.amount_usd = dt.amount;
       dt.amount = 0;
-      dt.amount_xasset = get_xasset_amount(dt.amount_usd, strDest, current_height);
+      dt.amount_xasset = cryptonote::get_xasset_amount(dt.amount_usd, strDest, pricing_record);
       THROW_WALLET_EXCEPTION_IF(dt.amount_xasset == 0, error::wallet_internal_error, "Failed to convert needed_money to xAsset");
       needed_money += dt.amount_usd;
       dt.asset_type = strDest;
@@ -11007,7 +10879,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       // Input amount is in XUSD - convert so we have xasset_amount
       dt.amount_usd = dt.amount;
       dt.amount = 0;
-      dt.amount_xasset = get_xasset_amount(dt.amount_usd, strSource, current_height);
+      dt.amount_xasset = cryptonote::get_xasset_amount(dt.amount_usd, strSource, pricing_record);
       THROW_WALLET_EXCEPTION_IF(dt.amount_xasset == 0, error::wallet_internal_error, "Failed to convert needed_money to xAsset");
       needed_money += dt.amount_xasset;
       dt.asset_type = "XUSD";
@@ -11034,7 +10906,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   THROW_WALLET_EXCEPTION_IF(needed_money == 0, error::zero_destination);
 
   // Calculate the offshore fee
-  uint32_t hf_version = get_current_hard_fork();
   uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? cryptonote::get_offshore_fee(dsts, unlock_time - current_height - 1, hf_version)
     : (tx_type == tt::ONSHORE) ? cryptonote::get_onshore_fee(dsts, unlock_time - current_height - 1, hf_version)
     : (tx_type == tt::XUSD_TO_XASSET) ? cryptonote::get_xusd_to_xasset_fee(dsts, hf_version)
@@ -11307,13 +11178,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
         if (!dsts[0].is_collateral) {
           if (tx_type == tt::OFFSHORE) {
-            tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount, strSource, current_height, false);
+            tx.dsts.back().amount_usd = cryptonote::get_xusd_amount(tx.dsts.back().amount, strSource, pricing_record, tx_type, hf_version);
           } else if (tx_type == tt::ONSHORE) {
-            tx.dsts.back().amount = get_xhv_amount(tx.dsts.back().amount_usd, current_height);
+            tx.dsts.back().amount = cryptonote::get_xhv_amount(tx.dsts.back().amount_usd, pricing_record, tx_type, hf_version);
           } else if (tx_type == tt::XUSD_TO_XASSET) {
-            tx.dsts.back().amount_xasset = get_xasset_amount(tx.dsts.back().amount_usd, strDest, current_height);
+            tx.dsts.back().amount_xasset = cryptonote::get_xasset_amount(tx.dsts.back().amount_usd, strDest, pricing_record);
           } else if (tx_type == tt::XASSET_TO_XUSD) {
-            tx.dsts.back().amount_usd = get_xusd_amount(tx.dsts.back().amount_xasset, strSource, current_height, false);
+            tx.dsts.back().amount_usd = cryptonote::get_xusd_amount(tx.dsts.back().amount_xasset, strSource, pricing_record, tx_type, hf_version);
           }
         }
         tx.dsts.back().asset_type = dsts[0].asset_type;

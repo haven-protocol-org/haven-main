@@ -170,7 +170,7 @@ namespace cryptonote
     const crypto::secret_key &tx_key,
     const std::vector<crypto::secret_key> &additional_tx_keys,
     uint64_t current_height,
-    offshore::pricing_record pr,
+    const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount = 0,
     bool rct = false,
@@ -194,7 +194,7 @@ namespace cryptonote
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
     uint64_t current_height,
-    offshore::pricing_record pr,
+    const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount = 0,
     bool rct = false,
@@ -245,6 +245,12 @@ namespace cryptonote
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
   bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts);
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash);
+  // Get offshore amount in xAsset
+  uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr);
+  // Get offshore amount in XUSD, not XHV
+  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
+  // Get onshore amount in XHV, not XUSD
+  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
 }
 
 BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)

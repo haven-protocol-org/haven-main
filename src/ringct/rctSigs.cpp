@@ -1556,18 +1556,20 @@ namespace rct {
 
       // Validate TX amount burnt/mint for conversions
       if (strSource != strDest) {
-          
-        if (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET) {
-          // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
-          // So we subtract that from amount_burnt and validate only the actual coversion amount because
-          // fees are not converted. They are just burned.
 
-          // calculate the burnt fee. Should be the 80% of the offshoreFee
-          boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
-          boost::multiprecision::uint128_t burnt_fee = (fee_128 * 4) / 5;
-            
-          // subtract it from amount burnt
-          amount_burnt -= (uint64_t)burnt_fee;
+        if (version < HF_VERSION_USE_COLLATERAL) {
+          if (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET) {
+            // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
+            // So we subtract that from amount_burnt and validate only the actual coversion amount because
+            // fees are not converted. They are just burned.
+
+            // calculate the burnt fee. Should be the 80% of the offshoreFee
+            boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
+            boost::multiprecision::uint128_t burnt_fee = (fee_128 * 4) / 5;
+              
+            // subtract it from amount burnt
+            amount_burnt -= (uint64_t)burnt_fee;
+          }
         }
 
         // m = sum of all masks of inputs
@@ -2161,10 +2163,12 @@ namespace rct {
       }
     } else if (source == "XUSD" && destination != "XHV" && destination != "XUSD") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
-      if (version >= HF_VERSION_HAVEN2) {
-        xusd_128 -= ((rv.txnOffshoreFee * 4) / 5);
-      } else if (version >= HF_VERSION_XASSET_FEES_V2) {
-        xusd_128 -= ((rv.txnOffshoreFee_usd * 4) / 5);
+      if (version < HF_VERSION_USE_COLLATERAL) {
+        if (version >= HF_VERSION_HAVEN2) {
+          xusd_128 -= ((rv.txnOffshoreFee * 4) / 5);
+        } else if (version >= HF_VERSION_XASSET_FEES_V2) {
+          xusd_128 -= ((rv.txnOffshoreFee_usd * 4) / 5);
+        }
       }
       boost::multiprecision::uint128_t exchange_128 = pr[destination];
       boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
@@ -2176,10 +2180,12 @@ namespace rct {
       }
     } else if (source != "XHV" && source != "XUSD" && destination == "XUSD") {
       boost::multiprecision::uint128_t xasset_128 = amount_burnt;
-      if (version >= HF_VERSION_HAVEN2) {
-        xasset_128 -= ((rv.txnOffshoreFee * 4) / 5);
-      } else if (version >= HF_VERSION_XASSET_FEES_V2) {
-	      xasset_128 -= ((rv.txnOffshoreFee_xasset * 4) / 5);
+      if (version < HF_VERSION_USE_COLLATERAL) {
+        if (version >= HF_VERSION_HAVEN2) {
+          xasset_128 -= ((rv.txnOffshoreFee * 4) / 5);
+        } else if (version >= HF_VERSION_XASSET_FEES_V2) {
+          xasset_128 -= ((rv.txnOffshoreFee_xasset * 4) / 5);
+        }
       }
       boost::multiprecision::uint128_t exchange_128 = pr[source];
       boost::multiprecision::uint128_t xusd_128 = xasset_128 * COIN;

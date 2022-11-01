@@ -198,9 +198,9 @@ namespace offshore
   uint64_t pricing_record::operator[](const std::string& asset_type) const
   {
     if (asset_type == "XHV") {
-      return 1000000000000;
-    } else if (asset_type == "XUSD") {
       return unused1;
+    } else if (asset_type == "XUSD") {
+      return COIN;
     } else if (asset_type == "XAG") {
       return xAG;
     } else if (asset_type == "XAU") {

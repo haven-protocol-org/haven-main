@@ -889,16 +889,8 @@ private:
     
     // Get pricing record for specified height
     bool get_pricing_record(offshore::pricing_record& pr, const uint64_t height);
-    // Get offshore amount in xAsset
-    uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height);
-    // Get offshore amount in XUSD, not XHV
-    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height, bool bOnshore);
-    // Get onshore amount in XHV, not XUSD
-    uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
-
     // Get circulating supply
     bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
-    
     // Get collateral
     bool get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral);
 
