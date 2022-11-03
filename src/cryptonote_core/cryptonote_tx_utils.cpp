@@ -837,6 +837,24 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr)
+  {
+    std::string str_xhv_supply;
+    for (const auto& supply: supply_amounts) {
+      if (supply.first == "XHV") {
+        str_xhv_supply = supply.second;
+        break;
+      }
+    }
+    boost::multiprecision::uint128_t xhv_supply(str_xhv_supply);
+    boost::multiprecision::uint128_t xhv_market_cap = xhv_supply * std::min(pr.unused1, pr.xUSD); // smaller of spot vs ma
+
+    xhv_market_cap *= 3000;
+    xhv_supply = (xhv_supply * 5) / 1000; // 0.5%
+    uint64_t blockCap = (uint64_t)(boost::multiprecision::pow(xhv_market_cap, 0.42) + xhv_supply);
+    return blockCap;
+  }
+  //---------------------------------------------------------------
   uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr)
   {
     boost::multiprecision::uint128_t xusd_128 = xusd_amount;
@@ -926,7 +944,7 @@ namespace cryptonote
     uint64_t unlock_time, 
     const crypto::secret_key &tx_key, 
     const std::vector<crypto::secret_key> &additional_tx_keys, 
-    uint64_t current_height, 
+    const uint64_t current_height, 
     const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount,
@@ -1563,7 +1581,7 @@ namespace cryptonote
     uint64_t unlock_time,
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
-    uint64_t current_height,
+    const uint64_t current_height,
     const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount,

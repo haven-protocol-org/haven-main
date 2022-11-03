@@ -2368,6 +2368,12 @@ namespace cryptonote
       use_old_algo = true;
     }
 
+    // set the block cap
+    const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain.get_db().get_circulating_supply();
+    uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
+    uint64_t total_conversion_xhv = 0; // only offshore/onshroe
+    LOG_PRINT_L2("Block cap limit for offshore/onshore " << block_cap_xhv << " XHV");
+
     auto sorted_it = m_txs_by_fee_and_receive_time.begin();
     for (; sorted_it != m_txs_by_fee_and_receive_time.end(); ++sorted_it)
     {
@@ -2505,6 +2511,7 @@ namespace cryptonote
         }
       }
 
+      uint64_t conversion_this_tx_xhv = 0;
       if (source != dest)
       {
         // Validate that pricing record has not grown too old since it was first included in the pool
@@ -2512,6 +2519,22 @@ namespace cryptonote
           LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
           continue;
         }
+                
+        // check for block cap limit
+        if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+          if (tx_type == tt::OFFSHORE) {
+            conversion_this_tx_xhv += tx.amount_burnt;
+          }
+          if (tx_type == tt::ONSHORE) {
+            conversion_this_tx_xhv += tx.amount_minted;
+          }
+
+          if (total_conversion_xhv + conversion_this_tx_xhv > block_cap_xhv) {
+            continue;
+          }
+        }
+
+        // check for verRctSemantics2
         if (version >= HF_VERSION_HAVEN2) {
           // get pricing record
           block bl;
@@ -2521,10 +2544,9 @@ namespace cryptonote
           }
 
           // Get the collateral requirement for the tx
-          std::vector<std::pair<std::string, std::string>> amounts = m_blockchain.get_db().get_circulating_supply();
           uint64_t collateral = 0;
           if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-            if (!get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral, bl.pricing_record, amounts)) {
+            if (!get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral, bl.pricing_record, supply_amounts)) {
               LOG_PRINT_L2("error: failed to get collateral requirements");
               continue;
             }
@@ -2542,6 +2564,7 @@ namespace cryptonote
       bl.tx_hashes.push_back(sorted_it->second);
       total_weight += meta.weight;
       total_fee_xhv += total_fee_this_tx_xhv;
+      total_conversion_xhv += conversion_this_tx_xhv;
       fee_map[meta.fee_asset_type] += meta.fee;
       if (source != dest) {
         if (version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {

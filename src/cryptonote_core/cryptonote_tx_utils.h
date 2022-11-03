@@ -169,7 +169,7 @@ namespace cryptonote
     uint64_t unlock_time,
     const crypto::secret_key &tx_key,
     const std::vector<crypto::secret_key> &additional_tx_keys,
-    uint64_t current_height,
+    const uint64_t current_height,
     const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount = 0,
@@ -193,7 +193,7 @@ namespace cryptonote
     uint64_t unlock_time,
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
-    uint64_t current_height,
+    const uint64_t current_height,
     const offshore::pricing_record& pr,
     uint32_t hf_version,
     const uint64_t onshore_col_amount = 0,
@@ -244,6 +244,7 @@ namespace cryptonote
   bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx);
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
   bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts);
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr);
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash);
   // Get offshore amount in xAsset
   uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr);
