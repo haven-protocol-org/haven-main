@@ -921,6 +921,8 @@ private:
       const cryptonote::transaction_type tx_type,
       const std::string strSource,
       const std::string strDest,
+      const offshore::pricing_record& pr,
+      const uint64_t current_height,
       const std::vector<size_t>& selected_transfers_onshore_colleteral = {}
     );
 

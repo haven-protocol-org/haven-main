@@ -9519,6 +9519,8 @@ void wallet2::transfer_selected_rct(
   const cryptonote::transaction_type tx_type,
   const std::string strSource,
   const std::string strDest,
+  const offshore::pricing_record& pr,
+  const uint64_t current_height,
   const std::vector<size_t>& selected_transfers_onshore_colleteral
 ){
 
@@ -9529,9 +9531,6 @@ void wallet2::transfer_selected_rct(
   const bool use_offshore_outputs = (strSource == "XUSD");
   const bool use_xasset_outputs = (strSource != "XHV" && strSource != "XUSD");
   transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
-
-  // Get the current blockchain height - needed to convert currency amounts
-  uint64_t current_height = get_blockchain_current_height()-1;
   
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   uint64_t needed_money = fee;
@@ -9865,11 +9864,6 @@ void wallet2::transfer_selected_rct(
   LOG_PRINT_L2("constructing tx");
 
   auto sources_copy = sources;
-  offshore::pricing_record pr;
-  if (strSource != strDest) {
-    bool b = get_pricing_record(pr, current_height);
-    THROW_WALLET_EXCEPTION_IF(!b, error::wallet_internal_error, "Failed to get pricing record");
-  }
   uint32_t hf_version = get_current_hard_fork();
   bool r = cryptonote::construct_tx_and_get_tx_key(
     m_account.get_keys(),
@@ -10779,7 +10773,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const bool use_offshore_outputs = (strSource == "XUSD");
   const bool use_xasset_outputs = (strSource != "XHV" && strSource != "XUSD");
   transfer_container &specific_transfers = use_xasset_outputs ? (m_xasset_transfers[strSource]) : use_offshore_outputs ? m_offshore_transfers : m_transfers;
-  uint64_t current_height = get_blockchain_current_height()-1;
+  const uint64_t current_height = get_blockchain_current_height()-1;
   uint32_t hf_version = get_current_hard_fork();
   offshore::pricing_record pricing_record;
   if (strSource != strDest) {
@@ -11276,6 +11270,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         tx_type,
         strSource,
         strDest,
+        pricing_record,
+        current_height,
         col_ins
       );
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
@@ -11311,8 +11307,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       }
       else
       {
-	// Sanity check - don't allow split conversion TXs
-	THROW_WALLET_EXCEPTION_IF((!dsts.empty()) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE), error::wallet_internal_error, "cannot split conversion TXs");
+	      // Sanity check - don't allow split conversion TXs
+	      THROW_WALLET_EXCEPTION_IF((!dsts.empty()) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE), error::wallet_internal_error, "cannot split conversion TXs");
 	
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
@@ -11331,6 +11327,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
             tx_type,
             strSource,
             strDest,
+            pricing_record,
+            current_height,
             col_ins
           );
 
@@ -11422,6 +11420,8 @@ skip_tx:
       tx_type,
       strSource,
       strDest,
+      pricing_record,
+      current_height,
       col_ins
     );
     auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
@@ -11792,6 +11792,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
   const uint64_t base_fee  = get_base_fee();
   const uint64_t fee_multiplier = get_fee_multiplier(priority, get_fee_algorithm());
   const uint64_t fee_quantization_mask = get_fee_quantization_mask();
+  const uint64_t current_height = get_blockchain_current_height()-1;
 
   LOG_PRINT_L2("Starting with " << unused_transfers_indices.size() << " non-dust outputs and " << unused_dust_indices.size() << " dust outputs");
 
@@ -11888,8 +11889,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
         else
           tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));	  
 
-      LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " destinations and " <<
-        tx.selected_transfers.size() << " outputs");
+      LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " destinations and " << tx.selected_transfers.size() << " outputs");
+      offshore::pricing_record pr;
       transfer_selected_rct(
         tx.dsts,
         tx.selected_transfers,
@@ -11904,7 +11905,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
         rct_config,
         tx_type,
         asset_type,
-        asset_type
+        asset_type,
+        pr,
+        current_height
       );
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
       needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_multiplier, fee_quantization_mask);
@@ -11966,7 +11969,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
           rct_config, 
           tx_type, 
           asset_type, 
-          asset_type
+          asset_type,
+          pr,
+          current_height
         );
         txBlob = t_serializable_object_to_blob(test_ptx.tx);
         needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_multiplier, fee_quantization_mask);
@@ -12002,6 +12007,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
     TX &tx = *i;
     cryptonote::transaction test_tx;
     pending_tx test_ptx;
+    offshore::pricing_record pr;
     transfer_selected_rct(
       tx.dsts, 
       tx.selected_transfers, 
@@ -12016,7 +12022,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
       rct_config, 
       tx_type, 
       asset_type, 
-      asset_type
+      asset_type,
+      pr,
+      current_height
     );
     auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
     tx.tx = test_tx;

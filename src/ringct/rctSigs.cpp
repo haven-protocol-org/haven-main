@@ -828,7 +828,7 @@ namespace rct {
     ctkeyV &outSk, 
     const RCTConfig &rct_config, 
     hw::device &hwdev, 
-    const offshore::pricing_record pr,
+    const offshore::pricing_record& pr,
     uint8_t tx_version
   ){
 
@@ -1246,7 +1246,7 @@ namespace rct {
     unsigned int mixin, 
     const RCTConfig &rct_config, 
     hw::device &hwdev, 
-    const offshore::pricing_record pr,
+    const offshore::pricing_record& pr,
     uint8_t tx_version
   ){
     std::vector<unsigned int> index;

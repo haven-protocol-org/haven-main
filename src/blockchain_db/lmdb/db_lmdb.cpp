@@ -3235,7 +3235,7 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   uint64_t m_height = height();
   uint64_t m_coinbase = get_block_already_generated_coins(m_height-1);
-  LOG_PRINT_L0("BlockchainLMDB::" << __func__ << " - mined supply for XHV = " << m_coinbase);
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__ << " - mined supply for XHV = " << m_coinbase);
   check_open();
   
   TXN_PREFIX_RDONLY();

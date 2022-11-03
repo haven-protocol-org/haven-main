@@ -6936,7 +6936,18 @@ bool simple_wallet::transfer_main(
   }
 
   using tt = cryptonote::transaction_type;
-  if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
+  if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+    if (tx_type == tt::OFFSHORE) {
+      locked_blocks = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_OFFSHORE_UNLOCK_BLOCKS; // ~21 days
+      transfer_type = TransferLocked;
+    } else if (tx_type == tt::ONSHORE) {
+      locked_blocks = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET : TX_V7_ONSHORE_UNLOCK_BLOCKS; // ~21 days
+      transfer_type = TransferLocked;
+    } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+      locked_blocks = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET : TX_V6_XASSET_UNLOCK_BLOCKS; // ~48 hours
+      transfer_type = TransferLocked;
+    }
+  } else if (m_wallet->use_fork_rules(HF_PER_OUTPUT_UNLOCK_VERSION, 0)) {
     // Long offshore lock, short onshore lock, no effect from priority
     if (tx_type == tt::OFFSHORE) {
       locked_blocks = (m_wallet->nettype() == cryptonote::TESTNET) ? TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET : TX_V6_OFFSHORE_UNLOCK_BLOCKS; // ~21 days
