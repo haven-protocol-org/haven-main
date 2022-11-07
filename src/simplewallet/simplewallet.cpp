@@ -7256,7 +7256,6 @@ bool simple_wallet::transfer_main(
         }
       }
 
-      // TODO: pricing record actually should be in the construcion data or ptx
       offshore::pricing_record pr;
       if (strSource != strDest) {
         bool b = m_wallet->get_pricing_record(pr, bc_height - 1);

@@ -172,16 +172,12 @@ namespace cryptonote
       LOG_ERROR("Only 5+ transaction version are permitted after HAVEN2 hard fork(version 18)");
       tvc.m_verifivation_failed = true;
       return false;
-    }
-
-    if (version >= HF_PER_OUTPUT_UNLOCK_VERSION && tx.version < POU_TRANSACTION_VERSION) {
-      LOG_ERROR("Only 6+ transaction version are permitted after PER_OUTPUT_LOCK hard fork(version 19)");
+    } else if (version == HF_PER_OUTPUT_UNLOCK_VERSION && tx.version != POU_TRANSACTION_VERSION) {
+      LOG_ERROR("Only v6 transaction version are permitted after PER_OUTPUT_LOCK hard fork(version 19)");
       tvc.m_verifivation_failed = true;
       return false;
-    }
-
-    if (version >= HF_VERSION_USE_COLLATERAL && tx.version < COLLATERAL_TRANSACTION_VERSION) {
-      LOG_ERROR("Only 7+ transaction version are permitted after Haven3 hardfork(v20)");
+    } else if (version == HF_VERSION_USE_COLLATERAL && tx.version != COLLATERAL_TRANSACTION_VERSION) {
+      LOG_ERROR("Only v7 transaction version are permitted after Haven3 hard fork(v20)");
       tvc.m_verifivation_failed = true;
       return false;
     }
@@ -321,16 +317,25 @@ namespace cryptonote
             }
           }
 
-          // If collateral requirement is 0, we expect there not to be collateral ouputs..
-          if ((tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) && tvc.m_collateral > 0) {
-            
+          // If collateral requirement is 0, we expect there not to be collateral outputs..
+          if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
+
             // validate that collateral ouput is XHV
             if (tx.vout[tx.collateral_indices[0]].target.type() != typeid(txout_to_key)) {
               LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
               tvc.m_verifivation_failed = true;
               return false;
             }
-            
+
+            // onshore tx has 2 col output, offshore has 1.
+            if (tx_type == transaction_type::ONSHORE) {
+              if (tx.vout[tx.collateral_indices[1]].target.type() != typeid(txout_to_key)) {
+                LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
+                tvc.m_verifivation_failed = true;
+                return false;
+              }
+            }
+
             // validate collateral output lock times
             unlock_time = get_tx_unlock_time(tx.output_unlock_times[tx.collateral_indices[0]], tx.pricing_record_height, current_height);
             uint64_t expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
