@@ -847,7 +847,8 @@ namespace cryptonote
       }
     }
     boost::multiprecision::uint128_t xhv_supply(str_xhv_supply);
-    boost::multiprecision::uint128_t xhv_market_cap = xhv_supply * std::min(pr.unused1, pr.xUSD); // smaller of spot vs ma
+    boost::multiprecision::uint128_t price = std::min(pr.unused1, pr.xUSD);
+    boost::multiprecision::uint128_t xhv_market_cap = xhv_supply * price; // smaller of spot vs ma
 
     xhv_market_cap *= 3000;
     xhv_supply = (xhv_supply * 5) / 1000; // 0.5%
