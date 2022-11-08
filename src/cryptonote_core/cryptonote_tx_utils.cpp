@@ -721,12 +721,12 @@ namespace cryptonote
     using tt = transaction_type;
 
     // Process the circulating supply data
-    std::map<std::string, uint64_t> map_amounts;
+    std::map<std::string, boost::multiprecision::uint128_t> map_amounts;
     boost::multiprecision::uint128_t mcap_xassets = 0;
     for (const auto &i: amounts)
     {
       // Copy into the map for expediency
-      map_amounts[i.first] = std::stoull(i.second.c_str());
+      map_amounts[i.first] = boost::multiprecision::uint128_t(i.second.c_str());
       
       // Skip XHV
       if (i.first == "XHV") continue;
@@ -735,7 +735,7 @@ namespace cryptonote
       boost::multiprecision::uint128_t price_xasset = pr[i.first];
       
       // Multiply by the amount of coin in circulation
-      boost::multiprecision::uint128_t amount_xasset = std::stoull(i.second.c_str());
+      boost::multiprecision::uint128_t amount_xasset(i.second.c_str());
       amount_xasset *= price_xasset;
       
       // Sum into our total for all xAssets
@@ -757,11 +757,9 @@ namespace cryptonote
     double ratio_mcap = mcap_xassets.convert_to<double>() / mcap_xhv.convert_to<double>();
 
     // Calculate the MCAP VBS rate
-    double rate_mcvbs = (ratio_mcap < 0.9)
+    double rate_mcvbs = (ratio_mcap == 0) ? 0 : (ratio_mcap < 0.9) // Fix for "possible" 0 ratio
       ? std::exp((ratio_mcap + std::sqrt(ratio_mcap))*2) - 0.5 // Lower MCAP ratio
       : std::sqrt(ratio_mcap) * 40.0; // Higher MCAP ratio
-    const double min_vbs = 1.0;
-    rate_mcvbs = std::max(rate_mcvbs, min_vbs);
 
     // Calculate the Spread Ratio VBS rate
     double rate_srvbs = std::exp(1 + std::sqrt(1 - ratio_mcap)) + rate_mcvbs + 1.5;
@@ -784,13 +782,16 @@ namespace cryptonote
       amount_usd_128 *= price_xhv;
       amount_usd_128 /= COIN;
       double ratio_mcap_new = ((amount_usd_128.convert_to<double>() + mcap_xassets.convert_to<double>()) / (mcap_xhv.convert_to<double>() - amount_usd_128.convert_to<double>()));
-      double ratio_mcri = (ratio_mcap_new / ratio_mcap) - 1;
+      double ratio_mcri = (ratio_mcap == 0) ? ratio_mcap_new : (ratio_mcap_new / ratio_mcap) - 1;
+      ratio_mcri = std::abs(ratio_mcri);
 
       // Calculate Offshore Slippage VBS rate
       double rate_offsvbs = std::sqrt(ratio_mcri) * slippage_multiplier;
 
       // Calculate the combined VBS (collateral + "slippage")
       double vbs = rate_mcvbs + rate_offsvbs;
+      const double min_vbs = 1.0;
+      vbs = std::max(vbs, min_vbs);
       vbs *= COIN;
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
@@ -803,18 +804,16 @@ namespace cryptonote
 
       // Calculate SRI
       double ratio_mcap_new = ((mcap_xassets.convert_to<double>() - amount_128.convert_to<double>()) / (mcap_xhv.convert_to<double>() + amount_128.convert_to<double>()));
-      double ratio_sri = ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1;
-    
-      // Calculate the SR VBS rate
-      const double min_srvbs = 1.0;
-      const double max_srvbs = 10.0;
-      rate_srvbs = std::min(std::max(rate_srvbs, min_srvbs), max_srvbs);
-
+      double ratio_sri = (ratio_mcap == 0) ? (-1 * ratio_mcap_new) : ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1;
+      ratio_sri = std::max(ratio_sri, 0.0);
+      
       // Calculate ONSVBS
       double rate_onsvbs = std::sqrt(ratio_sri) * slippage_multiplier;
   
       // Calculate the combined VBS (collateral + "slippage")
       double vbs = std::max(rate_mcvbs, rate_srvbs) + rate_onsvbs;
+      const double min_vbs = 1.0;
+      vbs = std::max(vbs, min_vbs);
       vbs *= COIN;
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
