@@ -756,13 +756,16 @@ namespace cryptonote
     // Calculate the market cap ratio
     double ratio_mcap = mcap_xassets.convert_to<double>() / mcap_xhv.convert_to<double>();
 
+    // Calculate the spread ratio
+    double ratio_spread = (ratio_mcap >= 1.0) ? 0.0 : 1.0 - ratio_mcap;
+    
     // Calculate the MCAP VBS rate
     double rate_mcvbs = (ratio_mcap == 0) ? 0 : (ratio_mcap < 0.9) // Fix for "possible" 0 ratio
-      ? std::exp((ratio_mcap + std::sqrt(ratio_mcap))*2) - 0.5 // Lower MCAP ratio
+      ? std::exp((ratio_mcap + std::sqrt(ratio_mcap))*2.0) - 0.5 // Lower MCAP ratio
       : std::sqrt(ratio_mcap) * 40.0; // Higher MCAP ratio
 
     // Calculate the Spread Ratio VBS rate
-    double rate_srvbs = std::exp(1 + std::sqrt(1 - ratio_mcap)) + rate_mcvbs + 1.5;
+    double rate_srvbs = std::exp(1 + std::sqrt(ratio_spread)) + rate_mcvbs + 1.5;
     
     // Set the Slippage Multiplier
     double slippage_multiplier = 10.0;
@@ -782,7 +785,7 @@ namespace cryptonote
       amount_usd_128 *= price_xhv;
       amount_usd_128 /= COIN;
       double ratio_mcap_new = ((amount_usd_128.convert_to<double>() + mcap_xassets.convert_to<double>()) / (mcap_xhv.convert_to<double>() - amount_usd_128.convert_to<double>()));
-      double ratio_mcri = (ratio_mcap == 0) ? ratio_mcap_new : (ratio_mcap_new / ratio_mcap) - 1;
+      double ratio_mcri = (ratio_mcap == 0.0) ? ratio_mcap_new : (ratio_mcap_new / ratio_mcap) - 1.0;
       ratio_mcri = std::abs(ratio_mcri);
 
       // Calculate Offshore Slippage VBS rate
@@ -804,7 +807,7 @@ namespace cryptonote
 
       // Calculate SRI
       double ratio_mcap_new = ((mcap_xassets.convert_to<double>() - amount_128.convert_to<double>()) / (mcap_xhv.convert_to<double>() + amount_128.convert_to<double>()));
-      double ratio_sri = (ratio_mcap == 0) ? (-1 * ratio_mcap_new) : ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1;
+      double ratio_sri = (ratio_mcap == 0.0) ? (-1.0 * ratio_mcap_new) : ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1.0;
       ratio_sri = std::max(ratio_sri, 0.0);
       
       // Calculate ONSVBS
