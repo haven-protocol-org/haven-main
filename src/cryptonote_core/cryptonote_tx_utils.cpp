@@ -1385,8 +1385,10 @@ namespace cryptonote
           return false;
         }
       } else {
-        // Put 0s in the output-unlock-times
-        tx.output_unlock_times.push_back(0);
+	if (tx.unlock_time - current_height > CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE)
+	  tx.output_unlock_times.push_back(tx.unlock_time);
+	else
+	  tx.output_unlock_times.push_back(0);
       }
       
       // push to outputs
