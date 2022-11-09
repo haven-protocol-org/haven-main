@@ -849,6 +849,7 @@ namespace cryptonote
   //---------------------------------------------------------------
   uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr)
   {
+    using namespace boost::multiprecision;
     std::string str_xhv_supply;
     for (const auto& supply: supply_amounts) {
       if (supply.first == "XHV") {
@@ -856,14 +857,17 @@ namespace cryptonote
         break;
       }
     }
-    boost::multiprecision::uint128_t xhv_supply(str_xhv_supply);
-    boost::multiprecision::uint128_t price = std::min(pr.unused1, pr.xUSD);
-    boost::multiprecision::uint128_t xhv_market_cap = xhv_supply * price; // smaller of spot vs ma
+    uint128_t xhv_supply(str_xhv_supply);
+    uint128_t price = std::min(pr.unused1, pr.xUSD); // smaller of the ma vs spot
+    uint128_t xhv_market_cap = xhv_supply * price;
 
     xhv_market_cap *= 3000;
     xhv_supply = (xhv_supply * 5) / 1000; // 0.5%
-    uint64_t blockCap = (uint64_t)(boost::multiprecision::pow(xhv_market_cap, 0.42) + xhv_supply);
-    return blockCap;
+    cpp_bin_float_quad xhv_market_cap_quad(xhv_market_cap);
+    cpp_bin_float_quad blockcap_quad = pow(xhv_market_cap_quad, 0.42);
+    uint128_t blockcap_128 = blockcap_quad.convert_to<uint128_t>();
+    blockcap_128 += xhv_supply;
+    return blockcap_128.convert_to<uint64_t>();
   }
   //---------------------------------------------------------------
   uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr)
