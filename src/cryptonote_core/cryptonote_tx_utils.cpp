@@ -46,6 +46,8 @@ using namespace epee;
 #include "multisig/multisig.h"
 #include "offshore/asset_types.h"
 
+#include <boost/multiprecision/cpp_bin_float.hpp>
+
 using namespace crypto;
 
 namespace cryptonote
@@ -718,24 +720,25 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts)
   {
+    using namespace boost::multiprecision;
     using tt = transaction_type;
 
     // Process the circulating supply data
-    std::map<std::string, boost::multiprecision::uint128_t> map_amounts;
-    boost::multiprecision::uint128_t mcap_xassets = 0;
+    std::map<std::string, uint128_t> map_amounts;
+    uint128_t mcap_xassets = 0;
     for (const auto &i: amounts)
     {
       // Copy into the map for expediency
-      map_amounts[i.first] = boost::multiprecision::uint128_t(i.second.c_str());
+      map_amounts[i.first] = uint128_t(i.second.c_str());
       
       // Skip XHV
       if (i.first == "XHV") continue;
       
       // Get the pricing data for the xAsset
-      boost::multiprecision::uint128_t price_xasset = pr[i.first];
+      uint128_t price_xasset = pr[i.first];
       
       // Multiply by the amount of coin in circulation
-      boost::multiprecision::uint128_t amount_xasset(i.second.c_str());
+      uint128_t amount_xasset(i.second.c_str());
       amount_xasset *= price_xasset;
       
       // Sum into our total for all xAssets
@@ -749,12 +752,13 @@ namespace cryptonote
       (tx_type == tt::OFFSHORE) ? std::min(pr.unused1, pr.xUSD) :
       (tx_type == tt::ONSHORE)  ? std::max(pr.unused1, pr.xUSD) :
       0;
-    boost::multiprecision::uint128_t mcap_xhv = map_amounts["XHV"];
+    uint128_t mcap_xhv = map_amounts["XHV"];
     mcap_xhv *= price_xhv;
     mcap_xhv /= COIN;
 
     // Calculate the market cap ratio
-    double ratio_mcap = mcap_xassets.convert_to<double>() / mcap_xhv.convert_to<double>();
+    cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
+    double ratio_mcap = ratio_mcap_128.convert_to<double>();
 
     // Calculate the spread ratio
     double ratio_spread = (ratio_mcap >= 1.0) ? 0.0 : 1.0 - ratio_mcap;
@@ -784,7 +788,9 @@ namespace cryptonote
       boost::multiprecision::uint128_t amount_usd_128 = amount;
       amount_usd_128 *= price_xhv;
       amount_usd_128 /= COIN;
-      double ratio_mcap_new = ((amount_usd_128.convert_to<double>() + mcap_xassets.convert_to<double>()) / (mcap_xhv.convert_to<double>() - amount_usd_128.convert_to<double>()));
+      cpp_bin_float_quad ratio_mcap_new_quad = ((amount_usd_128.convert_to<cpp_bin_float_quad>() + mcap_xassets.convert_to<cpp_bin_float_quad>()) /
+						(mcap_xhv.convert_to<cpp_bin_float_quad>() - amount_usd_128.convert_to<cpp_bin_float_quad>()));
+      double ratio_mcap_new = ratio_mcap_new_quad.convert_to<double>();
       double ratio_mcri = (ratio_mcap == 0.0) ? ratio_mcap_new : (ratio_mcap_new / ratio_mcap) - 1.0;
       ratio_mcri = std::abs(ratio_mcri);
 
@@ -806,7 +812,9 @@ namespace cryptonote
     } else if (tx_type == tt::ONSHORE) {
 
       // Calculate SRI
-      double ratio_mcap_new = ((mcap_xassets.convert_to<double>() - amount_128.convert_to<double>()) / (mcap_xhv.convert_to<double>() + amount_128.convert_to<double>()));
+      cpp_bin_float_quad ratio_mcap_new_quad = ((mcap_xassets.convert_to<cpp_bin_float_quad>() - amount_128.convert_to<cpp_bin_float_quad>()) /
+						(mcap_xhv.convert_to<cpp_bin_float_quad>() + amount_128.convert_to<cpp_bin_float_quad>()));
+      double ratio_mcap_new = ratio_mcap_new_quad.convert_to<double>();
       double ratio_sri = (ratio_mcap == 0.0) ? (-1.0 * ratio_mcap_new) : ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1.0;
       ratio_sri = std::max(ratio_sri, 0.0);
       

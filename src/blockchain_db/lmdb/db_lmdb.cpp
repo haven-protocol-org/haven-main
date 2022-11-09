@@ -3272,6 +3272,11 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   }
 
   TXN_POSTFIX_RDONLY();
+
+  // NEAC: check for empty supply tally - only happens prior to first conversion on chain
+  if (circulating_supply.empty()) {
+    circulating_supply.emplace_back(std::pair<std::string, std::string>{"XHV", boost::to_string(m_coinbase)});
+  }
   return circulating_supply;
 }
 
