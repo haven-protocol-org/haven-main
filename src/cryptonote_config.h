@@ -211,7 +211,7 @@
 #define HF_VERSION_USE_COLLATERAL               20
 
 #define STAGENET_VERSION                        0x0e
-#define TESTNET_VERSION                         0x0f
+#define TESTNET_VERSION                         0x10
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
