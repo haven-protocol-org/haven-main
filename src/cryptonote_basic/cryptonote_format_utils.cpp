@@ -170,55 +170,55 @@ namespace cryptonote
       for (size_t n = 0; n < tx.rct_signatures.outPk.size(); ++n)
       {
         if (tx.vout[n].target.type() == typeid(txout_to_key)) {
-	  rv.outPk[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
-	} else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
-	  rv.outPk[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
-	} else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
-	  rv.outPk[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
-	} else {
+          rv.outPk[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
+        } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
+          rv.outPk[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
+        } else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
+          rv.outPk[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
+        } else {
           LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
           return false;
         }
       }
       if ((tx.rct_signatures.type == rct::RCTTypeCLSAG) || (tx.rct_signatures.type == rct::RCTTypeCLSAGN)) {
-	if (rv.outPk_usd.size() != tx.vout.size())
+        if (rv.outPk_usd.size() != tx.vout.size())
         {
-	  LOG_PRINT_L1("Failed to parse transaction from blob, bad outPk_usd size in tx " << get_transaction_hash(tx));
-	  return false;
-	}
+          LOG_PRINT_L1("Failed to parse transaction from blob, bad outPk_usd size in tx " << get_transaction_hash(tx));
+          return false;
+        }
         for (size_t n = 0; n < tx.rct_signatures.outPk_usd.size(); ++n)
         {
-	  if (tx.vout[n].target.type() == typeid(txout_to_key)) {
-	    rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
-	  } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
-	    rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
-	  } else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
-	    rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
-	  } else {
-	    LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
-	    return false;
-	  }
-	}
+          if (tx.vout[n].target.type() == typeid(txout_to_key)) {
+            rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
+          } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
+            rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
+          } else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
+            rv.outPk_usd[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
+          } else {
+            LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
+            return false;
+          }
+	      }
       }
       if (tx.rct_signatures.type == rct::RCTTypeCLSAGN) {
-	if (rv.outPk_xasset.size() != tx.vout.size())
-        {
-	  LOG_PRINT_L1("Failed to parse transaction from blob, bad outPk_xasset size in tx " << get_transaction_hash(tx));
-	  return false;
-	}
+        if (rv.outPk_xasset.size() != tx.vout.size())
+              {
+          LOG_PRINT_L1("Failed to parse transaction from blob, bad outPk_xasset size in tx " << get_transaction_hash(tx));
+          return false;
+        }
         for (size_t n = 0; n < tx.rct_signatures.outPk_xasset.size(); ++n)
         {
-	  if (tx.vout[n].target.type() == typeid(txout_to_key)) {
-	    rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
-	  } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
-	    rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
-	  } else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
-	    rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
-	  } else {
-	    LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
-	    return false;
-	  }
-	}
+          if (tx.vout[n].target.type() == typeid(txout_to_key)) {
+            rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
+          } else if (tx.vout[n].target.type() == typeid(txout_offshore)) {
+            rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_offshore>(tx.vout[n].target).key);
+          } else if (tx.vout[n].target.type() == typeid(txout_xasset)) {
+            rv.outPk_xasset[n].dest = rct::pk2rct(boost::get<txout_xasset>(tx.vout[n].target).key);
+          } else {
+            LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
+            return false;
+          }
+	      }
       }
 
       if (!base_only)
@@ -246,7 +246,7 @@ namespace cryptonote
           CHECK_AND_ASSERT_MES(n_amounts == rv.outPk.size(), false, "Internal error filling out V");
           rv.p.bulletproofs[0].V.resize(n_amounts);
           for (size_t i = 0; i < n_amounts; ++i) {
-            if (rv.type == rct::RCTTypeHaven2) {
+            if (rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3) {
               rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
             } else {
               if (tx.vout[i].target.type() == typeid(txout_to_key)) {
@@ -959,7 +959,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool check_outs_valid(const transaction& tx)
   {
-   if (tx.version >= POU_TRANSACTION_VERSION)
+    if (tx.version >= POU_TRANSACTION_VERSION)
     {
       CHECK_AND_ASSERT_MES(tx.vout.size() == tx.output_unlock_times.size(), false, "tx version 6+ must have equal number of output unlock times and outputs");
     }
@@ -989,42 +989,34 @@ namespace cryptonote
   bool check_inputs_overflow(const transaction& tx)
   {
     uint64_t money = 0;
-    if (tx.vin[0].type() == typeid(txin_xasset)) {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
-	  if(money > tokey_in.amount + money)
-	    return false;
-	  money += tokey_in.amount;
-	}
+    for(const auto& in: tx.vin)
+    {
+      if (in.type() == typeid(txin_xasset)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, tokey_in, false);
+        if(money > tokey_in.amount + money)
+          return false;
+        money += tokey_in.amount;
+      } else if (in.type() == typeid(txin_offshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
+        if(money > tokey_in.amount + money)
+          return false;
+        money += tokey_in.amount;
+      } else if (in.type() == typeid(txin_onshore)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
+        if(money > tokey_in.amount + money)
+          return false;
+        money += tokey_in.amount;
+      } else if (in.type() == typeid(txin_to_key)) {
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+        if(money > tokey_in.amount + money)
+          return false;
+        money += tokey_in.amount;
+      } else {
+        LOG_ERROR("wrong input type");
+        return false;
+      }
     }
-    else if (tx.vin[0].type() == typeid(txin_offshore)) {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, tokey_in, false);
-	  if(money > tokey_in.amount + money)
-	    return false;
-	  money += tokey_in.amount;
-	}
-    }
-    else if (tx.vin[0].type() == typeid(txin_onshore)) {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, tokey_in, false);
-	  if(money > tokey_in.amount + money)
-	    return false;
-	  money += tokey_in.amount;
-	}
-    }
-    else {
-      for(const auto& in: tx.vin)
-	{
-	  CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
-	  if(money > tokey_in.amount + money)
-	    return false;
-	  money += tokey_in.amount;
-	}
-    }
+
     return true;
   }
   //---------------------------------------------------------------

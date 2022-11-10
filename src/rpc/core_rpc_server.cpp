@@ -2632,10 +2632,43 @@ namespace cryptonote
   {
     PERF_TIMER(on_get_circulating_supply);
     std::vector<std::pair<std::string, std::string>> amounts = m_core.get_blockchain_storage().get_db().get_circulating_supply();
-    for (const auto i: amounts)
+    for (const auto &i: amounts)
     {
       COMMAND_RPC_GET_CIRCULATING_SUPPLY::supply_entry se(i.first, i.second);
       res.supply_tally.push_back(se);
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;    
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_collateral_requirements(const COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::request& req, COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    PERF_TIMER(on_get_collateral_requirements);
+    bool r;
+    using tt = cryptonote::transaction_type;
+    cryptonote::transaction_type tx_type;
+    if (req.tx_type == "offshore")
+      tx_type = tt::OFFSHORE;
+    else if (req.tx_type == "onshore")
+      tx_type = tt::ONSHORE;
+    else {
+      res.status = "Invalid TX type - only offshore and onshore TXs require collateral";
+      res.collateral = 0;
+      return true;
+    }
+    crypto::hash block_hash;
+    block_hash = m_core.get_block_id_by_height(m_core.get_current_blockchain_height()-1);
+    block blk;
+    r = m_core.get_block_by_hash(block_hash, blk);
+    if (!r) {
+      res.status = "Error retrieving block information";
+      return true;
+    }
+    std::vector<std::pair<std::string, std::string>> amounts = m_core.get_blockchain_storage().get_db().get_circulating_supply();
+    r = cryptonote::get_collateral_requirements(tx_type, req.amount, res.collateral, blk.pricing_record, amounts);
+    if (!r) {
+      res.status = "Error retrieving collateral information";
+      return true;
     }
     res.status = CORE_RPC_STATUS_OK;
     return true;    

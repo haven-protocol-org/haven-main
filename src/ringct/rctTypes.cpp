@@ -198,6 +198,7 @@ namespace rct {
             case RCTTypeCLSAG:
             case RCTTypeCLSAGN:
             case RCTTypeHaven2:
+            case RCTTypeHaven3:
                 return true;
             default:
                 return false;
@@ -213,6 +214,7 @@ namespace rct {
             case RCTTypeCLSAG:
             case RCTTypeCLSAGN:
             case RCTTypeHaven2:
+            case RCTTypeHaven3:
                 return true;
             default:
                 return false;

@@ -3235,7 +3235,7 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   uint64_t m_height = height();
   uint64_t m_coinbase = get_block_already_generated_coins(m_height-1);
-  LOG_PRINT_L0("BlockchainLMDB::" << __func__ << " - mined supply for XHV = " << m_coinbase);
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__ << " - mined supply for XHV = " << m_coinbase);
   check_open();
   
   TXN_PREFIX_RDONLY();
@@ -3272,6 +3272,11 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   }
 
   TXN_POSTFIX_RDONLY();
+
+  // NEAC: check for empty supply tally - only happens prior to first conversion on chain
+  if (circulating_supply.empty()) {
+    circulating_supply.emplace_back(std::pair<std::string, std::string>{"XHV", boost::to_string(m_coinbase)});
+  }
   return circulating_supply;
 }
 
