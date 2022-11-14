@@ -1408,7 +1408,8 @@ namespace rct {
         if (rv.type == RCTTypeHaven3) {
           CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
           CHECK_AND_ASSERT_MES(col_indices.size() == 2, false, "collateral indices size is not 2");
-          CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
+          if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
+            CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
         }
       }
       

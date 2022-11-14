@@ -2108,6 +2108,174 @@ bool wallet2::get_collateral_requirements(const cryptonote::transaction_type &tx
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_type, const std::string& strSource, const std::string& strDest,  uint64_t &amount)
+{
+  using tt = cryptonote::transaction_type;
+
+  // Get the total unlocked balance
+  // NEAC: should we only consider confirmed TX amounts? If so, change "false" to "true" in unlocked_balance_all() call
+  std::map<std::string, uint64_t> unlocked_balances = unlocked_balance_all(false);
+  uint64_t unlocked_xhv_balance = unlocked_balances["XHV"];
+  uint64_t unlocked_xusd_balance = unlocked_balances["XUSD"];
+  uint32_t hf_version = get_current_hard_fork();
+
+  THROW_WALLET_EXCEPTION_IF(hf_version < HF_VERSION_USE_COLLATERAL, error::wallet_internal_error, "max function only works after Collateral fork.");
+
+  if (strSource != strDest) {
+    // Get the current blockchain height
+    uint64_t current_height = get_blockchain_current_height()-1;
+
+    // Get the pricing record for the current height
+    offshore::pricing_record pr;
+    THROW_WALLET_EXCEPTION_IF(!get_pricing_record(pr, current_height), error::wallet_internal_error, "Failed to get prices at height %d - maybe pricing record is missing?");
+
+    // Get the circulating supply data
+    std::vector<std::pair<std::string, std::string>> amounts;
+    bool r = get_circulating_supply(amounts);
+    THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get prices at height %d - maybe pricing record is missing?");
+    
+    if (tx_type == tt::OFFSHORE) {
+
+      // Discount the 1.5% fees off the top of the xUSD (source) balance
+      boost::multiprecision::uint128_t unlocked_xhv_balance_128 = unlocked_xhv_balance;
+      unlocked_xhv_balance_128 *= 985;
+      unlocked_xhv_balance_128 /= 1000;
+      unlocked_xhv_balance = (uint64_t)unlocked_xhv_balance_128;
+
+      // put a bufer for the tx fee
+      THROW_WALLET_EXCEPTION_IF(unlocked_xhv_balance < 2 * COIN, error::wallet_internal_error, "unlocked balance too small for max. enter amount manualy");
+      unlocked_xhv_balance -= 2 * COIN;
+
+      // Set a threshold for success - 1%
+      uint64_t tolerance = unlocked_xhv_balance / 100;
+    
+      // Loop until we find an acceptable value for the max
+      bool found = false;
+      uint64_t collateral = 0;
+      uint64_t last_amount = unlocked_xhv_balance / 2;
+      uint64_t left = 0, right = unlocked_xhv_balance;
+      while (!found) {
+        last_amount = (left + right) / 2;
+        r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get collateral requirements");
+
+        boost::multiprecision::uint128_t conversion_fee_128 = last_amount;
+        conversion_fee_128 *= 985;
+        conversion_fee_128 /= 1000;
+        uint64_t conversion_fee = (uint64_t)conversion_fee_128;
+
+        if ((last_amount + collateral) > (unlocked_xhv_balance - conversion_fee)) {
+          right = last_amount;
+        } else if ((last_amount + collateral) < (unlocked_xhv_balance - conversion_fee - tolerance)) {
+          left = last_amount;
+        } else {
+          // Found the result
+          found = true;
+        }
+      }
+      if (found) {
+        amount = last_amount - (last_amount % 100000000);
+        return true;
+      }
+      
+    } else if (tx_type == tt::ONSHORE) {
+    
+      // Discount the 1.5% fees off the top of the xUSD (source) balance
+      boost::multiprecision::uint128_t balance_128 = unlocked_xusd_balance;
+      balance_128 *= 985;
+      balance_128 /= 1000;
+      unlocked_xusd_balance = (uint64_t)balance_128;
+
+      // put a bufer for the tx fee
+      THROW_WALLET_EXCEPTION_IF(unlocked_xusd_balance < 2 * COIN, error::wallet_internal_error, "unlocked balance too small for max. enter amount manualy");
+      unlocked_xusd_balance -= 2 * COIN;
+
+      // Set a threshold for success - 1%
+      uint64_t tolerance = unlocked_xusd_balance / 100;
+      uint64_t tolerance_xhv = unlocked_xhv_balance / 100;
+
+      // Loop until we find an acceptable value for the max
+      bool found = false;
+      uint64_t collateral = 0;
+      uint64_t last_amount = 0;
+      uint64_t left = 0, right = unlocked_xusd_balance;
+      while (!found) {
+        last_amount = (left + right) / 2;
+        r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get collateral requirements");
+
+        if (collateral > unlocked_xhv_balance) {
+          // Required collateral is too high - reduce amount
+          right = last_amount;
+        } else if ((unlocked_xhv_balance >= collateral) && ((unlocked_xhv_balance - collateral) <= tolerance_xhv)) {
+          // Found the most collateral we can afford
+          found = true;
+        } else if (right-left < tolerance) {
+          if (collateral < unlocked_xhv_balance) {
+            // Found the most collateral we can afford based on xUSD
+            found = true;
+          } else {
+            // Didnt succeed in finding a solution
+            return false;
+          }
+        } else {
+          left = last_amount;
+        }
+      }
+      if (found) {
+        amount = cryptonote::get_xhv_amount(last_amount, pr, tx_type, hf_version);
+        return true;
+      }
+    } else if (tx_type == tt::XUSD_TO_XASSET) {
+
+      // Discount the 1.5% fees off the top of the xUSD (source) balance
+      boost::multiprecision::uint128_t balance_128 = unlocked_xusd_balance;
+      balance_128 *= 985;
+      balance_128 /= 1000;
+      uint64_t unlocked_xusd_balance = (uint64_t)balance_128;
+
+      // put a bufer for the tx fee
+      THROW_WALLET_EXCEPTION_IF(unlocked_xusd_balance < 2 * COIN, error::wallet_internal_error, "unlocked balance too small for max. enter amount manualy");
+      unlocked_xusd_balance -= 2 * COIN;
+
+      amount = unlocked_xusd_balance;
+      return true;
+    } else if (tx_type == tt::XASSET_TO_XUSD) {
+
+      // Discount the 1.5% fees off the top of the xUSD (source) balance
+      boost::multiprecision::uint128_t balance_128 = unlocked_balances[strSource];
+      balance_128 *= 985;
+      balance_128 /= 1000;
+      uint64_t  unlocked_xasset_balance = (uint64_t)balance_128;
+      uint64_t xasset_amount = cryptonote::get_xasset_amount(2, strDest, pr); // 2 usd worth of xasset
+
+      // put a bufer for the tx fee
+      THROW_WALLET_EXCEPTION_IF(unlocked_xasset_balance < xasset_amount, error::wallet_internal_error, "unlocked balance too small for max. enter amount manualy");
+      unlocked_xasset_balance -= xasset_amount;
+
+      amount = cryptonote::get_xusd_amount(unlocked_xasset_balance, strSource, pr, tx_type, hf_version);
+      return true;
+    } else {
+      THROW_WALLET_EXCEPTION(error::wallet_internal_error, "unknown tx type passed into get_max_destination amount");
+    }
+
+  } else {
+    if (tx_type == tt::XASSET_TRANSFER)
+      THROW_WALLET_EXCEPTION(error::wallet_internal_error, "xasset transfer arent supported for max. Enter an amount manually.");
+    
+    uint64_t balance = unlocked_balances[strSource];
+    // put a bufer for the tx fee
+    THROW_WALLET_EXCEPTION_IF(balance < 2 * COIN, error::wallet_internal_error, "unlocked balance too small for max. enter amount manualy");
+    balance -= 2 * COIN;
+
+    amount = balance;
+    return true;
+  }
+
+  
+  return false;
+}
+//----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, const std::vector<uint64_t> &asset_type_output_indices, uint64_t height, uint8_t block_version, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
   PERF_TIMER(process_new_transaction);
@@ -9647,11 +9815,12 @@ void wallet2::transfer_selected_rct(
   uint32_t subaddr_account = specific_transfers[*selected_transfers.begin()].m_subaddr_index.major;
   for (auto i = ++selected_transfers.begin(); i != selected_transfers.end(); ++i)
     THROW_WALLET_EXCEPTION_IF(subaddr_account != specific_transfers[*i].m_subaddr_index.major, error::wallet_internal_error, "the tx uses funds from multiple accounts");
-
+  
+  uint32_t hf_version = get_current_hard_fork();
   if (outs.empty()) {
     get_outs(specific_transfers, strSource, outs, selected_transfers, fake_outputs_count); // may throw
   }
-  if (tx_type == cryptonote::transaction_type::ONSHORE) {
+  if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == cryptonote::transaction_type::ONSHORE) {
     if (outs_collateral.empty()) {
       // get the outs for col inputs as well
       get_outs(m_transfers, "XHV", outs_collateral, selected_transfers_onshore_colleteral, fake_outputs_count); // may throw
@@ -9864,7 +10033,6 @@ void wallet2::transfer_selected_rct(
   LOG_PRINT_L2("constructing tx");
 
   auto sources_copy = sources;
-  uint32_t hf_version = get_current_hard_fork();
   bool r = cryptonote::construct_tx_and_get_tx_key(
     m_account.get_keys(),
     m_subaddresses,

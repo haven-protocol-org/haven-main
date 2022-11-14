@@ -277,8 +277,6 @@ namespace cryptonote
 
     bool get_price(const std::vector<std::string> &args);
     bool get_prices(const std::vector<std::string> &args);
-
-    bool get_max_destination_amount(const cryptonote::transaction_type tx_type, uint64_t &amount);
     
     bool cold_sign_tx(const std::vector<tools::wallet2::pending_tx>& ptx_vector, tools::wallet2::signed_tx_set &exported_txs, std::vector<cryptonote::address_parse_info> &dsts_info, std::function<bool(const tools::wallet2::signed_tx_set &)> accept_func);
     uint64_t get_daemon_blockchain_height(std::string& err);

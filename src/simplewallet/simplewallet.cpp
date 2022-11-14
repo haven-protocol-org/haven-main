@@ -2426,134 +2426,6 @@ bool simple_wallet::get_price(const std::vector<std::string> &args)
   return true;
 }
 
-
-bool simple_wallet::get_max_destination_amount(const cryptonote::transaction_type tx_type, uint64_t &amount)
-{
-  // Get the current blockchain height
-  uint64_t current_height = m_wallet->get_blockchain_current_height()-1;
-
-  // Get the pricing record for the current height
-  offshore::pricing_record pr;
-  if (!m_wallet->get_pricing_record(pr, current_height)) {
-    fail_msg_writer() << boost::format(tr("Failed to get prices at height %d - maybe pricing record is missing?")) % current_height;
-    return false;
-  }
-
-  // Get the circulating supply data
-  std::vector<std::pair<std::string, std::string>> amounts;
-  bool r = m_wallet->get_circulating_supply(amounts);
-  if (!r) {
-    fail_msg_writer() << boost::format(tr("Failed to get prices at height %d - maybe pricing record is missing?")) % current_height;
-    return false;
-  }
-  
-  // Get the total unlocked balance
-  // NEAC: should we only consider confirmed TX amounts? If so, change "false" to "true" in unlocked_balance_all() call
-  std::map<std::string, uint64_t> unlocked_balances = m_wallet->unlocked_balance_all(false);
-  uint64_t unlocked_xhv_balance = unlocked_balances["XHV"];
-  uint64_t unlocked_xusd_balance = unlocked_balances["XUSD"];
-
-  using tt = cryptonote::transaction_type;
-  if (tx_type == tt::OFFSHORE) {
-  
-    // Discount the fees off the top
-    unlocked_xhv_balance = (unlocked_xhv_balance * 99) / 100;
-
-    // Set a threshold for success - 1%
-    uint64_t tolerance = unlocked_xhv_balance / 100;
-  
-    // Loop until we find an acceptable value for the max
-    bool error = false, found = false;
-    uint64_t collateral = 0;
-    uint64_t last_amount = unlocked_xhv_balance / 2;
-    uint64_t left = 0, right = unlocked_xhv_balance;
-    while (!error && !found) {
-      last_amount = (left + right) / 2;
-      r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
-      if (!r) {
-        fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
-        return false;
-      }
-      if ((last_amount + collateral) > unlocked_xhv_balance) {
-        right = last_amount;
-      } else if ((last_amount + collateral) < (unlocked_xhv_balance - tolerance)) {
-        left = last_amount;
-      } else {
-        // Found the result
-        found = true;
-      }
-    }
-    if (error) {
-      fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
-      return false;
-    }
-    if (found) {
-      amount = last_amount - (last_amount % 100000000);
-      return true;
-    }
-    
-  } else if (tx_type == tt::ONSHORE) {
-
-    // Set a threshold for success - 1%
-    uint64_t tolerance = unlocked_xusd_balance / 100;
-    uint64_t tolerance_xhv = unlocked_xhv_balance / 100;
-  
-    // Discount the 1.5% fees off the top of the xUSD (source) balance
-    boost::multiprecision::uint128_t balance_128 = unlocked_xusd_balance;
-    balance_128 *= 985;
-    balance_128 /= 1000;
-    unlocked_xusd_balance = (uint64_t)balance_128;
-
-    // Loop until we find an acceptable value for the max
-    bool error = false, found = false;
-    uint64_t collateral = 0;
-    uint64_t last_amount = 0;
-    uint64_t left = 0, right = unlocked_xusd_balance;
-    while (!error && !found) {
-      last_amount = (left + right) / 2;
-      r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
-      if (!r) {
-        fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
-        return false;
-      }
-      if (collateral > unlocked_xhv_balance) {
-        // Required collateral is too high - reduce amount
-        right = last_amount;
-      } else if (((unlocked_xhv_balance >= collateral) && ((unlocked_xhv_balance - collateral) <= tolerance_xhv)) ||
-                ((unlocked_xhv_balance < collateral) && ((collateral - unlocked_xhv_balance) <= tolerance_xhv))) {
-        // Found the most collateral we can afford
-        found = true;
-      } else if (right-left < tolerance) {
-        if (collateral < unlocked_xhv_balance) {
-          // Found the most collateral we can afford based on xUSD
-          found = true;
-        } else {
-          // Didnt succeed in finding a solution
-          error = true;
-        }
-      } else {
-        left = last_amount;
-      }
-    }
-    if (error) {
-      fail_msg_writer() << boost::format(tr("Failed to get collateral requirements"));
-      return false;
-    }
-    if (found) {
-      amount = last_amount - (last_amount % 100000000);
-      boost::multiprecision::uint128_t xhv_amount_128 = amount;
-      xhv_amount_128 *= COIN;
-      xhv_amount_128 /= pr.unused1;
-      amount = (uint64_t)xhv_amount_128;
-      amount -= (amount % 100000000);
-      return true;
-    }
-  }
-  
-  return false;
-}
-
-
 bool simple_wallet::xasset_to_xusd(const std::vector<std::string> &args)
 {
   // Verify the arguments provided
@@ -7034,7 +6906,7 @@ bool simple_wallet::transfer_main(
       {
         // Check to see if arg == "MAX"
         if (boost::algorithm::to_lower_copy(local_args[i + 1]) == "max") {
-          ok = get_max_destination_amount(tx_type, amount);
+          ok = m_wallet->get_max_destination_amount(tx_type, strSource, strDest, amount);
           if (!ok) {
             fail_msg_writer() << tr("failed to get max destination amount: ") << local_args[i] << ' ' << local_args[i + 1];
             return false;
