@@ -828,13 +828,14 @@ namespace cryptonote
       vbs *= COIN;
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
-      collateral_128 /= COIN;
+      collateral_128 /= price_xhv;
+      //collateral_128 /= COIN;
       collateral = collateral_128.convert_to<uint64_t>();
 
       boost::multiprecision::uint128_t amount_usd_128 = amount;
       amount_usd_128 *= price_xhv;
       amount_usd_128 /= COIN;
-      LOG_PRINT_L1("Onshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money((uint64_t)amount_usd_128) << " xUSD");
+      LOG_PRINT_L1("Onshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money((uint64_t)amount_128) << " xUSD");
     
     } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
       collateral = 0;

@@ -5507,7 +5507,7 @@ leave: {
         // Get the collateral requirements
         uint64_t collateral = 0;
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-          bool r = get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral, bl.pricing_record, supply_amounts);
+          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts);
           if (!r) {
             LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
             bvc.m_verifivation_failed = true;

@@ -943,7 +943,7 @@ namespace cryptonote
           const std::vector<std::pair<std::string, std::string>>& amounts = m_blockchain_storage.get_db().get_circulating_supply();
           bool r = get_collateral_requirements(
             tx_info[n].tvc.m_type, 
-            tx_info[n].tvc.m_type == tt::OFFSHORE ? tx_info[n].tx->amount_burnt : tx_info[n].tx->amount_minted,
+            tx_info[n].tx->amount_burnt,
             tx_info[n].tvc.m_collateral,
             tx_info[n].tvc.pr,
             amounts

@@ -2547,7 +2547,7 @@ namespace cryptonote
           // Get the collateral requirement for the tx
           uint64_t collateral = 0;
           if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-            if (!get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral, bl.pricing_record, supply_amounts)) {
+            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts)) {
               LOG_PRINT_L2("error: failed to get collateral requirements");
               continue;
             }

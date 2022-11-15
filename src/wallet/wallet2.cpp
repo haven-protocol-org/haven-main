@@ -2219,6 +2219,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
       if (found) {
         amount = cryptonote::get_xhv_amount(last_amount, pr, tx_type, hf_version);
         amount -= (amount % 100000000);
+	LOG_PRINT_L2("Found max amount = " << last_amount << " xUSD (" << amount << " XHV), and requires " << collateral << " XHV as collateral");
         return true;
       }
     } else if (tx_type == tt::XUSD_TO_XASSET) {
@@ -11012,7 +11013,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       // Calculate the collateral
       if (need_collateral) {
         uint64_t collateral_amount = 0;
-        bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
+        bool bOK = get_collateral_requirements(tx_type, dt.amount_usd, collateral_amount);
         THROW_WALLET_EXCEPTION_IF(!bOK, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
         needed_col += collateral_amount;
       }
@@ -11417,7 +11418,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       std::vector<size_t> col_ins;
       if (tx_type == tt::ONSHORE) {
-        col_ins = get_onshore_colleteral_inputs(needed_col);
+        THROW_WALLET_EXCEPTION_IF(!get_onshore_collateral_inputs(needed_col, col_ins), error::wallet_internal_error, "Failed to find sufficient inputs for onshore collateral");
       }
       
       // try to create a tx now
@@ -11568,7 +11569,7 @@ skip_tx:
     // get the inputs for collateral
     std::vector<size_t> col_ins;
     if (tx_type == tt::ONSHORE) {
-      col_ins = get_onshore_colleteral_inputs(needed_col);
+      THROW_WALLET_EXCEPTION_IF(!get_onshore_collateral_inputs(needed_col, col_ins), error::wallet_internal_error, "Failed to find sufficient inputs for onshore collateral");
     }
 
     transfer_selected_rct(
@@ -15784,9 +15785,8 @@ uint64_t wallet2::get_bytes_received() const
 }
 //----------------------------------------------------------------------------------------------------
 // go through the xhv inputs and pick the smallest amount of inputs >= col_amount
-std::vector<size_t> wallet2::get_onshore_colleteral_inputs(uint64_t col_amount) {
+bool wallet2::get_onshore_collateral_inputs(uint64_t col_amount, std::vector<size_t>& picked_inputs) {
 
-  std::vector<size_t> picked_inputs; 
   std::vector<std::pair<size_t, const transfer_details*>> transfers_copy;
 
   // save m_transfers indexes
@@ -15811,7 +15811,8 @@ std::vector<size_t> wallet2::get_onshore_colleteral_inputs(uint64_t col_amount) 
       break;
   }
 
-  return picked_inputs;
+  // Sanity check - make sure we found enough collateral
+  return (amount_accumulated >= col_amount);
 }
 //----------------------------------------------------------------------------------------------------
 std::vector<cryptonote::public_node> wallet2::get_public_nodes(bool white_only)
