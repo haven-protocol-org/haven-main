@@ -280,6 +280,7 @@ namespace
   const char* USAGE_ONSHORE("onshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
   const char* USAGE_GET_PRICE("get_price <xUSD amount> <ASSET_TYPE> [<ASSET_TYPE>...]");
   const char* USAGE_GET_PRICES("get_prices <xUSD amount>");
+  const char* USAGE_GET_BLOCK_CAP("get_block_cap");
 
   const char* USAGE_XASSET_SWEEP_ALL("xasset_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> <xAsset type> [<payment_id (obsolete)>]");
   const char* USAGE_XASSET_SWEEP_BELOW("xasset_sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> <xAsset type> [<payment_id (obsolete)>]");
@@ -2426,6 +2427,29 @@ bool simple_wallet::get_price(const std::vector<std::string> &args)
   return true;
 }
 
+bool simple_wallet::get_block_cap(const std::vector<std::string> &args) {
+  // get circulating supply
+  std::vector<std::pair<std::string, std::string>> supply_amounts;
+  if(!m_wallet->get_circulating_supply(supply_amounts)) {
+    fail_msg_writer() << "failed to get circulating supply. Make sure you are connected to a daemon.";
+    return false;
+  }
+
+  // get pricing record
+  std::string err;
+  uint64_t bc_height = get_daemon_blockchain_height(err);
+  offshore::pricing_record pr;
+  if (!m_wallet->get_pricing_record(pr, bc_height-1)) {
+    fail_msg_writer() << "failed to get pricing record. Make sure you are connected to a daemon.";
+    return false;
+  }
+  
+  // calculate current block cap
+  uint64_t block_cap = cryptonote::get_block_cap(supply_amounts, pr);
+  message_writer() <<  boost::format(tr("Current Block Cap(height %d): %d XHV")) % bc_height % print_money(block_cap);
+  return true;
+}
+
 bool simple_wallet::xasset_to_xusd(const std::vector<std::string> &args)
 {
   // Verify the arguments provided
@@ -3868,6 +3892,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::get_price, this, _1),
                            tr(USAGE_GET_PRICE),
                            tr("Displays the current value of <amount> Haven Dollars (XUSD) in the specified xAsset currencies"));
+  m_cmd_binder.set_handler("get_block_cap",
+                           boost::bind(&simple_wallet::get_block_cap, this, _1),
+                           tr(USAGE_GET_BLOCK_CAP),
+                           tr("Displays the current allowed offshore/onshore amount for a block."));
   m_cmd_binder.set_handler("xasset_sweep_all",
                            boost::bind(&simple_wallet::xasset_sweep_all, this, _1),
                            tr(USAGE_XASSET_SWEEP_ALL),
