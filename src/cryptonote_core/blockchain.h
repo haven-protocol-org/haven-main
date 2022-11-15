@@ -667,6 +667,14 @@ namespace cryptonote
     bool get_pricing_record(offshore::pricing_record& pr, uint64_t timestamp);
 
     /**
+     * @brief gets the latest pricing record that was in the last 10 block.
+     * If no pricing record found in the past 10 block, fails.
+     *
+     * @return false if method failed to obtain pricing, otherwise true
+     */
+    bool get_latest_acceptable_pr(offshore::pricing_record& pr) const;
+
+    /**
      * @brief gets the difficulty of the block with a given height
      *
      * @param i the height

@@ -717,6 +717,30 @@ bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx
   return true;
 }
 //------------------------------------------------------------------
+bool Blockchain::get_latest_acceptable_pr(offshore::pricing_record& pr) const
+{
+  LOG_PRINT_L3("Blockchain::" << __func__);
+  uint64_t current_height = get_current_blockchain_height();
+  block latest_bl;
+  for (size_t i = 1; i <= 10; i++) {
+    if (!get_block_by_hash(get_block_id_by_height(current_height - i), latest_bl)) {
+      continue;
+    }
+
+    if (!latest_bl.pricing_record.empty()) {
+      break;
+    }
+  }
+  pr = latest_bl.pricing_record;
+
+
+  if (!pr.empty()) {
+    return true;
+  }
+
+  return false;
+}
+//------------------------------------------------------------------
 uint64_t Blockchain::get_current_blockchain_height() const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
@@ -5291,6 +5315,27 @@ leave: {
 
 // XXX old code adds miner tx here
 
+  // grap the latest pricing record for conversion of fee values and block cap calculation.
+  // ignore the fee converison and block conversions if we fail.
+  bool have_valid_pr = true;
+  offshore::pricing_record latest_pr;
+  uint64_t total_conversion_xhv = 0; // only offshore/onshroe
+  uint64_t block_cap_xhv = 0;
+  std::vector<std::pair<std::string, std::string>> supply_amounts;
+  if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
+    if (!get_latest_acceptable_pr(latest_pr)) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+        MWARNING("Failed to find a pricing record in last 10 block.");
+        MWARNING("Tx/conversion fees wont be converted. Cant calculuate block cap. Block must not contain any offshore/onshore txs.");
+      }
+      have_valid_pr = false;
+    }
+
+    // get the block cap
+    supply_amounts = get_db().get_circulating_supply();
+    block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
+  }
+
   size_t tx_index = 0;
   // Iterate over the block's transaction hashes, grabbing each
   // from the tx_pool and validating them.  Each is then added
@@ -5409,6 +5454,38 @@ leave: {
       bvc.m_verifivation_failed = true;
       goto leave;
     }
+    using tt = cryptonote::transaction_type;
+    tt tx_type;
+    if (!get_tx_type(source, dest, tx_type)) {
+      LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
+    // check for block cap limit
+    uint64_t conversion_this_tx_xhv = 0;
+    if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+
+      // dont include offshore/onshore txs if we cant calculate a valid block cap.
+      if (!have_valid_pr) {
+        LOG_PRINT_L2(" ofshore/onshore tx found in the block but no acceptable pricing record. Invlalid block." << tx.hash);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+
+      if (tx_type == tt::OFFSHORE) {
+        conversion_this_tx_xhv += tx.amount_burnt;
+      }
+      if (tx_type == tt::ONSHORE) {
+        conversion_this_tx_xhv += tx.amount_minted;
+      }
+
+      if (total_conversion_xhv + conversion_this_tx_xhv > block_cap_xhv) {
+        LOG_PRINT_L2("total ofshore/onshore tx amount more then allowed block cap. Invalid block." << tx.hash);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+    }
 
     // Validate tx pr height
     if (source != dest) {
@@ -5420,14 +5497,7 @@ leave: {
       }
       if (hf_version >= HF_VERSION_HAVEN2) {
         // get tx type and pricing record
-        using tt = cryptonote::transaction_type;
         block bl;
-        tt tx_type;
-        if (!get_tx_type(source, dest, tx_type)) {
-          LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
         if (!get_block_by_hash(get_block_id_by_height(tx.pricing_record_height), bl)) {
           LOG_PRINT_L2("error: failed to get block containing pricing record");
           bvc.m_verifivation_failed = true;
@@ -5436,9 +5506,8 @@ leave: {
 
         // Get the collateral requirements
         uint64_t collateral = 0;
-        std::vector<std::pair<std::string, std::string>> amounts = get_db().get_circulating_supply();
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-          bool r = get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral, bl.pricing_record, amounts);
+          bool r = get_collateral_requirements(tx_type, tx_type == tt::OFFSHORE ? tx.amount_burnt : tx.amount_minted, collateral, bl.pricing_record, supply_amounts);
           if (!r) {
             LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
             bvc.m_verifivation_failed = true;
@@ -5470,6 +5539,7 @@ leave: {
 
     TIME_MEASURE_FINISH(cc);
     t_checktx += cc;
+    total_conversion_xhv += conversion_this_tx_xhv;
     fee_map[fee_asset_type] += fee;
     if (source != dest) {
       if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
@@ -6782,8 +6852,8 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
         m_tx_pool.get_transactions(txs, true);
 
         size_t tx_weight;
-	uint64_t fee, offshore_fee;
-	std::string fee_asset_type;
+        uint64_t fee, offshore_fee;
+        std::string fee_asset_type;
         bool relayed, do_not_relay, double_spend_seen, pruned;
         transaction pool_tx;
         blobdata txblob;

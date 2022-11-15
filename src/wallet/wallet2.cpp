@@ -2136,12 +2136,6 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
     
     if (tx_type == tt::OFFSHORE) {
 
-      // Discount the 1.5% fees off the top of the xUSD (source) balance
-      boost::multiprecision::uint128_t unlocked_xhv_balance_128 = unlocked_xhv_balance;
-      unlocked_xhv_balance_128 *= 985;
-      unlocked_xhv_balance_128 /= 1000;
-      unlocked_xhv_balance = (uint64_t)unlocked_xhv_balance_128;
-
       // put a bufer for the tx fee
       THROW_WALLET_EXCEPTION_IF(unlocked_xhv_balance < 2 * COIN, error::wallet_internal_error, "unlocked balance too small for max. enter amount manualy");
       unlocked_xhv_balance -= 2 * COIN;
@@ -2160,7 +2154,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
         THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to get collateral requirements");
 
         boost::multiprecision::uint128_t conversion_fee_128 = last_amount;
-        conversion_fee_128 *= 985;
+        conversion_fee_128 *= 15;
         conversion_fee_128 /= 1000;
         uint64_t conversion_fee = (uint64_t)conversion_fee_128;
 
@@ -2224,6 +2218,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
       }
       if (found) {
         amount = cryptonote::get_xhv_amount(last_amount, pr, tx_type, hf_version);
+        amount -= (amount % 100000000);
         return true;
       }
     } else if (tx_type == tt::XUSD_TO_XASSET) {
@@ -2239,6 +2234,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
       unlocked_xusd_balance -= 2 * COIN;
 
       amount = unlocked_xusd_balance;
+      amount -= (amount % 100000000);
       return true;
     } else if (tx_type == tt::XASSET_TO_XUSD) {
 
@@ -2246,14 +2242,15 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
       boost::multiprecision::uint128_t balance_128 = unlocked_balances[strSource];
       balance_128 *= 985;
       balance_128 /= 1000;
-      uint64_t  unlocked_xasset_balance = (uint64_t)balance_128;
-      uint64_t xasset_amount = cryptonote::get_xasset_amount(2, strDest, pr); // 2 usd worth of xasset
+      uint64_t unlocked_xasset_balance = (uint64_t)balance_128;
+      uint64_t xasset_amount = cryptonote::get_xasset_amount(2, strSource, pr); // 2 usd worth of xasset
 
       // put a bufer for the tx fee
       THROW_WALLET_EXCEPTION_IF(unlocked_xasset_balance < xasset_amount, error::wallet_internal_error, "unlocked balance too small for max. enter amount manualy");
       unlocked_xasset_balance -= xasset_amount;
 
       amount = cryptonote::get_xusd_amount(unlocked_xasset_balance, strSource, pr, tx_type, hf_version);
+      amount -= (amount % 100000000);
       return true;
     } else {
       THROW_WALLET_EXCEPTION(error::wallet_internal_error, "unknown tx type passed into get_max_destination amount");
@@ -2269,6 +2266,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
     balance -= 2 * COIN;
 
     amount = balance;
+    amount -= (amount % 100000000);
     return true;
   }
 

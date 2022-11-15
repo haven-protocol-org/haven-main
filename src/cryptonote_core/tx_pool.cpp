@@ -2351,33 +2351,23 @@ namespace cryptonote
 
     LockedTXN lock(m_blockchain.get_db());
 
-    // grap the lates pricing record for conversion of fee values
-    uint64_t current_height = m_blockchain.get_current_blockchain_height();
-    block latest_bl;
-    for (size_t i = 1; i <= 10; i++) {
-      if (!m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(current_height - i), latest_bl)) {
-        MWARNING("Failed to get block for pricing record h: " << current_height - i);
-        continue;
+    // grap the latest pricing record for conversion of fee values and block cap calculation.
+    // ignore the fee converison and block conversions if we fail.
+    bool have_valid_pr = true;
+    offshore::pricing_record latest_pr;
+    if (!m_blockchain.get_latest_acceptable_pr(latest_pr)) {
+      if (version >= HF_VERSION_USE_COLLATERAL) {
+        MWARNING("Failed to find a pricing record in last 10 block.");
+        MWARNING("Tx/conversion fees wont be converted. Cant calculuate block cap. Conversion txs wont be included in the block.");
       }
-
-      if (!latest_bl.pricing_record.empty()) {
-        break;
-      }
-    }
-    offshore::pricing_record &latest_pr = latest_bl.pricing_record;
-
-    // ignore the fee converison if cant have a pricing record
-    bool use_old_algo = false;
-    if (latest_pr.empty()) {
-      MWARNING("Failed to find a acceptable pricing record for conversion of tx fees. Using the old algo.");
-      use_old_algo = true;
+      have_valid_pr = false;
     }
 
     // set the block cap
     const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain.get_db().get_circulating_supply();
     uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
     uint64_t total_conversion_xhv = 0; // only offshore/onshroe
-    LOG_PRINT_L2("Block cap limit for offshore/onshore " << block_cap_xhv << " XHV");
+    MINFO("Block cap limit for offshore/onshore " << block_cap_xhv << " XHV");
 
     auto sorted_it = m_txs_by_fee_and_receive_time.begin();
     for (; sorted_it != m_txs_by_fee_and_receive_time.end(); ++sorted_it)
@@ -2478,7 +2468,7 @@ namespace cryptonote
           continue;
         }
 
-        if (version >= HF_VERSION_USE_COLLATERAL && !use_old_algo) {
+        if (version >= HF_VERSION_USE_COLLATERAL && have_valid_pr) {
           uint64_t total_tx_fee_amount =  meta.fee + meta.offshore_fee;
           if (strcmp(meta.fee_asset_type, "XHV") == 0) {
             total_fee_this_tx_xhv = total_tx_fee_amount;
@@ -2519,14 +2509,14 @@ namespace cryptonote
       uint64_t conversion_this_tx_xhv = 0;
       if (source != dest)
       {
-        // Validate that pricing record has not grown too old since it was first included in the pool
-        if (!tx_pr_height_valid(current_height, tx.pricing_record_height, sorted_it->second)) {
-          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
-          continue;
-        }
-                
         // check for block cap limit
         if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+
+          // dont include offshore/onshore txs if we cant calculate a valid block cap.
+          if (!have_valid_pr) {
+            continue;
+          }
+
           if (tx_type == tt::OFFSHORE) {
             conversion_this_tx_xhv += tx.amount_burnt;
           }
@@ -2537,6 +2527,12 @@ namespace cryptonote
           if (total_conversion_xhv + conversion_this_tx_xhv > block_cap_xhv) {
             continue;
           }
+        }
+
+        // Validate that pricing record has not grown too old since it was first included in the pool
+        if (!tx_pr_height_valid(m_blockchain.get_current_blockchain_height(), tx.pricing_record_height, sorted_it->second)) {
+          LOG_PRINT_L2("error : offshore/xAsset transaction references a pricing record that is too old (height " << tx.pricing_record_height << ")");
+          continue;
         }
 
         // check for verRctSemantics2

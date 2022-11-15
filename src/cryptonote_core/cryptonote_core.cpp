@@ -940,7 +940,7 @@ namespace cryptonote
 
         // Get the collateral requirements
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_info[n].tvc.m_type == tt::OFFSHORE || tx_info[n].tvc.m_type == tt::ONSHORE)) {
-          std::vector<std::pair<std::string, std::string>> amounts = m_blockchain_storage.get_db().get_circulating_supply();
+          const std::vector<std::pair<std::string, std::string>>& amounts = m_blockchain_storage.get_db().get_circulating_supply();
           bool r = get_collateral_requirements(
             tx_info[n].tvc.m_type, 
             tx_info[n].tvc.m_type == tt::OFFSHORE ? tx_info[n].tx->amount_burnt : tx_info[n].tx->amount_minted,

@@ -1423,8 +1423,12 @@ namespace rct {
       rct::keyV masks_D;
       size_t i = 0;
       for (auto &output: vout) {
-        // make sure onshore check is always first, it is segfault otherwise since col_indices are empty for transfers
-        bool onshore_col_idx = (tx_type == tt::ONSHORE && (i == col_indices[0] || i == col_indices[1]));
+        bool onshore_col_idx = false;
+        if (version >= HF_VERSION_USE_COLLATERAL) {
+          // make sure onshore check is always first, it is segfault otherwise since col_indices are empty for transfers
+          if (tx_type == tt::ONSHORE && (i == col_indices[0] || i == col_indices[1]))
+            onshore_col_idx = true;
+        }
         std::string output_asset_type;
         if (output.target.type() == typeid(cryptonote::txout_to_key)) {
           output_asset_type = "XHV";
@@ -1441,7 +1445,7 @@ namespace rct {
         if (!onshore_col_idx) {
           if (output_asset_type == strSource) {
             masks_C.push_back(rv.outPk[i].mask);
-          } else if (output_asset_type == strDest && !onshore_col_idx) {
+          } else if (output_asset_type == strDest) {
             masks_D.push_back(rv.outPk[i].mask);
           } else {
             LOG_PRINT_L1("Invalid output detected (wrong asset type)");
