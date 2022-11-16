@@ -6934,9 +6934,10 @@ bool simple_wallet::transfer_main(
       {
         // Check to see if arg == "MAX"
         if (boost::algorithm::to_lower_copy(local_args[i + 1]) == "max") {
-          ok = m_wallet->get_max_destination_amount(tx_type, strSource, strDest, amount);
+          std::string err;
+          ok = m_wallet->get_max_destination_amount(tx_type, strSource, strDest, amount, err);
           if (!ok) {
-            fail_msg_writer() << tr("failed to get max destination amount: ") << local_args[i] << ' ' << local_args[i + 1];
+            fail_msg_writer() << tr("failed to get max destination amount: ") << err;
             return false;
           }
           de.asset_type = strDest;
