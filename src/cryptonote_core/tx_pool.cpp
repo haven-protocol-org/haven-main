@@ -135,6 +135,23 @@ namespace cryptonote
     return unlock_time;
   }
   //---------------------------------------------------------------------------------
+  uint64_t tx_memory_pool::get_xhv_fee_amount(const std::string& fee_asset, uint64_t fee_amount, const cryptonote::transaction_type tt, const offshore::pricing_record& pr, const uint16_t hf_version)
+  {
+    uint64_t total_fee_xhv = 0;
+    if (fee_asset == "XHV") {
+      total_fee_xhv = fee_amount;
+    } else if (fee_asset == "XUSD") {
+      // convert the fee into xhv
+      total_fee_xhv = cryptonote::get_xhv_amount(fee_amount, pr, tt, hf_version);
+    } else {
+      // convert xasset to xusd
+      uint64_t xusd_amount = cryptonote::get_xusd_amount(fee_amount, fee_asset, pr, tt, hf_version);
+      // convert to xhv
+      total_fee_xhv = cryptonote::get_xhv_amount(xusd_amount, pr, tt, hf_version);
+    }
+    return total_fee_xhv;
+  }
+  //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {
     const bool kept_by_block = (tx_relay == relay_method::block);
@@ -553,7 +570,16 @@ namespace cryptonote
             return false;
 
           m_blockchain.add_txpool_tx(id, blob, meta);
-          m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(meta.fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
+          // get the total fee paid in xhv if possible.
+          // use directly itself otherwise.
+          uint64_t total_fee = 0;
+          if (tvc.pr.empty()) {
+            if (!m_blockchain.get_latest_acceptable_pr(tvc.pr)) {
+              total_fee = meta.fee + meta.offshore_fee;
+            }
+          }
+          total_fee = total_fee ? total_fee : get_xhv_fee_amount(meta.fee_asset_type, meta.fee + meta.offshore_fee,  tvc.m_type, tvc.pr, version);
+          m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(total_fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
           lock.commit();
         }
         catch (const std::exception &e)
@@ -570,8 +596,8 @@ namespace cryptonote
         tvc.m_invalid_input = true;
         return false;
       }
-    }else
-    {
+    } else {
+
       try
       {
         if (kept_by_block)
@@ -617,7 +643,17 @@ namespace cryptonote
 
           m_blockchain.remove_txpool_tx(id);
           m_blockchain.add_txpool_tx(id, blob, meta);
-          m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(meta.fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
+
+          // get the total fee paid in xhv if possible.
+          // use directly itself otherwise.
+          uint64_t total_fee = 0;
+          if (tvc.pr.empty()) {
+            if (!m_blockchain.get_latest_acceptable_pr(tvc.pr)) {
+              total_fee = meta.fee + meta.offshore_fee;
+            }
+          }
+          total_fee = total_fee ? total_fee : get_xhv_fee_amount(meta.fee_asset_type, meta.fee + meta.offshore_fee,  tvc.m_type, tvc.pr, version);
+          m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(total_fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
         }
         lock.commit();
       }
@@ -2400,6 +2436,55 @@ namespace cryptonote
         continue;
       }
 
+      // start using the optimal filling algorithm from v5
+      uint64_t total_fee_this_tx_xhv = 0;
+      if (version >= 5)
+      {
+        // If we're getting lower coinbase tx,
+        // stop including more tx
+        uint64_t block_reward;
+        if(!get_block_reward(median_weight, total_weight + meta.weight, already_generated_coins, block_reward, version))
+        {
+          LOG_PRINT_L2("  would exceed maximum block weight");
+          continue;
+        }
+
+        // have_valid_pr flag has to be there because if true, that means
+        // fee/byte(sorted_it->first.first) value has to be in xhv as calculated
+        // when adding the tx into the pool in add_tx2(). if have_valid_pr is false,
+        // there shouldnt be any conversion tx anyways, which then means sorting happened on the meta.fee only,
+        // and small differences in the tx fee shouldnt matter much. so we can just assume they are all xhv.
+        if (version >= HF_VERSION_USE_COLLATERAL) {
+          if (have_valid_pr) {
+            total_fee_this_tx_xhv = meta.weight * sorted_it->first.first; 
+          } else {
+            total_fee_this_tx_xhv =  meta.fee + meta.offshore_fee;
+          }
+          coinbase = block_reward + total_fee_xhv + total_fee_this_tx_xhv;
+        } else {
+          if (strcmp(meta.fee_asset_type, "XHV") == 0) {
+            coinbase = block_reward + fee_map["XHV"] + meta.fee;
+          } else {
+            coinbase = block_reward + fee_map["XHV"];
+          }
+        }
+        if (coinbase < best_coinbase)
+        {
+          LOG_PRINT_L2("  would decrease coinbase to " << print_money(coinbase));
+          continue;
+        }
+      }
+      else
+      {
+        // If we've exceeded the penalty free weight,
+        // stop including more tx
+        if (total_weight > median_weight)
+        {
+          LOG_PRINT_L2("  would exceed median block weight");
+          break;
+        }
+      }
+
       // "local" and "stem" txes are filtered above
       cryptonote::blobdata txblob = m_blockchain.get_txpool_tx_blob(sorted_it->second, relay_category::all);
 
@@ -2453,57 +2538,6 @@ namespace cryptonote
       if (!get_tx_type(source, dest, tx_type)) {
         LOG_PRINT_L2(" transaction has invalid tx type " << sorted_it->second);
         continue;
-      }
-
-      // start using the optimal filling algorithm from v5
-      uint64_t total_fee_this_tx_xhv = 0;
-      if (version >= 5)
-      {
-        // If we're getting lower coinbase tx,
-        // stop including more tx
-        uint64_t block_reward;
-        if(!get_block_reward(median_weight, total_weight + meta.weight, already_generated_coins, block_reward, version))
-        {
-          LOG_PRINT_L2("  would exceed maximum block weight");
-          continue;
-        }
-
-        if (version >= HF_VERSION_USE_COLLATERAL && have_valid_pr) {
-          uint64_t total_tx_fee_amount =  meta.fee + meta.offshore_fee;
-          if (strcmp(meta.fee_asset_type, "XHV") == 0) {
-            total_fee_this_tx_xhv = total_tx_fee_amount;
-          } else if (strcmp(meta.fee_asset_type, "XUSD") == 0) {
-            // convert the fee into xhv
-            total_fee_this_tx_xhv = get_xhv_amount(total_tx_fee_amount, latest_pr, tx_type, version);
-          } else {
-            // conver xasset to xusd
-            uint64_t xusd_amount = get_xusd_amount(total_tx_fee_amount, source, latest_pr, tx_type, version);
-            // convert to xhv
-            total_fee_this_tx_xhv = get_xhv_amount(xusd_amount, latest_pr, tx_type, version);
-          }
-          coinbase = block_reward + total_fee_xhv + total_fee_this_tx_xhv;
-        } else {
-          if (strcmp(meta.fee_asset_type, "XHV") == 0) {
-            coinbase = block_reward + fee_map["XHV"] + meta.fee;
-          } else {
-            coinbase = block_reward + fee_map["XHV"];
-          }
-        }
-        if (coinbase < best_coinbase)
-        {
-          LOG_PRINT_L2("  would decrease coinbase to " << print_money(coinbase));
-          continue;
-        }
-      }
-      else
-      {
-        // If we've exceeded the penalty free weight,
-        // stop including more tx
-        if (total_weight > median_weight)
-        {
-          LOG_PRINT_L2("  would exceed median block weight");
-          break;
-        }
       }
 
       uint64_t conversion_this_tx_xhv = 0;
