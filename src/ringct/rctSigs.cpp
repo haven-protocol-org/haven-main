@@ -1509,8 +1509,8 @@ namespace rct {
 
       // D COLOUR
       key sumD;
-      // subtract the col outs from sumOutpks_D and 
-      // Make the outputs negative so that the sum check will balance
+      // Subtract the sum of converted output commitments from the sum of consumed output commitments in D colour (if any are present)
+      // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
       subKeys(sumD, sumColIns, sumOutpks_D);
 
       // NEAC: attempt to only calculate forward
@@ -1555,19 +1555,17 @@ namespace rct {
       // Validate TX amount burnt/mint for conversions
       if (strSource != strDest) {
 
-        if (version < HF_VERSION_USE_COLLATERAL) {
-          if (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET) {
-            // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
-            // So we subtract that from amount_burnt and validate only the actual coversion amount because
-            // fees are not converted. They are just burned.
+        if ((version < HF_VERSION_USE_COLLATERAL) && (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET)) {
+	  // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
+	  // So we subtract that from amount_burnt and validate only the actual coversion amount because
+	  // fees are not converted. They are just burned.
 
-            // calculate the burnt fee. Should be the 80% of the offshoreFee
-            boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
-            boost::multiprecision::uint128_t burnt_fee = (fee_128 * 4) / 5;
+	  // calculate the burnt fee. Should be the 80% of the offshoreFee
+	  boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
+	  boost::multiprecision::uint128_t burnt_fee = (fee_128 * 4) / 5;
               
-            // subtract it from amount burnt
-            amount_burnt -= (uint64_t)burnt_fee;
-          }
+	  // subtract it from amount burnt
+	  amount_burnt -= (uint64_t)burnt_fee;
         }
 
         // m = sum of all masks of inputs
@@ -1595,32 +1593,20 @@ namespace rct {
         }
       }
 
-      // validate the colleteral
-      if (version >= HF_VERSION_USE_COLLATERAL) {
-        if (tx_type == tt::OFFSHORE) {
-          // get collateral commitment
-          key C_col = rv.outPk[col_index].mask;
+      // validate the collateral
+      if ((version >= HF_VERSION_USE_COLLATERAL) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
 
-          // calculate needed commitment
-          key pseudoC_col;
-          genC(pseudoC_col, rv.maskSums[2], amount_collateral);
+	// Retrieve collateral commitment that was provided by wallet
+	key C_col = rv.outPk[col_index].mask;
 
-          if (!equalKeys(pseudoC_col, C_col)) {
-            LOG_ERROR("Offshore collateral verification failed.");
-            return false;
-          }
-        }
+	// Generate commitment using stored mask and required amount of collateral
+	key pseudoC_col;
+	genC(pseudoC_col, rv.maskSums[2], amount_collateral);
 
-        if (tx_type == tt::ONSHORE) {
-          // calculate needed commitment
-          key col_C;
-          genC(col_C, rv.maskSums[2], amount_collateral);
-          
-          // try to match with actual col ouput
-          if (!equalKeys(col_C, rv.outPk[col_index].mask)) {
-            LOG_PRINT_L1("Onshore collateral check failed.");
-            return false;
-          }
+	// Verify that correct amount of collateral was provided
+	if (!equalKeys(pseudoC_col, C_col)) {
+	  LOG_ERROR("Offshore collateral verification failed.");
+	  return false;
         }
       }
         
