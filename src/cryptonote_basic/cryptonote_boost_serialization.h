@@ -210,7 +210,7 @@ namespace boost
     }
 
     if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
-      a & x.collateral_indices;
+      a & x.collateral_index;
     }
   }
 
@@ -236,7 +236,7 @@ namespace boost
     }
 
     if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
-      a & x.collateral_indices;
+      a & x.collateral_index;
     }
 
     a & (rct::rctSigBase&)x.rct_signatures;
