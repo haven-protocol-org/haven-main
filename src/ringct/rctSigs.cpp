@@ -1373,7 +1373,7 @@ namespace rct {
     const std::vector<cryptonote::tx_out> &vout,
     const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
-    const std::vector<uint64_t> &col_indices,
+    const size_t col_index,
     const uint64_t amount_collateral
   ){
 
@@ -1407,7 +1407,6 @@ namespace rct {
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
         if (rv.type == RCTTypeHaven3) {
           CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
-          CHECK_AND_ASSERT_MES(col_indices.size() == 2, false, "collateral indices size is not 2");
           if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
             CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
         }
@@ -1423,12 +1422,6 @@ namespace rct {
       rct::keyV masks_D;
       size_t i = 0;
       for (auto &output: vout) {
-        bool onshore_col_idx = false;
-        if (version >= HF_VERSION_USE_COLLATERAL) {
-          // make sure onshore check is always first, it is segfault otherwise since col_indices are empty for transfers
-          if (tx_type == tt::ONSHORE && (i == col_indices[0] || i == col_indices[1]))
-            onshore_col_idx = true;
-        }
         std::string output_asset_type;
         if (output.target.type() == typeid(cryptonote::txout_to_key)) {
           output_asset_type = "XHV";
@@ -1442,15 +1435,13 @@ namespace rct {
         }
 
         // exclude the onshore collateral ouputs from proof-of-value calculation
-        if (!onshore_col_idx) {
-          if (output_asset_type == strSource) {
-            masks_C.push_back(rv.outPk[i].mask);
-          } else if (output_asset_type == strDest) {
-            masks_D.push_back(rv.outPk[i].mask);
-          } else {
-            LOG_PRINT_L1("Invalid output detected (wrong asset type)");
-            return false;
-          }
+        if (output_asset_type == strSource) {
+          masks_C.push_back(rv.outPk[i].mask);
+        } else if (output_asset_type == strDest) {
+          masks_D.push_back(rv.outPk[i].mask);
+        } else {
+          LOG_PRINT_L1("Invalid output detected (wrong asset type)");
+          return false;
         }
         i++;
       }
@@ -1518,8 +1509,9 @@ namespace rct {
 
       // D COLOUR
       key sumD;
+      // subtract the col outs from sumOutpks_D and 
       // Make the outputs negative so that the sum check will balance
-      subKeys(sumD, zerokey, sumOutpks_D);
+      subKeys(sumD, sumColIns, sumOutpks_D);
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
@@ -1607,7 +1599,7 @@ namespace rct {
       if (version >= HF_VERSION_USE_COLLATERAL) {
         if (tx_type == tt::OFFSHORE) {
           // get collateral commitment
-          key C_col = rv.outPk[col_indices[0]].mask;
+          key C_col = rv.outPk[col_index].mask;
 
           // calculate needed commitment
           key pseudoC_col;
@@ -1618,22 +1610,15 @@ namespace rct {
             return false;
           }
         }
-        
+
         if (tx_type == tt::ONSHORE) {
           // calculate needed commitment
           key col_C;
           genC(col_C, rv.maskSums[2], amount_collateral);
           
           // try to match with actual col ouput
-          if (!equalKeys(col_C, rv.outPk[col_indices[0]].mask)) {
+          if (!equalKeys(col_C, rv.outPk[col_index].mask)) {
             LOG_PRINT_L1("Onshore collateral check failed.");
-            return false;
-          }
-
-          // check inputs == outputs
-          key sumColOut = addKeys(rv.outPk[col_indices[0]].mask, rv.outPk[col_indices[1]].mask);
-          if (!equalKeys(sumColOut, sumColIns)) {
-            LOG_PRINT_L1("Onshore collateral inputs != outputs");
             return false;
           }
         }
