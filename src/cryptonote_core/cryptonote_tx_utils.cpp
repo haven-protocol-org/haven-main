@@ -733,19 +733,18 @@ namespace cryptonote
       
       // Skip XHV
       if (i.first == "XHV") continue;
-      
+
       // Get the pricing data for the xAsset
       uint128_t price_xasset = pr[i.first];
       
       // Multiply by the amount of coin in circulation
       uint128_t amount_xasset(i.second.c_str());
-      amount_xasset *= price_xasset;
+      amount_xasset *= COIN;
+      amount_xasset /= price_xasset;
       
       // Sum into our total for all xAssets
       mcap_xassets += amount_xasset;
     }
-    // Divide by COIN to return to correct scale
-    mcap_xassets /= COIN;
 
     // Calculate the XHV market cap
     boost::multiprecision::uint128_t price_xhv =
@@ -819,7 +818,8 @@ namespace cryptonote
       ratio_sri = std::max(ratio_sri, 0.0);
       
       // Calculate ONSVBS
-      double rate_onsvbs = std::sqrt(ratio_sri) * slippage_multiplier;
+      //double rate_onsvbs = std::sqrt(ratio_sri) * slippage_multiplier;
+      double rate_onsvbs = std::sqrt(ratio_sri) * 3.0;
   
       // Calculate the combined VBS (collateral + "slippage")
       double vbs = std::max(rate_mcvbs, rate_srvbs) + rate_onsvbs;
