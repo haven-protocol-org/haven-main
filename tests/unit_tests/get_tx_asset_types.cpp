@@ -33,10 +33,11 @@
 #include "vector"
 
 
-// Regular transfers tests. Same asset type in input and output. Should be succesfull.
+// Regular transfers tests. Same asset type in input and output. Should be successful.
 TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XHV)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_to_key xhv_key;
     tx.vin.push_back(xhv_key);
@@ -60,6 +61,7 @@ TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XHV)
 TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XUSD)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_offshore offshore_key;
     tx.vin.push_back(offshore_key);
@@ -83,6 +85,7 @@ TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XUSD)
 TEST(get_tx_asset_types, successful_on_1_input_type_1_output_typeXASSET)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_xasset xasset_key;
     xasset_key.asset_type = "XBTC";
@@ -114,6 +117,7 @@ TEST(get_tx_asset_types, successful_on_1_input_type_1_output_typeXASSET)
 TEST(get_tx_asset_types, successful_offshore)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_to_key xhv_key;
 
     cryptonote::txout_to_key out_xhv;
@@ -139,6 +143,7 @@ TEST(get_tx_asset_types, successful_offshore)
 TEST(get_tx_asset_types, successful_onshore)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_onshore xusd_key;
 
     cryptonote::txout_to_key out_xhv;
@@ -165,6 +170,7 @@ TEST(get_tx_asset_types, successful_onshore)
 TEST(get_tx_asset_types, successful_xusd_to_xasset)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_offshore offshore_key;
 
     cryptonote::txout_xasset out_xasset;
@@ -191,6 +197,7 @@ TEST(get_tx_asset_types, successful_xusd_to_xasset)
 TEST(get_tx_asset_types, successful_xasset_to_xusd)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_xasset xasset_key;
     xasset_key.asset_type = "XEUR";
 
@@ -217,10 +224,243 @@ TEST(get_tx_asset_types, successful_xasset_to_xusd)
     EXPECT_EQ(dest, "XUSD");
 }
 
-// fail on multiple input types with 2 output types
-TEST(get_tx_asset_types, fail_on_multiple_input_types_with_2_output_types)
+// fail on multiple input types - 3 or more
+TEST(get_tx_asset_types, fail_on_multiple_input_types_3_or_more)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(xasset_key);
+    tx.vin.push_back(offshore_key);
+
+    cryptonote::tx_out out;
+    out.target = out_xhv;
+    tx.vout.push_back(out);
+    cryptonote::tx_out out1;
+    out1.target = out_offshore;
+    tx.vout.push_back(out1);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// fail on multiple input types - 1. XHV, 2. not XUSD
+TEST(get_tx_asset_types, fail_on_multiple_input_types_XHV_not_XUSD)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    xasset_key.asset_type = "XBTC";
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(xasset_key);
+
+    cryptonote::tx_out out;
+    out.target = out_xhv;
+    tx.vout.push_back(out);
+    cryptonote::tx_out out1;
+    out1.target = out_offshore;
+    tx.vout.push_back(out1);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// fail on multiple input types - 1. XUSD, 2. not XHV
+TEST(get_tx_asset_types, fail_on_multiple_input_types_XUSD_not_XHV)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    xasset_key.asset_type = "XBTC";
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+
+    tx.vin.push_back(onshore_key);
+    tx.vin.push_back(xasset_key);
+
+    cryptonote::tx_out out;
+    out.target = out_xhv;
+    tx.vout.push_back(out);
+    cryptonote::tx_out out1;
+    out1.target = out_offshore;
+    tx.vout.push_back(out1);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// fail on multiple input types - ins) 1. XHV 2. XUSD outs) only XHV 
+TEST(get_tx_asset_types, fail_on_multiple_input_types_only_XHV_out)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(offshore_key);
+
+    cryptonote::tx_out out;
+    out.target = out_xhv;
+    tx.vout.push_back(out);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// fail on multiple input types - ins) 1. XHV 2. XUSD outs) only XUSD 
+TEST(get_tx_asset_types, fail_on_multiple_input_types_only_XUSD_out)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(offshore_key);
+
+    cryptonote::tx_out out1;
+    out1.target = out_offshore;
+    tx.vout.push_back(out1);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// fail on multiple input types - ins) 1. XHV 2. XUSD outs) 1. not XHV  2. not XUSD
+TEST(get_tx_asset_types, fail_on_multiple_input_types_out_not_XHV_not_XUSD)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+    out_xasset.asset_type = "XEUR";
+
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(offshore_key);
+
+    cryptonote::tx_out out;
+    out.target = out_xasset;
+    tx.vout.push_back(out);
+    tx.vout.push_back(out);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// fail on multiple input types - ins) 1. XHV 2. XUSD outs) 1. XHV  2. not XUSD
+TEST(get_tx_asset_types, fail_on_multiple_input_types_out_XHV_not_XUSD)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+    out_xasset.asset_type = "XEUR";
+
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(offshore_key);
+
+    cryptonote::tx_out out;
+    out.target = out_xhv;
+    tx.vout.push_back(out);
+    cryptonote::tx_out out1;
+    out1.target = out_xasset;
+    tx.vout.push_back(out1);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// fail on multiple input types - ins) 1. XHV 2. XUSD outs) 1. not XHV  2. XUSD
+TEST(get_tx_asset_types, fail_on_multiple_input_types_out_XUSD_not_XHV)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
+    cryptonote::txin_offshore offshore_key;
+    cryptonote::txin_onshore onshore_key;
+    cryptonote::txin_xasset xasset_key;
+    cryptonote::txin_to_key xhv_key;
+
+    cryptonote::txout_to_key out_xhv;
+    cryptonote::txout_offshore out_offshore;
+    cryptonote::txout_xasset out_xasset;
+    out_xasset.asset_type = "XEUR";
+
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(xhv_key);
+    tx.vin.push_back(offshore_key);
+
+    cryptonote::tx_out out;
+    out.target = out_xasset;
+    tx.vout.push_back(out);
+    cryptonote::tx_out out1;
+    out1.target = out_offshore;
+    tx.vout.push_back(out1);
+
+    std::string source;
+    std::string dest;
+    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+}
+
+// pass on multiple input types - ins) 1. XHV 2. XUSD outs) 1. XHV  2. XUSD
+TEST(get_tx_asset_types, pass_on_multiple_input_types_onshore)
+{
+    cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_offshore offshore_key;
     cryptonote::txin_onshore onshore_key;
     cryptonote::txin_xasset xasset_key;
@@ -243,13 +483,14 @@ TEST(get_tx_asset_types, fail_on_multiple_input_types_with_2_output_types)
 
     std::string source;
     std::string dest;
-    EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
+    EXPECT_TRUE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
 
 // fail on single input types with more than 2 output types
 TEST(get_tx_asset_types, fail_single_input_and_more_than_2output_types)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_to_key xhv_key;
 
     cryptonote::txout_to_key out_xhv;
@@ -279,6 +520,7 @@ TEST(get_tx_asset_types, fail_single_input_and_more_than_2output_types)
 TEST(get_tx_asset_types, fail_single_input_single_output_types_are_not_equal)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_to_key xhv_key;
 
     cryptonote::txout_xasset out_xasset;
@@ -305,6 +547,7 @@ TEST(get_tx_asset_types, fail_single_input_single_output_types_are_not_equal)
 TEST(get_tx_asset_types, none_of_output_mathces_input)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_to_key xhv_key;
 
     cryptonote::txout_xasset out_xasset;
@@ -328,10 +571,11 @@ TEST(get_tx_asset_types, none_of_output_mathces_input)
 }
 
 // pass on single input types & 2 output types & 1 of the outputs matches inputs, other ddesn't but not allowed. xhv -> xasset
-// This case will expectedd to be catch by get_tx_type()
+// This case will expected to be caught by get_tx_type()
 TEST(get_tx_asset_types, succesfuul_on_logical_input_output_but_not_allowed)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     cryptonote::txin_to_key xhv_key;
 
     cryptonote::txout_to_key out_xhv;
@@ -356,10 +600,11 @@ TEST(get_tx_asset_types, succesfuul_on_logical_input_output_but_not_allowed)
     EXPECT_EQ(dest, "XBTC");
 }
 
-// pass on 2 different xasset but sorce and dest are different. This case will expectedd to be catch by get_tx_type()
-TEST(get_tx_asset_types, succesfuul_on_logical_input_output_but_not_allowed_xassets)
+// pass on 2 different xasset but source and dest are different. This case will expectedd to be catch by get_tx_type()
+TEST(get_tx_asset_types, successful_on_logical_input_output_but_not_allowed_xassets)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_xasset xasset_key;
     xasset_key.asset_type = "XBTC";
@@ -391,6 +636,7 @@ TEST(get_tx_asset_types, succesfuul_on_logical_input_output_but_not_allowed_xass
 TEST(get_tx_asset_types, fail_on_2_different_xasset)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_xasset xasset_key;
     xasset_key.asset_type = "XBTC";
@@ -419,6 +665,7 @@ TEST(get_tx_asset_types, fail_on_2_different_xasset)
 TEST(get_tx_asset_types, fail_on_2_unknown_asset_types)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_xasset xasset_key;
     xasset_key.asset_type = "xabc";
@@ -447,6 +694,7 @@ TEST(get_tx_asset_types, fail_on_2_unknown_asset_types)
 TEST(get_tx_asset_types, fail_on_2_unknown_asset_types_and_multiple_outs)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_xasset xasset_key;
     xasset_key.asset_type = "xabc";
@@ -475,6 +723,7 @@ TEST(get_tx_asset_types, fail_on_2_unknown_asset_types_and_multiple_outs)
 TEST(get_tx_asset_types, fail_on_1_unknown_asset_type)
 {
     cryptonote::transaction tx;
+    tx.version = 7;
     
     cryptonote::txin_xasset xasset_key;
     xasset_key.asset_type = "XBTC";
