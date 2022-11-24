@@ -772,7 +772,6 @@ namespace cryptonote
     
     // Set the Slippage Multiplier
     double slippage_multiplier = 10.0;
-    if (ratio_mcap <= 0.1) slippage_multiplier = 3.0;
 
     // Convert amount to 128 bit
     boost::multiprecision::uint128_t amount_128 = amount;
@@ -794,6 +793,7 @@ namespace cryptonote
       ratio_mcri = std::abs(ratio_mcri);
 
       // Calculate Offshore Slippage VBS rate
+      if (ratio_mcap_new <= 0.1) slippage_multiplier = 3.0;
       double rate_offsvbs = std::sqrt(ratio_mcri) * slippage_multiplier;
 
       // Calculate the combined VBS (collateral + "slippage")
@@ -818,6 +818,7 @@ namespace cryptonote
       ratio_sri = std::max(ratio_sri, 0.0);
       
       // Calculate ONSVBS
+      //if (ratio_mcap_new <= 0.1) slippage_multiplier = 3.0;
       //double rate_onsvbs = std::sqrt(ratio_sri) * slippage_multiplier;
       double rate_onsvbs = std::sqrt(ratio_sri) * 3.0;
   
@@ -829,7 +830,6 @@ namespace cryptonote
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
       collateral_128 /= price_xhv;
-      //collateral_128 /= COIN;
       collateral = collateral_128.convert_to<uint64_t>();
 
       boost::multiprecision::uint128_t amount_usd_128 = amount;
