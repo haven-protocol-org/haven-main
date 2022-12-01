@@ -1605,7 +1605,8 @@ namespace rct {
 
         // Verify that correct amount of collateral was provided
         if (!equalKeys(pseudoC_col, C_col)) {
-          LOG_ERROR("Offshore collateral verification failed.");
+          std::string type = tx_type == tt::OFFSHORE ? "offshore" : "onshore";
+          LOG_PRINT_L1( type << " collateral verification failed.");
           return false;
         }
       }

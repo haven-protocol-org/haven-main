@@ -355,8 +355,12 @@ namespace cryptonote
         }
       }
     }
-    if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
-      tx.version = 6;
+
+    // set tx version
+    if (hard_fork_version >= HF_VERSION_USE_COLLATERAL ) {
+      tx.version = COLLATERAL_TRANSACTION_VERSION;
+    } else if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+      tx.version = POU_TRANSACTION_VERSION;
     } else if (hard_fork_version >= HF_VERSION_HAVEN2) {
       tx.version = 5;
     } else if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {

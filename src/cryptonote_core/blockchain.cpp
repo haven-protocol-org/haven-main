@@ -1720,6 +1720,16 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
   CHECK_AND_ASSERT_MES(b.miner_tx.vin.size() == 1, false, "coinbase transaction in the block has no inputs");
   CHECK_AND_ASSERT_MES(b.miner_tx.vin[0].type() == typeid(txin_gen), false, "coinbase transaction in the block has the wrong type");
   CHECK_AND_ASSERT_MES(b.miner_tx.version > 1 || hf_version < HF_VERSION_MIN_V2_COINBASE_TX, false, "Invalid coinbase transaction version");
+  // version should be 6 after HF19
+  if (hf_version == HF_PER_OUTPUT_UNLOCK_VERSION) {
+    CHECK_AND_ASSERT_MES(b.miner_tx.version == POU_TRANSACTION_VERSION, false, 
+      "wrong miner tx version. Should be " << POU_TRANSACTION_VERSION << " is " << b.miner_tx.version);
+  }
+  // version should be 7 after HF20
+  if (hf_version == HF_VERSION_USE_COLLATERAL) {
+    CHECK_AND_ASSERT_MES(b.miner_tx.version == COLLATERAL_TRANSACTION_VERSION, false, 
+      "wrong miner tx version. Should be " << COLLATERAL_TRANSACTION_VERSION << " is " << b.miner_tx.version);
+  }
 
   // for v2 txes (ringct), we only accept empty rct signatures for miner transactions,
   if (hf_version >= HF_VERSION_REJECT_SIGS_IN_COINBASE && b.miner_tx.version >= 2)
@@ -1733,7 +1743,7 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
     return false;
   }
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
-  if ((hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) && (b.miner_tx.version >= POU_TRANSACTION_VERSION)) {
+  if (b.miner_tx.version >= POU_TRANSACTION_VERSION) {
     // HF19, TXv6+ - use per_output unlock times vector
     CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() == b.miner_tx.vout.size(), false, "coinbase transaction in the block has wrong number unlock times");
     for (const auto pou: b.miner_tx.output_unlock_times) {
