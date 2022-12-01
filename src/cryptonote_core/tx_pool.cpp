@@ -340,7 +340,7 @@ namespace cryptonote
             // validate collateral output lock times
             unlock_time = get_tx_unlock_time(tx.output_unlock_times[tx.collateral_index], tx.pricing_record_height, current_height);
             uint64_t expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
-            if (m_blockchain.get_nettype() == TESTNET)
+            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
               expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
             
             if (unlock_time < expected_unlock_time) {
@@ -375,7 +375,7 @@ namespace cryptonote
           uint64_t expected_unlock_time = 0;
           if (tx_type == transaction_type::OFFSHORE) {
             expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days
-            if (m_blockchain.get_nettype() == TESTNET)
+            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
               expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET; // 60 blocks
           } else if (tx_type == transaction_type::ONSHORE) {
             if (version >= HF_VERSION_USE_COLLATERAL) {
@@ -383,11 +383,11 @@ namespace cryptonote
             } else {
               expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hrs
             }
-            if (m_blockchain.get_nettype() == TESTNET)
+            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
               expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
           } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
             expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days
-            if (m_blockchain.get_nettype() == TESTNET)
+            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
               expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET; // 60 blocks
           } else {
             LOG_ERROR("unexpected tx_type found - rejecting TX");
