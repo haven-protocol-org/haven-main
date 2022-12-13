@@ -2965,17 +2965,23 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     for (const auto& i : tx_money_got_in_outs)
     {
       for (const auto& asset: i.second) {
+
+        // exclude collateral for onshroe
+        uint64_t p_amount = asset.second;
+        if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) && tx_type == cryptonote::transaction_type::ONSHORE) {
+          auto unconf_it = m_confirmed_txs.find(txid);
+          if(unconf_it != m_confirmed_txs.end()) {
+            p_amount -= (unconf_it->second.m_used_collateral + unconf_it->second.m_onshore_col_change);
+          }
+        }
+
         payment_details payment;
         payment.m_tx_hash      = txid;
         payment.m_fee          = fee;
-        payment.m_amount       = asset.second;
+        payment.m_amount       = p_amount;
         payment.m_asset_type   = asset.first;
         payment.m_block_height = height;
         if (tx.version >= POU_TRANSACTION_VERSION) {
-          // this will either be 0 for transfers(in which case all vector should be 0)
-          // or 0s and converted asset unlock times(in which case we get the converted one since it will be bigger than 0) 
-          // and changens or funds sent to ourselves are already removed above. Meanining we will be only coming here
-          // for either transfers from someone else or for converted outputs.
           payment.m_unlock_time  = tx.output_unlock_times[tx_money_got_in_outs_vout_indices[i.first][asset.first]];
         } else {
           payment.m_unlock_time  = tx.unlock_time;
@@ -7149,13 +7155,15 @@ uint64_t wallet2::select_transfers(uint64_t needed_money, std::vector<size_t> un
   return found_money;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices)
+void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amount_in, uint64_t col_used, uint64_t onshore_col_change, const std::vector<cryptonote::tx_destination_entry> &dests, const cryptonote::tx_destination_entry& change_dst, const crypto::hash &payment_id, const std::string& source, const std::string& dest, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices)
 {
 
   unconfirmed_transfer_details& utd = m_unconfirmed_txs[cryptonote::get_transaction_hash(tx)];
 
   utd.m_amount_in = amount_in;
-  utd.m_change = change_amount;
+  utd.m_change = source == "XHV" ? change_dst.amount : source == "XUSD" ? change_dst.amount_usd : change_dst.amount_xasset;
+  utd.m_used_collateral = col_used;
+  utd.m_onshore_col_change = onshore_col_change;
   utd.m_sent_time = time(NULL);
   utd.m_tx = (const cryptonote::transaction_prefix&)tx;
   utd.m_dests = dests;
@@ -7164,45 +7172,43 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
   utd.m_timestamp = time(NULL);
   utd.m_subaddr_account = subaddr_account;
   utd.m_subaddr_indices = subaddr_indices;
+  utd.m_source_currency_type = source;
+  utd.m_dest_currency_type = dest;
 
-  std::string input_asset;
   for (const auto &in: tx.vin)
   {
     if (in.type() == typeid(cryptonote::txin_to_key)) {
       const auto &txin = boost::get<cryptonote::txin_to_key>(in);
       utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
-      input_asset = "XHV";
     } else if (in.type() == typeid(cryptonote::txin_offshore)) {
       const auto &txin = boost::get<cryptonote::txin_offshore>(in);
       utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
-      input_asset = "XUSD";
     } else if (in.type() == typeid(cryptonote::txin_onshore)) {
       const auto &txin = boost::get<cryptonote::txin_onshore>(in);
       utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
-      input_asset = "XUSD";
     } else if (in.type() == typeid(cryptonote::txin_xasset)) {
       const auto &txin = boost::get<cryptonote::txin_xasset>(in);
       utd.m_rings.push_back(std::make_pair(txin.k_image, txin.key_offsets));
-      input_asset =  boost::get<cryptonote::txin_xasset>(in).asset_type;
     }else {
       continue;
     }
   }
 
-  // set the source asset type
-  utd.m_source_currency_type = input_asset;
-
   //get the tx fee
   if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
     utd.m_fee = tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
   } else {
-    utd.m_fee = input_asset == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
-              input_asset == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
+    utd.m_fee = source == "XHV" ? tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee : 
+              source == "XUSD" ? tx.rct_signatures.txnFee_usd + tx.rct_signatures.txnOffshoreFee_usd : 
               tx.rct_signatures.txnFee_xasset + tx.rct_signatures.txnOffshoreFee_xasset; 
   }
 
   // set the amount out
-  utd.m_amount_out = utd.m_amount_in - utd.m_change - utd.m_fee;
+  if (source == "XHV" && dest == "XUSD") {
+    utd.m_amount_out = utd.m_amount_in - utd.m_used_collateral - utd.m_change - utd.m_fee;
+  } else {
+    utd.m_amount_out = utd.m_amount_in  - utd.m_change - utd.m_fee;
+  }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -7246,10 +7252,8 @@ void wallet2::commit_tx(pending_tx& ptx)
   bool r = cryptonote::get_tx_asset_types(ptx.tx, ptx.tx.hash, source, dest, false);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "failed to get TX asset types");
   
-  transfer_container& specific_transfers =
-    ptx.tx.vin[0].type() == typeid(txin_to_key) ? m_transfers
-    : ptx.tx.vin[0].type() == typeid(txin_xasset) ? m_xasset_transfers[source]
-    : m_offshore_transfers;
+  transfer_container& specific_transfers = 
+    source == "XHV" ? m_transfers : source == "XUSD" ? m_offshore_transfers : m_xasset_transfers[source];
   
   if(m_light_wallet) 
   {
@@ -7304,7 +7308,28 @@ void wallet2::commit_tx(pending_tx& ptx)
     for(size_t idx: ptx.selected_transfers)
       amount_in += specific_transfers[idx].amount();
   }
-  add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, source == "XHV" ? ptx.change_dts.amount : source == "XUSD" ? ptx.change_dts.amount_usd : ptx.change_dts.amount_xasset, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
+
+  uint64_t onshore_col_change = 0;
+  if (source ==  "XUSD"  && dest == "XHV") {
+    uint64_t total_col_send = 0;
+    for(size_t idx: ptx.selected_transfers_collateral)
+      total_col_send += m_transfers[idx].amount();
+    onshore_col_change = total_col_send - ptx.used_collateral;
+  }
+
+  add_unconfirmed_tx(
+    ptx.tx,
+    amount_in,
+    ptx.used_collateral,
+    onshore_col_change,
+    dests,
+    ptx.change_dts,
+    payment_id,
+    source,
+    dest,
+    ptx.construction_data.subaddr_account,
+    ptx.construction_data.subaddr_indices
+  );
   
   if (store_tx_info() && ptx.tx_key != crypto::null_skey)
   {
@@ -9760,7 +9785,7 @@ void wallet2::transfer_selected_rct(
   }
 
   // calculate total collateral
-  if (tx_type == cryptonote::transaction_type::ONSHORE) {
+  if (tx_type == cryptonote::transaction_type::ONSHORE || tx_type == cryptonote::transaction_type::OFFSHORE) {
     for(auto& dt: dsts) {
       if (dt.is_collateral) {
         needed_col += dt.amount;
@@ -9837,17 +9862,18 @@ void wallet2::transfer_selected_rct(
       found_col += m_transfers[idx].amount();
     }
   }
+  uint32_t hf_version = get_current_hard_fork();
 
   LOG_PRINT_L2("wanted " << print_money(needed_money) << ", found " << print_money(found_money) << ", fee " << print_money(fee));
   THROW_WALLET_EXCEPTION_IF(found_money < needed_money, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
   LOG_PRINT_L2("wanted collateral" << print_money(needed_col) << ", found collateral " << print_money(found_col) << ", fee " << print_money(fee));
-  THROW_WALLET_EXCEPTION_IF(found_col < needed_col, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
+  if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == cryptonote::transaction_type::ONSHORE)
+    THROW_WALLET_EXCEPTION_IF(found_col < needed_col, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
 
   uint32_t subaddr_account = specific_transfers[*selected_transfers.begin()].m_subaddr_index.major;
   for (auto i = ++selected_transfers.begin(); i != selected_transfers.end(); ++i)
     THROW_WALLET_EXCEPTION_IF(subaddr_account != specific_transfers[*i].m_subaddr_index.major, error::wallet_internal_error, "the tx uses funds from multiple accounts");
   
-  uint32_t hf_version = get_current_hard_fork();
   if (outs.empty()) {
     get_outs(specific_transfers, strSource, outs, selected_transfers, fake_outputs_count); // may throw
   }
@@ -10209,6 +10235,7 @@ void wallet2::transfer_selected_rct(
   ptx.change_dts = change_dts;
   ptx.selected_transfers = selected_transfers;
   ptx.selected_transfers_collateral = selected_transfers_onshore_colleteral;
+  ptx.used_collateral = needed_col;
   if (!use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) || tx_type != cryptonote::transaction_type::ONSHORE)
     tools::apply_permutation(ins_order, ptx.selected_transfers);
   ptx.tx_key = tx_key;

@@ -150,6 +150,7 @@ namespace cryptonote
       FIELD(addr)
       FIELD(is_subaddress)
       FIELD(is_integrated)
+      FIELD(is_collateral)
     END_SERIALIZE()
   };
 
@@ -255,7 +256,7 @@ namespace cryptonote
 }
 
 BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)
-BOOST_CLASS_VERSION(cryptonote::tx_destination_entry, 4)
+BOOST_CLASS_VERSION(cryptonote::tx_destination_entry, 5)
 
 namespace boost
 {
@@ -309,13 +310,16 @@ namespace boost
       a & x.original;
       a & x.is_integrated;
       if (ver < 3)
-	return;
+	      return;
       a & x.amount_usd;
       if (ver < 4) {
-	return;
+	      return;
       }
       a & x.amount_xasset;
       a & x.asset_type;
+      if (ver < 5)
+        return;
+      a & x.is_collateral;
     }
   }
 }

@@ -9234,13 +9234,15 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
   if (out) {
     std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_details>> payments;
     m_wallet->get_payments_out(payments, min_height, max_height, m_current_subaddress_account, subaddr_indices);
-    for (std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_details>>::const_iterator i = payments.begin(); i != payments.end(); ++i) {
+    for (auto i = payments.begin(); i != payments.end(); ++i) {
       const tools::wallet2::confirmed_transfer_details &pd = i->second;
       uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
-        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), pd.m_source_currency_type == "XHV" ?  d.amount :
-                                                                                 pd.m_source_currency_type == "XUSD" ? d.amount_usd : d.amount_xasset});
+        // exclude the col dest to not ocnfuse the user
+        uint64_t dest_amount = pd.m_source_currency_type == "XHV" ?  d.amount : pd.m_source_currency_type == "XUSD" ? d.amount_usd : d.amount_xasset;
+        if (!d.is_collateral)
+          destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), dest_amount});
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
@@ -9252,7 +9254,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
         pd.m_timestamp,
  	      "out",
         true,
-	      pd.m_amount_in - change - pd.m_fee,
+	      pd.m_amount_out,
         i->first,
         payment_id,
         pd.m_fee,
@@ -9316,12 +9318,14 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
   if (pending || failed) {
     std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_details>> upayments;
     m_wallet->get_unconfirmed_payments_out(upayments, m_current_subaddress_account, subaddr_indices);
-    for (std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_details>>::const_iterator i = upayments.begin(); i != upayments.end(); ++i) {
+    for (auto i = upayments.begin(); i != upayments.end(); ++i) {
       const tools::wallet2::unconfirmed_transfer_details &pd = i->second;
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
-        destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), pd.m_source_currency_type == "XHV" ?  d.amount :
-                                                                                 pd.m_source_currency_type == "XUSD" ? d.amount_usd : d.amount_xasset});
+        // exclude the col dest to not ocnfuse the user
+        uint64_t dest_amount = pd.m_source_currency_type == "XHV" ?  d.amount : pd.m_source_currency_type == "XUSD" ? d.amount_usd : d.amount_xasset;
+        if (!d.is_collateral)
+          destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), dest_amount});
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
