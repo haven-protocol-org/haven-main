@@ -235,7 +235,7 @@ namespace cryptonote
     uint64_t amount_burnt;
     uint64_t amount_minted;
     std::vector<uint64_t> output_unlock_times;
-    size_t collateral_index; // index to the outputs vector that denotes the collateral output.
+    std::vector<size_t> collateral_indices;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
@@ -259,10 +259,15 @@ namespace cryptonote
       if (version >= POU_TRANSACTION_VERSION && vout.size() != output_unlock_times.size()) return false;
       VARINT_FIELD(amount_burnt)
       VARINT_FIELD(amount_minted)
-      if (version >= COLLATERAL_TRANSACTION_VERSION) {
-        VARINT_FIELD(collateral_index)
-        if (collateral_index >= vout.size())
+      if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
+        FIELD(collateral_indices)
+        if (collateral_indices.size() != 2) {
           return false;
+        }
+        for (const auto vout_idx: collateral_indices) {
+          if (vout_idx >= vout.size())
+            return false;
+        }
       }
     END_SERIALIZE()
 
@@ -296,7 +301,7 @@ namespace cryptonote
       amount_burnt = 0;
       amount_minted = 0;
       output_unlock_times.clear();
-      collateral_index = 0;
+      collateral_indices.clear();
     }
   };
 

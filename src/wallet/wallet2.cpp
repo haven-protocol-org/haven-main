@@ -9945,7 +9945,7 @@ void wallet2::transfer_selected_rct(
     ++out_index;
   }
 
-  if (tx_type == cryptonote::transaction_type::ONSHORE) {
+  if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == cryptonote::transaction_type::ONSHORE) {
     out_index = 0;
     for(size_t idx: selected_transfers_onshore_colleteral)
     {

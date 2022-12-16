@@ -1007,7 +1007,6 @@ namespace cryptonote
     }
     tx.unlock_time = unlock_time;
     tx.extra = extra;
-    tx.collateral_index = 0;
 
     // check both strSource and strDest are supported.
     if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
@@ -1360,6 +1359,13 @@ namespace cryptonote
       // Check for per-output-unlocks
       if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && strSource != strDest) {
 
+        // initialize collateral indices vector
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && tx.collateral_indices.size() != 2) {
+          tx.collateral_indices.resize(2);
+          tx.collateral_indices[0] = 0;
+          tx.collateral_indices[1] = 0;
+        }
+
         // set unlcok times and indiviual collateral indeces.
         if (dst_entr_clone.asset_type == strDest) {
           // Destination amount - needs a full unlock time
@@ -1367,9 +1373,10 @@ namespace cryptonote
             // lock collateral ouput full and change as 0
             if (dst_entr_clone.amount == onshore_col_amount) {
               tx.output_unlock_times.push_back(tx.unlock_time);
-              tx.collateral_index = output_index;
+              tx.collateral_indices[0] = output_index;
             } else {
               tx.output_unlock_times.push_back(0);
+              tx.collateral_indices[1] = output_index;
             }
           } else {
             tx.output_unlock_times.push_back(tx.unlock_time);
@@ -1379,7 +1386,7 @@ namespace cryptonote
             // Collateral output - needs a full unlock time
             // offshores doesnt have collaterasl change since it is merged with actual change.
             tx.output_unlock_times.push_back(tx.unlock_time);
-            tx.collateral_index = output_index; 
+            tx.collateral_indices[0] = output_index;
           } else {
             // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
             tx.output_unlock_times.push_back(0);

@@ -320,31 +320,47 @@ namespace cryptonote
       if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
 
         if (version >= HF_VERSION_USE_COLLATERAL) {
-          // check collateral_index valid
-          if (tx.collateral_index >= tx.vout.size()) {
-            LOG_ERROR("error: Invalid Tx found. Invalid collateral output indices");
+          // validate collateral_indices vector
+          if (tx.collateral_indices.size() != 2) {
+            LOG_ERROR("error: Invalid Tx found. Collateral output indices not correct");
             tvc.m_verifivation_failed = true;
             return false;
+          }
+          for (const auto vout_idx: tx.collateral_indices) {
+            if (vout_idx >= tx.vout.size()) {
+              LOG_ERROR("error: Invalid Tx found. Invalid collateral output indices");
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
           }
 
           // If collateral requirement is 0, we expect there not to be collateral outputs..
           if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
 
             // validate that collateral ouput is XHV
-            if (tx.vout[tx.collateral_index].target.type() != typeid(txout_to_key)) {
+            if (tx.vout[tx.collateral_indices[0]].target.type() != typeid(txout_to_key)) {
               LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
               tvc.m_verifivation_failed = true;
               return false;
             }
 
+            // onshore tx has 2 col output, offshore has 1.
+            if (tx_type == transaction_type::ONSHORE) {
+              if (tx.vout[tx.collateral_indices[1]].target.type() != typeid(txout_to_key)) {
+                LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
+                tvc.m_verifivation_failed = true;
+                return false;
+              }
+            }
+
             // validate collateral output lock times
-            unlock_time = get_tx_unlock_time(tx.output_unlock_times[tx.collateral_index], tx.pricing_record_height, current_height);
+            unlock_time = get_tx_unlock_time(tx.output_unlock_times[tx.collateral_indices[0]], tx.pricing_record_height, current_height);
             uint64_t expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
             if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
               expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
-            
+
             if (unlock_time < expected_unlock_time) {
-              LOG_ERROR("output_unlock_times[" << tx.collateral_index << "] is too short for collateral output: required unlock period is " << TX_V7_ONSHORE_UNLOCK_BLOCKS << " blocks but output unlock period is " << unlock_time << " blocks");
+              LOG_ERROR("output_unlock_times[" << tx.collateral_indices[0] << "] is too short for collateral output: required unlock period is " << TX_V7_ONSHORE_UNLOCK_BLOCKS << " blocks but output unlock period is " << unlock_time << " blocks");
               tvc.m_verifivation_failed = true;
               return false;
             }
@@ -2572,7 +2588,7 @@ namespace cryptonote
           }
 
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, tx.collateral_index, collateral))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, tx.collateral_indices, collateral))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;
