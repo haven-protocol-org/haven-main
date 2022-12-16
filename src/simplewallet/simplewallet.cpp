@@ -9254,7 +9254,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
         pd.m_timestamp,
  	      "out",
         true,
-	      pd.m_amount_out,
+	      pd.m_amount_out - change,
         i->first,
         payment_id,
         pd.m_fee,
@@ -9320,6 +9320,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
     m_wallet->get_unconfirmed_payments_out(upayments, m_current_subaddress_account, subaddr_indices);
     for (auto i = upayments.begin(); i != upayments.end(); ++i) {
       const tools::wallet2::unconfirmed_transfer_details &pd = i->second;
+      uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
         // exclude the col dest to not ocnfuse the user
@@ -9339,7 +9340,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
           pd.m_timestamp,
           "out",
           false,
-          pd.m_amount_out,
+          pd.m_amount_out - change,
           i->first,
           payment_id,
           pd.m_fee,

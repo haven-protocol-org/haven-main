@@ -2616,7 +2616,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             // set unspent
             td.m_frozen = false;
             set_unspent(td);
-            
+
             // key image and target_key
             if (td.m_key_image_known)
               m_key_images[td.m_key_image] = specific_transfers.size()-1;
@@ -2792,7 +2792,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     {
       // grap the transfer
       transfer_details& td = specific_transfers[it->second];
-      
+
       // check for amount inconsistency
       if (amount > 0)
       {
@@ -2814,7 +2814,13 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
       // increment spent amount for asset_type
       tx_money_spent_in_ins += amount;
-      
+      if(use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+        if (tx_type == cryptonote::transaction_type::ONSHORE && asset_type == "XHV") {
+          // this should be the collateral amount, so it isnt an amount that is transferred.
+          tx_money_spent_in_ins -= amount;
+        }
+      }
+
       // check subaddreses
       if (subaddr_account && *subaddr_account != td.m_subaddr_index.major)
 	      LOG_ERROR("spent funds are from different subaddress accounts; count of incoming/outgoing payments will be incorrect");
@@ -2966,13 +2972,10 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     {
       for (const auto& asset: i.second) {
 
-        // exclude collateral for onshroe
         uint64_t p_amount = asset.second;
-        if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) && tx_type == cryptonote::transaction_type::ONSHORE) {
-          auto unconf_it = m_confirmed_txs.find(txid);
-          if(unconf_it != m_confirmed_txs.end()) {
-            p_amount -= (unconf_it->second.m_used_collateral + unconf_it->second.m_onshore_col_change);
-          }
+        // set amount for convversions
+        if (use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) && source != dest) {
+          p_amount = tx.amount_minted;
         }
 
         payment_details payment;
@@ -7204,10 +7207,10 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
   }
 
   // set the amount out
-  if (source == "XHV" && dest == "XUSD") {
-    utd.m_amount_out = utd.m_amount_in - utd.m_used_collateral - utd.m_change - utd.m_fee;
+  if (source != dest) {
+    utd.m_amount_out = utd.m_tx.amount_burnt + utd.m_change;
   } else {
-    utd.m_amount_out = utd.m_amount_in  - utd.m_change - utd.m_fee;
+    utd.m_amount_out = utd.m_amount_in - utd.m_fee;
   }
 }
 
