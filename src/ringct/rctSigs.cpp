@@ -1373,7 +1373,7 @@ namespace rct {
     const std::vector<cryptonote::tx_out> &vout,
     const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
-    const std::vector<size_t>& collateral_indices,
+    const std::vector<uint32_t>& collateral_indices,
     const uint64_t amount_collateral
   ){
 

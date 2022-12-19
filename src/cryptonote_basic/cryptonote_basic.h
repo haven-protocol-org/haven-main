@@ -235,7 +235,7 @@ namespace cryptonote
     uint64_t amount_burnt;
     uint64_t amount_minted;
     std::vector<uint64_t> output_unlock_times;
-    std::vector<size_t> collateral_indices;
+    std::vector<uint32_t> collateral_indices;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
