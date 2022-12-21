@@ -30,6 +30,9 @@
 
 #pragma once
 #include <boost/asio/io_service.hpp>
+#if BOOST_VERSION >= 107400
+#include <boost/serialization/library_version_type.hpp>
+#endif
 #include <boost/serialization/serialization.hpp>
 #include <boost/serialization/version.hpp>
 #include <boost/serialization/list.hpp>
@@ -619,7 +622,7 @@ namespace cryptonote
      *
      * @return true if the fee is enough, false otherwise
      */
-    bool check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest) const;
+    bool check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest, const transaction_type tx_type) const;
 
     /**
      * @brief check that a transaction's outputs conform to current standards
@@ -662,6 +665,14 @@ namespace cryptonote
      * @return false if method failed to obtain pricing record from oracle, otherwise true
      */
     bool get_pricing_record(offshore::pricing_record& pr, uint64_t timestamp);
+
+    /**
+     * @brief gets the latest pricing record that was in the last 10 block.
+     * If no pricing record found in the past 10 block, fails.
+     *
+     * @return false if method failed to obtain pricing, otherwise true
+     */
+    bool get_latest_acceptable_pr(offshore::pricing_record& pr) const;
 
     /**
      * @brief gets the difficulty of the block with a given height

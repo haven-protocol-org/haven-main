@@ -115,6 +115,7 @@ namespace cryptonote
     // this function only made for readability purposes. It is being called after
     // haven2 fork. So it doesn't have the rules prior to this fork.
     bool add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version);
+    uint64_t get_xhv_fee_amount(const std::string& fee_asset, uint64_t fee_amount, const cryptonote::transaction_type tt, const offshore::pricing_record& pr, const uint16_t hf_version);
     uint64_t get_tx_unlock_time(uint64_t tx_unlock_time, uint64_t tx_pr_height, uint64_t current_height);
 
     /**

@@ -30,6 +30,7 @@ add_executable(block_fuzz_tests block.cpp fuzzer.cpp)
 target_link_libraries(block_fuzz_tests
   PRIVATE
     cryptonote_core
+    offshore
     p2p
     epee
     device
@@ -43,6 +44,7 @@ add_executable(transaction_fuzz_tests transaction.cpp fuzzer.cpp)
 target_link_libraries(transaction_fuzz_tests
   PRIVATE
     cryptonote_core
+    offshore
     p2p
     epee
     device
@@ -57,6 +59,7 @@ target_link_libraries(signature_fuzz_tests
   PRIVATE
     wallet
     cryptonote_core
+    offshore
     p2p
     epee
     device
@@ -71,6 +74,7 @@ target_link_libraries(cold-outputs_fuzz_tests
   PRIVATE
     wallet
     cryptonote_core
+    offshore
     p2p
     epee
     device
@@ -85,6 +89,7 @@ target_link_libraries(cold-transaction_fuzz_tests
   PRIVATE
     wallet
     cryptonote_core
+    offshore
     p2p
     epee
     device

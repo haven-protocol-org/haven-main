@@ -34,6 +34,9 @@
 
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
+#if BOOST_VERSION >= 107400
+#include <boost/serialization/library_version_type.hpp>
+#endif
 #include <boost/serialization/list.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/deque.hpp>
@@ -410,9 +413,11 @@ private:
     struct unconfirmed_transfer_details
     {
       cryptonote::transaction_prefix m_tx;
-      uint64_t m_amount_in;   // whole input magnitude that is being used (in source currency)
-      uint64_t m_amount_out;  // what we actually sent (m_amount_in - change) (in source currency)
-      uint64_t m_change;      // change that comes back to us.
+      uint64_t m_amount_in;           // whole input magnitude that is being used (in source currency)
+      uint64_t m_amount_out;          // what we actually sent (m_amount_in - change) (in source currency)
+      uint64_t m_change;              // change that comes back to us.
+      uint64_t m_used_collateral;     // the collateral used for this tx
+      uint64_t m_onshore_col_change;  // change for the collateral. For offshore this amount is aggregated into m_change.
       time_t m_sent_time;
       std::vector<cryptonote::tx_destination_entry> m_dests;
       crypto::hash m_payment_id;
@@ -425,14 +430,17 @@ private:
       bool m_offshore_to_offshore;
       bool m_onshore;
       std::string m_source_currency_type; // we need for the fee asset type
+      std::string m_dest_currency_type;
       uint64_t m_fee; // (in source currency)
     };
 
     struct confirmed_transfer_details
     {
-      uint64_t m_amount_in;   // whole input magnitude that is being used (in source currency)
-      uint64_t m_amount_out;  // what we actually sent (m_amount_in - change) (in source currency)
-      uint64_t m_change;      // change that comes back to us.
+      uint64_t m_amount_in;           // whole input magnitude that is being used (in source currency)
+      uint64_t m_amount_out;          // what we actually sent (m_amount_in - change) (in source currency)
+      uint64_t m_change;              // change that comes back to us.
+      uint64_t m_used_collateral;     // the collateral used for this tx
+      uint64_t m_onshore_col_change;  // change for the collateral. For offshore this amount is aggregated into m_change.
       uint64_t m_block_height;
       std::vector<cryptonote::tx_destination_entry> m_dests;
       crypto::hash m_payment_id;
@@ -445,6 +453,7 @@ private:
       bool m_offshore_to_offshore;
       bool m_onshore;
       std::string m_source_currency_type;
+      std::string m_dest_currency_type;
       uint64_t m_fee;
 
       confirmed_transfer_details(): m_amount_in(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::null_hash), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1), m_source_currency_type("XHV") {}
@@ -460,8 +469,11 @@ private:
         m_subaddr_indices(utd.m_subaddr_indices), 
         m_rings(utd.m_rings), 
         m_source_currency_type(utd.m_source_currency_type),
+        m_dest_currency_type(utd.m_dest_currency_type),
         m_fee(utd.m_fee),
-        m_amount_out(utd.m_amount_out)
+        m_amount_out(utd.m_amount_out),
+        m_used_collateral(utd.m_used_collateral),
+        m_onshore_col_change(utd.m_onshore_col_change)
       {}
     };
 
@@ -471,6 +483,7 @@ private:
       cryptonote::tx_destination_entry change_dts;
       std::vector<cryptonote::tx_destination_entry> splitted_dsts; // split, includes change
       std::vector<size_t> selected_transfers;
+      std::vector<size_t> selected_transfers_collateral;
       std::vector<uint8_t> extra;
       uint64_t unlock_time;
       bool use_rct;
@@ -485,6 +498,7 @@ private:
         FIELD(change_dts)
         FIELD(splitted_dsts)
         FIELD(selected_transfers)
+        FIELD(selected_transfers_collateral)
         FIELD(extra)
         FIELD(unlock_time)
         FIELD(use_rct)
@@ -518,6 +532,8 @@ private:
       bool dust_added_to_fee;
       cryptonote::tx_destination_entry change_dts;
       std::vector<size_t> selected_transfers;
+      std::vector<size_t> selected_transfers_collateral; // inputs that are spent for the collateral
+      uint64_t used_collateral; // exact collateral amount used in this tx
       std::string key_images;
       crypto::secret_key tx_key;
       std::vector<crypto::secret_key> additional_tx_keys;
@@ -531,8 +547,10 @@ private:
         FIELD(dust)
         FIELD(fee)
         FIELD(dust_added_to_fee)
+        FIELD(used_collateral)
         FIELD(change_dts)
         FIELD(selected_transfers)
+        FIELD(selected_transfers_collateral)
         FIELD(key_images)
         FIELD(tx_key)
         FIELD(additional_tx_keys)
@@ -882,14 +900,11 @@ private:
     
     // Get pricing record for specified height
     bool get_pricing_record(offshore::pricing_record& pr, const uint64_t height);
-    // Get offshore amount in xAsset
-    uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string asset_type, const uint64_t height);
-    // Get offshore amount in XUSD, not XHV
-    uint64_t get_xusd_amount(const uint64_t xhv_amount, const std::string asset_type, const uint64_t height, bool bOnshore);
-    // Get onshore amount in XHV, not XUSD
-    uint64_t get_xhv_amount(const uint64_t xusd_amount, const uint64_t height);
-
-
+    // Get circulating supply
+    bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
+    // Get collateral
+    bool get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral);
+    bool get_max_destination_amount(const cryptonote::transaction_type tx_type, const std::string& strSource, const std::string& strDest,  uint64_t &amount, std::string& err);
     // all locked & unlocked balances of all subaddress accounts
     std::map<std::string, uint64_t> balance_all(bool strict);
     std::map<std::string, uint64_t> unlocked_balance_all(bool strict, std::map<std::string, uint64_t> *blocks_to_unlock = NULL, std::map<std::string, uint64_t> *time_to_unlock = NULL);
@@ -907,7 +922,8 @@ private:
       const std::vector<size_t>& selected_transfers,
       size_t fake_outputs_count,
       std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
-			uint64_t unlock_time,
+      std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs_collateral,
+      uint64_t unlock_time,
       uint64_t fee,
       const std::vector<uint8_t>& extra,
       cryptonote::transaction& tx,
@@ -915,7 +931,10 @@ private:
       const rct::RCTConfig &rct_config,
       const cryptonote::transaction_type tx_type,
       const std::string strSource,
-      const std::string strDest
+      const std::string strDest,
+      const offshore::pricing_record& pr,
+      const uint64_t current_height,
+      const std::vector<size_t>& selected_transfers_onshore_colleteral = {}
     );
 
     void commit_tx(pending_tx& ptx_vector);
@@ -1242,7 +1261,7 @@ private:
     /// ----------------------------------------
     std::string get_spend_proof(const crypto::hash &txid, const std::string &message);
     bool check_spend_proof(const crypto::hash &txid, const std::string &message, const std::string &sig_str);
-
+    bool get_onshore_collateral_inputs(uint64_t col_amount, std::vector<size_t>& picked_inputs);
     /*!
      * \brief  Generates a proof that proves the reserve of unspent funds
      * \param  account_minreserve       When specified, collect outputs only belonging to the given account and prove the smallest reserve above the given amount
@@ -1387,12 +1406,6 @@ private:
     uint64_t estimate_fee(bool use_per_byte_fee, bool use_rct, int n_inputs, int mixin, int n_outputs, size_t extra_size, bool bulletproof, bool clsag, uint64_t base_fee, uint64_t fee_multiplier, uint64_t fee_quantization_mask);
     uint64_t get_fee_multiplier(uint32_t priority, int fee_algorithm = -1);
     uint64_t get_base_fee();
-    uint64_t get_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources);
-    uint64_t get_onshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources);
-    uint64_t get_offshore_to_offshore_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources);
-    uint64_t get_xasset_to_xusd_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources);
-    uint64_t get_xasset_transfer_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources);
-    uint64_t get_xusd_to_xasset_fee(std::vector<cryptonote::tx_destination_entry> dsts, uint32_t priority, std::vector<transfer_details> sources);
     uint64_t get_fee_quantization_mask();
     uint64_t get_min_ring_size();
     uint64_t get_max_ring_size();
@@ -1577,7 +1590,7 @@ private:
     bool prepare_file_names(const std::string& file_path);
     void process_unconfirmed(const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t height);
     void process_outgoing(const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t height, uint64_t ts, uint64_t spent, std::map<std::string, uint64_t>& received, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices, std::string strSource="XHV", std::string strDest="XHV");
-    void add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
+    void add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amount_in, uint64_t col_used, uint64_t onshore_col_change, const std::vector<cryptonote::tx_destination_entry> &dests, const cryptonote::tx_destination_entry& change_dst, const crypto::hash &payment_id, const std::string& source, const std::string& dest, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
     void generate_genesis(cryptonote::block& b) const;
     void check_genesis(const crypto::hash& genesis_hash) const; //throws
     bool generate_chacha_key_from_secret_keys(crypto::chacha_key &key) const;
@@ -1814,14 +1827,14 @@ BOOST_CLASS_VERSION(tools::wallet2::multisig_info::LR, 0)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_tx_set, 1)
 BOOST_CLASS_VERSION(tools::wallet2::payment_details, 6)
 BOOST_CLASS_VERSION(tools::wallet2::pool_payment_details, 1)
-BOOST_CLASS_VERSION(tools::wallet2::unconfirmed_transfer_details, 10)
-BOOST_CLASS_VERSION(tools::wallet2::confirmed_transfer_details, 8)
+BOOST_CLASS_VERSION(tools::wallet2::unconfirmed_transfer_details, 11)
+BOOST_CLASS_VERSION(tools::wallet2::confirmed_transfer_details, 9)
 BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 18)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
 BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
 BOOST_CLASS_VERSION(tools::wallet2::signed_tx_set, 1)
-BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 6)
-BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
+BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 7)
+BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 4)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 0)
 
 namespace boost
@@ -2047,22 +2060,32 @@ namespace boost
         return;
       a & x.m_rings;
       if (ver < 9) {
-	x.m_offshore = false;
-	x.m_offshore_to_offshore = false;
-	x.m_onshore = false;
-	return;
+        x.m_offshore = false;
+        x.m_offshore_to_offshore = false;
+        x.m_onshore = false;
+        return;
       }
       a & x.m_offshore;
       a & x.m_offshore_to_offshore;
       a & x.m_onshore;
       if (ver < 10)
       {
-	x.m_source_currency_type = "XHV";
-	x.m_fee = 0;
-	return;
+        x.m_source_currency_type = "XHV";
+        x.m_fee = 0;
+        return;
       }
       a & x.m_source_currency_type;
       a & x.m_fee;
+      if (ver < 11)
+      {
+        x.m_dest_currency_type = "XHV";
+        x.m_used_collateral = 0;
+        x.m_onshore_col_change = 0;
+        return;
+      }
+      a & x.m_dest_currency_type;
+      a & x.m_used_collateral;
+      a & x.m_onshore_col_change;
     }
 
     template <class Archive>
@@ -2111,22 +2134,32 @@ namespace boost
         return;
       a & x.m_rings;
       if (ver < 7) {
-	x.m_offshore = false;
-	x.m_offshore_to_offshore = false;
-	x.m_onshore = false;
-	return;
+        x.m_offshore = false;
+        x.m_offshore_to_offshore = false;
+        x.m_onshore = false;
+        return;
       }
       a & x.m_offshore;
       a & x.m_offshore_to_offshore;
       a & x.m_onshore;
       if (ver < 8)
       {
-	x.m_source_currency_type = "XHV";
-	x.m_fee = 0;
-	return;
+        x.m_source_currency_type = "XHV";
+        x.m_fee = 0;
+        return;
       }
       a & x.m_source_currency_type;
       a & x.m_fee;
+      if (ver < 9)
+      {
+        x.m_dest_currency_type = "XHV";
+        x.m_used_collateral = 0;
+        x.m_onshore_col_change = 0;
+        return;
+      }
+      a & x.m_dest_currency_type;
+      a & x.m_used_collateral;
+      a & x.m_onshore_col_change;
     }
 
     template <class Archive>
@@ -2170,7 +2203,7 @@ namespace boost
       a & x.m_onshore;
       a & x.m_amounts;
       if (ver < 6) {
-	x.m_asset_type = (x.m_onshore || x.m_offshore_to_offshore) ? "XUSD" : "XHV";
+	      x.m_asset_type = (x.m_onshore || x.m_offshore_to_offshore) ? "XUSD" : "XHV";
       }
       a & x.m_asset_type;
     }
@@ -2303,6 +2336,9 @@ namespace boost
         return;
       }
       a & x.fee;
+      if (ver < 7)
+	return;
+      a & x.selected_transfers_collateral;
     }
 
     template <class Archive>
@@ -2346,6 +2382,10 @@ namespace boost
       if (ver < 3)
         return;
       a & x.multisig_sigs;
+      if (ver < 4)
+	      return;
+      a & x.selected_transfers_collateral;
+      a & x.used_collateral;
     }
   }
 }

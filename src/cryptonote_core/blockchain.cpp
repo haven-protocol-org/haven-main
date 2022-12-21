@@ -717,6 +717,30 @@ bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx
   return true;
 }
 //------------------------------------------------------------------
+bool Blockchain::get_latest_acceptable_pr(offshore::pricing_record& pr) const
+{
+  LOG_PRINT_L3("Blockchain::" << __func__);
+  uint64_t current_height = get_current_blockchain_height();
+  block latest_bl;
+  for (size_t i = 1; i <= 10; i++) {
+    if (!get_block_by_hash(get_block_id_by_height(current_height - i), latest_bl)) {
+      continue;
+    }
+
+    if (!latest_bl.pricing_record.empty()) {
+      break;
+    }
+  }
+  pr = latest_bl.pricing_record;
+
+
+  if (!pr.empty()) {
+    return true;
+  }
+
+  return false;
+}
+//------------------------------------------------------------------
 uint64_t Blockchain::get_current_blockchain_height() const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
@@ -1696,6 +1720,16 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
   CHECK_AND_ASSERT_MES(b.miner_tx.vin.size() == 1, false, "coinbase transaction in the block has no inputs");
   CHECK_AND_ASSERT_MES(b.miner_tx.vin[0].type() == typeid(txin_gen), false, "coinbase transaction in the block has the wrong type");
   CHECK_AND_ASSERT_MES(b.miner_tx.version > 1 || hf_version < HF_VERSION_MIN_V2_COINBASE_TX, false, "Invalid coinbase transaction version");
+  // version should be 6 after HF19
+  if (hf_version == HF_PER_OUTPUT_UNLOCK_VERSION) {
+    CHECK_AND_ASSERT_MES(b.miner_tx.version == POU_TRANSACTION_VERSION, false, 
+      "wrong miner tx version. Should be " << POU_TRANSACTION_VERSION << " is " << b.miner_tx.version);
+  }
+  // version should be 7 after HF20
+  if (hf_version == HF_VERSION_USE_COLLATERAL) {
+    CHECK_AND_ASSERT_MES(b.miner_tx.version == COLLATERAL_TRANSACTION_VERSION, false, 
+      "wrong miner tx version. Should be " << COLLATERAL_TRANSACTION_VERSION << " is " << b.miner_tx.version);
+  }
 
   // for v2 txes (ringct), we only accept empty rct signatures for miner transactions,
   if (hf_version >= HF_VERSION_REJECT_SIGS_IN_COINBASE && b.miner_tx.version >= 2)
@@ -1709,10 +1743,9 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
     return false;
   }
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
-  if ((hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) && (b.miner_tx.version >= POU_TRANSACTION_VERSION)) {
+  if (b.miner_tx.version >= POU_TRANSACTION_VERSION) {
     // HF19, TXv6+ - use per_output unlock times vector
-    CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() >= 2, false, "coinbase transaction in the block has too few unlock times");
-    CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() % 2 == 0, false, "coinbase transaction in the block has incorrect count of unlock times (" << b.miner_tx.output_unlock_times.size() << ")");
+    CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() == b.miner_tx.vout.size(), false, "coinbase transaction in the block has wrong number unlock times");
     for (const auto pou: b.miner_tx.output_unlock_times) {
       CHECK_AND_ASSERT_MES(pou == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, false, "coinbase transaction transaction has the wrong unlock time=" << pou << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
     }
@@ -1891,12 +1924,20 @@ bool Blockchain::validate_miner_transaction(
 
           // xAsset fees change fork
           if (version >= HF_VERSION_XASSET_FEES_V2) {
-            uint64_t fee =  xasset_fee_map[asset_type];  
-            // burn 80%
-            fee -= (fee * 4) / 5;
-            // split the rest
-            miner_reward_xasset += fee / 2;
-            governance_reward_xasset += fee / 2;
+            if (version >= HF_VERSION_USE_COLLATERAL) {
+              boost::multiprecision::uint128_t fee =  xasset_fee_map[asset_type];
+              // 80% to governance wallet
+              governance_reward_xasset += (uint64_t)((fee * 4) / 5);
+              // 20% to miners
+              miner_reward_xasset += (uint64_t)(fee / 5);
+            } else {
+              uint64_t fee =  xasset_fee_map[asset_type];
+              // burn 80%
+              fee -= (fee * 4) / 5;
+              // split the rest
+              miner_reward_xasset += fee / 2;
+              governance_reward_xasset += fee / 2;
+            }
           }
 
           // the Nth(vout[N]) output is xAsset fee that goes to miner
@@ -3790,7 +3831,13 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  if (hf_version >= HF_VERSION_HAVEN2) {
+  if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+    // only accept rct::RCTTypeHaven3 txs after Haven3 fork.
+    if (tx.rct_signatures.type != rct::RCTTypeHaven3) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_HAVEN2) {
     // only accept rct::RCTTypeHaven2 txs after Haven2 fork.
     if (tx.rct_signatures.type != rct::RCTTypeHaven2) {
       tvc.m_verifivation_failed = true;
@@ -3812,24 +3859,27 @@ bool Blockchain::have_tx_keyimges_as_spent(const transaction &tx) const
   LOG_PRINT_L3("Blockchain::" << __func__);
   for (const txin_v& in: tx.vin)
   {
-    if (tx.vin[0].type() == typeid(txin_to_key)) {
+    if (in.type() == typeid(txin_to_key)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
         return true;
     }
-    else if (tx.vin[0].type() == typeid(txin_offshore)) {
+    else if (in.type() == typeid(txin_offshore)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_offshore, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
 	      return true;
     }
-    else if (tx.vin[0].type() == typeid(txin_onshore)) {
+    else if (in.type() == typeid(txin_onshore)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_onshore, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
 	      return true;
-    } else {
+    } else if (in.type() == typeid(txin_xasset)) {
       CHECKED_GET_SPECIFIC_VARIANT(in, const txin_xasset, in_to_key, true);
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
 	      return true;
+    } else {
+      MERROR_VER("wrong input type");
+      return false;
     }
   }
   return false;
@@ -3865,7 +3915,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       }
     }
   }
-  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2)
+  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3)
   {
     CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
     rv.mixRing.resize(pubkeys.size());
@@ -3908,7 +3958,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       }
     }
   }
-  else if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2))
+  else if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2) || (rv.type == rct::RCTTypeHaven3))
   {
     if (!tx.pruned)
     {
@@ -4328,6 +4378,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   case rct::RCTTypeCLSAG:
   case rct::RCTTypeCLSAGN:
   case rct::RCTTypeHaven2:
+  case rct::RCTTypeHaven3:
   {
     // check all this, either reconstructed (so should really pass), or not
     {
@@ -4363,7 +4414,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
     }
 
-    const size_t n_sigs = ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) ? rv.p.CLSAGs.size() : rv.p.MGs.size();
+    const size_t n_sigs = ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2) || (rv.type == rct::RCTTypeHaven3)) ? rv.p.CLSAGs.size() : rv.p.MGs.size();
     if (n_sigs != tx.vin.size())
     {
       MERROR_VER("Failed to check ringct signatures: mismatched MGs/vin sizes");
@@ -4372,7 +4423,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     for (size_t n = 0; n < tx.vin.size(); ++n)
     {
       if (tx.vin[n].type() == typeid(txin_onshore)) {
-        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
+        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2) || (rv.type == rct::RCTTypeHaven3)) {
           if (memcmp(&boost::get<txin_onshore>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
             MERROR_VER("Failed to check ringct signatures: mismatched key image");
             return false;
@@ -4382,7 +4433,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           return false;
         }
       } else if (tx.vin[n].type() == typeid(txin_offshore)) {
-        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
+        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2) || (rv.type == rct::RCTTypeHaven3)) {
           if (memcmp(&boost::get<txin_offshore>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
             MERROR_VER("Failed to check ringct signatures: mismatched key image");
             return false;
@@ -4392,7 +4443,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           return false;
         }
       } else if (tx.vin[n].type() == typeid(txin_xasset)) {
-        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
+        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2) || (rv.type == rct::RCTTypeHaven3)) {
           if (memcmp(&boost::get<txin_xasset>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
             MERROR_VER("Failed to check ringct signatures: mismatched key image");
             return false;
@@ -4402,7 +4453,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           return false;
         }
       } else {
-        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2)) {
+        if ((rv.type == rct::RCTTypeCLSAG) || (rv.type == rct::RCTTypeCLSAGN) || (rv.type == rct::RCTTypeHaven2) || (rv.type == rct::RCTTypeHaven3)) {
           if (memcmp(&boost::get<txin_to_key>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32)) {
             MERROR_VER("Failed to check ringct signatures: mismatched key image");
             return false;
@@ -4579,7 +4630,7 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
 }
 
 //------------------------------------------------------------------
-bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest) const
+bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest, const transaction_type tx_type) const
 {
   const uint8_t version = get_current_hard_fork_version();
 
@@ -4625,22 +4676,11 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   }
   
   // convert fee to asset type value
-  if (source == "XHV") {
-  } else {
-    if (source != dest) {
-      // get_xusd_amount()
-      boost::multiprecision::uint128_t amount_128 = needed_fee;
-      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1; // XHV value moving avg
-      boost::multiprecision::uint128_t result_128 = (amount_128 * exchange_128) / 1000000000000;
-      needed_fee = (uint64_t)result_128;
-
-      // get_xasset_amount() if fee is paid in xasset
-      if (source != "XUSD") {
-        amount_128 = needed_fee;
-        exchange_128 = pr[source];
-        result_128 = (amount_128 * exchange_128) / 1000000000000;
-        needed_fee = (uint64_t)result_128;
-      }
+  if (source != "XHV" && source != dest) {
+    needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
+    // xasset amount if fee is paid in xasset
+    if (source != "XUSD") {
+      needed_fee = get_xasset_amount(needed_fee, source, pr);
     }
   }
 
@@ -5285,6 +5325,27 @@ leave: {
 
 // XXX old code adds miner tx here
 
+  // grap the latest pricing record for conversion of fee values and block cap calculation.
+  // ignore the fee converison and block conversions if we fail.
+  bool have_valid_pr = true;
+  offshore::pricing_record latest_pr;
+  uint64_t total_conversion_xhv = 0; // only offshore/onshroe
+  uint64_t block_cap_xhv = 0;
+  std::vector<std::pair<std::string, std::string>> supply_amounts;
+  if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
+    if (!get_latest_acceptable_pr(latest_pr)) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+        MWARNING("Failed to find a pricing record in last 10 block.");
+        MWARNING("Tx/conversion fees wont be converted. Cant calculuate block cap. Block must not contain any offshore/onshore txs.");
+      }
+      have_valid_pr = false;
+    }
+
+    // get the block cap
+    supply_amounts = get_db().get_circulating_supply();
+    block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
+  }
+
   size_t tx_index = 0;
   // Iterate over the block's transaction hashes, grabbing each
   // from the tx_pool and validating them.  Each is then added
@@ -5403,6 +5464,38 @@ leave: {
       bvc.m_verifivation_failed = true;
       goto leave;
     }
+    using tt = cryptonote::transaction_type;
+    tt tx_type;
+    if (!get_tx_type(source, dest, tx_type)) {
+      LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
+    // check for block cap limit
+    uint64_t conversion_this_tx_xhv = 0;
+    if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+
+      // dont include offshore/onshore txs if we cant calculate a valid block cap.
+      if (!have_valid_pr) {
+        LOG_PRINT_L2(" ofshore/onshore tx found in the block but no acceptable pricing record. Invlalid block." << tx.hash);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+
+      if (tx_type == tt::OFFSHORE) {
+        conversion_this_tx_xhv += tx.amount_burnt;
+      }
+      if (tx_type == tt::ONSHORE) {
+        conversion_this_tx_xhv += tx.amount_minted;
+      }
+
+      if (total_conversion_xhv + conversion_this_tx_xhv > block_cap_xhv) {
+        LOG_PRINT_L2("total ofshore/onshore tx amount more then allowed block cap. Invalid block." << tx.hash);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+    }
 
     // Validate tx pr height
     if (source != dest) {
@@ -5415,19 +5508,25 @@ leave: {
       if (hf_version >= HF_VERSION_HAVEN2) {
         // get tx type and pricing record
         block bl;
-        cryptonote::transaction_type tx_type;
-        if (!get_tx_type(source, dest, tx_type)) {
-          LOG_PRINT_L2(" transaction has invalid tx type " << tx.hash);
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
         if (!get_block_by_hash(get_block_id_by_height(tx.pricing_record_height), bl)) {
           LOG_PRINT_L2("error: failed to get block containing pricing record");
           bvc.m_verifivation_failed = true;
           goto leave;
         }
+
+        // Get the collateral requirements
+        uint64_t collateral = 0;
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts);
+          if (!r) {
+            LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+        }
+	
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, hf_version))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.collateral_indices, collateral))
         {
           LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
           bvc.m_verifivation_failed = true;
@@ -5450,6 +5549,7 @@ leave: {
 
     TIME_MEASURE_FINISH(cc);
     t_checktx += cc;
+    total_conversion_xhv += conversion_this_tx_xhv;
     fee_map[fee_asset_type] += fee;
     if (source != dest) {
       if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
@@ -6762,8 +6862,8 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
         m_tx_pool.get_transactions(txs, true);
 
         size_t tx_weight;
-	uint64_t fee, offshore_fee;
-	std::string fee_asset_type;
+        uint64_t fee, offshore_fee;
+        std::string fee_asset_type;
         bool relayed, do_not_relay, double_spend_seen, pruned;
         transaction pool_tx;
         blobdata txblob;

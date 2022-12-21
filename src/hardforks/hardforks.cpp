@@ -64,7 +64,8 @@ const hardfork_t testnet_hard_forks[] = {
   { 16, 50, 0, 1593616244 },
   { 17, 55, 0, 1593619255 },
   { 18, 60, 0, 1593919255 },
-  { 19, 65, 0, 1641373507 }
+  { 19, 65, 0, 1641373507 },
+  { 20, 100, 0, 1657094479 }
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
 const uint64_t testnet_hard_fork_version_1_till = 24;
@@ -83,7 +84,8 @@ const hardfork_t stagenet_hard_forks[] = {
   { 16, 230, 0, 1593616244 },
   { 17, 700, 0, 1597456244 },
   { 18, 1000, 0, 1597498244 },
-  { 19, 66650, 0, 1643817627 } // Fork time is on or around 3rd February 2022 at 12:20 GMT. Fork time finalised on 2022-02-02.
+  { 19, 66650, 0, 1643817627 }, // Fork time is on or around 3rd February 2022 at 12:20 GMT. Fork time finalised on 2022-02-02.
+  { 20, 256500, 0, 1669894250 } // Fork time is on or around 2st December 2022 at 12:30 GMT. Fork time finalised on 2022-12-01.
 };
 const size_t num_stagenet_hard_forks = sizeof(stagenet_hard_forks) / sizeof(stagenet_hard_forks[0]);
 const uint64_t stagenet_hard_fork_version_1_till = 24;
