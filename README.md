@@ -1,4 +1,4 @@
-# Haven Artemis v2.2.3
+# Haven Artemis v3.0.0
 
 Copyright (c) 2018-2022 Haven.   
 Portions Copyright (c) 2014-2019 The Monero Project.   
