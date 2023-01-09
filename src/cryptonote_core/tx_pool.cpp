@@ -377,6 +377,12 @@ namespace cryptonote
         // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
         for (size_t i = 0; i < tx.vout.size(); ++i) {
 
+          // Skip checks on collateral
+          if ((tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) &&
+              (std::find(tx.collateral_indices.begin(), tx.collateral_indices.end(), i) != tx.collateral_indices.end())) {
+            continue;
+          }
+          
           // Check if the output asset type is the same as the source
           if (((tx.vout[i].target.type() == typeid(txout_to_key)) && (source == "XHV")) ||
               ((tx.vout[i].target.type() == typeid(txout_offshore)) && (source == "XUSD")) ||
