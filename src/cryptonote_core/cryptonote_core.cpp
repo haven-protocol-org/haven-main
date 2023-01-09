@@ -940,12 +940,34 @@ namespace cryptonote
 
         // Get the collateral requirements
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_info[n].tvc.m_type == tt::OFFSHORE || tx_info[n].tvc.m_type == tt::ONSHORE)) {
+
+          // Get the correct pricing record here, given the height
+          std::vector<std::pair<cryptonote::blobdata,block>> blocks_pr;
+          offshore::pricing_record col_pr;
+          bool b = m_blockchain_storage.get_blocks(current_height-1, 1, blocks_pr);
+          if (!b) {
+            MERROR_VER("Failed to obtain pricing record for block: " << pr_height);
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            continue;
+          }
+          col_pr = blocks_pr[0].second.pricing_record;
+
+          if (col_pr.empty()) {
+            MERROR_VER("Failed to obtain pricing record for collateral: " << current_height-1);
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            continue;
+          }
+
           const std::vector<std::pair<std::string, std::string>>& amounts = m_blockchain_storage.get_db().get_circulating_supply();
           bool r = get_collateral_requirements(
             tx_info[n].tvc.m_type, 
             tx_info[n].tx->amount_burnt,
             tx_info[n].tvc.m_collateral,
-            tx_info[n].tvc.pr,
+            col_pr,
             amounts
           );
           if (!r) {

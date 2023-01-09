@@ -5517,7 +5517,22 @@ leave: {
         // Get the collateral requirements
         uint64_t collateral = 0;
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts);
+
+          // get tx type and pricing record
+          block col_bl;
+          if (!get_block_by_hash(get_block_id_by_height(blockchain_height-1), bl)) {
+            LOG_PRINT_L2("error: failed to get block containing pricing record");
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+
+          if (col_bl.pricing_record.empty()) {
+            LOG_PRINT_L2("error: failed to get block containing pricing record");
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+
+          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, col_bl.pricing_record, supply_amounts);
           if (!r) {
             LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
             bvc.m_verifivation_failed = true;
