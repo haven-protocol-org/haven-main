@@ -804,6 +804,7 @@ namespace cryptonote
       double vbs = rate_mcvbs + rate_offsvbs;
       const double min_vbs = 1.0;
       vbs = std::max(vbs, min_vbs);
+      vbs = std::floor(vbs);
       vbs *= COIN;
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
@@ -830,6 +831,7 @@ namespace cryptonote
       double vbs = std::max(rate_mcvbs, rate_srvbs) + rate_onsvbs;
       const double min_vbs = 1.0;
       vbs = std::max(vbs, min_vbs);
+      vbs = std::floor(vbs);
       vbs *= COIN;
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
