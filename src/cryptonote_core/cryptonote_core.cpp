@@ -1044,12 +1044,16 @@ namespace cryptonote
         if (tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof && tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproof2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAG && tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2 && tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven3)
           continue;
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven3) {
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tx->collateral_indices, tx_info[n].tvc.m_collateral))
-          {
-            set_semantics_failed(tx_info[n].tx_hash);
-            tx_info[n].tvc.m_verifivation_failed = true;
-            tx_info[n].result = false;
-          }
+            if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tx->collateral_indices, tx_info[n].tvc.m_collateral))
+            {
+              // 2 tx that used reorged pricing reocord for callateral calculation.
+              if (epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
+              && epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "55de061be8f769d6ab5ba7938c10e2f2fb635e5da82d2615ed7a8b06d9f9025b") {
+                set_semantics_failed(tx_info[n].tx_hash);
+                tx_info[n].tvc.m_verifivation_failed = true;
+                tx_info[n].result = false;
+              }
+            }
         } else {
           if (!rct::verRctSemanticsSimple(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset))
           {

@@ -5528,9 +5528,13 @@ leave: {
         // make sure proof-of-value still holds
         if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.collateral_indices, collateral))
         {
-          LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
-          bvc.m_verifivation_failed = true;
-          goto leave;
+          // 2 tx that used reorged pricing reocord for callateral calculation.
+          if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
+          && epee::string_tools::pod_to_hex(tx_id) != "55de061be8f769d6ab5ba7938c10e2f2fb635e5da82d2615ed7a8b06d9f9025b") {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
         }
       }
     } else {
