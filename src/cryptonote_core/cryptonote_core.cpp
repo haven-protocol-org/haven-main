@@ -941,22 +941,12 @@ namespace cryptonote
         // Get the collateral requirements
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_info[n].tvc.m_type == tt::OFFSHORE || tx_info[n].tvc.m_type == tt::ONSHORE)) {
 
-          // Get the correct pricing record here, given the height
-          offshore::pricing_record latest_pr;
-          if (!m_blockchain_storage.get_latest_acceptable_pr(latest_pr)) {
-            MERROR_VER("Failed to obtain acceptable pr for calculation of collateral");
-            set_semantics_failed(tx_info[n].tx_hash);
-            tx_info[n].tvc.m_verifivation_failed = true;
-            tx_info[n].result = false;
-            continue;
-          }
-
           const std::vector<std::pair<std::string, std::string>>& amounts = m_blockchain_storage.get_db().get_circulating_supply();
           bool r = get_collateral_requirements(
             tx_info[n].tvc.m_type, 
             tx_info[n].tx->amount_burnt,
             tx_info[n].tvc.m_collateral,
-            latest_pr,
+            tx_info[n].tvc.pr,
             amounts
           );
           if (!r) {
@@ -1048,10 +1038,14 @@ namespace cryptonote
             {
               // 2 tx that used reorged pricing reocord for callateral calculation.
               if (epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
-              && epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "55de061be8f769d6ab5ba7938c10e2f2fb635e5da82d2615ed7a8b06d9f9025b") {
+              && epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "55de061be8f769d6ab5ba7938c10e2f2fb635e5da82d2615ed7a8b06d9f9025b"
+              && epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "10e47b28af3dd84326f651ad064ffce7533bef41753c1affa64f0f6cf47d869d"
+              && epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "736c9a002f8d402536b00bf01fd048d3bd7d868cfbf25edf47ded05ab42421be") {
                 set_semantics_failed(tx_info[n].tx_hash);
                 tx_info[n].tvc.m_verifivation_failed = true;
                 tx_info[n].result = false;
+              } else {
+                LOG_PRINT_L2("NOTICE: allowing PR fix for TX " << epee::string_tools::pod_to_hex(tx_info[n].tx_hash));
               }
             }
         } else {
