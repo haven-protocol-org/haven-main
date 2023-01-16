@@ -902,8 +902,6 @@ private:
     bool get_pricing_record(offshore::pricing_record& pr, const uint64_t height);
     // Get circulating supply
     bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
-    // Get collateral
-    bool get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral);
     bool get_max_destination_amount(const cryptonote::transaction_type tx_type, const std::string& strSource, const std::string& strDest,  uint64_t &amount, std::string& err);
     // all locked & unlocked balances of all subaddress accounts
     std::map<std::string, uint64_t> balance_all(bool strict);
