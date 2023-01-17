@@ -10997,10 +10997,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // the only donwnside is fees are little bit higher for the assets that has high usd value.
   if (strSource != "XHV" && strSource != strDest) {
     // Convert fee to xUSD
-    base_fee = cryptonote::get_xusd_amount(base_fee_orig, "XHV", pricing_record, tx_type, hf_version);
-    if (strSource != "XUSD") {
-      // Convert fee to xAsset
-      base_fee = cryptonote::get_xasset_amount(base_fee, strSource, pricing_record);
+    if (pricing_record.unused1 && pricing_record.xUSD && pricing_record[strSource]) {
+      base_fee = cryptonote::get_xusd_amount(base_fee_orig, "XHV", pricing_record, tx_type, hf_version);
+      if (strSource != "XUSD") {
+        // Convert fee to xAsset
+        base_fee = cryptonote::get_xasset_amount(base_fee, strSource, pricing_record);
+      }
     }
   }
   const uint64_t fee_multiplier = get_fee_multiplier(priority);

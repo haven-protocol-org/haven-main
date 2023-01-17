@@ -4677,10 +4677,12 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   
   // convert fee to asset type value
   if (source != "XHV" && source != dest) {
-    needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
-    // xasset amount if fee is paid in xasset
-    if (source != "XUSD") {
-      needed_fee = get_xasset_amount(needed_fee, source, pr);
+    if (pr.unused1 && pr.xUSD && pr[source]) {
+      needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
+      // xasset amount if fee is paid in xasset
+      if (source != "XUSD") {
+        needed_fee = get_xasset_amount(needed_fee, source, pr);
+      }
     }
   }
 

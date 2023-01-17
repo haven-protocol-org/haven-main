@@ -137,17 +137,18 @@ namespace cryptonote
   //---------------------------------------------------------------------------------
   uint64_t tx_memory_pool::get_xhv_fee_amount(const std::string& fee_asset, uint64_t fee_amount, const cryptonote::transaction_type tt, const offshore::pricing_record& pr, const uint16_t hf_version)
   {
+    // Handle case where currency has been disabled in PR
+    if (fee_asset != "XHV" && (!pr.unused1 || !pr.xUSD || !pr[fee_asset])) {
+      return fee_amount;
+    } 
+
     uint64_t total_fee_xhv = 0;
     if (fee_asset == "XHV") {
       total_fee_xhv = fee_amount;
     } else if (fee_asset == "XUSD") {
-      // Handle case where currency has been disabled in PR
-      if (!pr.unused1 || !pr.xUSD) return fee_amount;
       // convert the fee into xhv
       total_fee_xhv = cryptonote::get_xhv_amount(fee_amount, pr, tt, hf_version);
     } else {
-      // Handle case where currency has been disabled in PR
-      if (!pr[fee_asset]) return fee_amount;
       // convert xasset to xusd
       uint64_t xusd_amount = cryptonote::get_xusd_amount(fee_amount, fee_asset, pr, tt, hf_version);
       // convert to xhv
