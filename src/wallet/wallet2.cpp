@@ -327,6 +327,7 @@ void do_prepare_file_names(const std::string& file_path, std::string& keys_file,
 uint64_t calculate_fee(uint64_t fee_per_kb, size_t bytes, uint64_t fee_multiplier)
 {
   uint64_t kB = (bytes + 1023) / 1024;
+  LOG_PRINT_L2(__func__ << ":" << __LINE__ << " : fee_per_kb:" << fee_per_kb << " bytes:" << bytes << "kB:" << kB << " fee_multiplier:" << fee_multiplier << " (result:" << (kB * fee_per_kb * fee_multiplier) << ")");
   return kB * fee_per_kb * fee_multiplier;
 }
 
@@ -334,6 +335,7 @@ uint64_t calculate_fee_from_weight(uint64_t base_fee, uint64_t weight, uint64_t 
 {
   uint64_t fee = weight * base_fee * fee_multiplier;
   fee = (fee + fee_quantization_mask - 1) / fee_quantization_mask * fee_quantization_mask;
+  LOG_PRINT_L2(__func__ << ":" << __LINE__ << " : base_fee:" << base_fee << " weight:" << weight << " fee_multiplier:" << fee_multiplier << " fee_quantization_mask:" << fee_quantization_mask << " (result:" << fee << ")");
   return fee;
 }
 
@@ -11000,8 +11002,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     if (pricing_record.unused1 && pricing_record.xUSD && pricing_record[strSource]) {
       base_fee = cryptonote::get_xusd_amount(base_fee_orig, "XHV", pricing_record, tx_type, hf_version);
       if (strSource != "XUSD") {
-        // Convert fee to xAsset
-        base_fee = cryptonote::get_xasset_amount(base_fee, strSource, pricing_record);
+        // Convert fee to xAsset - prevent a 0 fee
+        base_fee = std::max(1llu, cryptonote::get_xasset_amount(base_fee, strSource, pricing_record));
       }
     }
   }
