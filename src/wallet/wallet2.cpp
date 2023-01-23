@@ -11003,7 +11003,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       base_fee = cryptonote::get_xusd_amount(base_fee_orig, "XHV", pricing_record, tx_type, hf_version);
       if (strSource != "XUSD") {
         // Convert fee to xAsset - prevent a 0 fee
-        base_fee = std::max(1llu, cryptonote::get_xasset_amount(base_fee, strSource, pricing_record));
+        base_fee = std::max((uint64_t)1, cryptonote::get_xasset_amount(base_fee, strSource, pricing_record));
       }
     }
   }
