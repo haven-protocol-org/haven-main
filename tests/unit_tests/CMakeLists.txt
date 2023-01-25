@@ -78,7 +78,7 @@ set(unit_tests_sources
   pruning.cpp
   random.cpp
   rolling_median.cpp
-#  serialization.cpp
+  serialization.cpp
   sha256.cpp
   slow_memmem.cpp
   subaddress.cpp
