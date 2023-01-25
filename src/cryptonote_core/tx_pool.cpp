@@ -137,6 +137,11 @@ namespace cryptonote
   //---------------------------------------------------------------------------------
   uint64_t tx_memory_pool::get_xhv_fee_amount(const std::string& fee_asset, uint64_t fee_amount, const cryptonote::transaction_type tt, const offshore::pricing_record& pr, const uint16_t hf_version)
   {
+    // Handle case where currency has been disabled in PR
+    if (fee_asset != "XHV" && (!pr.unused1 || !pr.xUSD || !pr[fee_asset])) {
+      return fee_amount;
+    } 
+
     uint64_t total_fee_xhv = 0;
     if (fee_asset == "XHV") {
       total_fee_xhv = fee_amount;
@@ -2578,20 +2583,20 @@ namespace cryptonote
         // check for verRctSemantics2
         if (version >= HF_VERSION_HAVEN2) {
 
-          // Get the collateral requirement for the tx
-          uint64_t collateral = 0;
-          if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, latest_pr, supply_amounts)) {
-              LOG_PRINT_L2("error: failed to get collateral requirements");
-              continue;
-            }
-          }
-
           // get pricing record
           block bl;
           if (!m_blockchain.get_block_by_hash(m_blockchain.get_block_id_by_height(tx.pricing_record_height), bl)) {
             LOG_PRINT_L2("error: failed to get block containing pricing record");
             continue;
+          }
+
+          // Get the collateral requirement for the tx
+          uint64_t collateral = 0;
+          if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts)) {
+              LOG_PRINT_L2("error: failed to get collateral requirements");
+              continue;
+            }
           }
 
           // make sure proof-of-value still holds

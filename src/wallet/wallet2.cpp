@@ -327,6 +327,7 @@ void do_prepare_file_names(const std::string& file_path, std::string& keys_file,
 uint64_t calculate_fee(uint64_t fee_per_kb, size_t bytes, uint64_t fee_multiplier)
 {
   uint64_t kB = (bytes + 1023) / 1024;
+  LOG_PRINT_L2(__func__ << ":" << __LINE__ << " : fee_per_kb:" << fee_per_kb << " bytes:" << bytes << "kB:" << kB << " fee_multiplier:" << fee_multiplier << " (result:" << (kB * fee_per_kb * fee_multiplier) << ")");
   return kB * fee_per_kb * fee_multiplier;
 }
 
@@ -334,6 +335,7 @@ uint64_t calculate_fee_from_weight(uint64_t base_fee, uint64_t weight, uint64_t 
 {
   uint64_t fee = weight * base_fee * fee_multiplier;
   fee = (fee + fee_quantization_mask - 1) / fee_quantization_mask * fee_quantization_mask;
+  LOG_PRINT_L2(__func__ << ":" << __LINE__ << " : base_fee:" << base_fee << " weight:" << weight << " fee_multiplier:" << fee_multiplier << " fee_quantization_mask:" << fee_quantization_mask << " (result:" << fee << ")");
   return fee;
 }
 
@@ -2084,28 +2086,6 @@ bool wallet2::get_circulating_supply(std::vector<std::pair<std::string, std::str
     MERROR("Failed to retrieve circulating supply from daemon");
     return false;
   }
-}
-//----------------------------------------------------------------------------------------------------
-bool wallet2::get_collateral_requirements(const cryptonote::transaction_type &tx_type, const uint64_t amount, uint64_t &collateral)
-{
-  PERF_TIMER(get_collateral_requirements);
-  using tt = cryptonote::transaction_type;
-  THROW_WALLET_EXCEPTION_IF(tx_type == tt::UNSET, error::wallet_internal_error,  "Unsupported TX Type!");
-
-  cryptonote::COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::request req = AUTO_VAL_INIT(req);
-  cryptonote::COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS::response res = AUTO_VAL_INIT(res);
-  req.tx_type = (tx_type == tt::OFFSHORE) ? "offshore" : (tx_type == tt::ONSHORE) ? "onshore" : "";
-  req.amount = amount;
-  bool r = invoke_http_json_rpc("/json_rpc", "get_collateral_requirements", req, res, rpc_timeout); 
-  if (!r || res.status != CORE_RPC_STATUS_OK)
-  {
-    MERROR("Failed to request block header from daemon");
-    MERROR(res.status);
-    return false;
-  }
-  collateral = res.collateral;
-
-  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_type, const std::string& strSource, const std::string& strDest,  uint64_t &amount, std::string& err)
@@ -11019,10 +10999,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // the only donwnside is fees are little bit higher for the assets that has high usd value.
   if (strSource != "XHV" && strSource != strDest) {
     // Convert fee to xUSD
-    base_fee = cryptonote::get_xusd_amount(base_fee_orig, "XHV", pricing_record, tx_type, hf_version);
-    if (strSource != "XUSD") {
-      // Convert fee to xAsset
-      base_fee = cryptonote::get_xasset_amount(base_fee, strSource, pricing_record);
+    if (pricing_record.unused1 && pricing_record.xUSD && pricing_record[strSource]) {
+      base_fee = cryptonote::get_xusd_amount(base_fee_orig, "XHV", pricing_record, tx_type, hf_version);
+      if (strSource != "XUSD") {
+        // Convert fee to xAsset - prevent a 0 fee
+        base_fee = std::max((uint64_t)1, cryptonote::get_xasset_amount(base_fee, strSource, pricing_record));
+      }
     }
   }
   const uint64_t fee_multiplier = get_fee_multiplier(priority);
@@ -11031,6 +11013,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // throw if attempting a transaction with no destinations
   THROW_WALLET_EXCEPTION_IF(dsts.empty(), error::zero_destination);
 
+  // Get the circulating supply data
+  std::vector<std::pair<std::string, std::string>> circ_amounts;
+  bool bOK = get_circulating_supply(circ_amounts);
+  THROW_WALLET_EXCEPTION_IF(!bOK, error::wallet_internal_error, "Failed to get circulating supply");
+    
   // calculate total amount being sent to all destinations IN THE CORRECT CURRENCY
   // throw if total amount overflows uint64_t
   needed_money = 0;
@@ -11058,7 +11045,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       // Calculate the collateral
       if (need_collateral) {
         uint64_t collateral_amount = 0;
-        bool bOK = get_collateral_requirements(tx_type, dt.amount, collateral_amount);
+        bool bOK = cryptonote::get_collateral_requirements(tx_type, dt.amount, collateral_amount, pricing_record, circ_amounts);
         THROW_WALLET_EXCEPTION_IF(!bOK, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
         needed_col += collateral_amount;
       }
@@ -11075,7 +11062,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       // Calculate the collateral
       if (need_collateral) {
         uint64_t collateral_amount = 0;
-        bool bOK = get_collateral_requirements(tx_type, dt.amount_usd, collateral_amount);
+        bool bOK = cryptonote::get_collateral_requirements(tx_type, dt.amount_usd, collateral_amount, pricing_record, circ_amounts);
         THROW_WALLET_EXCEPTION_IF(!bOK, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
         needed_col += collateral_amount;
       }

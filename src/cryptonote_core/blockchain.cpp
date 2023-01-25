@@ -4677,10 +4677,12 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   
   // convert fee to asset type value
   if (source != "XHV" && source != dest) {
-    needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
-    // xasset amount if fee is paid in xasset
-    if (source != "XUSD") {
-      needed_fee = get_xasset_amount(needed_fee, source, pr);
+    if (pr.unused1 && pr.xUSD && pr[source]) {
+      needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
+      // xasset amount if fee is paid in xasset
+      if (source != "XUSD") {
+        needed_fee = get_xasset_amount(needed_fee, source, pr);
+      }
     }
   }
 
@@ -5506,17 +5508,7 @@ leave: {
         goto leave;
       }
       if (hf_version >= HF_VERSION_HAVEN2) {
-        // Get the collateral requirements
-        uint64_t collateral = 0;
-        if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, latest_pr, supply_amounts);
-          if (!r) {
-            LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
-            bvc.m_verifivation_failed = true;
-            goto leave;
-          }
-        }
-
+        
         // get tx type and pricing record
         block pr_bl;
         if (!get_block_by_hash(get_block_id_by_height(tx.pricing_record_height), pr_bl)) {
@@ -5525,12 +5517,29 @@ leave: {
           goto leave;
         }
 	
+        // Get the collateral requirements
+        uint64_t collateral = 0;
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, pr_bl.pricing_record, supply_amounts);
+          if (!r) {
+            LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+        }
+
         // make sure proof-of-value still holds
         if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.collateral_indices, collateral))
         {
-          LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
-          bvc.m_verifivation_failed = true;
-          goto leave;
+          // 2 tx that used reorged pricing record for collateral calculation.
+          if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
+          && epee::string_tools::pod_to_hex(tx_id) != "55de061be8f769d6ab5ba7938c10e2f2fb635e5da82d2615ed7a8b06d9f9025b"
+          && epee::string_tools::pod_to_hex(tx_id) != "10e47b28af3dd84326f651ad064ffce7533bef41753c1affa64f0f6cf47d869d"
+          && epee::string_tools::pod_to_hex(tx_id) != "736c9a002f8d402536b00bf01fd048d3bd7d868cfbf25edf47ded05ab42421be") {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
         }
       }
     } else {
