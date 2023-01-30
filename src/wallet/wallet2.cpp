@@ -2614,7 +2614,10 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             }
             LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
             if (0 != m_callback)
-              m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.unlock_time, tx_scan_info[o].asset_type);
+              if (tx.version >= POU_TRANSACTION_VERSION)
+                m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.output_unlock_times[o], tx_scan_info[o].asset_type);
+              else
+                m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.unlock_time, tx_scan_info[o].asset_type);
           }
 
           total_received_1[tx_scan_info[o].asset_type] += amount;
@@ -2715,7 +2718,10 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
             LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
             if (0 != m_callback)
-              m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.unlock_time, tx_scan_info[o].asset_type);
+              if (tx.version >= POU_TRANSACTION_VERSION)
+                m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.output_unlock_times[o], tx_scan_info[o].asset_type);
+              else
+                m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.unlock_time, tx_scan_info[o].asset_type);
           }
 
           total_received_1[tx_scan_info[o].asset_type] += extra_amount;
