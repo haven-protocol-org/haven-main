@@ -2307,7 +2307,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
   // per receiving subaddress index
   std::unordered_map<cryptonote::subaddress_index, std::map<std::string, uint64_t>> tx_money_got_in_outs;
-  std::unordered_map<cryptonote::subaddress_index, std::map<std::string, uint64_t>> tx_money_got_in_outs_vout_indices;
+  std::unordered_map<cryptonote::subaddress_index, std::map<std::string, std::vector<uint64_t>>> tx_money_got_in_outs_vout_indices;
   std::unordered_map<cryptonote::subaddress_index, std::map<std::string, amounts_container>> tx_amounts_individual_outs;
 
   crypto::public_key tx_pub_key = null_pkey;
@@ -2440,7 +2440,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             if (!tx_scan_info[i].error)
             {
               tx_amounts_individual_outs[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(tx_scan_info[i].money_transfered);
-              tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type] = i;
+              tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(i);
             }
           }
         }
@@ -2468,7 +2468,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
           if (!tx_scan_info[i].error)
           {
             tx_amounts_individual_outs[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(tx_scan_info[i].money_transfered);
-            tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type] = i;
+            tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(i);
           }
         }
       }
@@ -2489,7 +2489,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
           if (!tx_scan_info[i].error)
           {
             tx_amounts_individual_outs[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(tx_scan_info[i].money_transfered);
-            tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type] = i;
+            tx_money_got_in_outs_vout_indices[tx_scan_info[i].received->index][tx_scan_info[i].asset_type].push_back(i);
           }
         }
       }
@@ -2971,7 +2971,10 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
         payment.m_asset_type   = asset.first;
         payment.m_block_height = height;
         if (tx.version >= POU_TRANSACTION_VERSION) {
-          payment.m_unlock_time  = tx.output_unlock_times[tx_money_got_in_outs_vout_indices[i.first][asset.first]];
+	  uint64_t vout_index = tx_money_got_in_outs_vout_indices[i.first][asset.first].front();
+	  tx_money_got_in_outs_vout_indices[i.first][asset.first].erase(tx_money_got_in_outs_vout_indices[i.first][asset.first].begin());
+          payment.m_unlock_time  = tx.output_unlock_times[vout_index];
+	  LOG_ERROR("SETTING UNLOCK " << payment.m_unlock_time << " / UNLOCK INDEX " << vout_index << " for amount " << p_amount << " (i.first = " << i.first << ", asset.first = " << asset.first <<")");
         } else {
           payment.m_unlock_time  = tx.unlock_time;
         }
@@ -3085,7 +3088,11 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
   }
   entry.first->second.m_block_height = height;
   entry.first->second.m_timestamp = ts;
-  entry.first->second.m_unlock_time = tx.unlock_time;
+  //if (tx.version >= POU_TRANSACTION_VERSION) {
+  //  entry.first->second.m_unlock_time = tx.output_unlock_times;
+  //} else {
+    entry.first->second.m_unlock_time = tx.unlock_time;
+    //}
 
   add_rings(tx);
 }
