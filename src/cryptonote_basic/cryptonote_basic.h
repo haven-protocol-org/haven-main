@@ -50,6 +50,7 @@
 #include "ringct/rctTypes.h"
 #include "device/device.hpp"
 #include "cryptonote_basic/fwd.h"
+#include "offshore/pricing_record.h"
 
 namespace cryptonote
 {
@@ -74,7 +75,6 @@ namespace cryptonote
     crypto::hash hash;
   };
 
-  // outputs <= HF_VERSION_VIEW_TAGS
   struct txout_to_key
   {
     txout_to_key() { }
@@ -82,19 +82,63 @@ namespace cryptonote
     crypto::public_key key;
   };
 
-  // outputs >= HF_VERSION_VIEW_TAGS
-  struct txout_to_tagged_key
+  struct txout_offshore
   {
-    txout_to_tagged_key() { }
-    txout_to_tagged_key(const crypto::public_key &_key, const crypto::view_tag &_view_tag) : key(_key), view_tag(_view_tag) { }
+    txout_offshore() { }
+    txout_offshore(const crypto::public_key &_key) : key(_key) { }
     crypto::public_key key;
-    crypto::view_tag view_tag; // optimization to reduce scanning time
+  };
+
+  struct txout_xasset
+  {
+    txout_xasset() { }
+    txout_xasset(const crypto::public_key &_key, const std::string &_asset_type) : key(_key), asset_type(_asset_type) { }
+    crypto::public_key key;
+    std::string asset_type;
 
     BEGIN_SERIALIZE_OBJECT()
       FIELD(key)
-      FIELD(view_tag)
+      FIELD(asset_type)
     END_SERIALIZE()
   };
+
+  // outputs <= HF_VERSION_VIEW_TAGS
+  struct txout_haven_key
+  {
+    txout_haven_key() { }
+    txout_haven_key(const crypto::public_key &_key, const std::string &_asset_type, const uint64_t &_unlock_time, const bool &_is_collateral) : key(_key), asset_type(_asset_type), unlock_time(_unlock_time), is_collateral(_is_collateral) { }
+    crypto::public_key key;
+    std::string asset_type;
+    uint64_t unlock_time;
+    bool is_collateral;
+ 
+    BEGIN_SERIALIZE_OBJECT()
+      FIELD(key)
+      FIELD(asset_type)
+      VARINT_FIELD(unlock_time)
+      FIELD(is_collateral)
+    END_SERIALIZE()
+   };
+
+  // outputs >= HF_VERSION_VIEW_TAGS
+  struct txout_haven_tagged_key
+  {
+    txout_haven_tagged_key() { }
+    txout_haven_tagged_key(const crypto::public_key &_key, const std::string &_asset_type, const uint64_t &_unlock_time, const bool &_is_collateral, const crypto::view_tag &_view_tag) : key(_key), asset_type(_asset_type), unlock_time(_unlock_time), is_collateral(_is_collateral), view_tag(_view_tag) { }
+    crypto::public_key key;
+    std::string asset_type;
+    uint64_t unlock_time;
+    bool is_collateral;
+    crypto::view_tag view_tag; // optimization to reduce scanning time
+ 
+    BEGIN_SERIALIZE_OBJECT()
+      FIELD(key)
+      FIELD(asset_type)
+      VARINT_FIELD(unlock_time)
+      FIELD(is_collateral)
+      FIELD(view_tag)
+    END_SERIALIZE()
+   };
 
   /* inputs */
 
@@ -148,10 +192,65 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
+  struct txin_offshore
+  {
+    uint64_t amount;
+    std::vector<uint64_t> key_offsets;
+    crypto::key_image k_image;
 
-  typedef boost::variant<txin_gen, txin_to_script, txin_to_scripthash, txin_to_key> txin_v;
+    BEGIN_SERIALIZE_OBJECT()
+    VARINT_FIELD(amount)
+    FIELD(key_offsets)
+    FIELD(k_image)
+    END_SERIALIZE()
+  };
 
-  typedef boost::variant<txout_to_script, txout_to_scripthash, txout_to_key, txout_to_tagged_key> txout_target_v;
+  struct txin_onshore
+  {
+    uint64_t amount;
+    std::vector<uint64_t> key_offsets;
+    crypto::key_image k_image;
+    
+    BEGIN_SERIALIZE_OBJECT()
+    VARINT_FIELD(amount)
+    FIELD(key_offsets)
+    FIELD(k_image)
+    END_SERIALIZE()
+  };
+
+  struct txin_xasset
+  {
+    uint64_t amount;
+    std::string asset_type;
+    std::vector<uint64_t> key_offsets;
+    crypto::key_image k_image;      // double spending protection
+
+    BEGIN_SERIALIZE_OBJECT()
+    VARINT_FIELD(amount)
+    FIELD(asset_type)
+    FIELD(key_offsets)
+    FIELD(k_image)
+    END_SERIALIZE()
+  };
+  
+  struct txin_haven_key
+  {
+    uint64_t amount;
+    std::string asset_type;
+    std::vector<uint64_t> key_offsets;
+    crypto::key_image k_image;      // double spending protection
+
+    BEGIN_SERIALIZE_OBJECT()
+    VARINT_FIELD(amount)
+    FIELD(asset_type)
+    FIELD(key_offsets)
+    FIELD(k_image)
+    END_SERIALIZE()
+  };
+  
+  typedef boost::variant<txin_gen, txin_to_script, txin_to_scripthash, txin_to_key, txin_offshore, txin_onshore, txin_xasset, txin_haven_key> txin_v;
+
+  typedef boost::variant<txout_to_script, txout_to_scripthash, txout_to_key, txout_offshore, txout_xasset, txout_haven_key, txout_haven_tagged_key> txout_target_v;
 
   //typedef std::pair<uint64_t, txout> out_t;
   struct tx_out
@@ -179,14 +278,232 @@ namespace cryptonote
     std::vector<tx_out> vout;
     //extra
     std::vector<uint8_t> extra;
+    // Block height to use PR from
+    uint64_t pricing_record_height;
+    // Circulating supply information
+    std::vector<uint8_t> offshore_data;
+    uint64_t amount_burnt;
+    uint64_t amount_minted;
+    std::vector<uint64_t> output_unlock_times;
+    std::vector<uint32_t> collateral_indices;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
       if(version == 0 || CURRENT_TRANSACTION_VERSION < version) return false;
-      VARINT_FIELD(unlock_time)
-      FIELD(vin)
-      FIELD(vout)
-      FIELD(extra)
+      if (version < POU_TRANSACTION_VERSION)
+      {
+        VARINT_FIELD(unlock_time)
+      }
+    
+      // Only transactions prior to HAVEN_TYPES_TRANSACTION_VERSION are permitted to be anything other than HAVEN_TYPES and need translation
+      if (version < HAVEN_TYPES_TRANSACTION_VERSION) {
+
+        if (!typename Archive<W>::is_saving()) {
+
+          // Loading from archive
+        
+          // Read the input and output vectors, extra data, etc etc
+          FIELD(vin)
+          FIELD(vout)
+          FIELD(extra)
+          if(version >= OFFSHORE_TRANSACTION_VERSION) {
+            VARINT_FIELD(pricing_record_height)
+            if (version < 5)
+              FIELD(offshore_data)
+          }
+          
+          // Support the old "output_unlock_times" vector
+          if (version >= POU_TRANSACTION_VERSION)
+          {
+            FIELD(output_unlock_times)
+          }
+          if (version >= POU_TRANSACTION_VERSION && vout.size() != output_unlock_times.size()) return false;
+
+          VARINT_FIELD(amount_burnt)
+          VARINT_FIELD(amount_minted)
+
+          // Support the old "collateral_indices" vector
+          if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
+            FIELD(collateral_indices)
+            if (collateral_indices.size() != 2) {
+              return false;
+            }
+            for (const auto vout_idx: collateral_indices) {
+              if (vout_idx >= vout.size())
+                return false;
+            }
+          }
+
+          // Process the inputs
+          std::vector<txin_v> vin_tmp(vin);
+          vin.clear();
+          for (auto &vin_entry: vin_tmp) {
+            txin_haven_key in;
+            if (vin_entry.type() == typeid(txin_to_key)) {
+              in.asset_type = "XHV";
+              in.amount = boost::get<txin_to_key>(vin_entry).amount;
+              in.key_offsets = boost::get<txin_to_key>(vin_entry).key_offsets;
+              in.k_image = boost::get<txin_to_key>(vin_entry).k_image;
+            } else if (vin_entry.type() == typeid(txin_offshore)) {
+              in.asset_type = "XUSD";
+              in.amount = boost::get<txin_offshore>(vin_entry).amount;
+              in.key_offsets = boost::get<txin_offshore>(vin_entry).key_offsets;
+              in.k_image = boost::get<txin_offshore>(vin_entry).k_image;
+            } else if (vin_entry.type() == typeid(txin_onshore)) {
+              in.asset_type = "XHV";
+              in.amount = boost::get<txin_onshore>(vin_entry).amount;
+              in.key_offsets = boost::get<txin_onshore>(vin_entry).key_offsets;
+              in.k_image = boost::get<txin_onshore>(vin_entry).k_image;
+            } else if (vin_entry.type() == typeid(txin_xasset)) {
+              in.amount = boost::get<txin_xasset>(vin_entry).amount;
+              in.key_offsets = boost::get<txin_xasset>(vin_entry).key_offsets;
+              in.k_image = boost::get<txin_xasset>(vin_entry).k_image;
+              in.asset_type = boost::get<txin_xasset>(vin_entry).asset_type;
+            } else {
+              // ...
+            }
+            vin.push_back(in);
+          }
+          
+          // Process the outputs
+          std::vector<tx_out> vout_tmp(vout);
+          vout.clear();
+          for (size_t i=0; i<vout_tmp.size(); i++) {
+            txout_haven_key out;
+            if (vout_tmp[i].target.type() == typeid(txout_to_key)) {
+              out.asset_type = "XHV";
+              out.key = boost::get<txout_to_key>(vout_tmp[i].target).key;
+            } else if (vout_tmp[i].target.type() == typeid(txout_offshore)) {
+              out.asset_type = "XUSD";
+              out.key = boost::get<txout_offshore>(vout_tmp[i].target).key;
+            } else if (vout_tmp[i].target.type() == typeid(txout_xasset)) {
+              out.asset_type = boost::get<txout_xasset>(vout_tmp[i].target).asset_type;
+              out.key = boost::get<txout_xasset>(vout_tmp[i].target).key;
+            } else {
+              // ...
+            }
+            // Clone the output unlock time into the output itself
+            out.unlock_time = output_unlock_times[i];
+            // Set the is_collateral flag
+            out.is_collateral = false;
+            if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
+              if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {
+                out.is_collateral = true;
+              }
+            }
+            tx_out foo;
+            foo.amount = vout_tmp[i].amount;
+            foo.target = out;
+            vout.push_back(foo);
+          }
+        } else {
+
+          // Saving to archive
+
+          // Process the inputs
+          std::vector<txin_v> vin_tmp;
+          vin_tmp.reserve(vin.size());
+          for (auto &vin_entry_v: vin) {
+            txin_haven_key vin_entry = boost::get<txin_haven_key>(vin_entry_v);
+            if (vin_entry.asset_type == "XHV") {
+              txin_to_key in;
+              in.amount = vin_entry.amount;
+              in.key_offsets = vin_entry.key_offsets;
+              in.k_image = vin_entry.k_image;
+              vin_tmp.push_back(in);
+            } else if (vin_entry.asset_type == "XUSD") {
+              int xhv_outputs = std::count_if(vout.begin(), vout.end(), [](tx_out &foo_v) {
+                txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);
+                return out.asset_type == "XHV";
+              });
+              if (xhv_outputs) {
+                txin_onshore in;
+                in.amount = vin_entry.amount;
+                in.key_offsets = vin_entry.key_offsets;
+                in.k_image = vin_entry.k_image;
+                vin_tmp.push_back(in);
+              } else {
+                txin_offshore in;
+                in.amount = vin_entry.amount;
+                in.key_offsets = vin_entry.key_offsets;
+                in.k_image = vin_entry.k_image;
+                vin_tmp.push_back(in);
+              }
+            } else {
+              txin_xasset in;
+              in.amount = vin_entry.amount;
+              in.asset_type = vin_entry.asset_type;
+              in.key_offsets = vin_entry.key_offsets;
+              in.k_image = vin_entry.k_image;
+              vin_tmp.push_back(in);
+            }
+          }
+          
+          // Process the outputs
+          std::vector<tx_out> vout_tmp;
+          vout_tmp.reserve(vout.size());
+          for (size_t i=0; i<vout.size(); i++) {
+            txout_haven_key out;
+            if (vout[i].target.type() == typeid(txout_to_key)) {
+              out.asset_type = "XHV";
+              out.key = boost::get<txout_to_key>(vout[i].target).key;
+            } else if (vout[i].target.type() == typeid(txout_offshore)) {
+              out.asset_type = "XUSD";
+              out.key = boost::get<txout_offshore>(vout[i].target).key;
+            } else if (vout[i].target.type() == typeid(txout_xasset)) {
+              out.asset_type = boost::get<txout_xasset>(vout[i].target).asset_type;
+              out.key = boost::get<txout_xasset>(vout[i].target).key;
+            } else {
+              // ...
+            }
+            // Clone the output unlock time into the output itself
+            out.unlock_time = output_unlock_times[i];
+            // Set the is_collateral flag
+            out.is_collateral = false;
+            if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
+              if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {
+                out.is_collateral = true;
+              }
+            }
+
+            tx_out foo;
+            foo.amount = vout_tmp[i].amount;
+            foo.target = out;
+            vout_tmp.push_back(foo);
+          }
+
+          // Now that we have parsed the inputs & outputs into their original forms, we can serialise the rest of the transaction_prefix
+          FIELD(vin_tmp)
+          FIELD(vout_tmp)
+          FIELD(extra)
+          if (version >= OFFSHORE_TRANSACTION_VERSION) {
+            FIELD(pricing_record_height)
+            FIELD(amount_burnt)
+            FIELD(amount_minted)
+            if (version < 5)
+              FIELD(offshore_data)
+          }
+
+          // Support the old "output_unlock_times" vector
+          if (version >= POU_TRANSACTION_VERSION) {
+            FIELD(output_unlock_times)
+          }
+        
+          // Support the old "collateral_indices" vector
+          if (version >= COLLATERAL_TRANSACTION_VERSION) {
+            FIELD(collateral_indices)
+          }
+        }
+      } else {
+
+        // New format of transaction
+        FIELD(vin)
+        FIELD(vout)
+        FIELD(extra)
+        VARINT_FIELD(pricing_record_height)
+        VARINT_FIELD(amount_burnt)
+        VARINT_FIELD(amount_minted)
+      }
     END_SERIALIZE()
 
   public:
@@ -444,6 +761,10 @@ namespace cryptonote
       size_t operator()(const txin_to_script& txin) const{return 0;}
       size_t operator()(const txin_to_scripthash& txin) const{return 0;}
       size_t operator()(const txin_to_key& txin) const {return txin.key_offsets.size();}
+      size_t operator()(const txin_offshore& txin) const {return txin.key_offsets.size();}
+      size_t operator()(const txin_onshore& txin) const {return txin.key_offsets.size();}
+      size_t operator()(const txin_xasset& txin) const {return txin.key_offsets.size();}
+      size_t operator()(const txin_haven_key& txin) const {return txin.key_offsets.size();}
     };
 
     return boost::apply_visitor(txin_signature_size_visitor(), tx_in);
@@ -567,16 +888,24 @@ namespace std {
 }
 
 BLOB_SERIALIZER(cryptonote::txout_to_key);
+BLOB_SERIALIZER(cryptonote::txout_offshore);
 BLOB_SERIALIZER(cryptonote::txout_to_scripthash);
 
 VARIANT_TAG(binary_archive, cryptonote::txin_gen, 0xff);
 VARIANT_TAG(binary_archive, cryptonote::txin_to_script, 0x0);
 VARIANT_TAG(binary_archive, cryptonote::txin_to_scripthash, 0x1);
 VARIANT_TAG(binary_archive, cryptonote::txin_to_key, 0x2);
+VARIANT_TAG(binary_archive, cryptonote::txin_offshore, 0x3);
+VARIANT_TAG(binary_archive, cryptonote::txin_onshore, 0x4);
+VARIANT_TAG(binary_archive, cryptonote::txin_xasset, 0x5);
+VARIANT_TAG(binary_archive, cryptonote::txin_haven_key, 0x6);
 VARIANT_TAG(binary_archive, cryptonote::txout_to_script, 0x0);
 VARIANT_TAG(binary_archive, cryptonote::txout_to_scripthash, 0x1);
 VARIANT_TAG(binary_archive, cryptonote::txout_to_key, 0x2);
-VARIANT_TAG(binary_archive, cryptonote::txout_to_tagged_key, 0x3);
+VARIANT_TAG(binary_archive, cryptonote::txout_offshore, 0x3);
+VARIANT_TAG(binary_archive, cryptonote::txout_xasset, 0x5);
+VARIANT_TAG(binary_archive, cryptonote::txout_haven_key, 0x6);
+VARIANT_TAG(binary_archive, cryptonote::txout_haven_tagged_key, 0x7);
 VARIANT_TAG(binary_archive, cryptonote::transaction, 0xcc);
 VARIANT_TAG(binary_archive, cryptonote::block, 0xbb);
 
@@ -584,10 +913,17 @@ VARIANT_TAG(json_archive, cryptonote::txin_gen, "gen");
 VARIANT_TAG(json_archive, cryptonote::txin_to_script, "script");
 VARIANT_TAG(json_archive, cryptonote::txin_to_scripthash, "scripthash");
 VARIANT_TAG(json_archive, cryptonote::txin_to_key, "key");
+VARIANT_TAG(json_archive, cryptonote::txin_offshore, "offshore");
+VARIANT_TAG(json_archive, cryptonote::txin_onshore, "onshore");
+VARIANT_TAG(json_archive, cryptonote::txin_xasset, "xasset");
+VARIANT_TAG(json_archive, cryptonote::txin_haven_key, "haven_key");
 VARIANT_TAG(json_archive, cryptonote::txout_to_script, "script");
 VARIANT_TAG(json_archive, cryptonote::txout_to_scripthash, "scripthash");
 VARIANT_TAG(json_archive, cryptonote::txout_to_key, "key");
-VARIANT_TAG(json_archive, cryptonote::txout_to_tagged_key, "tagged_key");
+VARIANT_TAG(json_archive, cryptonote::txout_offshore, "offshore");
+VARIANT_TAG(json_archive, cryptonote::txout_xasset, "xasset");
+VARIANT_TAG(json_archive, cryptonote::txout_haven_key, "haven_key");
+VARIANT_TAG(json_archive, cryptonote::txout_haven_tagged_key, "haven_tagged_key");
 VARIANT_TAG(json_archive, cryptonote::transaction, "tx");
 VARIANT_TAG(json_archive, cryptonote::block, "block");
 
@@ -595,9 +931,16 @@ VARIANT_TAG(debug_archive, cryptonote::txin_gen, "gen");
 VARIANT_TAG(debug_archive, cryptonote::txin_to_script, "script");
 VARIANT_TAG(debug_archive, cryptonote::txin_to_scripthash, "scripthash");
 VARIANT_TAG(debug_archive, cryptonote::txin_to_key, "key");
+VARIANT_TAG(debug_archive, cryptonote::txin_offshore, "offshore");
+VARIANT_TAG(debug_archive, cryptonote::txin_onshore, "onshore");
+VARIANT_TAG(debug_archive, cryptonote::txin_xasset, "xasset");
+VARIANT_TAG(debug_archive, cryptonote::txin_haven_key, "haven_key");
 VARIANT_TAG(debug_archive, cryptonote::txout_to_script, "script");
 VARIANT_TAG(debug_archive, cryptonote::txout_to_scripthash, "scripthash");
 VARIANT_TAG(debug_archive, cryptonote::txout_to_key, "key");
-VARIANT_TAG(debug_archive, cryptonote::txout_to_tagged_key, "tagged_key");
+VARIANT_TAG(debug_archive, cryptonote::txout_offshore, "offshore");
+VARIANT_TAG(debug_archive, cryptonote::txout_xasset, "xasset");
+VARIANT_TAG(debug_archive, cryptonote::txout_haven_key, "haven_key");
+VARIANT_TAG(debug_archive, cryptonote::txout_haven_tagged_key, "haven_tagged_key");
 VARIANT_TAG(debug_archive, cryptonote::transaction, "tx");
 VARIANT_TAG(debug_archive, cryptonote::block, "block");

@@ -464,7 +464,7 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES(tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeBulletproofPlus,
         std::numeric_limits<uint64_t>::max(), "Unsupported rct_signatures type in get_pruned_transaction_weight");
     CHECK_AND_ASSERT_MES(!tx.vin.empty(), std::numeric_limits<uint64_t>::max(), "empty vin");
-    CHECK_AND_ASSERT_MES(tx.vin[0].type() == typeid(cryptonote::txin_to_key), std::numeric_limits<uint64_t>::max(), "empty vin");
+    CHECK_AND_ASSERT_MES(tx.vin[0].type() == typeid(cryptonote::txin_haven_key), std::numeric_limits<uint64_t>::max(), "empty vin");
 
     // get pruned data size
     std::ostringstream s;
@@ -484,7 +484,7 @@ namespace cryptonote
     weight += extra;
 
     // calculate deterministic CLSAG/MLSAG data size
-    const size_t ring_size = boost::get<cryptonote::txin_to_key>(tx.vin[0]).key_offsets.size();
+    const size_t ring_size = boost::get<cryptonote::txin_haven_key>(tx.vin[0]).key_offsets.size();
     if (rct::is_rct_clsag(tx.rct_signatures.type))
       extra = tx.vin.size() * (ring_size + 2) * 32;
     else
@@ -531,8 +531,8 @@ namespace cryptonote
     uint64_t amount_out = 0;
     for(auto& in: tx.vin)
     {
-      CHECK_AND_ASSERT_MES(in.type() == typeid(txin_to_key), 0, "unexpected type id in transaction");
-      amount_in += boost::get<txin_to_key>(in).amount;
+      CHECK_AND_ASSERT_MES(in.type() == typeid(txin_haven_key), 0, "unexpected type id in transaction");
+      amount_in += boost::get<txin_haven_key>(in).amount;
     }
     for(auto& o: tx.vout)
       amount_out += o.amount;
@@ -824,7 +824,7 @@ namespace cryptonote
     money = 0;
     for(const auto& in: tx.vin)
     {
-      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_haven_key, tokey_in, false);
       money += tokey_in.amount;
     }
     return true;
@@ -841,8 +841,8 @@ namespace cryptonote
   {
     for(const auto& in: tx.vin)
     {
-      CHECK_AND_ASSERT_MES(in.type() == typeid(txin_to_key), false, "wrong variant type: "
-        << in.type().name() << ", expected " << typeid(txin_to_key).name()
+      CHECK_AND_ASSERT_MES(in.type() == typeid(txin_haven_key), false, "wrong variant type: "
+        << in.type().name() << ", expected " << typeid(txin_haven_key).name()
         << ", in transaction id=" << get_transaction_hash(tx));
 
     }
@@ -878,7 +878,7 @@ namespace cryptonote
     uint64_t money = 0;
     for(const auto& in: tx.vin)
     {
-      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_haven_key, tokey_in, false);
       if(money > tokey_in.amount + money)
         return false;
       money += tokey_in.amount;
@@ -908,12 +908,12 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool get_output_public_key(const cryptonote::tx_out& out, crypto::public_key& output_public_key)
   {
-    // before HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_to_key
-    // after HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_to_tagged_key
-    if (out.target.type() == typeid(txout_to_key))
-      output_public_key = boost::get< txout_to_key >(out.target).key;
-    else if (out.target.type() == typeid(txout_to_tagged_key))
-      output_public_key = boost::get< txout_to_tagged_key >(out.target).key;
+    // before HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_haven_key
+    // after HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_haven_tagged_key
+    if (out.target.type() == typeid(txout_haven_key))
+      output_public_key = boost::get< txout_haven_key >(out.target).key;
+    else if (out.target.type() == typeid(txout_haven_tagged_key))
+      output_public_key = boost::get< txout_haven_tagged_key >(out.target).key;
     else
     {
       LOG_ERROR("Unexpected output target type found: " << out.target.type().name());
@@ -925,8 +925,8 @@ namespace cryptonote
   //---------------------------------------------------------------
   boost::optional<crypto::view_tag> get_output_view_tag(const cryptonote::tx_out& out)
   {
-    return out.target.type() == typeid(txout_to_tagged_key)
-      ? boost::optional<crypto::view_tag>(boost::get< txout_to_tagged_key >(out.target).view_tag)
+    return out.target.type() == typeid(txout_haven_tagged_key)
+      ? boost::optional<crypto::view_tag>(boost::get< txout_haven_tagged_key >(out.target).view_tag)
       : boost::optional<crypto::view_tag>();
   }
   //---------------------------------------------------------------
@@ -944,14 +944,14 @@ namespace cryptonote
     out.amount = amount;
     if (use_view_tags)
     {
-      txout_to_tagged_key ttk;
+      txout_haven_tagged_key ttk;
       ttk.key = output_public_key;
       ttk.view_tag = view_tag;
       out.target = ttk;
     }
     else
     {
-      txout_to_key tk;
+      txout_haven_key tk;
       tk.key = output_public_key;
       out.target = tk;
     }
@@ -964,21 +964,21 @@ namespace cryptonote
       if (hf_version > HF_VERSION_VIEW_TAGS)
       {
         // from v15, require outputs have view tags
-        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_to_tagged_key), false, "wrong variant type: "
-          << o.target.type().name() << ", expected txout_to_tagged_key in transaction id=" << get_transaction_hash(tx));
+        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_haven_tagged_key), false, "wrong variant type: "
+          << o.target.type().name() << ", expected txout_haven_tagged_key in transaction id=" << get_transaction_hash(tx));
       }
       else if (hf_version < HF_VERSION_VIEW_TAGS)
       {
-        // require outputs to be of type txout_to_key
-        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_to_key), false, "wrong variant type: "
-          << o.target.type().name() << ", expected txout_to_key in transaction id=" << get_transaction_hash(tx));
+        // require outputs to be of type txout_haven_key
+        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_haven_key), false, "wrong variant type: "
+          << o.target.type().name() << ", expected txout_haven_key in transaction id=" << get_transaction_hash(tx));
       }
       else  //(hf_version == HF_VERSION_VIEW_TAGS)
       {
-        // require outputs be of type txout_to_key OR txout_to_tagged_key
-        // to allow grace period before requiring all to be txout_to_tagged_key
-        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_to_key) || o.target.type() == typeid(txout_to_tagged_key), false, "wrong variant type: "
-          << o.target.type().name() << ", expected txout_to_key or txout_to_tagged_key in transaction id=" << get_transaction_hash(tx));
+        // require outputs be of type txout_haven_key OR txout_haven_tagged_key
+        // to allow grace period before requiring all to be txout_haven_tagged_key
+        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_haven_key) || o.target.type() == typeid(txout_haven_tagged_key), false, "wrong variant type: "
+          << o.target.type().name() << ", expected txout_haven_key or txout_haven_tagged_key in transaction id=" << get_transaction_hash(tx));
 
         // require all outputs in a tx be of the same type
         CHECK_AND_ASSERT_MES(o.target.type() == tx.vout[0].target.type(), false, "non-matching variant types: "
@@ -1286,7 +1286,7 @@ namespace cryptonote
       binary_archive<true> ba(ss);
       const size_t inputs = t.vin.size();
       const size_t outputs = t.vout.size();
-      const size_t mixin = t.vin.empty() ? 0 : t.vin[0].type() == typeid(txin_to_key) ? boost::get<txin_to_key>(t.vin[0]).key_offsets.size() - 1 : 0;
+      const size_t mixin = t.vin.empty() ? 0 : t.vin[0].type() == typeid(txin_haven_key) ? boost::get<txin_haven_key>(t.vin[0]).key_offsets.size() - 1 : 0;
       bool r = tt.rct_signatures.p.serialize_rctsig_prunable(ba, t.rct_signatures.type, inputs, outputs, mixin);
       CHECK_AND_ASSERT_MES(r, false, "Failed to serialize rct signatures prunable");
       cryptonote::get_blob_hash(ss.str(), res);

@@ -2896,6 +2896,90 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
       // if no double-spend detected, return true
       return true;
     }
+    bool operator()(const txin_offshore& in) const
+    {
+      const crypto::key_image& ki = in.k_image;
+
+      // attempt to insert the newly-spent key into the container of
+      // keys spent this block.  If this fails, the key was spent already
+      // in this block, return false to flag that a double spend was detected.
+      //
+      // if the insert into the block-wide spent keys container succeeds,
+      // check the blockchain-wide spent keys container and make sure the
+      // key wasn't used in another block already.
+      auto r = m_spent_keys.insert(ki);
+      if(!r.second || m_db->has_key_image(ki))
+	{
+	  //double spend detected
+	  return false;
+	}
+
+      // if no double-spend detected, return true
+      return true;
+    }
+    bool operator()(const txin_onshore& in) const
+    {
+      const crypto::key_image& ki = in.k_image;
+
+      // attempt to insert the newly-spent key into the container of
+      // keys spent this block.  If this fails, the key was spent already
+      // in this block, return false to flag that a double spend was detected.
+      //
+      // if the insert into the block-wide spent keys container succeeds,
+      // check the blockchain-wide spent keys container and make sure the
+      // key wasn't used in another block already.
+      auto r = m_spent_keys.insert(ki);
+      if(!r.second || m_db->has_key_image(ki))
+	{
+	  //double spend detected
+	  return false;
+	}
+
+      // if no double-spend detected, return true
+      return true;
+    }
+    bool operator()(const txin_xasset& in) const
+    {
+      const crypto::key_image& ki = in.k_image;
+
+      // attempt to insert the newly-spent key into the container of
+      // keys spent this block.  If this fails, the key was spent already
+      // in this block, return false to flag that a double spend was detected.
+      //
+      // if the insert into the block-wide spent keys container succeeds,
+      // check the blockchain-wide spent keys container and make sure the
+      // key wasn't used in another block already.
+      auto r = m_spent_keys.insert(ki);
+      if(!r.second || m_db->has_key_image(ki))
+	  {
+	    //double spend detected
+	    return false;
+	  }
+
+      // if no double-spend detected, return true
+      return true;
+    }
+    bool operator()(const txin_haven_key& in) const
+    {
+      const crypto::key_image& ki = in.k_image;
+
+      // attempt to insert the newly-spent key into the container of
+      // keys spent this block.  If this fails, the key was spent already
+      // in this block, return false to flag that a double spend was detected.
+      //
+      // if the insert into the block-wide spent keys container succeeds,
+      // check the blockchain-wide spent keys container and make sure the
+      // key wasn't used in another block already.
+      auto r = m_spent_keys.insert(ki);
+      if(!r.second || m_db->has_key_image(ki))
+	  {
+	    //double spend detected
+	    return false;
+	  }
+
+      // if no double-spend detected, return true
+      return true;
+    }
 
     bool operator()(const txin_gen& tx) const
     {
@@ -3996,7 +4080,7 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_to_key& txin, cons
 
       // The original code includes a check for the output corresponding to this input
       // to be a txout_to_key. This is removed, as the database does not store this info.
-      // Only txout_to_key (and since HF_VERSION_VIEW_TAGS, txout_to_tagged_key)
+      // Only txout_haven_key (and since HF_VERSION_VIEW_TAGS, txout_haven_tagged_key)
       // outputs are stored in the DB in the first place, done in Blockchain*::add_output.
       // Additional type checks on outputs were also added via cryptonote::check_output_types
       // and cryptonote::get_output_public_key (see Blockchain::check_tx_outputs).
