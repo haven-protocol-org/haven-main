@@ -672,6 +672,28 @@ namespace boost
     }
   }
 
+  template <class Archive>
+  inline void serialize(Archive &a, offshore::pricing_record &x, const boost::serialization::version_type ver)
+  {
+    a & x.xAG;
+    a & x.xAU;
+    a & x.xAUD;
+    a & x.xBTC;
+    a & x.xCAD;
+    a & x.xCHF;
+    a & x.xCNY;
+    a & x.xEUR;
+    a & x.xGBP;
+    a & x.xJPY;
+    a & x.xNOK;
+    a & x.xNZD;
+    a & x.xUSD;
+    a & x.unused1;
+    a & x.unused2;
+    a & x.unused3;
+    a & x.timestamp;
+    a & x.signature;
+  }
 }
 }
 

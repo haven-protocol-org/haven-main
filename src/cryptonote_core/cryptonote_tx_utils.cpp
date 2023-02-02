@@ -43,6 +43,10 @@ using namespace epee;
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
+#include "multisig/multisig.h"
+#include "offshore/asset_types.h"
+
+#include <boost/multiprecision/cpp_bin_float.hpp>
 
 using namespace crypto;
 
@@ -201,6 +205,548 @@ namespace cryptonote
     if (count == 0 && change_addr)
       return change_addr->m_view_public_key;
     return addr.m_view_public_key;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
+
+    // Calculate the amount being sent
+    uint64_t amount = 0;
+    for (auto dt: dsts) {
+      // Filter out the change, which is never converted
+      if (dt.amount_usd != 0 && !dt.is_collateral) {
+        amount += dt.amount;
+      }
+    }
+
+    uint64_t fee_estimate = 0;
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      // Flat 1.5% fee
+      fee_estimate = (amount * 3) / 200;
+    } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+      // Flat 0.5% fee
+      fee_estimate = amount / 200;
+    } else {
+      // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
+      // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
+      // This way, the code is safe, and the fee is always correct.
+      fee_estimate =
+      (unlock_time >= 5040) ? (amount / 500) :
+      (unlock_time >= 1440) ? (amount / 20) :
+      (unlock_time >= 720) ? (amount / 10) :
+      amount / 5;
+    }
+
+    return fee_estimate;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
+
+    // Calculate the amount being sent
+    uint64_t amount_usd = 0;
+    for (auto dt: dsts) {
+      // Filter out the change, which is never converted
+      if (dt.amount != 0 && !dt.is_collateral) {
+        amount_usd += dt.amount_usd;
+      }
+    }
+
+    uint64_t fee_estimate = 0;
+     if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      // Flat 1.5% fee
+      fee_estimate = (amount_usd * 3) / 200;
+    } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+      // Flat 0.5% fee
+      fee_estimate = amount_usd / 200;
+    } else {
+      // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
+      // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
+      // This way, the code is safe, and the fee is always correct.
+      fee_estimate =
+      (unlock_time >= 5040) ? (amount_usd / 500) :
+      (unlock_time >= 1440) ? (amount_usd / 20) :
+      (unlock_time >= 720) ? (amount_usd / 10) :
+      amount_usd / 5;
+
+    }
+
+    return fee_estimate;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
+
+    // Calculate the amount being sent
+    uint64_t amount_xasset = 0;
+    for (auto dt: dsts) {
+      // Filter out the change, which is never converted
+      if (dt.amount_usd != 0) {
+        amount_xasset += dt.amount_xasset;
+      }
+    }
+
+    uint64_t fee_estimate = 0;  
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      // Calculate 1.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 15) / 1000; // 1.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      // Calculate 0.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 5) / 1000; // 0.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else {
+      // Calculate 0.3% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 3) / 1000;
+      fee_estimate = (uint64_t)amount_128;
+    }
+
+   return fee_estimate;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
+
+    // Calculate the amount being sent
+    uint64_t amount_usd = 0;
+    for (auto dt: dsts) {
+      // Filter out the change, which is never converted
+      // All other destinations should have both pre and post converted amounts set so far except
+      // the change destinations.
+      if (dt.amount_xasset != 0) {
+        amount_usd += dt.amount_usd;
+      }
+    }
+
+    uint64_t fee_estimate = 0;
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      // Calculate 1.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 15) / 1000; // 1.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      // Calculate 0.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 5) / 1000; // 0.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else {
+      // Calculate 0.3% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 3) / 1000;
+      fee_estimate = (uint64_t)amount_128;
+    }
+
+    return fee_estimate;
+  }
+  //---------------------------------------------------------------
+  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
+
+    // Clear the source
+    std::set<std::string> source_asset_types;
+    source = "";
+    for (size_t i = 0; i < tx.vin.size(); i++) {
+      if (tx.vin[i].type() == typeid(txin_gen)) {
+        if (!is_miner_tx) {
+          LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert("XHV");
+      } else if (tx.vin[i].type() == typeid(txin_to_key)) {
+        source_asset_types.insert("XHV");
+      } else if (tx.vin[i].type() == typeid(txin_offshore)) {
+        source_asset_types.insert("XUSD");
+      } else if (tx.vin[i].type() == typeid(txin_onshore)) {
+        source_asset_types.insert("XUSD");
+      } else if (tx.vin[i].type() == typeid(txin_xasset)) {
+        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert(xasset);
+      } else {
+        LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
+        return false;
+      }
+    }
+
+    std::vector<std::string> sat;
+    sat.reserve(source_asset_types.size());
+    std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
+    
+    // Sanity check that we only have 1 source asset type
+    if (tx.version >= COLLATERAL_TRANSACTION_VERSION && sat.size() == 2) {
+      // this is only possible for an onshore tx.
+      if ((sat[0] == "XHV" && sat[1] == "XUSD") || (sat[0] == "XUSD" && sat[1] == "XHV")) {
+        source = "XUSD";
+      } else {
+        LOG_ERROR("Impossible input asset types. Rejecting..");
+        return false;
+      }
+    } else {
+      if (sat.size() != 1) {
+        LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
+        return false;
+      }
+      source = sat[0];
+    }
+    
+    // Clear the destination
+    std::set<std::string> destination_asset_types;
+    destination = "";
+    for (const auto &out: tx.vout) {
+      if (out.target.type() == typeid(txout_to_key)) {
+        destination_asset_types.insert("XHV");
+      } else if (out.target.type() == typeid(txout_offshore)) {
+        destination_asset_types.insert("XUSD");
+      } else if (out.target.type() == typeid(txout_xasset)) {
+        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
+          return false;
+        }
+        destination_asset_types.insert(xasset);
+      } else {
+        LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
+        return false;
+      }
+    }
+
+    std::vector<std::string> dat;
+    dat.reserve(destination_asset_types.size());
+    std::copy(destination_asset_types.begin(), destination_asset_types.end(), std::back_inserter(dat));
+    
+    // Check that we have at least 1 destination_asset_type
+    if (!dat.size()) {
+      LOG_ERROR("No supported destinations asset types detected. Rejecting..");
+      return false;
+    }
+    
+    // Handle miner_txs differently - full validation is performed in validate_miner_transaction()
+    if (is_miner_tx) {
+      destination = "XHV";
+    } else {
+    
+      // Sanity check that we only have 1 or 2 destination asset types
+      if (dat.size() > 2) {
+        LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
+        return false;
+      } else if (dat.size() == 1) {
+        if (sat.size() != 1) {
+          LOG_ERROR("Impossible input asset types. Rejecting..");
+          return false;
+        }
+        if (dat[0] != source) {
+          LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
+          return false;
+        }
+        destination = dat[0];
+      } else {
+        if (sat.size() == 2) {
+          if (!((dat[0] == "XHV" && dat[1] == "XUSD") || (dat[0] == "XUSD" && dat[1] == "XHV"))) {
+            LOG_ERROR("Impossible input asset types. Rejecting..");
+            return false;
+          }
+        }
+        if (dat[0] == source) {
+          destination = dat[1];
+        } else if (dat[1] == source) {
+          destination = dat[0];
+        } else {
+          LOG_ERROR("Conversion outputs are incorrect asset types (source asset type not found - [" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
+          return false;
+        }
+      }
+    }
+    
+    // check both strSource and strDest are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
+      return false;
+    }
+
+    // Check for the 3 known exploited TXs that converted XJPY to XBTC
+    const std::vector<std::string> exploit_txs = {"4c87e7245142cb33a8ed4f039b7f33d4e4dd6b541a42a55992fd88efeefc40d1",
+                                                  "7089a8faf5bddf8640a3cb41338f1ec2cdd063b1622e3b27923e2c1c31c55418",
+                                                  "ad5d15085594b8f2643f058b05931c3e60966128b4c33298206e70bdf9d41c22"};
+
+    std::string tx_hash = epee::string_tools::pod_to_hex(txid);
+    if (std::find(exploit_txs.begin(), exploit_txs.end(), tx_hash) != exploit_txs.end()) {
+      destination = "XJPY";
+    }
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type) {
+
+    // check both source and destination are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
+      return false;
+    }
+
+    // Find the tx type
+    if (source == destination) {
+      if (source == "XHV") {
+        type = transaction_type::TRANSFER;
+      } else if (source == "XUSD") {
+        type = transaction_type::OFFSHORE_TRANSFER;
+      } else {
+        type = transaction_type::XASSET_TRANSFER;
+      }
+    } else {
+      if (source == "XHV" && destination == "XUSD") {
+        type = transaction_type::OFFSHORE;
+      } else if (source == "XUSD" && destination == "XHV") {
+        type = transaction_type::ONSHORE;
+      } else if (source == "XUSD" && destination != "XHV") {
+        type = transaction_type::XUSD_TO_XASSET;
+      } else if (destination == "XUSD" && source != "XHV") {
+        type = transaction_type::XASSET_TO_XUSD;
+      } else {
+        LOG_ERROR("Invalid conversion from " << source << "to" << destination << ". Rejecting..");
+        return false;
+      }
+    }
+
+    // Return success to caller
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts)
+  {
+    using namespace boost::multiprecision;
+    using tt = transaction_type;
+
+    // Process the circulating supply data
+    std::map<std::string, uint128_t> map_amounts;
+    uint128_t mcap_xassets = 0;
+    for (const auto &i: amounts)
+    {
+      // Copy into the map for expediency
+      map_amounts[i.first] = uint128_t(i.second.c_str());
+      
+      // Skip XHV
+      if (i.first == "XHV") continue;
+
+      // Get the pricing data for the xAsset
+      uint128_t price_xasset = pr[i.first];
+      
+      // Multiply by the amount of coin in circulation
+      uint128_t amount_xasset(i.second.c_str());
+      amount_xasset *= COIN;
+      amount_xasset /= price_xasset;
+      
+      // Sum into our total for all xAssets
+      mcap_xassets += amount_xasset;
+    }
+
+    // Calculate the XHV market cap
+    boost::multiprecision::uint128_t price_xhv =
+      (tx_type == tt::OFFSHORE) ? std::min(pr.unused1, pr.xUSD) :
+      (tx_type == tt::ONSHORE)  ? std::max(pr.unused1, pr.xUSD) :
+      0;
+    uint128_t mcap_xhv = map_amounts["XHV"];
+    mcap_xhv *= price_xhv;
+    mcap_xhv /= COIN;
+
+    // Calculate the market cap ratio
+    cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
+    double ratio_mcap = ratio_mcap_128.convert_to<double>();
+
+    // Calculate the spread ratio
+    double ratio_spread = (ratio_mcap >= 1.0) ? 0.0 : 1.0 - ratio_mcap;
+    
+    // Calculate the MCAP VBS rate
+    double rate_mcvbs = (ratio_mcap == 0) ? 0 : (ratio_mcap < 0.9) // Fix for "possible" 0 ratio
+      ? std::exp((ratio_mcap + std::sqrt(ratio_mcap))*2.0) - 0.5 // Lower MCAP ratio
+      : std::sqrt(ratio_mcap) * 40.0; // Higher MCAP ratio
+
+    // Calculate the Spread Ratio VBS rate
+    double rate_srvbs = std::exp(1 + std::sqrt(ratio_spread)) + rate_mcvbs + 1.5;
+    
+    // Set the Slippage Multiplier
+    double slippage_multiplier = 10.0;
+
+    // Convert amount to 128 bit
+    boost::multiprecision::uint128_t amount_128 = amount;
+  
+    // Do the right thing based upon TX type
+    using tt = cryptonote::transaction_type;
+    if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+      collateral = 0;
+    } else if (tx_type == tt::OFFSHORE) {
+
+      // Calculate MCRI
+      boost::multiprecision::uint128_t amount_usd_128 = amount;
+      amount_usd_128 *= price_xhv;
+      amount_usd_128 /= COIN;
+      cpp_bin_float_quad ratio_mcap_new_quad = ((amount_usd_128.convert_to<cpp_bin_float_quad>() + mcap_xassets.convert_to<cpp_bin_float_quad>()) /
+						(mcap_xhv.convert_to<cpp_bin_float_quad>() - amount_usd_128.convert_to<cpp_bin_float_quad>()));
+      double ratio_mcap_new = ratio_mcap_new_quad.convert_to<double>();
+      double ratio_mcri = (ratio_mcap == 0.0) ? ratio_mcap_new : (ratio_mcap_new / ratio_mcap) - 1.0;
+      ratio_mcri = std::abs(ratio_mcri);
+
+      // Calculate Offshore Slippage VBS rate
+      if (ratio_mcap_new <= 0.1) slippage_multiplier = 3.0;
+      double rate_offsvbs = std::sqrt(ratio_mcri) * slippage_multiplier;
+
+      // Calculate the combined VBS (collateral + "slippage")
+      double vbs = rate_mcvbs + rate_offsvbs;
+      const double min_vbs = 1.0;
+      vbs = std::max(vbs, min_vbs);
+      vbs *= COIN;
+      boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
+      collateral_128 *= amount_128;
+      collateral_128 /= COIN;
+      collateral = collateral_128.convert_to<uint64_t>();
+
+      LOG_PRINT_L1("Offshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money(amount) << " XHV");
+    
+    } else if (tx_type == tt::ONSHORE) {
+
+      // Calculate SRI
+      cpp_bin_float_quad ratio_mcap_new_quad = ((mcap_xassets.convert_to<cpp_bin_float_quad>() - amount_128.convert_to<cpp_bin_float_quad>()) /
+						(mcap_xhv.convert_to<cpp_bin_float_quad>() + amount_128.convert_to<cpp_bin_float_quad>()));
+      double ratio_mcap_new = ratio_mcap_new_quad.convert_to<double>();
+      double ratio_sri = (ratio_mcap == 0.0) ? (-1.0 * ratio_mcap_new) : ((1.0 - ratio_mcap_new) / (1.0 - ratio_mcap)) - 1.0;
+      ratio_sri = std::max(ratio_sri, 0.0);
+      
+      // Calculate ONSVBS
+      //if (ratio_mcap_new <= 0.1) slippage_multiplier = 3.0;
+      //double rate_onsvbs = std::sqrt(ratio_sri) * slippage_multiplier;
+      double rate_onsvbs = std::sqrt(ratio_sri) * 3.0;
+  
+      // Calculate the combined VBS (collateral + "slippage")
+      double vbs = std::max(rate_mcvbs, rate_srvbs) + rate_onsvbs;
+      const double min_vbs = 1.0;
+      vbs = std::max(vbs, min_vbs);
+      vbs *= COIN;
+      boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
+      collateral_128 *= amount_128;
+      collateral_128 /= price_xhv;
+      collateral = collateral_128.convert_to<uint64_t>();
+
+      boost::multiprecision::uint128_t amount_usd_128 = amount;
+      amount_usd_128 *= price_xhv;
+      amount_usd_128 /= COIN;
+      LOG_PRINT_L1("Onshore TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money((uint64_t)amount_128) << " xUSD");
+    
+    } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+      collateral = 0;
+    } else {
+      // Throw a wallet exception - should never happen
+      MERROR("Invalid TX type");
+      return false;
+    }
+
+    return true;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr)
+  {
+    std::string str_xhv_supply;
+    for (const auto& supply: supply_amounts) {
+      if (supply.first == "XHV") {
+        str_xhv_supply = supply.second;
+        break;
+      }
+    }
+
+    // get supply
+    boost::multiprecision::uint128_t xhv_supply_128(str_xhv_supply);
+    xhv_supply_128 /= COIN;
+    uint64_t xhv_supply = xhv_supply_128.convert_to<uint64_t>();
+
+    // get price
+    double price = (double)(std::min(pr.unused1, pr.xUSD)); // smaller of the ma vs spot
+    price /= COIN;
+
+    // market cap
+    uint64_t xhv_market_cap = xhv_supply * price;
+    
+    return (pow(xhv_market_cap * 3000, 0.42) + ((xhv_supply * 5) / 1000)) * COIN;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr)
+  {
+    boost::multiprecision::uint128_t xusd_128 = xusd_amount;
+    boost::multiprecision::uint128_t exchange_128 = pr[to_asset_type]; 
+    // Now work out the amount
+    boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
+    xasset_128 /= 1000000000000;
+
+    return (uint64_t)xasset_128;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  {
+
+    if (amount_asset_type == "XUSD") {
+      return amount;
+    }
+
+    boost::multiprecision::uint128_t amount_128 = amount;
+    boost::multiprecision::uint128_t exchange_128 = pr[amount_asset_type];
+    if (amount_asset_type == "XHV") {
+      // xhv -> xusd
+      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+        if (tx_type == transaction_type::ONSHORE) {
+          // Eliminate MA/spot advantage for onshore conversion
+          exchange_128 = std::max(pr.unused1, pr.xUSD);
+        } else {
+          // Eliminate MA/spot advantage for offshore conversion
+          exchange_128 = std::min(pr.unused1, pr.xUSD);
+        }
+      }
+      boost::multiprecision::uint128_t xusd_128 = amount_128 * exchange_128;
+      xusd_128 /= 1000000000000;
+      return (uint64_t)xusd_128;
+    } else {
+      // xasset -> xusd
+      boost::multiprecision::uint128_t xusd_128 = amount_128 * 1000000000000;
+      xusd_128 /= exchange_128;
+      return (uint64_t)xusd_128;
+    }
+  }
+  //---------------------------------------------------------------
+  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  {
+    // Now work out the amount
+    boost::multiprecision::uint128_t xusd_128 = xusd_amount;
+    boost::multiprecision::uint128_t exchange_128 = pr.unused1;
+    boost::multiprecision::uint128_t xhv_128 = xusd_128 * 1000000000000;
+    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+      if (tx_type == transaction_type::ONSHORE) {
+        // Eliminate MA/spot advantage for onshore conversion
+        exchange_128 = std::max(pr.unused1, pr.xUSD);
+      } else {
+        // Eliminate MA/spot advantage for offshore conversion
+        exchange_128 = std::min(pr.unused1, pr.xUSD);
+      }
+    }
+    xhv_128 /= exchange_128;
+    return (uint64_t)xhv_128;
+  }
+  //----------------------------------------------------------------------------------------------------
+  bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash) {
+    if (pr_height >= current_height) {
+      return false;
+    }
+    if ((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height) {
+      // exception for 1 tx that used 11 block old record and is already in the chain.
+      if (epee::string_tools::pod_to_hex(tx_hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
+        return false;
+      }
+    }
+    return true;
   }
   //---------------------------------------------------------------
   bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, bool rct, const rct::RCTConfig &rct_config, bool shuffle_outs, bool use_view_tags)

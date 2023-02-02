@@ -1295,6 +1295,61 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::error& error)
   GET_FROM_JSON_OBJECT(val, error.message, message);
 }
 
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const offshore::pricing_record& pricing_record)
+{
+  dest.StartObject();
+
+  INSERT_INTO_JSON_OBJECT(dest, xAG, pricing_record.xAG);
+  INSERT_INTO_JSON_OBJECT(dest, xAU, pricing_record.xAU);
+  INSERT_INTO_JSON_OBJECT(dest, xAUD, pricing_record.xAUD);
+  INSERT_INTO_JSON_OBJECT(dest, xBTC, pricing_record.xBTC);
+  INSERT_INTO_JSON_OBJECT(dest, xCAD, pricing_record.xCAD);
+  INSERT_INTO_JSON_OBJECT(dest, xCHF, pricing_record.xCHF);
+  INSERT_INTO_JSON_OBJECT(dest, xCNY, pricing_record.xCNY);
+  INSERT_INTO_JSON_OBJECT(dest, xEUR, pricing_record.xEUR);
+  INSERT_INTO_JSON_OBJECT(dest, xGBP, pricing_record.xGBP);
+  INSERT_INTO_JSON_OBJECT(dest, xJPY, pricing_record.xJPY);
+  INSERT_INTO_JSON_OBJECT(dest, xNOK, pricing_record.xNOK);
+  INSERT_INTO_JSON_OBJECT(dest, xNZD, pricing_record.xNZD);
+  INSERT_INTO_JSON_OBJECT(dest, xUSD, pricing_record.xUSD);
+  INSERT_INTO_JSON_OBJECT(dest, unused1, pricing_record.unused1);
+  INSERT_INTO_JSON_OBJECT(dest, unused2, pricing_record.unused2);
+  INSERT_INTO_JSON_OBJECT(dest, unused3, pricing_record.unused3);
+  INSERT_INTO_JSON_OBJECT(dest, timestamp, pricing_record.timestamp);
+  INSERT_INTO_JSON_OBJECT(dest, signature, pricing_record.signature);
+
+  dest.EndObject();
+}
+
+void fromJsonValue(const rapidjson::Value& val, offshore::pricing_record& pricing_record)
+{  
+  if (!val.IsObject())
+  {
+    throw WRONG_TYPE("json object");
+  }
+
+  std::string hex_sig;
+  
+  GET_FROM_JSON_OBJECT(val, pricing_record.xAG, xAG);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xAU, xAU);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xAUD, xAUD);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xBTC, xBTC);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xCAD, xCAD);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xCHF, xCHF);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xCNY, xCNY);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xEUR, xEUR);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xGBP, xGBP);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xJPY, xJPY);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xNOK, xNOK);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xNZD, xNZD);
+  GET_FROM_JSON_OBJECT(val, pricing_record.xUSD, xUSD);
+  GET_FROM_JSON_OBJECT(val, pricing_record.unused1, unused1);
+  GET_FROM_JSON_OBJECT(val, pricing_record.unused2, unused2);
+  GET_FROM_JSON_OBJECT(val, pricing_record.unused3, unused3);
+  GET_FROM_JSON_OBJECT(val, pricing_record.timestamp, timestamp);
+  GET_FROM_JSON_OBJECT(val, boost::lexical_cast<std::string>(pricing_record.signature), signature);
+}
+
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::BlockHeaderResponse& response)
 {
   dest.StartObject();

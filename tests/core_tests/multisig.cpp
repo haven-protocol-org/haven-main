@@ -424,7 +424,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
   crypto::public_key output_public_key;
   for (size_t n = 0; n < tx.vout.size(); ++n)
   {
-    CHECK_AND_ASSERT_MES(typeid(txout_to_tagged_key) == tx.vout[n].target.type(), false, "Unexpected tx out type");
+    CHECK_AND_ASSERT_MES(typeid(txout_haven_tagged_key) == tx.vout[n].target.type(), false, "Unexpected tx out type");
     cryptonote::get_output_public_key(tx.vout[n], output_public_key);
     if (is_out_to_acc_precomp(subaddresses, output_public_key, derivation, additional_derivations, n, hw::get_device(("default"))))
     {
