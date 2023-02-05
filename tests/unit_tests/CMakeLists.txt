@@ -54,7 +54,6 @@ set(unit_tests_sources
   fee.cpp
   json_serialization.cpp
   get_tx_asset_types.cpp
-  get_tx_asset_types.cpp
   get_xtype_from_string.cpp
   hashchain.cpp
   hmac_keccak.cpp

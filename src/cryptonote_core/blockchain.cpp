@@ -3229,7 +3229,7 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  // from v15, allow bulletproofs plus
+  // from v21, allow bulletproofs plus
   if (hf_version < HF_VERSION_BULLETPROOF_PLUS) {
     if (tx.version >= 2) {
       const bool bulletproof_plus = rct::is_rct_bulletproof_plus(tx.rct_signatures.type);
@@ -3255,7 +3255,7 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  // from v15, require view tags on outputs
+  // from v21, require view tags on outputs
   if (!check_output_types(tx, hf_version))
   {
     tvc.m_invalid_output = true;

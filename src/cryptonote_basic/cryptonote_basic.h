@@ -53,6 +53,168 @@
 #include "cryptonote_basic/fwd.h"
 #include "offshore/pricing_record.h"
 
+
+#define SERIALIZE_OLD_TX_PREFIX(vin, vout, extra, offshore_data, output_unlock_times, collateral_indices, pricing_record_height, amount_burnt, amount_minted, version) \
+{                                                                                                               \
+  FIELD(extra)                                                                                                  \
+  if(version >= OFFSHORE_TRANSACTION_VERSION) {                                                                 \
+    VARINT_FIELD(pricing_record_height)                                                                         \
+    VARINT_FIELD(amount_burnt)                                                                                  \
+    VARINT_FIELD(amount_minted)                                                                                 \
+    if (version < 5)                                                                                            \
+      FIELD(offshore_data)                                                                                      \
+  }                                                                                                             \
+  if (version < POU_TRANSACTION_VERSION)                                                                        \
+  {                                                                                                             \
+    VARINT_FIELD(unlock_time)                                                                                   \
+  } else {                                                                                                      \
+    FIELD(output_unlock_times)                                                                                  \
+    if (vout.size() != output_unlock_times.size()) {                                                            \
+      return false;                                                                                             \
+    }                                                                                                           \
+  }                                                                                                             \
+  if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                              \
+    FIELD(collateral_indices)                                                                                   \
+    if (collateral_indices.size() != 2) {                                                                       \
+      return false;                                                                                             \
+    }                                                                                                           \
+    for (const auto vout_idx: collateral_indices) {                                                             \
+      if (vout_idx >= vout.size())                                                                              \
+        return false;                                                                                           \
+    }                                                                                                           \
+  }                                                                                                             \
+  if (!typename Archive<W>::is_saving()) {                                                                      \
+    FIELD(vin)                                                                                                  \
+    FIELD(vout)                                                                                                 \
+    std::vector<txin_v> vin_tmp(vin);                                                                           \
+    vin.clear();                                                                                                \
+    for (auto &vin_entry: vin_tmp) {                                                                            \
+      txin_haven_key in;                                                                                        \
+      if (vin_entry.type() == typeid(txin_to_key)) {                                                            \
+        in.asset_type = "XHV";                                                                                  \
+        in.amount = boost::get<txin_to_key>(vin_entry).amount;                                                  \
+        in.key_offsets = boost::get<txin_to_key>(vin_entry).key_offsets;                                        \
+        in.k_image = boost::get<txin_to_key>(vin_entry).k_image;                                                \
+      } else if (vin_entry.type() == typeid(txin_offshore)) {                                                   \
+        in.asset_type = "XUSD";                                                                                 \
+        in.amount = boost::get<txin_offshore>(vin_entry).amount;                                                \
+        in.key_offsets = boost::get<txin_offshore>(vin_entry).key_offsets;                                      \
+        in.k_image = boost::get<txin_offshore>(vin_entry).k_image;                                              \
+      } else if (vin_entry.type() == typeid(txin_onshore)) {                                                    \
+        in.asset_type = "XHV";                                                                                  \
+        in.amount = boost::get<txin_onshore>(vin_entry).amount;                                                 \
+        in.key_offsets = boost::get<txin_onshore>(vin_entry).key_offsets;                                       \
+        in.k_image = boost::get<txin_onshore>(vin_entry).k_image;                                               \
+      } else if (vin_entry.type() == typeid(txin_xasset)) {                                                     \
+        in.amount = boost::get<txin_xasset>(vin_entry).amount;                                                  \
+        in.key_offsets = boost::get<txin_xasset>(vin_entry).key_offsets;                                        \
+        in.k_image = boost::get<txin_xasset>(vin_entry).k_image;                                                \
+        in.asset_type = boost::get<txin_xasset>(vin_entry).asset_type;                                          \
+      } else {                                                                                                  \
+        return false;                                                                                           \
+      }                                                                                                         \
+      vin.push_back(in);                                                                                        \
+    }                                                                                                           \
+    std::vector<tx_out> vout_tmp(vout);                                                                         \
+    vout.clear();                                                                                               \
+    for (size_t i=0; i<vout_tmp.size(); i++) {                                                                  \
+      txout_haven_key out;                                                                                      \
+      if (vout_tmp[i].target.type() == typeid(txout_to_key)) {                                                  \
+        out.asset_type = "XHV";                                                                                 \
+        out.key = boost::get<txout_to_key>(vout_tmp[i].target).key;                                             \
+      } else if (vout_tmp[i].target.type() == typeid(txout_offshore)) {                                         \
+        out.asset_type = "XUSD";                                                                                \
+        out.key = boost::get<txout_offshore>(vout_tmp[i].target).key;                                           \
+      } else if (vout_tmp[i].target.type() == typeid(txout_xasset)) {                                           \
+        out.asset_type = boost::get<txout_xasset>(vout_tmp[i].target).asset_type;                               \
+        out.key = boost::get<txout_xasset>(vout_tmp[i].target).key;                                             \
+      } else {                                                                                                  \
+        return false;                                                                                           \
+      }                                                                                                         \
+      out.unlock_time = output_unlock_times[i];                                                                 \
+      out.is_collateral = false;                                                                                \
+      if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                          \
+        if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {   \
+          out.is_collateral = true;                                                                             \
+        }                                                                                                       \
+      }                                                                                                         \
+      tx_out foo;                                                                                               \
+      foo.amount = vout_tmp[i].amount;                                                                          \
+      foo.target = out;                                                                                         \
+      vout.push_back(foo);                                                                                      \
+    }                                                                                                           \
+    return true;                                                                                                \
+  }                                                                                                             \
+  std::vector<txin_v> vin_tmp;                                                                                  \
+  vin_tmp.reserve(vin.size());                                                                                  \
+  for (auto &vin_entry_v: vin) {                                                                                \
+    txin_haven_key vin_entry = boost::get<txin_haven_key>(vin_entry_v);                                         \
+    if (vin_entry.asset_type == "XHV") {                                                                        \
+      txin_to_key in;                                                                                           \
+      in.amount = vin_entry.amount;                                                                             \
+      in.key_offsets = vin_entry.key_offsets;                                                                   \
+      in.k_image = vin_entry.k_image;                                                                           \
+      vin_tmp.push_back(in);                                                                                    \
+    } else if (vin_entry.asset_type == "XUSD") {                                                                \
+      int xhv_outputs = std::count_if(vout.begin(), vout.end(), [](tx_out &foo_v) {                             \
+        txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);                                        \
+        return out.asset_type == "XHV";                                                                         \
+      });                                                                                                       \
+      if (xhv_outputs) {                                                                                        \
+        txin_onshore in;                                                                                        \
+        in.amount = vin_entry.amount;                                                                           \
+        in.key_offsets = vin_entry.key_offsets;                                                                 \
+        in.k_image = vin_entry.k_image;                                                                         \
+        vin_tmp.push_back(in);                                                                                  \
+      } else {                                                                                                  \
+        txin_offshore in;                                                                                       \
+        in.amount = vin_entry.amount;                                                                           \
+        in.key_offsets = vin_entry.key_offsets;                                                                 \
+        in.k_image = vin_entry.k_image;                                                                         \
+        vin_tmp.push_back(in);                                                                                  \
+      }                                                                                                         \
+    } else {                                                                                                    \
+      txin_xasset in;                                                                                           \
+      in.amount = vin_entry.amount;                                                                             \
+      in.asset_type = vin_entry.asset_type;                                                                     \
+      in.key_offsets = vin_entry.key_offsets;                                                                   \
+      in.k_image = vin_entry.k_image;                                                                           \
+      vin_tmp.push_back(in);                                                                                    \
+    }                                                                                                           \
+  }                                                                                                             \
+  std::vector<tx_out> vout_tmp;                                                                                 \
+  vout_tmp.reserve(vout.size());                                                                                \
+  for (size_t i=0; i<vout.size(); i++) {                                                                        \
+    txout_haven_key out;                                                                                        \
+    if (vout[i].target.type() == typeid(txout_to_key)) {                                                        \
+      out.asset_type = "XHV";                                                                                   \
+      out.key = boost::get<txout_to_key>(vout[i].target).key;                                                   \
+    } else if (vout[i].target.type() == typeid(txout_offshore)) {                                               \
+      out.asset_type = "XUSD";                                                                                  \
+      out.key = boost::get<txout_offshore>(vout[i].target).key;                                                 \
+    } else if (vout[i].target.type() == typeid(txout_xasset)) {                                                 \
+      out.asset_type = boost::get<txout_xasset>(vout[i].target).asset_type;                                     \
+      out.key = boost::get<txout_xasset>(vout[i].target).key;                                                   \
+    } else {                                                                                                    \
+      return false;                                                                                             \
+    }                                                                                                           \
+    out.unlock_time = output_unlock_times[i];                                                                   \
+    out.is_collateral = false;                                                                                  \
+    if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                            \
+      if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {     \
+        out.is_collateral = true;                                                                               \
+      }                                                                                                         \
+    }                                                                                                           \
+    tx_out foo;                                                                                                 \
+    foo.amount = vout_tmp[i].amount;                                                                            \
+    foo.target = out;                                                                                           \
+    vout_tmp.push_back(foo);                                                                                    \
+  }                                                                                                             \
+  FIELD(vin_tmp)                                                                                                \
+  FIELD(vout_tmp)                                                                                               \
+  return true;                                                                                                  \
+}                                                                                                               \
+
 namespace cryptonote
 {
   typedef std::vector<crypto::signature> ring_signature;
@@ -263,8 +425,6 @@ namespace cryptonote
       VARINT_FIELD(amount)
       FIELD(target)
     END_SERIALIZE()
-
-
   };
 
   class transaction_prefix
@@ -291,220 +451,18 @@ namespace cryptonote
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
       if(version == 0 || CURRENT_TRANSACTION_VERSION < version) return false;
-      if (version < POU_TRANSACTION_VERSION)
-      {
-        VARINT_FIELD(unlock_time)
-      }
     
       // Only transactions prior to HAVEN_TYPES_TRANSACTION_VERSION are permitted to be anything other than HAVEN_TYPES and need translation
       if (version < HAVEN_TYPES_TRANSACTION_VERSION) {
-
-        if (!typename Archive<W>::is_saving()) {
-
-          // Loading from archive
-        
-          // Read the input and output vectors, extra data, etc etc
-          FIELD(vin)
-          FIELD(vout)
-          FIELD(extra)
-          if(version >= OFFSHORE_TRANSACTION_VERSION) {
-            VARINT_FIELD(pricing_record_height)
-            if (version < 5)
-              FIELD(offshore_data)
-          }
-          
-          // Support the old "output_unlock_times" vector
-          if (version >= POU_TRANSACTION_VERSION)
-          {
-            FIELD(output_unlock_times)
-          }
-          if (version >= POU_TRANSACTION_VERSION && vout.size() != output_unlock_times.size()) return false;
-
-          VARINT_FIELD(amount_burnt)
-          VARINT_FIELD(amount_minted)
-
-          // Support the old "collateral_indices" vector
-          if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
-            FIELD(collateral_indices)
-            if (collateral_indices.size() != 2) {
-              return false;
-            }
-            for (const auto vout_idx: collateral_indices) {
-              if (vout_idx >= vout.size())
-                return false;
-            }
-          }
-
-          // Process the inputs
-          std::vector<txin_v> vin_tmp(vin);
-          vin.clear();
-          for (auto &vin_entry: vin_tmp) {
-            txin_haven_key in;
-            if (vin_entry.type() == typeid(txin_to_key)) {
-              in.asset_type = "XHV";
-              in.amount = boost::get<txin_to_key>(vin_entry).amount;
-              in.key_offsets = boost::get<txin_to_key>(vin_entry).key_offsets;
-              in.k_image = boost::get<txin_to_key>(vin_entry).k_image;
-            } else if (vin_entry.type() == typeid(txin_offshore)) {
-              in.asset_type = "XUSD";
-              in.amount = boost::get<txin_offshore>(vin_entry).amount;
-              in.key_offsets = boost::get<txin_offshore>(vin_entry).key_offsets;
-              in.k_image = boost::get<txin_offshore>(vin_entry).k_image;
-            } else if (vin_entry.type() == typeid(txin_onshore)) {
-              in.asset_type = "XHV";
-              in.amount = boost::get<txin_onshore>(vin_entry).amount;
-              in.key_offsets = boost::get<txin_onshore>(vin_entry).key_offsets;
-              in.k_image = boost::get<txin_onshore>(vin_entry).k_image;
-            } else if (vin_entry.type() == typeid(txin_xasset)) {
-              in.amount = boost::get<txin_xasset>(vin_entry).amount;
-              in.key_offsets = boost::get<txin_xasset>(vin_entry).key_offsets;
-              in.k_image = boost::get<txin_xasset>(vin_entry).k_image;
-              in.asset_type = boost::get<txin_xasset>(vin_entry).asset_type;
-            } else {
-              // ...
-            }
-            vin.push_back(in);
-          }
-          
-          // Process the outputs
-          std::vector<tx_out> vout_tmp(vout);
-          vout.clear();
-          for (size_t i=0; i<vout_tmp.size(); i++) {
-            txout_haven_key out;
-            if (vout_tmp[i].target.type() == typeid(txout_to_key)) {
-              out.asset_type = "XHV";
-              out.key = boost::get<txout_to_key>(vout_tmp[i].target).key;
-            } else if (vout_tmp[i].target.type() == typeid(txout_offshore)) {
-              out.asset_type = "XUSD";
-              out.key = boost::get<txout_offshore>(vout_tmp[i].target).key;
-            } else if (vout_tmp[i].target.type() == typeid(txout_xasset)) {
-              out.asset_type = boost::get<txout_xasset>(vout_tmp[i].target).asset_type;
-              out.key = boost::get<txout_xasset>(vout_tmp[i].target).key;
-            } else {
-              // ...
-            }
-            // Clone the output unlock time into the output itself
-            out.unlock_time = output_unlock_times[i];
-            // Set the is_collateral flag
-            out.is_collateral = false;
-            if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
-              if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {
-                out.is_collateral = true;
-              }
-            }
-            tx_out foo;
-            foo.amount = vout_tmp[i].amount;
-            foo.target = out;
-            vout.push_back(foo);
-          }
-        } else {
-
-          // Saving to archive
-
-          // Process the inputs
-          std::vector<txin_v> vin_tmp;
-          vin_tmp.reserve(vin.size());
-          for (auto &vin_entry_v: vin) {
-            txin_haven_key vin_entry = boost::get<txin_haven_key>(vin_entry_v);
-            if (vin_entry.asset_type == "XHV") {
-              txin_to_key in;
-              in.amount = vin_entry.amount;
-              in.key_offsets = vin_entry.key_offsets;
-              in.k_image = vin_entry.k_image;
-              vin_tmp.push_back(in);
-            } else if (vin_entry.asset_type == "XUSD") {
-              int xhv_outputs = std::count_if(vout.begin(), vout.end(), [](tx_out &foo_v) {
-                txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);
-                return out.asset_type == "XHV";
-              });
-              if (xhv_outputs) {
-                txin_onshore in;
-                in.amount = vin_entry.amount;
-                in.key_offsets = vin_entry.key_offsets;
-                in.k_image = vin_entry.k_image;
-                vin_tmp.push_back(in);
-              } else {
-                txin_offshore in;
-                in.amount = vin_entry.amount;
-                in.key_offsets = vin_entry.key_offsets;
-                in.k_image = vin_entry.k_image;
-                vin_tmp.push_back(in);
-              }
-            } else {
-              txin_xasset in;
-              in.amount = vin_entry.amount;
-              in.asset_type = vin_entry.asset_type;
-              in.key_offsets = vin_entry.key_offsets;
-              in.k_image = vin_entry.k_image;
-              vin_tmp.push_back(in);
-            }
-          }
-          
-          // Process the outputs
-          std::vector<tx_out> vout_tmp;
-          vout_tmp.reserve(vout.size());
-          for (size_t i=0; i<vout.size(); i++) {
-            txout_haven_key out;
-            if (vout[i].target.type() == typeid(txout_to_key)) {
-              out.asset_type = "XHV";
-              out.key = boost::get<txout_to_key>(vout[i].target).key;
-            } else if (vout[i].target.type() == typeid(txout_offshore)) {
-              out.asset_type = "XUSD";
-              out.key = boost::get<txout_offshore>(vout[i].target).key;
-            } else if (vout[i].target.type() == typeid(txout_xasset)) {
-              out.asset_type = boost::get<txout_xasset>(vout[i].target).asset_type;
-              out.key = boost::get<txout_xasset>(vout[i].target).key;
-            } else {
-              // ...
-            }
-            // Clone the output unlock time into the output itself
-            out.unlock_time = output_unlock_times[i];
-            // Set the is_collateral flag
-            out.is_collateral = false;
-            if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
-              if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {
-                out.is_collateral = true;
-              }
-            }
-
-            tx_out foo;
-            foo.amount = vout_tmp[i].amount;
-            foo.target = out;
-            vout_tmp.push_back(foo);
-          }
-
-          // Now that we have parsed the inputs & outputs into their original forms, we can serialise the rest of the transaction_prefix
-          FIELD(vin_tmp)
-          FIELD(vout_tmp)
-          FIELD(extra)
-          if (version >= OFFSHORE_TRANSACTION_VERSION) {
-            FIELD(pricing_record_height)
-            FIELD(amount_burnt)
-            FIELD(amount_minted)
-            if (version < 5)
-              FIELD(offshore_data)
-          }
-
-          // Support the old "output_unlock_times" vector
-          if (version >= POU_TRANSACTION_VERSION) {
-            FIELD(output_unlock_times)
-          }
-        
-          // Support the old "collateral_indices" vector
-          if (version >= COLLATERAL_TRANSACTION_VERSION) {
-            FIELD(collateral_indices)
-          }
-        }
-      } else {
-
-        // New format of transaction
-        FIELD(vin)
-        FIELD(vout)
-        FIELD(extra)
-        VARINT_FIELD(pricing_record_height)
-        VARINT_FIELD(amount_burnt)
-        VARINT_FIELD(amount_minted)
+        SERIALIZE_OLD_TX_PREFIX(vin, vout, extra, offshore_data, output_unlock_times, collateral_indices, pricing_record_height, amount_burnt, amount_minted, version)
       }
+
+      FIELD(vin)
+      FIELD(vout)
+      FIELD(extra)
+      VARINT_FIELD(pricing_record_height)
+      VARINT_FIELD(amount_burnt)
+      VARINT_FIELD(amount_minted)
     END_SERIALIZE()
 
   public:
@@ -770,8 +728,6 @@ namespace cryptonote
 
     return boost::apply_visitor(txin_signature_size_visitor(), tx_in);
   }
-
-
 
   /************************************************************************/
   /*                                                                      */

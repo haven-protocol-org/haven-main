@@ -963,7 +963,7 @@ namespace cryptonote
     {
       if (hf_version > HF_VERSION_VIEW_TAGS)
       {
-        // from v15, require outputs have view tags
+        // from v21, require outputs have view tags
         CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_haven_tagged_key), false, "wrong variant type: "
           << o.target.type().name() << ", expected txout_haven_tagged_key in transaction id=" << get_transaction_hash(tx));
       }

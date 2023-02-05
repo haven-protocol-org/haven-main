@@ -53,9 +53,6 @@ namespace cryptonote
     bool rct;                           //true if the output is rct
     rct::key mask;                      //ringct amount mask
     rct::multisig_kLRki multisig_kLRki; //multisig info
-    uint64_t height;
-    offshore::pricing_record pr;
-    bool first_generation_input;
     std::string asset_type;
 
     void push_output(uint64_t idx, const crypto::public_key &k, uint64_t amount) { outputs.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(k), rct::zeroCommit(amount)}))); }
@@ -70,14 +67,10 @@ namespace cryptonote
       FIELD(rct)
       FIELD(mask)
       FIELD(multisig_kLRki)
+      FIELD(asset_type)
 
       if (real_output >= outputs.size())
         return false;
-
-      FIELD(height)
-      FIELD(pr)
-      FIELD(asset_type)
-      
     END_SERIALIZE()
   };
 
@@ -123,8 +116,6 @@ namespace cryptonote
     BEGIN_SERIALIZE_OBJECT()
       FIELD(original)
       VARINT_FIELD(amount)
-      VARINT_FIELD(amount_usd)
-      VARINT_FIELD(amount_xasset)
       FIELD(asset_type)
       FIELD(addr)
       FIELD(is_subaddress)
