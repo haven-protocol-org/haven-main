@@ -56,36 +56,37 @@
 
 #define SERIALIZE_OLD_TX_PREFIX(vin, vout, extra, offshore_data, output_unlock_times, collateral_indices, pricing_record_height, amount_burnt, amount_minted, version) \
 {                                                                                                               \
-  FIELD(extra)                                                                                                  \
-  if(version >= OFFSHORE_TRANSACTION_VERSION) {                                                                 \
-    VARINT_FIELD(pricing_record_height)                                                                         \
-    VARINT_FIELD(amount_burnt)                                                                                  \
-    VARINT_FIELD(amount_minted)                                                                                 \
-    if (version < 5)                                                                                            \
-      FIELD(offshore_data)                                                                                      \
-  }                                                                                                             \
   if (version < POU_TRANSACTION_VERSION)                                                                        \
   {                                                                                                             \
     VARINT_FIELD(unlock_time)                                                                                   \
-  } else {                                                                                                      \
-    FIELD(output_unlock_times)                                                                                  \
-    if (vout.size() != output_unlock_times.size()) {                                                            \
-      return false;                                                                                             \
-    }                                                                                                           \
-  }                                                                                                             \
-  if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                              \
-    FIELD(collateral_indices)                                                                                   \
-    if (collateral_indices.size() != 2) {                                                                       \
-      return false;                                                                                             \
-    }                                                                                                           \
-    for (const auto vout_idx: collateral_indices) {                                                             \
-      if (vout_idx >= vout.size())                                                                              \
-        return false;                                                                                           \
-    }                                                                                                           \
   }                                                                                                             \
   if (!typename Archive<W>::is_saving()) {                                                                      \
     FIELD(vin)                                                                                                  \
     FIELD(vout)                                                                                                 \
+    FIELD(extra)                                                                                                \
+    if(version >= OFFSHORE_TRANSACTION_VERSION) {                                                               \
+      VARINT_FIELD(pricing_record_height)                                                                       \
+      if (version < 5)                                                                                          \
+        FIELD(offshore_data)                                                                                    \
+    }                                                                                                           \
+    if (version >= POU_TRANSACTION_VERSION) {                                                                   \
+      FIELD(output_unlock_times)                                                                                \
+      if (vout.size() != output_unlock_times.size()) {                                                          \
+        return false;                                                                                           \
+      }                                                                                                         \
+    }                                                                                                           \
+    VARINT_FIELD(amount_burnt)                                                                                  \
+    VARINT_FIELD(amount_minted)                                                                                 \
+    if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                            \
+      FIELD(collateral_indices)                                                                                 \
+      if (collateral_indices.size() != 2) {                                                                     \
+        return false;                                                                                           \
+      }                                                                                                         \
+      for (const auto vout_idx: collateral_indices) {                                                           \
+        if (vout_idx >= vout.size())                                                                            \
+          return false;                                                                                         \
+      }                                                                                                         \
+    }                                                                                                           \
     std::vector<txin_v> vin_tmp(vin);                                                                           \
     vin.clear();                                                                                                \
     for (auto &vin_entry: vin_tmp) {                                                                            \
@@ -184,34 +185,58 @@
   }                                                                                                             \
   std::vector<tx_out> vout_tmp;                                                                                 \
   vout_tmp.reserve(vout.size());                                                                                \
+  output_unlock_times.resize(vout.size());                                                                      \
+  collateral_indices.clear();                                                                                   \
   for (size_t i=0; i<vout.size(); i++) {                                                                        \
-    txout_haven_key out;                                                                                        \
-    if (vout[i].target.type() == typeid(txout_to_key)) {                                                        \
-      out.asset_type = "XHV";                                                                                   \
-      out.key = boost::get<txout_to_key>(vout[i].target).key;                                                   \
-    } else if (vout[i].target.type() == typeid(txout_offshore)) {                                               \
-      out.asset_type = "XUSD";                                                                                  \
-      out.key = boost::get<txout_offshore>(vout[i].target).key;                                                 \
-    } else if (vout[i].target.type() == typeid(txout_xasset)) {                                                 \
-      out.asset_type = boost::get<txout_xasset>(vout[i].target).asset_type;                                     \
-      out.key = boost::get<txout_xasset>(vout[i].target).key;                                                   \
-    } else {                                                                                                    \
-      return false;                                                                                             \
-    }                                                                                                           \
-    out.unlock_time = output_unlock_times[i];                                                                   \
-    out.is_collateral = false;                                                                                  \
-    if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                            \
-      if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {     \
-        out.is_collateral = true;                                                                               \
-      }                                                                                                         \
-    }                                                                                                           \
+    txout_haven_key outhk = boost::get<txout_haven_key>(vout[i].target);                                        \
     tx_out foo;                                                                                                 \
-    foo.amount = vout_tmp[i].amount;                                                                            \
-    foo.target = out;                                                                                           \
+    foo.amount = vout[i].amount;                                                                                \
+    if (outhk.asset_type == "XHV") {                                                                            \
+      txout_to_key out;                                                                                         \
+      out.key = outhk.key;                                                                                      \
+      foo.target = out;                                                                                         \
+    } else if (outhk.asset_type == "XUSD") {                                                                    \
+      txout_offshore out;                                                                                       \
+      out.key = outhk.key;                                                                                      \
+      foo.target = out;                                                                                         \
+    } else {                                                                                                    \
+      txout_xasset out;                                                                                         \
+      out.asset_type = outhk.asset_type;                                                                        \
+      out.key = outhk.key;                                                                                      \
+      foo.target = out;                                                                                         \
+    }                                                                                                           \
+    output_unlock_times[i] = outhk.unlock_time;                                                                 \
+    if (outhk.is_collateral) {                                                                                  \
+      collateral_indices.push_back(i);                                                                          \
+    }                                                                                                           \
     vout_tmp.push_back(foo);                                                                                    \
   }                                                                                                             \
   FIELD(vin_tmp)                                                                                                \
   FIELD(vout_tmp)                                                                                               \
+  FIELD(extra)                                                                                                  \
+  if(version >= OFFSHORE_TRANSACTION_VERSION) {                                                                 \
+    VARINT_FIELD(pricing_record_height)                                                                         \
+    if (version < 5)                                                                                            \
+      FIELD(offshore_data)                                                                                      \
+  }                                                                                                             \
+  if (version >= POU_TRANSACTION_VERSION) {                                                                     \
+    FIELD(output_unlock_times)                                                                                  \
+    if (vout.size() != output_unlock_times.size()) {                                                            \
+      return false;                                                                                             \
+    }                                                                                                           \
+  }                                                                                                             \
+  VARINT_FIELD(amount_burnt)                                                                                    \
+  VARINT_FIELD(amount_minted)                                                                                   \
+  if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                              \
+    FIELD(collateral_indices)                                                                                   \
+    if (collateral_indices.size() != 2) {                                                                       \
+      return false;                                                                                             \
+    }                                                                                                           \
+    for (const auto vout_idx: collateral_indices) {                                                             \
+      if (vout_idx >= vout.size())                                                                              \
+        return false;                                                                                           \
+    }                                                                                                           \
+  }                                                                                                             \
   return true;                                                                                                  \
 }                                                                                                               \
 
@@ -570,7 +595,11 @@ namespace cryptonote
         if (!vin.empty())
         {
           ar.begin_object();
-          bool r = rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
+          bool r = false;
+          if (version < HAVEN_TYPES_TRANSACTION_VERSION)
+            r = rct_signatures.serialize_old_rctsig_base(ar, vin.size(), vout.size());
+          else
+            rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
           if (!r || !ar.good()) return false;
           ar.end_object();
 
@@ -582,7 +611,7 @@ namespace cryptonote
             ar.tag("rctsig_prunable");
             ar.begin_object();
             r = rct_signatures.p.serialize_rctsig_prunable(ar, rct_signatures.type, vin.size(), vout.size(),
-                vin.size() > 0 && vin[0].type() == typeid(txin_to_key) ? boost::get<txin_to_key>(vin[0]).key_offsets.size() - 1 : 0);
+                vin.size() > 0 && vin[0].type() == typeid(txin_haven_key) ? boost::get<txin_haven_key>(vin[0]).key_offsets.size() - 1 : 0);
             if (!r || !ar.good()) return false;
             ar.end_object();
           }
