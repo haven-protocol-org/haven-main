@@ -204,9 +204,9 @@ namespace boost
   inline void serialize(Archive &a, cryptonote::txin_haven_key &x, const boost::serialization::version_type ver)
   {
     a & x.amount;
+    a & x.asset_type;
     a & x.key_offsets;
     a & x.k_image;
-    a & x.asset_type;
   }
 
   template <class Archive>
@@ -504,26 +504,10 @@ namespace boost
 
   template <class Archive>
   inline void serialize_old_tx_prefix(Archive &a, cryptonote::transaction_prefix &x, const boost::serialization::version_type ver) {
-    a & x.extra;
-
-    if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
-      a & x.pricing_record_height;
-      a & x.amount_burnt;
-      a & x.amount_minted;
-      if (x.version < 5)
-        a & x.offshore_data;
-    }
 
     // Support the old "output_unlock_times" vector
     if (x.version < POU_TRANSACTION_VERSION) {
       a & x.unlock_time;
-    } else {
-      a & x.output_unlock_times;
-    }
-
-    // Support the old "collateral_indices" vector
-    if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
-      a & x.collateral_indices;
     }
 
     if (Archive::is_loading::value) {
@@ -531,6 +515,24 @@ namespace boost
       // Read the input and output vectors
       a & x.vin;
       a & x.vout;
+      a & x.extra;
+
+      if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
+        a & x.pricing_record_height;
+        a & x.amount_burnt;
+        a & x.amount_minted;
+        if (x.version < 5)
+          a & x.offshore_data;
+      }
+
+      if (x.version >= POU_TRANSACTION_VERSION) {
+        a & x.output_unlock_times;
+      }
+
+      // Support the old "collateral_indices" vector
+      if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+        a & x.collateral_indices;
+      }
 
       // Process the inputs
       std::vector<cryptonote::txin_v> vin_tmp(x.vin);
@@ -675,6 +677,26 @@ namespace boost
     // Now that we have parsed the inputs & outputs into their original forms, we can serialize the rest of the transaction_prefix
     a & vin_tmp;
     a & vout_tmp;
+    a & x.extra;
+
+    if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
+      a & x.pricing_record_height;
+      a & x.amount_burnt;
+      a & x.amount_minted;
+      if (x.version < 5)
+        a & x.offshore_data;
+    }
+
+    // Support the old "output_unlock_times" vector
+    if (x.version >= POU_TRANSACTION_VERSION) {
+      a & x.output_unlock_times;
+    }
+    
+    // Support the old "collateral_indices" vector
+    if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+      a & x.collateral_indices;
+    }
+    
     return;
   }
 }

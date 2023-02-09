@@ -102,7 +102,7 @@
         in.key_offsets = boost::get<txin_offshore>(vin_entry).key_offsets;                                      \
         in.k_image = boost::get<txin_offshore>(vin_entry).k_image;                                              \
       } else if (vin_entry.type() == typeid(txin_onshore)) {                                                    \
-        in.asset_type = "XHV";                                                                                  \
+        in.asset_type = "XUSD";                                                                                 \
         in.amount = boost::get<txin_onshore>(vin_entry).amount;                                                 \
         in.key_offsets = boost::get<txin_onshore>(vin_entry).key_offsets;                                       \
         in.k_image = boost::get<txin_onshore>(vin_entry).k_image;                                               \
