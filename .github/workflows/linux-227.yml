@@ -60,8 +60,8 @@ jobs:
         name: haven-linux-glibc227.tar.gz
         path: build/release/bin/haven-linux-glibc227.tar.gz
         retention-days: 10
-      
-    
+
+
   upload-linux-glibc-2-27:
     needs: build-linux-glibc-2-27
     runs-on: ubuntu-20.04
@@ -70,16 +70,13 @@ jobs:
       with:
         name: haven-linux-glibc227.tar.gz
     - name: Upload Haven CLI
-      uses: goshiz/do-space-sync-action@master
+      uses: shallwefootball/s3-upload-action@master
       with:
-        args: --acl public-read
-      env:
-        SOURCE_DIR: 'haven-linux-glibc227.tar.gz'
-        SPACE_NAME: ${{ secrets.SPACE_NAME }}
-        SPACE_FOLDER: binaries
-        SPACE_REGION: ${{ secrets.SPACE_REGION}}
-        SPACE_ACCESS_KEY_ID: ${{ secrets.SPACE_ACCESS_KEY_ID }}
-        SPACE_SECRET_ACCESS_KEY: ${{ secrets.SPACE_SECRET_ACCESS_KEY }}
+        aws_key_id: ${{ secrets.AWS_KEY_ID }}
+        aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws_bucket: ${{ secrets.AWS_BUCKET }}
+        source_dir: './'
+        destination_dir: binaries/${{github.ref_name}}
     - name: notification
       env:
         BINARY_NAME: /haven-linux-glibc227.tar.gz
@@ -88,10 +85,10 @@ jobs:
       shell: bash
       run: |
         export checksum=($(sha256sum haven-linux-glibc227.tar.gz))
-        export payload='{"username": "Github", "content": "CLI (Linux 2.27) : '${BINARY_URL}${GITHUB_REF##*/}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
+        export payload='{"username": "Github", "content": "CLI (Linux 2.27) : '${BINARY_URL}${GITHUB_REF_NAME}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
         echo $payload
         curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
-  
+
   publish-linux-glibc-2-27:
     needs: build-linux-glibc-2-27
     if: startsWith(github.ref, 'refs/tags/v')
@@ -110,4 +107,3 @@ jobs:
         overwrite: true
         body: ""
         prerelease: true
-        
