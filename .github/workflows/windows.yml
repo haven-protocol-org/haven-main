@@ -19,7 +19,7 @@ jobs:
       with:
         update: true
     - name: Install Haven dependencies
-      run: pacman -S --noconfirm mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-libusb git patch
+      run: pacman -S --noconfirm zip mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-libusb git patch
     - name: install boost
       run: |
         wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-boost-1.77.0-2-any.pkg.tar.zst
