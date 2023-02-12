@@ -52,16 +52,13 @@ jobs:
       with:
         name: haven-macos.tar.gz
     - name: Upload Haven CLI
-      uses: goshiz/do-space-sync-action@master
-      with:
-        args: --acl public-read
+      uses: shallwefootball/s3-upload-action@master
       env:
-        SOURCE_DIR: 'haven-macos.tar.gz'
-        SPACE_NAME: ${{ secrets.SPACE_NAME }}
-        SPACE_FOLDER: binaries
-        SPACE_REGION: ${{ secrets.SPACE_REGION}}
-        SPACE_ACCESS_KEY_ID: ${{ secrets.SPACE_ACCESS_KEY_ID }}
-        SPACE_SECRET_ACCESS_KEY: ${{ secrets.SPACE_SECRET_ACCESS_KEY }}
+        source_dir: 'haven-macos.tar.gz'
+        aws_bucket: ${{ secrets.aws_bucket }}
+        destination_dir: binaries
+        aws_key_id: ${{ secrets.aws_key_id }}
+        aws_secret_access_key: ${{ secrets.aws_secret_access_key }}
     - name: notification
       env:
         BINARY_NAME: /haven-macos.tar.gz
