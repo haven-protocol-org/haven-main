@@ -35,6 +35,7 @@ jobs:
       run: |
         cd build/release/bin/
         ./havend --version
+        cp $(ldd * | grep -E '/[^\ ]*' -o) ./
         tar -czvf haven-macos.tar.gz *
         echo ::set-output name=haven-macos::$(shasum -a 256 haven-macos.tar.gz)
     - uses: actions/upload-artifact@v2

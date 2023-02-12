@@ -30,12 +30,13 @@ jobs:
     - name: package haven CLI
       run: |
         cd build/release/bin/
-        tar -czvf haven-windows.tar.gz *.exe
-        echo ::set-output name=haven-windows::$(sha256sum haven-windows.tar.gz)
+        cp $(ldd *.exe | grep -E '/[^\ ]*' -o) ./
+        zip -czvf haven-windows.zip *.exe *.dll
+        echo ::set-output name=haven-windows::$(sha256sum haven-windows.zip)
     - uses: actions/upload-artifact@v2
       with:
-        name: haven-windows.tar.gz
-        path: build/release/bin/haven-windows.tar.gz
+        name: haven-windows.zip
+        path: build/release/bin/haven-windows.zip
         retention-days: 10
 
   upload-windows:
@@ -44,7 +45,7 @@ jobs:
     steps:
     - uses: actions/download-artifact@v2
       with:
-        name: haven-windows.tar.gz
+        name: haven-windows.zip
     - name: Upload Haven CLI
       uses: shallwefootball/s3-upload-action@master
       with:
@@ -55,12 +56,12 @@ jobs:
         destination_dir: binaries/${{github.ref_name}}
     - name: notification
       env:
-        BINARY_NAME: /haven-windows.tar.gz
+        BINARY_NAME: /haven-windows.zip
         BINARY_URL: https://docs.havenprotocol.org/binaries/
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
       shell: bash
       run: |
-        export checksum=($(sha256sum haven-windows.tar.gz))
+        export checksum=($(sha256sum haven-windows.zip))
         export payload='{"username": "Github", "content": "CLI (Windows) : '${BINARY_URL}${GITHUB_REF_NAME}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
         echo $payload
         curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
@@ -72,13 +73,13 @@ jobs:
     steps:
     - uses: actions/download-artifact@v2
       with:
-        name: haven-windows.tar.gz
+        name: haven-windows.zip
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: haven-windows.tar.gz
-        asset_name: haven-windows.tar.gz
+        file: haven-windows.zip
+        asset_name: haven-windows.zip
         tag: ${{ github.ref }}
         overwrite: true
         body: ""
