@@ -31,7 +31,7 @@ jobs:
       run: |
         cd build/release/bin/
         cp $(ldd *.exe | grep -E '/[^\ ]*' -o) ./
-        zip -czvf haven-windows.zip *.exe *.dll
+        zip haven-windows.zip *.exe *.dll
         echo ::set-output name=haven-windows::$(sha256sum haven-windows.zip)
     - uses: actions/upload-artifact@v2
       with:
