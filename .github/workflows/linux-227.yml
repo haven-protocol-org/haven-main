@@ -73,10 +73,10 @@ jobs:
       uses: shallwefootball/s3-upload-action@master
       env:
         source_dir: 'haven-linux-glibc227.tar.gz'
-        aws_bucket: ${{ secrets.aws_bucket }}
+        aws_bucket: ${{ secrets.AWS_BUCKET }}
         destination_dir: binaries
-        aws_key_id: ${{ secrets.aws_key_id }}
-        aws_secret_access_key: ${{ secrets.aws_secret_access_key }}
+        aws_key_id: ${{ secrets.AWS_KEY_ID }}
+        aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     - name: notification
       env:
         BINARY_NAME: /haven-linux-glibc227.tar.gz
