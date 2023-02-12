@@ -71,11 +71,11 @@ jobs:
     - name: Upload Haven CLI
       uses: shallwefootball/s3-upload-action@master
       env:
-        source_dir: 'haven-linux-glibc229.tar.gz'
-        aws_bucket: ${{ secrets.AWS_BUCKET }}
-        destination_dir: binaries
         aws_key_id: ${{ secrets.AWS_KEY_ID }}
         aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws_bucket: ${{ secrets.AWS_BUCKET }}
+        source_dir: 'haven-linux-glibc229.tar.gz'
+        destination_dir: binaries/${{github.ref_name}}
     - name: notification
       env:
         BINARY_NAME: /haven-linux-glibc229.tar.gz
@@ -84,7 +84,7 @@ jobs:
       shell: bash
       run: |
         export checksum=($(sha256sum haven-linux-glibc229.tar.gz))
-        export payload='{"username": "Github", "content": "CLI (Linux 2.29) : '${BINARY_URL}${GITHUB_REF##*/}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
+        export payload='{"username": "Github", "content": "CLI (Linux 2.29) : '${BINARY_URL}${GITHUB_REF_NAME}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
         echo $payload
         curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
 
