@@ -906,6 +906,23 @@ namespace cryptonote
     return outputs_amount;
   }
   //---------------------------------------------------------------
+  bool get_output_asset_type(const cryptonote::tx_out& out, std::string& output_asset_type)
+  {
+    // before HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_haven_key
+    // after HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_haven_tagged_key
+    if (out.target.type() == typeid(txout_haven_key))
+      output_asset_type = boost::get< txout_haven_key >(out.target).asset_type;
+    else if (out.target.type() == typeid(txout_haven_tagged_key))
+      output_asset_type = boost::get< txout_haven_tagged_key >(out.target).asset_type;
+    else
+    {
+      LOG_ERROR("Unexpected output target type found: " << out.target.type().name());
+      return false;
+    }
+
+    return true;
+  }
+  //---------------------------------------------------------------
   bool get_output_public_key(const cryptonote::tx_out& out, crypto::public_key& output_public_key)
   {
     // before HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_haven_key

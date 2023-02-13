@@ -550,7 +550,7 @@ namespace boost
           in.key_offsets = boost::get<cryptonote::txin_offshore>(vin_entry).key_offsets;
           in.k_image = boost::get<cryptonote::txin_offshore>(vin_entry).k_image;
         } else if (vin_entry.type() == typeid(cryptonote::txin_onshore)) {
-          in.asset_type = "XHV";
+          in.asset_type = "XUSD";
           in.amount = boost::get<cryptonote::txin_onshore>(vin_entry).amount;
           in.key_offsets = boost::get<cryptonote::txin_onshore>(vin_entry).key_offsets;
           in.k_image = boost::get<cryptonote::txin_onshore>(vin_entry).k_image;
