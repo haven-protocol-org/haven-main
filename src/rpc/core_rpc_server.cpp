@@ -639,6 +639,7 @@ namespace cryptonote
     size_t size = 0, ntxes = 0;
     res.blocks.reserve(bs.size());
     res.output_indices.reserve(bs.size());
+    res.asset_type_output_indices.reserve(bs.size());
     for(auto& bd: bs)
     {
       res.blocks.resize(res.blocks.size()+1);
@@ -646,10 +647,15 @@ namespace cryptonote
       res.blocks.back().block = bd.first.first;
       size += bd.first.first.size();
       res.output_indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::block_output_indices());
+      res.asset_type_output_indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::block_asset_type_output_indices());
       ntxes += bd.second.size();
       res.output_indices.back().indices.reserve(1 + bd.second.size());
+      res.asset_type_output_indices.back().indices.reserve(1 + bd.second.size());
       if (req.no_miner_tx)
+      {
         res.output_indices.back().indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::tx_output_indices());
+        res.asset_type_output_indices.back().indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::tx_asset_type_output_indices());
+      }
       res.blocks.back().txs.reserve(bd.second.size());
       for (std::vector<std::pair<crypto::hash, cryptonote::blobdata>>::iterator i = bd.second.begin(); i != bd.second.end(); ++i)
       {
@@ -662,7 +668,7 @@ namespace cryptonote
       const size_t n_txes_to_lookup = bd.second.size() + (req.no_miner_tx ? 0 : 1);
       if (n_txes_to_lookup > 0)
       {
-        std::vector<std::vector<uint64_t>> indices;
+        std::vector<std::vector<std::pair<uint64_t, uint64_t>>> indices;
         bool r = m_core.get_tx_outputs_gindexs(req.no_miner_tx ? bd.second.front().first : bd.first.second, n_txes_to_lookup, indices);
         if (!r)
         {
@@ -675,7 +681,17 @@ namespace cryptonote
           return true;
         }
         for (size_t i = 0; i < indices.size(); ++i)
-          res.output_indices.back().indices.push_back({std::move(indices[i])});
+        {
+          cryptonote::rpc::tx_output_indices tx_indices;
+          cryptonote::rpc::tx_asset_type_output_indices tx_asset_type_output_indices;
+          for (size_t j = 0; j < indices[i].size(); ++j)
+          {
+            tx_indices.push_back(indices[i][j].first);
+            tx_asset_type_output_indices.push_back(indices[i][j].second);
+          }
+          res.output_indices.back().indices.push_back({std::move(tx_indices)});
+          res.asset_type_output_indices.back().indices.push_back({std::move(tx_asset_type_output_indices)});
+        }
       }
     }
 
@@ -861,12 +877,20 @@ namespace cryptonote
 
     CHECK_PAYMENT_MIN1(req, res, COST_PER_OUTPUT_INDEXES, false);
 
-    bool r = m_core.get_tx_outputs_gindexs(req.txid, res.o_indexes);
+    std::vector<std::pair<uint64_t, uint64_t>> output_indices;
+    bool r = m_core.get_tx_outputs_gindexs(req.txid, output_indices);
     if(!r)
     {
       res.status = "Failed";
       return true;
     }
+
+    for (size_t i = 0; i < output_indices.size(); ++i)
+    {
+      res.o_indexes.push_back(output_indices[i].first);
+      res.asset_type_output_indices.push_back(output_indices[i].second);
+    }
+
     res.status = CORE_RPC_STATUS_OK;
     LOG_PRINT_L2("COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES: [" << res.o_indexes.size() << "]");
     return true;
@@ -1107,11 +1131,18 @@ namespace cryptonote
       // output indices too if not in pool
       if (pool_tx_hashes.find(tx_hash) == pool_tx_hashes.end())
       {
-        bool r = m_core.get_tx_outputs_gindexs(tx_hash, e.output_indices);
+        std::vector<std::pair<uint64_t, uint64_t>> output_indices;
+        bool r = m_core.get_tx_outputs_gindexs(tx_hash, output_indices);
         if (!r)
         {
           res.status = "Failed";
-          return true;
+          return false;
+        }
+
+        for (size_t i = 0; i < output_indices.size(); ++i)
+        {
+          e.output_indices.push_back(output_indices[i].first);
+          e.asset_type_output_indices.push_back(output_indices[i].second);
         }
       }
     }
@@ -3255,7 +3286,16 @@ namespace cryptonote
       const uint64_t req_to_height = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
       for (uint64_t amount: req.amounts)
       {
-        auto data = rpc::RpcHandler::get_output_distribution([this](uint64_t amount, uint64_t from, uint64_t to, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) { return m_core.get_output_distribution(amount, from, to, start_height, distribution, base); }, amount, req.from_height, req_to_height, [this](uint64_t height) { return m_core.get_blockchain_storage().get_db().get_block_hash_from_height(height); }, req.cumulative, m_core.get_current_blockchain_height());
+        auto data = rpc::RpcHandler::get_output_distribution(
+          [this](uint64_t amount, uint64_t from, uint64_t to, std::string asset_type, uint64_t default_tx_spendable_age, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base, uint64_t &num_spendable_global_outs) { 
+            return m_core.get_output_distribution(amount, from, to, asset_type, default_tx_spendable_age, start_height, distribution, base, num_spendable_global_outs); 
+          },
+          amount, req.from_height, req_to_height, req.rct_asset_type, req.default_tx_spendable_age,
+          [this](uint64_t height) { 
+            return m_core.get_blockchain_storage().get_db().get_block_hash_from_height(height); 
+          },
+          req.cumulative, m_core.get_current_blockchain_height()
+        );
         if (!data)
         {
           error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
@@ -3310,7 +3350,16 @@ namespace cryptonote
       const uint64_t req_to_height = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
       for (uint64_t amount: req.amounts)
       {
-        auto data = rpc::RpcHandler::get_output_distribution([this](uint64_t amount, uint64_t from, uint64_t to, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) { return m_core.get_output_distribution(amount, from, to, start_height, distribution, base); }, amount, req.from_height, req_to_height, [this](uint64_t height) { return m_core.get_blockchain_storage().get_db().get_block_hash_from_height(height); }, req.cumulative, m_core.get_current_blockchain_height());
+        auto data = rpc::RpcHandler::get_output_distribution(
+          [this](uint64_t amount, uint64_t from, uint64_t to, std::string asset_type, uint64_t default_tx_spendable_age, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base, uint64_t &num_spendable_global_outs) { 
+            return m_core.get_output_distribution(amount, from, to, asset_type, default_tx_spendable_age, start_height, distribution, base, num_spendable_global_outs); 
+          },
+          amount, req.from_height, req_to_height, req.rct_asset_type, req.default_tx_spendable_age,
+          [this](uint64_t height) { 
+            return m_core.get_blockchain_storage().get_db().get_block_hash_from_height(height); 
+          },
+          req.cumulative, m_core.get_current_blockchain_height()
+        );
         if (!data)
         {
           res.status = "Failed to get output distribution";
