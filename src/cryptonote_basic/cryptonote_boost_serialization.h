@@ -538,6 +538,10 @@ namespace boost
       std::vector<cryptonote::txin_v> vin_tmp(x.vin);
       x.vin.clear();
       for (auto &vin_entry: vin_tmp) {
+        if (vin_entry.type() == typeid(cryptonote::txin_gen)) {
+          x.vin.push_back(vin_entry);
+          continue;
+        }
         cryptonote::txin_haven_key in;
         if (vin_entry.type() == typeid(cryptonote::txin_to_key)) {
           in.asset_type = "XHV";
@@ -606,6 +610,10 @@ namespace boost
     std::vector<cryptonote::txin_v> vin_tmp;
     vin_tmp.reserve(x.vin.size());
     for (auto &vin_entry_v: x.vin) {
+      if (vin_entry_v.type() == typeid(cryptonote::txin_gen)) {
+        vin_tmp.push_back(vin_entry_v);
+        continue;
+      }
       cryptonote::txin_haven_key vin_entry = boost::get<cryptonote::txin_haven_key>(vin_entry_v);
       if (vin_entry.asset_type == "XHV") {
         cryptonote::txin_to_key in;

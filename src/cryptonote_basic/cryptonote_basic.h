@@ -90,6 +90,10 @@
     std::vector<txin_v> vin_tmp(vin);                                                                           \
     vin.clear();                                                                                                \
     for (auto &vin_entry: vin_tmp) {                                                                            \
+      if (vin_entry.type() == typeid(txin_gen)) {                                                               \
+        vin.push_back(vin_entry);                                                                               \
+        continue;                                                                                               \
+      }                                                                                                         \
       txin_haven_key in;                                                                                        \
       if (vin_entry.type() == typeid(txin_to_key)) {                                                            \
         in.asset_type = "XHV";                                                                                  \
@@ -149,6 +153,10 @@
   std::vector<txin_v> vin_tmp;                                                                                  \
   vin_tmp.reserve(vin.size());                                                                                  \
   for (auto &vin_entry_v: vin) {                                                                                \
+    if (vin_entry_v.type() == typeid(txin_gen)) {                                                               \
+      vin_tmp.push_back(vin_entry_v);                                                                           \
+      continue;                                                                                                 \
+    }                                                                                                           \
     txin_haven_key vin_entry = boost::get<txin_haven_key>(vin_entry_v);                                         \
     if (vin_entry.asset_type == "XHV") {                                                                        \
       txin_to_key in;                                                                                           \
