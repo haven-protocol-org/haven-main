@@ -33,6 +33,7 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
+#include "offshore/asset_types.h"
 
 #include "lmdb/db_lmdb.h"
 
@@ -205,9 +206,9 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
 
   for (const txin_v& tx_input : tx.vin)
   {
-    if (tx_input.type() == typeid(txin_to_key))
+    if (tx_input.type() == typeid(txin_haven_key))
     {
-      add_spent_key(boost::get<txin_to_key>(tx_input).k_image);
+      add_spent_key(boost::get<txin_haven_key>(tx_input).k_image);
     }
     else if (tx_input.type() == typeid(txin_gen))
     {
@@ -221,28 +222,42 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
   }
 
-  uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash);
+  uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash, miner_tx);
 
-  std::vector<uint64_t> amount_output_indices(tx.vout.size());
+  std::vector<std::pair<uint64_t, uint64_t>> amount_output_indices(tx.vout.size());
 
   // iterate tx.vout using indices instead of C++11 foreach syntax because
   // we need the index
   for (uint64_t i = 0; i < tx.vout.size(); ++i)
   {
+    uint64_t unlock_time = 0;
+    if (tx.version >= POU_TRANSACTION_VERSION)
+    {
+      unlock_time = tx.output_unlock_times[i];
+    }
+    else
+    {
+      unlock_time = tx.unlock_time;
+    }
+    
     // miner v2 txes have their coinbase output in one single out to save space,
     // and we store them as rct outputs with an identity mask
-    if (miner_tx && tx.version == 2)
+    if (miner_tx && tx.version >= 2)
     {
       cryptonote::tx_out vout = tx.vout[i];
       rct::key commitment = rct::zeroCommit(vout.amount);
       vout.amount = 0;
-      amount_output_indices[i] = add_output(tx_hash, vout, i, tx.unlock_time,
+      amount_output_indices[i] = add_output(tx_hash, vout, i, unlock_time,
         &commitment);
     }
     else
     {
-      amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time,
-        tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
+      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
+        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
+      } else {
+        amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time,
+                                              tx.version > 1 ? ((tx.vout[i].target.type() == typeid(txout_xasset)) ? &tx.rct_signatures.outPk_xasset[i].mask : (tx.vout[i].target.type() == typeid(txout_offshore)) ? &tx.rct_signatures.outPk_usd[i].mask : &tx.rct_signatures.outPk[i].mask) : NULL);
+      }
     }
   }
   add_tx_amount_output_indices(tx_id, amount_output_indices);
@@ -274,10 +289,20 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
   time1 = epee::misc_utils::get_tick_count();
 
   uint64_t num_rct_outs = 0;
+  offshore::asset_type_counts num_rct_outs_by_asset_type;
   blobdata miner_bd = tx_to_blob(blk.miner_tx);
   add_transaction(blk_hash, std::make_pair(blk.miner_tx, blobdata_ref(miner_bd)));
-  if (blk.miner_tx.version == 2)
+  if (blk.miner_tx.version >= 2)
+  {
     num_rct_outs += blk.miner_tx.vout.size();
+
+    // count the current block's rct outs by asset type
+    for (auto& vout: blk.miner_tx.vout) {
+      std::string asset_type;
+      get_output_asset_type(vout, asset_type);
+      num_rct_outs_by_asset_type.add(asset_type, 1);
+    }
+  }
   int tx_i = 0;
   crypto::hash tx_hash = crypto::null_hash;
   for (const std::pair<transaction, blobdata>& tx : txs)
@@ -286,8 +311,12 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
     add_transaction(blk_hash, tx, &tx_hash);
     for (const auto &vout: tx.first.vout)
     {
-      if (vout.amount == 0)
+      if (vout.amount == 0) {
         ++num_rct_outs;
+      std::string asset_type;
+      get_output_asset_type(vout, asset_type);
+      num_rct_outs_by_asset_type.add(asset_type, 1);
+      }
     }
     ++tx_i;
   }
@@ -296,7 +325,7 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
 
   // call out to subclass implementation to add the block & metadata
   time1 = epee::misc_utils::get_tick_count();
-  add_block(blk, block_weight, long_term_block_weight, cumulative_difficulty, coins_generated, num_rct_outs, blk_hash);
+  add_block(blk, block_weight, long_term_block_weight, cumulative_difficulty, coins_generated, num_rct_outs, num_rct_outs_by_asset_type, blk_hash);
   TIME_MEASURE_FINISH(time1);
   time_add_block1 += time1;
 
@@ -324,9 +353,9 @@ void BlockchainDB::pop_block(block& blk, std::vector<transaction>& txs)
     if (!get_tx(h, tx) && !get_pruned_tx(h, tx))
       throw DB_ERROR("Failed to get pruned or unpruned transaction from the db");
     txs.push_back(std::move(tx));
-    remove_transaction(h);
+    remove_transaction(h, false/*miner_tx*/);
   }
-  remove_transaction(get_transaction_hash(blk.miner_tx));
+  remove_transaction(get_transaction_hash(blk.miner_tx), true/*miner_tx*/);
 }
 
 bool BlockchainDB::is_open() const
@@ -334,7 +363,7 @@ bool BlockchainDB::is_open() const
   return m_open;
 }
 
-void BlockchainDB::remove_transaction(const crypto::hash& tx_hash)
+void BlockchainDB::remove_transaction(const crypto::hash& tx_hash, bool miner_tx)
 {
   transaction tx = get_pruned_tx(tx_hash);
 
@@ -347,7 +376,7 @@ void BlockchainDB::remove_transaction(const crypto::hash& tx_hash)
   }
 
   // need tx as tx.vout has the tx outputs, and the output amounts are needed
-  remove_transaction_data(tx_hash, tx);
+  remove_transaction_data(tx_hash, tx, miner_tx);
 }
 
 block BlockchainDB::get_block_from_height(const uint64_t& height) const
