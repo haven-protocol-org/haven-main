@@ -56,6 +56,7 @@ using namespace epee;
 #include "common/notify.h"
 #include "hardforks/hardforks.h"
 #include "version.h"
+#include "offshore/asset_types.h"
 
 #include <boost/filesystem.hpp>
 
@@ -1299,7 +1300,7 @@ namespace cryptonote
     std::unordered_set<crypto::key_image> ki;
     for(const auto& in: tx.vin)
     {
-      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_haven_key, tokey_in, false);
       if(!ki.insert(tokey_in.k_image).second)
         return false;
     }
@@ -1312,7 +1313,7 @@ namespace cryptonote
     {
       for(const auto& in: tx.vin)
       {
-        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+        CHECKED_GET_SPECIFIC_VARIANT(in, const txin_haven_key, tokey_in, false);
         for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
           if (tokey_in.key_offsets[n] == 0)
             return false;
@@ -1326,7 +1327,7 @@ namespace cryptonote
     std::unordered_set<crypto::key_image> ki;
     for(const auto& in: tx.vin)
     {
-      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, tokey_in, false);
+      CHECKED_GET_SPECIFIC_VARIANT(in, const txin_haven_key, tokey_in, false);
       if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
         return false;
     }
@@ -1502,17 +1503,17 @@ namespace cryptonote
     return m_blockchain_storage.get_outs(req, res);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
+  bool core::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::string asset_type, uint64_t default_tx_spendable_age, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base, uint64_t &num_spendable_global_outs) const
   {
-    return m_blockchain_storage.get_output_distribution(amount, from_height, to_height, start_height, distribution, base);
+    return m_blockchain_storage.get_output_distribution(amount, from_height, to_height, asset_type, default_tx_spendable_age, start_height, distribution, base, num_spendable_global_outs);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
+  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<std::pair<uint64_t, uint64_t>>& indexs) const
   {
     return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, indexs);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const
+  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<std::pair<uint64_t, uint64_t>>>& indexs) const
   {
     return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, n_txes, indexs);
   }

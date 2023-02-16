@@ -133,7 +133,7 @@ bool Blockchain::have_tx_keyimg_as_spent(const crypto::key_image &key_im) const
 // and collects the public key for each from the transaction it was included in
 // via the visitor passed to it.
 template <class visitor_t>
-bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
+bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_haven_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -2339,7 +2339,7 @@ void Blockchain::get_output_key_mask_unlocked(const uint64_t& amount, const uint
   unlocked = is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first), hf_version);
 }
 //------------------------------------------------------------------
-bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
+bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::string asset_type, uint64_t default_tx_spendable_age, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base, uint64_t &num_spendable_global_outs) const
 {
   // rct outputs don't exist before v4
   if (amount == 0)
@@ -2356,6 +2356,7 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
   else
     start_height = 0;
   base = 0;
+  num_spendable_global_outs = 0;
 
   if (to_height > 0 && to_height < from_height)
     return false;
@@ -2376,7 +2377,9 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
     const uint64_t real_start_height = start_height > 0 ? start_height-1 : start_height;
     for (uint64_t h = real_start_height; h <= to_height; ++h)
       heights.push_back(h);
-    distribution = m_db->get_block_cumulative_rct_outputs(heights);
+    std::pair<std::vector<uint64_t>, uint64_t> block_cum_outputs = m_db->get_block_cumulative_rct_outputs(heights, asset_type, default_tx_spendable_age);
+    distribution = block_cum_outputs.first;
+    num_spendable_global_outs = block_cum_outputs.second;
     if (start_height > 0)
     {
       base = distribution[0];
@@ -2875,90 +2878,6 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
       m_spent_keys(spent_keys), m_db(db)
     {
     }
-    bool operator()(const txin_to_key& in) const
-    {
-      const crypto::key_image& ki = in.k_image;
-
-      // attempt to insert the newly-spent key into the container of
-      // keys spent this block.  If this fails, the key was spent already
-      // in this block, return false to flag that a double spend was detected.
-      //
-      // if the insert into the block-wide spent keys container succeeds,
-      // check the blockchain-wide spent keys container and make sure the
-      // key wasn't used in another block already.
-      auto r = m_spent_keys.insert(ki);
-      if(!r.second || m_db->has_key_image(ki))
-      {
-        //double spend detected
-        return false;
-      }
-
-      // if no double-spend detected, return true
-      return true;
-    }
-    bool operator()(const txin_offshore& in) const
-    {
-      const crypto::key_image& ki = in.k_image;
-
-      // attempt to insert the newly-spent key into the container of
-      // keys spent this block.  If this fails, the key was spent already
-      // in this block, return false to flag that a double spend was detected.
-      //
-      // if the insert into the block-wide spent keys container succeeds,
-      // check the blockchain-wide spent keys container and make sure the
-      // key wasn't used in another block already.
-      auto r = m_spent_keys.insert(ki);
-      if(!r.second || m_db->has_key_image(ki))
-	{
-	  //double spend detected
-	  return false;
-	}
-
-      // if no double-spend detected, return true
-      return true;
-    }
-    bool operator()(const txin_onshore& in) const
-    {
-      const crypto::key_image& ki = in.k_image;
-
-      // attempt to insert the newly-spent key into the container of
-      // keys spent this block.  If this fails, the key was spent already
-      // in this block, return false to flag that a double spend was detected.
-      //
-      // if the insert into the block-wide spent keys container succeeds,
-      // check the blockchain-wide spent keys container and make sure the
-      // key wasn't used in another block already.
-      auto r = m_spent_keys.insert(ki);
-      if(!r.second || m_db->has_key_image(ki))
-	{
-	  //double spend detected
-	  return false;
-	}
-
-      // if no double-spend detected, return true
-      return true;
-    }
-    bool operator()(const txin_xasset& in) const
-    {
-      const crypto::key_image& ki = in.k_image;
-
-      // attempt to insert the newly-spent key into the container of
-      // keys spent this block.  If this fails, the key was spent already
-      // in this block, return false to flag that a double spend was detected.
-      //
-      // if the insert into the block-wide spent keys container succeeds,
-      // check the blockchain-wide spent keys container and make sure the
-      // key wasn't used in another block already.
-      auto r = m_spent_keys.insert(ki);
-      if(!r.second || m_db->has_key_image(ki))
-	  {
-	    //double spend detected
-	    return false;
-	  }
-
-      // if no double-spend detected, return true
-      return true;
-    }
     bool operator()(const txin_haven_key& in) const
     {
       const crypto::key_image& ki = in.k_image;
@@ -2993,6 +2912,22 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
     {
       return false;
     }
+    bool operator()(const txin_to_key& tx) const
+    {
+      return false;
+    }
+    bool operator()(const txin_offshore& tx) const
+    {
+      return false;
+    }
+    bool operator()(const txin_onshore& tx) const
+    {
+      return false;
+    }
+    bool operator()(const txin_xasset& tx) const
+    {
+      return false;
+    }
   };
 
   for (const txin_v& in : tx.vin)
@@ -3007,7 +2942,7 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const
+bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<std::pair<uint64_t, uint64_t>>>& indexs) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
@@ -3023,7 +2958,7 @@ bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
+bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<std::pair<uint64_t, uint64_t>>& indexs) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
@@ -3033,7 +2968,7 @@ bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<u
     MERROR_VER("get_tx_outputs_gindexs failed to find transaction with id = " << tx_id);
     return false;
   }
-  std::vector<std::vector<uint64_t>> indices = m_db->get_tx_amount_output_indices(tx_index, 1);
+  std::vector<std::vector<std::pair<uint64_t, uint64_t>>> indices = m_db->get_tx_amount_output_indices(tx_index, 1);
   CHECK_AND_ASSERT_MES(indices.size() == 1, false, "Wrong indices size");
   indexs = indices.front();
   return true;
@@ -3050,7 +2985,7 @@ void Blockchain::on_new_tx_from_block(const cryptonote::transaction &tx)
     TIME_MEASURE_FINISH(a);
     if(m_show_time_stats)
     {
-      size_t ring_size = !tx.vin.empty() && tx.vin[0].type() == typeid(txin_to_key) ? boost::get<txin_to_key>(tx.vin[0]).key_offsets.size() : 0;
+      size_t ring_size = !tx.vin.empty() && tx.vin[0].type() == typeid(txin_haven_key) ? boost::get<txin_haven_key>(tx.vin[0]).key_offsets.size() : 0;
       MINFO("HASH: " << "-" << " I/M/O: " << tx.vin.size() << "/" << ring_size << "/" << tx.vout.size() << " H: " << 0 << " chcktx: " << a);
     }
   }
@@ -3085,7 +3020,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, uint64_t& max_used_block_heigh
   TIME_MEASURE_FINISH(a);
   if(m_show_time_stats)
   {
-    size_t ring_size = !tx.vin.empty() && tx.vin[0].type() == typeid(txin_to_key) ? boost::get<txin_to_key>(tx.vin[0]).key_offsets.size() : 0;
+    size_t ring_size = !tx.vin.empty() && tx.vin[0].type() == typeid(txin_haven_key) ? boost::get<txin_haven_key>(tx.vin[0]).key_offsets.size() : 0;
     MINFO("HASH: " <<  get_transaction_hash(tx) << " I/M/O: " << tx.vin.size() << "/" << ring_size << "/" << tx.vout.size() << " H: " << max_used_block_height << " ms: " << a + m_fake_scan_time << " B: " << get_object_blobsize(tx) << " W: " << get_transaction_weight(tx));
   }
   if (!res)
@@ -3270,7 +3205,7 @@ bool Blockchain::have_tx_keyimges_as_spent(const transaction &tx) const
   LOG_PRINT_L3("Blockchain::" << __func__);
   for (const txin_v& in: tx.vin)
   {
-    CHECKED_GET_SPECIFIC_VARIANT(in, const txin_to_key, in_to_key, true);
+    CHECKED_GET_SPECIFIC_VARIANT(in, const txin_haven_key, in_to_key, true);
     if(have_tx_keyimg_as_spent(in_to_key.k_image))
       return true;
   }
@@ -3328,7 +3263,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       rv.p.MGs.resize(1);
       rv.p.MGs[0].II.resize(tx.vin.size());
       for (size_t n = 0; n < tx.vin.size(); ++n)
-        rv.p.MGs[0].II[n] = rct::ki2rct(boost::get<txin_to_key>(tx.vin[n]).k_image);
+        rv.p.MGs[0].II[n] = rct::ki2rct(boost::get<txin_haven_key>(tx.vin[n]).k_image);
     }
   }
   else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2)
@@ -3339,7 +3274,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       for (size_t n = 0; n < tx.vin.size(); ++n)
       {
         rv.p.MGs[n].II.resize(1);
-        rv.p.MGs[n].II[0] = rct::ki2rct(boost::get<txin_to_key>(tx.vin[n]).k_image);
+        rv.p.MGs[n].II[0] = rct::ki2rct(boost::get<txin_haven_key>(tx.vin[n]).k_image);
       }
     }
   }
@@ -3350,7 +3285,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       CHECK_AND_ASSERT_MES(rv.p.CLSAGs.size() == tx.vin.size(), false, "Bad CLSAGs size");
       for (size_t n = 0; n < tx.vin.size(); ++n)
       {
-        rv.p.CLSAGs[n].I = rct::ki2rct(boost::get<txin_to_key>(tx.vin[n]).k_image);
+        rv.p.CLSAGs[n].I = rct::ki2rct(boost::get<txin_haven_key>(tx.vin[n]).k_image);
       }
     }
   }
@@ -3409,9 +3344,9 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     for (const auto& txin : tx.vin)
     {
       // non txin_to_key inputs will be rejected below
-      if (txin.type() == typeid(txin_to_key))
+      if (txin.type() == typeid(txin_haven_key))
       {
-        const txin_to_key& in_to_key = boost::get<txin_to_key>(txin);
+        const txin_haven_key& in_to_key = boost::get<txin_haven_key>(txin);
         if (in_to_key.amount == 0)
         {
           // always consider rct inputs mixable. Even if there's not enough rct
@@ -3500,9 +3435,9 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     for (size_t n = 0; n < tx.vin.size(); ++n)
     {
       const txin_v &txin = tx.vin[n];
-      if (txin.type() == typeid(txin_to_key))
+      if (txin.type() == typeid(txin_haven_key))
       {
-        const txin_to_key& in_to_key = boost::get<txin_to_key>(txin);
+        const txin_haven_key& in_to_key = boost::get<txin_haven_key>(txin);
         if (last_key_image && memcmp(&in_to_key.k_image, last_key_image, sizeof(*last_key_image)) >= 0)
         {
           MERROR_VER("transaction has unsorted inputs");
@@ -3529,8 +3464,8 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   {
     // make sure output being spent is of type txin_to_key, rather than
     // e.g. txin_gen, which is only used for miner transactions
-    CHECK_AND_ASSERT_MES(txin.type() == typeid(txin_to_key), false, "wrong type id in tx input at Blockchain::check_tx_inputs");
-    const txin_to_key& in_to_key = boost::get<txin_to_key>(txin);
+    CHECK_AND_ASSERT_MES(txin.type() == typeid(txin_haven_key), false, "wrong type id in tx input at Blockchain::check_tx_inputs");
+    const txin_haven_key& in_to_key = boost::get<txin_haven_key>(txin);
 
     // make sure tx output has key offset(s) (is signed to be used)
     CHECK_AND_ASSERT_MES(in_to_key.key_offsets.size(), false, "empty in_to_key.key_offsets in transaction with id " << get_transaction_hash(tx));
@@ -4052,7 +3987,7 @@ bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t hf_versi
 // This function locates all outputs associated with a given input (mixins)
 // and validates that they exist and are usable.  It also checks the ring
 // signature for each input.
-bool Blockchain::check_tx_input(size_t tx_version, const txin_to_key& txin, const crypto::hash& tx_prefix_hash, const std::vector<crypto::signature>& sig, const rct::rctSig &rct_signatures, std::vector<rct::ctkey> &output_keys, uint64_t* pmax_related_block_height, uint8_t hf_version) const
+bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, const crypto::hash& tx_prefix_hash, const std::vector<crypto::signature>& sig, const rct::rctSig &rct_signatures, std::vector<rct::ctkey> &output_keys, uint64_t* pmax_related_block_height, uint8_t hf_version) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
