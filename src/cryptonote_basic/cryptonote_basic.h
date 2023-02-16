@@ -768,6 +768,7 @@ namespace cryptonote
     uint64_t timestamp;
     crypto::hash  prev_id;
     uint32_t nonce;
+    offshore::pricing_record pricing_record;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(major_version)
@@ -775,6 +776,8 @@ namespace cryptonote
       VARINT_FIELD(timestamp)
       FIELD(prev_id)
       FIELD(nonce)
+      if (major_version >= HF_VERSION_OFFSHORE_PRICING)
+        FIELD(pricing_record)
     END_SERIALIZE()
   };
 

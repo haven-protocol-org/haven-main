@@ -53,6 +53,9 @@ namespace cryptonote
     bool rct;                           //true if the output is rct
     rct::key mask;                      //ringct amount mask
     rct::multisig_kLRki multisig_kLRki; //multisig info
+    uint64_t height;
+    offshore::pricing_record pr;
+    bool first_generation_input;
     std::string asset_type;
 
     void push_output(uint64_t idx, const crypto::public_key &k, uint64_t amount) { outputs.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(k), rct::zeroCommit(amount)}))); }
@@ -71,6 +74,11 @@ namespace cryptonote
 
       if (real_output >= outputs.size())
         return false;
+
+      FIELD(height)
+      FIELD(pr)
+      FIELD(asset_type)
+      
     END_SERIALIZE()
   };
 
@@ -187,8 +195,8 @@ namespace cryptonote
   uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
 }
 
-BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 1)
-BOOST_CLASS_VERSION(cryptonote::tx_destination_entry, 2)
+BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)
+BOOST_CLASS_VERSION(cryptonote::tx_destination_entry, 5)
 
 namespace boost
 {
