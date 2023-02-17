@@ -523,15 +523,15 @@ namespace boost
         a & x.amount_minted;
         if (x.version < 5)
           a & x.offshore_data;
-      }
 
-      if (x.version >= POU_TRANSACTION_VERSION) {
-        a & x.output_unlock_times;
-      }
-
-      // Support the old "collateral_indices" vector
-      if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
-        a & x.collateral_indices;
+        if (x.version >= POU_TRANSACTION_VERSION) {
+          a & x.output_unlock_times;
+        }
+        
+        // Support the old "collateral_indices" vector
+        if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+          a & x.collateral_indices;
+        }
       }
 
       // Process the inputs
@@ -667,7 +667,7 @@ namespace boost
         // ...
       }
       // Clone the output unlock time into the output itself
-      out.unlock_time = x.output_unlock_times[i];
+      out.unlock_time = (x.version >= POU_TRANSACTION_VERSION) ? x.output_unlock_times[i] : x.unlock_time;
       // Set the is_collateral flag
       out.is_collateral = false;
       if (x.version >= COLLATERAL_TRANSACTION_VERSION && x.amount_burnt) {
@@ -693,16 +693,16 @@ namespace boost
       a & x.amount_minted;
       if (x.version < 5)
         a & x.offshore_data;
-    }
 
-    // Support the old "output_unlock_times" vector
-    if (x.version >= POU_TRANSACTION_VERSION) {
-      a & x.output_unlock_times;
-    }
+      // Support the old "output_unlock_times" vector
+      if (x.version >= POU_TRANSACTION_VERSION) {
+        a & x.output_unlock_times;
+      }
     
-    // Support the old "collateral_indices" vector
-    if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
-      a & x.collateral_indices;
+      // Support the old "collateral_indices" vector
+      if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+        a & x.collateral_indices;
+      }
     }
     
     return;

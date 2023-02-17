@@ -68,23 +68,23 @@
       VARINT_FIELD(pricing_record_height)                                                                       \
       if (version < 5)                                                                                          \
         FIELD(offshore_data)                                                                                    \
-    }                                                                                                           \
-    if (version >= POU_TRANSACTION_VERSION) {                                                                   \
-      FIELD(output_unlock_times)                                                                                \
-      if (vout.size() != output_unlock_times.size()) {                                                          \
-        return false;                                                                                           \
-      }                                                                                                         \
-    }                                                                                                           \
-    VARINT_FIELD(amount_burnt)                                                                                  \
-    VARINT_FIELD(amount_minted)                                                                                 \
-    if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                            \
-      FIELD(collateral_indices)                                                                                 \
-      if (collateral_indices.size() != 2) {                                                                     \
-        return false;                                                                                           \
-      }                                                                                                         \
-      for (const auto vout_idx: collateral_indices) {                                                           \
-        if (vout_idx >= vout.size())                                                                            \
+      if (version >= POU_TRANSACTION_VERSION) {                                                                 \
+        FIELD(output_unlock_times)                                                                              \
+        if (vout.size() != output_unlock_times.size()) {                                                        \
           return false;                                                                                         \
+        }                                                                                                       \
+      }                                                                                                         \
+      VARINT_FIELD(amount_burnt)                                                                                \
+      VARINT_FIELD(amount_minted)                                                                               \
+      if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                          \
+        FIELD(collateral_indices)                                                                               \
+        if (collateral_indices.size() != 2) {                                                                   \
+          return false;                                                                                         \
+        }                                                                                                       \
+        for (const auto vout_idx: collateral_indices) {                                                         \
+          if (vout_idx >= vout.size())                                                                          \
+            return false;                                                                                       \
+        }                                                                                                       \
       }                                                                                                         \
     }                                                                                                           \
     std::vector<txin_v> vin_tmp(vin);                                                                           \
@@ -136,7 +136,7 @@
       } else {                                                                                                  \
         return false;                                                                                           \
       }                                                                                                         \
-      out.unlock_time = output_unlock_times[i];                                                                 \
+      out.unlock_time = (version >= POU_TRANSACTION_VERSION) ? output_unlock_times[i] : unlock_time;            \
       out.is_collateral = false;                                                                                \
       if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                          \
         if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {   \
@@ -226,23 +226,23 @@
     VARINT_FIELD(pricing_record_height)                                                                         \
     if (version < 5)                                                                                            \
       FIELD(offshore_data)                                                                                      \
-  }                                                                                                             \
-  if (version >= POU_TRANSACTION_VERSION) {                                                                     \
-    FIELD(output_unlock_times)                                                                                  \
-    if (vout.size() != output_unlock_times.size()) {                                                            \
-      return false;                                                                                             \
-    }                                                                                                           \
-  }                                                                                                             \
-  VARINT_FIELD(amount_burnt)                                                                                    \
-  VARINT_FIELD(amount_minted)                                                                                   \
-  if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                              \
-    FIELD(collateral_indices)                                                                                   \
-    if (collateral_indices.size() != 2) {                                                                       \
-      return false;                                                                                             \
-    }                                                                                                           \
-    for (const auto vout_idx: collateral_indices) {                                                             \
-      if (vout_idx >= vout.size())                                                                              \
+    if (version >= POU_TRANSACTION_VERSION) {                                                                   \
+      FIELD(output_unlock_times)                                                                                \
+      if (vout.size() != output_unlock_times.size()) {                                                          \
         return false;                                                                                           \
+      }                                                                                                         \
+    }                                                                                                           \
+    VARINT_FIELD(amount_burnt)                                                                                  \
+    VARINT_FIELD(amount_minted)                                                                                 \
+    if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                            \
+      FIELD(collateral_indices)                                                                                 \
+      if (collateral_indices.size() != 2) {                                                                     \
+        return false;                                                                                           \
+      }                                                                                                         \
+      for (const auto vout_idx: collateral_indices) {                                                           \
+        if (vout_idx >= vout.size())                                                                            \
+          return false;                                                                                         \
+      }                                                                                                         \
     }                                                                                                           \
   }                                                                                                             \
   return true;                                                                                                  \

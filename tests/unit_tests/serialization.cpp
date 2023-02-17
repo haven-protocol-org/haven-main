@@ -531,6 +531,17 @@ TEST(Serialization, tx_types_conversion)
 
   // Check that the hash matches
   ASSERT_EQ(get_transaction_hash(tx_miner), tx_hash_miner);
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Genesis TX
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  std::string tx_blob_genesis_str = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
+  std::string tx_blob_genesis;
+  ASSERT_TRUE(epee::string_tools::parse_hexstr_to_binbuff(tx_blob_genesis_str, tx_blob_genesis));
+  cryptonote::transaction tx_genesis;
+  tx_genesis.set_null();
+  ASSERT_TRUE(cryptonote::parse_and_validate_tx_from_blob(tx_blob_genesis, tx_genesis));
 }
 
 TEST(Serialization, serializes_ringct_types)
