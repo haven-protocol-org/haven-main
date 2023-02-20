@@ -2912,6 +2912,8 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
     {
       return false;
     }
+    // HERE BE DRAGONS!!!
+    // NEAC: The rest of the types are defined below, because removing them causes a compilation error (due to use of txin_v in for() loop below)
     bool operator()(const txin_to_key& tx) const
     {
       return false;
@@ -2928,6 +2930,7 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
     {
       return false;
     }
+    // LAND AHOY!!!
   };
 
   for (const txin_v& in : tx.vin)

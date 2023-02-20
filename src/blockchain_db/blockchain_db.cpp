@@ -299,7 +299,8 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
     // count the current block's rct outs by asset type
     for (auto& vout: blk.miner_tx.vout) {
       std::string asset_type;
-      get_output_asset_type(vout, asset_type);
+      if (!get_output_asset_type(vout, asset_type))
+        throw std::runtime_error("Failed to get output asset type");
       num_rct_outs_by_asset_type.add(asset_type, 1);
     }
   }
@@ -314,7 +315,8 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
       if (vout.amount == 0) {
         ++num_rct_outs;
       std::string asset_type;
-      get_output_asset_type(vout, asset_type);
+      if (!get_output_asset_type(vout, asset_type))
+        throw std::runtime_error("Failed to get output asset type");
       num_rct_outs_by_asset_type.add(asset_type, 1);
       }
     }
