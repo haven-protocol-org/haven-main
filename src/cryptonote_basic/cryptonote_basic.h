@@ -507,6 +507,12 @@ namespace cryptonote
       vin.clear();
       vout.clear();
       extra.clear();
+      pricing_record_height = 0;
+      offshore_data.clear();
+      amount_burnt = 0;
+      amount_minted = 0;
+      output_unlock_times.clear();
+      collateral_indices.clear();
     }
   };
 

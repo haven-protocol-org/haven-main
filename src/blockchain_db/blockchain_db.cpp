@@ -371,9 +371,9 @@ void BlockchainDB::remove_transaction(const crypto::hash& tx_hash, bool miner_tx
 
   for (const txin_v& tx_input : tx.vin)
   {
-    if (tx_input.type() == typeid(txin_to_key))
+    if (tx_input.type() == typeid(txin_haven_key))
     {
-      remove_spent_key(boost::get<txin_to_key>(tx_input).k_image);
+      remove_spent_key(boost::get<txin_haven_key>(tx_input).k_image);
     }
   }
 

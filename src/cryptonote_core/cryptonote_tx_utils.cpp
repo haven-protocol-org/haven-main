@@ -1081,6 +1081,23 @@ namespace cryptonote
 
   bool get_block_longhash(const Blockchain *pbc, const blobdata& bd, crypto::hash& res, const uint64_t height, const int major_version, const crypto::hash *seed_hash, const int miners)
   {
+    cn_pow_hash_v3 ctx;
+    if(major_version >= CRYPTONOTE_V3_POW_BLOCK_VERSION)
+    {
+      ctx.hash(bd.data(), bd.size(), res.data);
+    }
+    else if(major_version == CRYPTONOTE_V2_POW_BLOCK_VERSION)
+    {
+      cn_pow_hash_v2 ctx_v2 = cn_pow_hash_v2::make_borrowed_v2(ctx);
+      ctx_v2.hash(bd.data(), bd.size(), res.data);
+    }
+    else
+    {
+      cn_pow_hash_v1 ctx_v1 = cn_pow_hash_v1::make_borrowed_v1(ctx);
+      ctx_v1.hash(bd.data(), bd.size(), res.data);
+    }
+    return true;
+    /*
     // block 202612 bug workaround
     if (height == 202612)
     {
@@ -1109,6 +1126,7 @@ namespace cryptonote
       crypto::cn_slow_hash(bd.data(), bd.size(), res, pow_variant, height);
     }
     return true;
+    */
   }
 
   bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const crypto::hash *seed_hash, const int miners)
