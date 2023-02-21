@@ -1113,6 +1113,7 @@ namespace cryptonote
       uint64_t timestamp;
       std::string prev_hash;
       uint32_t nonce;
+      offshore::pricing_record pricing_record;
       bool orphan_status;
       uint64_t height;
       uint64_t depth;
@@ -1273,6 +1274,42 @@ namespace cryptonote
         KV_SERIALIZE(tx_hashes)
         KV_SERIALIZE(blob)
         KV_SERIALIZE(json)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_GET_CIRCULATING_SUPPLY
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+    struct supply_entry
+    {
+      std::string currency_label;
+      std::string amount;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(currency_label);
+        KV_SERIALIZE(amount);
+      END_KV_SERIALIZE_MAP()
+
+      supply_entry(std::string currency_label, std::string amount): currency_label(currency_label), amount(amount) {}
+      supply_entry() {}
+    };
+    
+    struct response_t
+    {
+      std::string status;
+      std::vector<supply_entry> supply_tally;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(supply_tally)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

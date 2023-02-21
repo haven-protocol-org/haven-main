@@ -1962,6 +1962,254 @@ bool wallet2::spends_one_of_ours(const cryptonote::transaction &tx) const
   return false;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::get_pricing_record(offshore::pricing_record& pr, const uint64_t height)
+{
+  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
+  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response res = AUTO_VAL_INIT(res);
+  m_daemon_rpc_mutex.lock();
+  req.height = height;
+  bool r = invoke_http_json_rpc("/json_rpc", "getblockheaderbyheight", req, res, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  if (r && res.status == CORE_RPC_STATUS_OK)
+  {
+    // Got the block header - verify the pricing record
+    if (res.block_header.pricing_record.empty()) {
+      MERROR("Invalid pricing record in block header - offshore TXs disabled. Please try again later.");
+      return false;
+    }
+
+    // Return the pricing record we retrieved
+    pr = res.block_header.pricing_record;
+    return true;
+  }
+  else
+  {
+    MERROR("Failed to request block header from daemon");
+    return false;
+  }
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts)
+{
+  // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_CIRCULATING_SUPPLY::response res = AUTO_VAL_INIT(res);
+  m_daemon_rpc_mutex.lock();
+  bool r = invoke_http_json_rpc("/json_rpc", "get_circulating_supply", req, res, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  if (r && res.status == CORE_RPC_STATUS_OK)
+  {
+    // Got the supply data - convert to a meaningful format
+    for (auto i: res.supply_tally) {
+      amounts.push_back(std::make_pair(std::string(i.currency_label), std::string(i.amount)));
+    }
+    return true;
+  }
+  else
+  {
+    MERROR("Failed to retrieve circulating supply from daemon");
+    return false;
+  }
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_type, const std::string& source_asset, const std::string& dest_asset,  uint64_t &amount, std::string& err)
+{
+  using tt = cryptonote::transaction_type;
+
+  // Get the total unlocked balance
+  uint64_t unlocked_xhv_balance = unlocked_balance_all(true, "XHV");
+  uint64_t unlocked_xusd_balance = unlocked_balance_all(true, "XUSD");
+  uint32_t hf_version = get_current_hard_fork();
+
+  if (hf_version < HF_VERSION_USE_COLLATERAL) {
+    err = "max function only works after Collateral fork(v20)";
+    return false;
+  }
+
+  if (source_asset != dest_asset) {
+    // Get the current blockchain height
+    uint64_t current_height = get_blockchain_current_height()-1;
+
+    // Get the pricing record for the current height
+    offshore::pricing_record pr;
+    if (!get_pricing_record(pr, current_height)) {
+      err ="Failed to get pricing record";
+      return false;
+    }
+
+    // Get the circulating supply data
+    std::vector<std::pair<std::string, std::string>> amounts;
+    if (!get_circulating_supply(amounts)) {
+      err ="Failed to get circulating supply";
+      return false;
+    }
+    
+    if (tx_type == tt::OFFSHORE) {
+
+      // put a bufer for the tx fee
+      if (unlocked_xhv_balance < 2 * COIN) {
+        err = "unlocked balance too small for max. enter amount manualy";
+        return false;
+      }
+      unlocked_xhv_balance -= 2 * COIN;
+
+      // Set a threshold for success - 1%
+      uint64_t tolerance = unlocked_xhv_balance / 100;
+    
+      // Loop until we find an acceptable value for the max
+      bool found = false;
+      uint64_t collateral = 0;
+      uint64_t last_amount = unlocked_xhv_balance / 2;
+      uint64_t left = 0, right = unlocked_xhv_balance;
+      while (!found) {
+        last_amount = (left + right) / 2;
+        bool r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+        if (!r) {
+          err = "Failed to get collateral requirements";
+          return false;
+        }
+
+        boost::multiprecision::uint128_t conversion_fee_128 = last_amount;
+        conversion_fee_128 *= 15;
+        conversion_fee_128 /= 1000;
+        uint64_t conversion_fee = (uint64_t)conversion_fee_128;
+
+        if ((last_amount + collateral) > (unlocked_xhv_balance - conversion_fee)) {
+          right = last_amount;
+        } else if ((last_amount + collateral) < (unlocked_xhv_balance - conversion_fee - tolerance)) {
+          left = last_amount;
+        } else {
+          // Found the result
+          found = true;
+        }
+      }
+      if (found) {
+        amount = last_amount - (last_amount % 100000000);
+        return true;
+      }
+      
+    } else if (tx_type == tt::ONSHORE) {
+    
+      // Discount the 1.5% fees off the top of the xUSD (source) balance
+      boost::multiprecision::uint128_t balance_128 = unlocked_xusd_balance;
+      balance_128 *= 985;
+      balance_128 /= 1000;
+      unlocked_xusd_balance = (uint64_t)balance_128;
+
+      // put a bufer for the tx fee
+      if (unlocked_xusd_balance < 2 * COIN) {
+        err = "unlocked balance too small for max. enter amount manualy";
+        return false;
+      }
+      unlocked_xusd_balance -= 2 * COIN;
+
+      // Set a threshold for success - 1%
+      uint64_t tolerance = unlocked_xusd_balance / 100;
+      uint64_t tolerance_xhv = unlocked_xhv_balance / 100;
+
+      // Loop until we find an acceptable value for the max
+      bool found = false;
+      uint64_t collateral = 0;
+      uint64_t last_amount = 0;
+      uint64_t left = 0, right = unlocked_xusd_balance;
+      while (!found) {
+        last_amount = (left + right) / 2;
+        bool r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+        if (!r) {
+          err = "Failed to get collateral requirements";
+          return false;
+        }
+
+        if (collateral > unlocked_xhv_balance) {
+          // Required collateral is too high - reduce amount
+          right = last_amount;
+        } else if ((unlocked_xhv_balance >= collateral) && ((unlocked_xhv_balance - collateral) <= tolerance_xhv)) {
+          // Found the most collateral we can afford
+          found = true;
+        } else if (right-left < tolerance) {
+          if (collateral < unlocked_xhv_balance) {
+            // Found the most collateral we can afford based on xUSD
+            found = true;
+          } else {
+            // Didnt succeed in finding a solution
+            return false;
+          }
+        } else {
+          left = last_amount;
+        }
+      }
+      if (found) {
+        amount = cryptonote::get_xhv_amount(last_amount, pr, tx_type, hf_version);
+        amount -= (amount % 100000000);
+	      LOG_PRINT_L2("Found max amount = " << last_amount << " xUSD (" << amount << " XHV), and requires " << collateral << " XHV as collateral");
+        return true;
+      }
+    } else if (tx_type == tt::XUSD_TO_XASSET) {
+
+      // Discount the 1.5% fees off the top of the xUSD (source) balance
+      boost::multiprecision::uint128_t balance_128 = unlocked_xusd_balance;
+      balance_128 *= 985;
+      balance_128 /= 1000;
+      uint64_t unlocked_xusd_balance = (uint64_t)balance_128;
+
+      // put a bufer for the tx fee
+      if (unlocked_xusd_balance < 2 * COIN) {
+        err = "unlocked balance too small for max. enter amount manualy";
+        return false;
+      }
+      unlocked_xusd_balance -= 2 * COIN;
+
+      amount = unlocked_xusd_balance;
+      amount -= (amount % 100000000);
+      return true;
+    } else if (tx_type == tt::XASSET_TO_XUSD) {
+
+      // Discount the 1.5% fees off the top of the xUSD (source) balance
+      boost::multiprecision::uint128_t balance_128 = unlocked_balance_all(true, source_asset);
+      balance_128 *= 985;
+      balance_128 /= 1000;
+      uint64_t unlocked_xasset_balance = (uint64_t)balance_128;
+      uint64_t xasset_amount = cryptonote::get_xasset_amount(2, source_asset, pr); // 2 usd worth of xasset
+
+      // put a bufer for the tx fee
+      if (unlocked_xasset_balance < xasset_amount) {
+        err = "unlocked balance too small for max. enter amount manualy";
+        return false;
+      }
+      unlocked_xasset_balance -= xasset_amount;
+
+      amount = cryptonote::get_xusd_amount(unlocked_xasset_balance, source_asset, pr, tx_type, hf_version);
+      amount -= (amount % 100000000);
+      return true;
+    } else {
+      err = "unkniown tx type for max function.";
+      return false;
+    }
+
+  } else {
+    if (tx_type == tt::XASSET_TRANSFER) {
+      err = "xasset transfer arent supported for max. Enter an amount manually.";
+      return false;
+    }
+
+    uint64_t balance = unlocked_balance_all(true, source_asset);
+    // put a bufer for the tx fee
+    if (balance < 2 * COIN) {
+      err = "unlocked balance too small for max. enter amount manualy";
+      return false;
+    }
+    balance -= 2 * COIN;
+
+    amount = balance;
+    amount -= (amount % 100000000);
+    return true;
+  }
+
+  
+  return false;
+}
+//----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, uint64_t height, uint8_t block_version, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
   PERF_TIMER(process_new_transaction);
@@ -3662,7 +3910,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
 
   m_first_refresh_done = true;
 
-  LOG_PRINT_L1("Refresh done, blocks received: " << blocks_fetched << ", balance (all accounts): " << print_money(balance_all(false)) << ", unlocked: " << print_money(unlocked_balance_all(false)));
+  LOG_PRINT_L1("Refresh done, blocks received: " << blocks_fetched << ", balance (all accounts): " << print_money(balance_all(false, "XHV")) << ", unlocked: " << print_money(unlocked_balance_all(false, "XHV")));
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::refresh(bool trusted_daemon, uint64_t & blocks_fetched, bool& received_money, bool& ok)
@@ -5938,17 +6186,17 @@ boost::optional<wallet2::cache_file_data> wallet2::get_cache_file_data(const epe
   }
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::balance(uint32_t index_major, bool strict) const
+uint64_t wallet2::balance(uint32_t index_major, const std::string& asset, bool strict) const
 {
   uint64_t amount = 0;
   if(m_light_wallet)
     return m_light_wallet_balance;
-  for (const auto& i : balance_per_subaddress(index_major, strict))
+  for (const auto& i : balance_per_subaddress(index_major, asset, strict))
     amount += i.second;
   return amount;
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::unlocked_balance(uint32_t index_major, bool strict, uint64_t *blocks_to_unlock, uint64_t *time_to_unlock)
+uint64_t wallet2::unlocked_balance(uint32_t index_major, const std::string& asset, bool strict, uint64_t *blocks_to_unlock, uint64_t *time_to_unlock)
 {
   uint64_t amount = 0;
   if (blocks_to_unlock)
@@ -5957,7 +6205,7 @@ uint64_t wallet2::unlocked_balance(uint32_t index_major, bool strict, uint64_t *
     *time_to_unlock = 0;
   if(m_light_wallet)
     return m_light_wallet_unlocked_balance;
-  for (const auto& i : unlocked_balance_per_subaddress(index_major, strict))
+  for (const auto& i : unlocked_balance_per_subaddress(index_major, asset, strict))
   {
     amount += i.second.first;
     if (blocks_to_unlock && i.second.second.first > *blocks_to_unlock)
@@ -5968,12 +6216,12 @@ uint64_t wallet2::unlocked_balance(uint32_t index_major, bool strict, uint64_t *
   return amount;
 }
 //----------------------------------------------------------------------------------------------------
-std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_major, bool strict) const
+std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_major, const std::string& asset, bool strict) const
 {
   std::map<uint32_t, uint64_t> amount_per_subaddr;
   for (const auto& td: m_transfers)
   {
-    if (td.m_subaddr_index.major == index_major && !is_spent(td, strict) && !td.m_frozen)
+    if (td.m_subaddr_index.major == index_major && td.asset_type == asset && !is_spent(td, strict) && !td.m_frozen)
     {
       auto found = amount_per_subaddr.find(td.m_subaddr_index.minor);
       if (found == amount_per_subaddr.end())
@@ -6021,14 +6269,14 @@ std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_majo
   return amount_per_subaddr;
 }
 //----------------------------------------------------------------------------------------------------
-std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::unlocked_balance_per_subaddress(uint32_t index_major, bool strict)
+std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::unlocked_balance_per_subaddress(uint32_t index_major, const std::string& asset, bool strict)
 {
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> amount_per_subaddr;
   const uint64_t blockchain_height = get_blockchain_current_height();
   const uint64_t now = time(NULL);
   for(const transfer_details& td: m_transfers)
   {
-    if(td.m_subaddr_index.major == index_major && !is_spent(td, strict) && !td.m_frozen)
+    if(td.m_subaddr_index.major == index_major && td.asset_type == asset && !is_spent(td, strict) && !td.m_frozen)
     {
       uint64_t amount = 0, blocks_to_unlock = 0, time_to_unlock = 0;
       if (is_transfer_unlocked(td))
@@ -6061,15 +6309,15 @@ std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::
   return amount_per_subaddr;
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::balance_all(bool strict) const
+uint64_t wallet2::balance_all(bool strict, const std::string& asset) const
 {
   uint64_t r = 0;
   for (uint32_t index_major = 0; index_major < get_num_subaddress_accounts(); ++index_major)
-    r += balance(index_major, strict);
+    r += balance(index_major, asset, strict);
   return r;
 }
 //----------------------------------------------------------------------------------------------------
-uint64_t wallet2::unlocked_balance_all(bool strict, uint64_t *blocks_to_unlock, uint64_t *time_to_unlock)
+uint64_t wallet2::unlocked_balance_all(bool strict, const std::string& asset, uint64_t *blocks_to_unlock, uint64_t *time_to_unlock)
 {
   uint64_t r = 0;
   if (blocks_to_unlock)
@@ -6079,7 +6327,7 @@ uint64_t wallet2::unlocked_balance_all(bool strict, uint64_t *blocks_to_unlock, 
   for (uint32_t index_major = 0; index_major < get_num_subaddress_accounts(); ++index_major)
   {
     uint64_t local_blocks_to_unlock, local_time_to_unlock;
-    r += unlocked_balance(index_major, strict, blocks_to_unlock ? &local_blocks_to_unlock : NULL, time_to_unlock ? &local_time_to_unlock : NULL);
+    r += unlocked_balance(index_major, asset, strict, blocks_to_unlock ? &local_blocks_to_unlock : NULL, time_to_unlock ? &local_time_to_unlock : NULL);
     if (blocks_to_unlock)
       *blocks_to_unlock = std::max(*blocks_to_unlock, local_blocks_to_unlock);
     if (time_to_unlock)
@@ -6569,8 +6817,8 @@ void wallet2::commit_tx(pending_tx& ptx)
   //fee includes dust if dust policy specified it.
   LOG_PRINT_L1("Transaction successfully sent. <" << txid << ">" << ENDL
             << "Commission: " << print_money(ptx.fee) << " (dust sent to dust addr: " << print_money((ptx.dust_added_to_fee ? 0 : ptx.dust)) << ")" << ENDL
-            << "Balance: " << print_money(balance(ptx.construction_data.subaddr_account, false)) << ENDL
-            << "Unlocked: " << print_money(unlocked_balance(ptx.construction_data.subaddr_account, false)) << ENDL
+            << "Balance: " << print_money(balance(ptx.construction_data.subaddr_account, "XHV", false)) << ENDL
+            << "Unlocked: " << print_money(unlocked_balance(ptx.construction_data.subaddr_account, "XHV", false)) << ENDL
             << "Please, wait for confirmation for your balance to be unlocked.");
 }
 
@@ -10038,8 +10286,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   // throw if attempting a transaction with no money
   THROW_WALLET_EXCEPTION_IF(needed_money == 0, error::zero_amount);
 
-  std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr = unlocked_balance_per_subaddress(subaddr_account, false);
-  std::map<uint32_t, uint64_t> balance_per_subaddr = balance_per_subaddress(subaddr_account, false);
+  std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr = unlocked_balance_per_subaddress(subaddr_account, "XHV", false);
+  std::map<uint32_t, uint64_t> balance_per_subaddr = balance_per_subaddress(subaddr_account, "XHV", false);
 
   if (subaddr_indices.empty()) // "index=<N1>[,<N2>,...]" wasn't specified -> use all the indices with non-zero unlocked balance
   {
@@ -10214,7 +10462,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
     // if we need to spend money and don't have any left, we fail
     if (unused_dust_indices->empty() && unused_transfers_indices->empty()) {
       LOG_PRINT_L2("No more outputs to choose from");
-      THROW_WALLET_EXCEPTION_IF(1, error::tx_not_possible, unlocked_balance(subaddr_account, false), needed_money, accumulated_fee + needed_fee);
+      THROW_WALLET_EXCEPTION_IF(1, error::tx_not_possible, unlocked_balance(subaddr_account, "XHV", false), needed_money, accumulated_fee + needed_fee);
     }
 
     // get a random unspent output and use it to pay part (or all) of the current destination (and maybe next one, etc)
@@ -10467,7 +10715,7 @@ skip_tx:
   if (adding_fee)
   {
     LOG_PRINT_L1("We ran out of outputs while trying to gather final fee");
-    THROW_WALLET_EXCEPTION_IF(1, error::tx_not_possible, unlocked_balance(subaddr_account, false), needed_money, accumulated_fee + needed_fee);
+    THROW_WALLET_EXCEPTION_IF(1, error::tx_not_possible, unlocked_balance(subaddr_account, "XHV", false), needed_money, accumulated_fee + needed_fee);
   }
 
   LOG_PRINT_L1("Done creating " << txes.size() << " transactions, " << print_money(accumulated_fee) <<
@@ -10617,7 +10865,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
   const uint64_t fractional_threshold = (base_fee * tx_weight_per_ring) / (use_per_byte_fee ? 1 : 1024);
   std::unordered_set<crypto::public_key> valid_public_keys_cache;
 
-  THROW_WALLET_EXCEPTION_IF(unlocked_balance(subaddr_account, false) == 0, error::wallet_internal_error, "No unlocked balance in the specified account");
+  THROW_WALLET_EXCEPTION_IF(unlocked_balance(subaddr_account, "XHV", false) == 0, error::wallet_internal_error, "No unlocked balance in the specified account");
 
   std::map<uint32_t, std::pair<std::vector<size_t>, std::vector<size_t>>> unused_transfer_dust_indices_per_subaddr;
 
@@ -12073,8 +12321,8 @@ bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote
 std::string wallet2::get_reserve_proof(const boost::optional<std::pair<uint32_t, uint64_t>> &account_minreserve, const std::string &message)
 {
   THROW_WALLET_EXCEPTION_IF(m_watch_only || m_multisig, error::wallet_internal_error, "Reserve proof can only be generated by a full wallet");
-  THROW_WALLET_EXCEPTION_IF(balance_all(true) == 0, error::wallet_internal_error, "Zero balance");
-  THROW_WALLET_EXCEPTION_IF(account_minreserve && balance(account_minreserve->first, true) < account_minreserve->second, error::wallet_internal_error,
+  THROW_WALLET_EXCEPTION_IF(balance_all(true, "XHV") == 0, error::wallet_internal_error, "Zero balance");
+  THROW_WALLET_EXCEPTION_IF(account_minreserve && balance(account_minreserve->first, "XHV", true) < account_minreserve->second, error::wallet_internal_error,
     "Not enough balance in this account for the requested minimum reserve amount");
 
   // determine which outputs to include in the proof

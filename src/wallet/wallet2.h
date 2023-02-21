@@ -345,6 +345,7 @@ private:
       std::vector<rct::key> m_multisig_k;
       std::vector<multisig_info> m_multisig_info; // one per other participant
       std::vector<std::pair<uint64_t, crypto::hash>> m_uses;
+      std::string asset_type;
 
       bool is_rct() const { return m_rct; }
       uint64_t amount() const { return m_amount; }
@@ -1040,14 +1041,14 @@ private:
     bool reconnect_device();
 
     // locked & unlocked balance of given or current subaddress account
-    uint64_t balance(uint32_t subaddr_index_major, bool strict) const;
-    uint64_t unlocked_balance(uint32_t subaddr_index_major, bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
+    uint64_t balance(uint32_t subaddr_index_major, const std::string& asset, bool strict) const;
+    uint64_t unlocked_balance(uint32_t subaddr_index_major, const std::string& asset, bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
     // locked & unlocked balance per subaddress of given or current subaddress account
-    std::map<uint32_t, uint64_t> balance_per_subaddress(uint32_t subaddr_index_major, bool strict) const;
-    std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress(uint32_t subaddr_index_major, bool strict);
+    std::map<uint32_t, uint64_t> balance_per_subaddress(uint32_t subaddr_index_major, const std::string& asset, bool strict) const;
+    std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress(uint32_t subaddr_index_major, const std::string& asset, bool strict);
     // all locked & unlocked balances of all subaddress accounts
-    uint64_t balance_all(bool strict) const;
-    uint64_t unlocked_balance_all(bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
+    uint64_t balance_all(bool strict, const std::string& asset) const;
+    uint64_t unlocked_balance_all(bool strict, const std::string& asset, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
     template<typename T>
     void transfer_selected(const std::vector<cryptonote::tx_destination_entry>& dsts, const std::vector<size_t>& selected_transfers, size_t fake_outputs_count,
       std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, std::unordered_set<crypto::public_key> &valid_public_keys_cache,
@@ -1676,6 +1677,7 @@ private:
     void credit_report(uint64_t &expected_spent, uint64_t &discrepancy) const { expected_spent = m_rpc_payment_state.expected_spent; discrepancy = m_rpc_payment_state.discrepancy; }
 
     static std::string get_default_daemon_address() { CRITICAL_REGION_LOCAL(default_daemon_address_lock); return default_daemon_address; }
+    bool get_max_destination_amount(const cryptonote::transaction_type tx_type, const std::string& source_asset, const std::string& dest_asset,  uint64_t &amount, std::string& err);
 
   private:
     /*!
@@ -1753,6 +1755,8 @@ private:
     crypto::chacha_key get_ringdb_key();
     void setup_keys(const epee::wipeable_string &password);
     size_t get_transfer_details(const crypto::key_image &ki) const;
+    bool get_pricing_record(offshore::pricing_record& pr, const uint64_t height);
+    bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
 
     void register_devices();
     hw::device& lookup_device(const std::string & device_descriptor);
