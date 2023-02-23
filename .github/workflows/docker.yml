@@ -10,8 +10,8 @@ jobs:
             platformdashes: linux-amd64
           - platform: linux/arm64
             platformdashes: linux-arm64
-          - platform: linux/arm/v7
-            platformdashes: linux-arm-v7
+#          - platform: linux/arm/v7
+#            platformdashes: linux-arm-v7
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2

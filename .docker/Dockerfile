@@ -30,7 +30,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then export build=x86_64; fi; \
 if  [ "$TARGETARCH" = "386" ]; then export build=i686; fi; \
 if [ "$TARGETARCH" = "arm" ]; then export build=${TARGETARCH}${TARGETVARIANT}; fi; \
 if [ "$TARGETARCH" = "arm64" ]; then export build=armv8; fi; \
-make release-static-${TARGETOS}-${build}
+make release-static-${TARGETOS}-${build} -j $(($(nproc) + 1))
 
 RUN build/release/bin/havend --version
 
