@@ -93,7 +93,7 @@ jobs:
       run: ${{env.APT_SET_CONF}}
     - name: update apt
       run: sudo apt update
-    - name: install monero dependencies
+    - name: install haven dependencies
       run: ${{env.APT_INSTALL_LINUX}}
     - name: build
       run: |
@@ -119,7 +119,7 @@ jobs:
       run: ${{env.APT_SET_CONF}}
     - name: update apt
       run: sudo apt update
-    - name: install monero dependencies
+    - name: install haven dependencies
       run: ${{env.APT_INSTALL_LINUX}}
     - name: build
       run: |
@@ -148,7 +148,7 @@ jobs:
       run: ${{env.APT_SET_CONF}}
     - name: update apt
       run: sudo apt update
-    - name: install monero dependencies
+    - name: install haven dependencies
       run: ${{env.APT_INSTALL_LINUX}}
     - name: install Python dependencies
       run: pip install requests psutil monotonic zmq
@@ -172,11 +172,11 @@ jobs:
     - name: archive
       run: |
         pip install git-archive-all
-        export VERSION="monero-$(git describe)"
+        export VERSION="haven-$(git describe)"
         export OUTPUT="$VERSION.tar"
         echo "OUTPUT=$OUTPUT" >> $GITHUB_ENV
         /home/runner/.local/bin/git-archive-all --prefix "$VERSION/" --force-submodules "$OUTPUT"
     - uses: actions/upload-artifact@v2
       with:
         name: ${{ env.OUTPUT }}
-        path: /home/runner/work/monero/monero/${{ env.OUTPUT }}
+        path: /home/runner/work/haven-main/haven-main/${{ env.OUTPUT }}
