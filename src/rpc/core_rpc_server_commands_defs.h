@@ -868,6 +868,28 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  struct COMMAND_RPC_GET_PRICING_RECORD
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+
+    struct response_t
+    {
+      offshore::pricing_record pr;
+      
+      BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(pr)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  //-----------------------------------------------
   struct COMMAND_RPC_SAVE_BC
   {
     struct request_t: public rpc_request_base

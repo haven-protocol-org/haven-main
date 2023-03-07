@@ -101,6 +101,19 @@ TEST(Crypto, verify_32)
   }
 }
 
+TEST(Crypto, skey_to_pkey)
+{
+  std::string skey_str = "C595161EA20CCD8C692947C2D3CED471E9B13A18B150C881232794E8042BF107";
+  std::string pkey_str;
+  std::string pkey_str_expected = "3BCB82EECC13739B463B386FC1ED991386A046B478BF4864673CA0A229C3CEC1";
+
+  crypto::secret_key skey;
+  crypto::public_key pkey;
+  ASSERT_TRUE(epee::string_tools::hex_to_pod(skey_str, skey));
+  ASSERT_TRUE(crypto::secret_key_to_public_key(skey, pkey));
+  
+}
+
 TEST(Crypto, tree_branch)
 {
   crypto::hash inputs[6];

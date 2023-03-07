@@ -38,7 +38,29 @@
 namespace cryptonote
 {
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1);
+  //---------------------------------------------------------------
+  bool construct_miner_tx(
+    size_t height,
+    size_t median_weight,
+    uint64_t already_generated_coins,
+    size_t current_block_weight,
+    std::map<std::string, uint64_t> fee_map,
+    std::map<std::string, uint64_t> offshore_fee_map,
+    std::map<std::string, uint64_t> xasset_fee_map,
+    const account_public_address &miner_address,
+    transaction& tx,
+    const blobdata& extra_nonce = blobdata(),
+    size_t max_outs = 999,
+    uint8_t hard_fork_version = 5,
+    cryptonote::network_type nettype = MAINNET
+  );
+
+  keypair get_deterministic_keypair_from_height(uint64_t height);
+
+  uint64_t get_governance_reward(uint64_t height, uint64_t base_reward);
+  bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key);
+  bool validate_governance_reward_key(uint64_t height, const std::string& governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, cryptonote::network_type nettype = MAINNET);
+  std::string get_governance_address(uint32_t version, network_type nettype);
 
   struct tx_source_entry
   {
@@ -74,11 +96,6 @@ namespace cryptonote
 
       if (real_output >= outputs.size())
         return false;
-
-      FIELD(height)
-      FIELD(pr)
-      FIELD(asset_type)
-      
     END_SERIALIZE()
   };
 

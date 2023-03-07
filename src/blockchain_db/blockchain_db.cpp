@@ -252,11 +252,19 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
     else
     {
-      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
+      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3 || tx.rct_signatures.type == rct::RCTTypeBulletproofPlus) {
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
       } else {
+        std::string output_asset_type;
+        bool r = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);
+        if (!r) {
+          LOG_ERROR("Unsupported input type, failed to get asset type, aborting transaction addition");
+          throw std::runtime_error("Unexpected input asset type, aborting");
+        }
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time,
-                                              tx.version > 1 ? ((tx.vout[i].target.type() == typeid(txout_xasset)) ? &tx.rct_signatures.outPk_xasset[i].mask : (tx.vout[i].target.type() == typeid(txout_offshore)) ? &tx.rct_signatures.outPk_usd[i].mask : &tx.rct_signatures.outPk[i].mask) : NULL);
+                                              tx.version > 1 ? ((output_asset_type == "XHV") ? &tx.rct_signatures.outPk[i].mask :
+                                                                (output_asset_type == "XUSD") ? &tx.rct_signatures.outPk_usd[i].mask :
+                                                                &tx.rct_signatures.outPk_xasset[i].mask) : NULL);
       }
     }
   }

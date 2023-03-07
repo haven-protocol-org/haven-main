@@ -609,11 +609,7 @@ namespace cryptonote
         if (!vin.empty())
         {
           ar.begin_object();
-          bool r = false;
-          if (version < HAVEN_TYPES_TRANSACTION_VERSION)
-            r = rct_signatures.serialize_old_rctsig_base(ar, vin.size(), vout.size());
-          else
-            rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
+          bool r = rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
           if (!r || !ar.good()) return false;
           ar.end_object();
 
@@ -772,6 +768,7 @@ namespace cryptonote
     return boost::apply_visitor(txin_signature_size_visitor(), tx_in);
   }
 
+
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
@@ -791,7 +788,26 @@ namespace cryptonote
       FIELD(prev_id)
       FIELD(nonce)
       if (major_version >= HF_VERSION_OFFSHORE_PRICING)
-        FIELD(pricing_record)
+      {
+        if (major_version < HF_VERSION_XASSET_FEES_V2)
+        {
+          offshore::pricing_record_v1 pr_v1;
+          if (!typename Archive<W>::is_saving())
+          {
+            FIELD(pr_v1)
+            pr_v1.write_to_pr(pricing_record);
+          }
+          else
+          {
+            pr_v1.read_from_pr(pricing_record);
+            FIELD(pr_v1)
+          }
+        }
+        else
+        {
+          FIELD(pricing_record)
+        }
+      }
     END_SERIALIZE()
   };
 

@@ -684,10 +684,11 @@ namespace cryptonote
      *
      * @param tx_weight the transaction weight
      * @param fee the fee
+     * @param fee_asset the asset type of the fee
      *
      * @return true if the fee is enough, false otherwise
      */
-    bool check_fee(size_t tx_weight, uint64_t fee) const;
+    bool check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest, const transaction_type tx_type) const;
 
     /**
      * @brief check that a transaction's outputs conform to current standards
@@ -723,6 +724,21 @@ namespace cryptonote
      * @return the median
      */
     uint64_t get_current_cumulative_block_weight_median() const;
+
+    /**
+     * @brief gets the pricing record for the specified timestamp
+     *
+     * @return false if method failed to obtain pricing record from oracle, otherwise true
+     */
+    bool get_pricing_record(offshore::pricing_record& pr, uint64_t timestamp);
+
+    /**
+     * @brief gets the latest pricing record that was in the last 10 block.
+     * If no pricing record found in the past 10 block, fails.
+     *
+     * @return false if method failed to obtain pricing, otherwise true
+     */
+    bool get_latest_acceptable_pr(offshore::pricing_record& pr) const;
 
     /**
      * @brief gets the difficulty of the block with a given height
@@ -1047,6 +1063,7 @@ namespace cryptonote
      */
     std::vector<std::pair<block_extended_info,std::vector<crypto::hash>>> get_alternative_chains() const;
 
+    network_type get_nettype() const { return m_nettype; }
     void add_txpool_tx(const crypto::hash &txid, const cryptonote::blobdata &blob, const txpool_tx_meta_t &meta);
     void update_txpool_tx(const crypto::hash &txid, const txpool_tx_meta_t &meta);
     void remove_txpool_tx(const crypto::hash &txid);
@@ -1245,7 +1262,7 @@ namespace cryptonote
      * @return false if any keys are not found or any inputs are not unlocked, otherwise true
      */
     template<class visitor_t>
-    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_haven_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
+    inline bool scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx_version, const txin_haven_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
 
     /**
      * @brief collect output public keys of a transaction input set
@@ -1404,6 +1421,9 @@ namespace cryptonote
      * @param b the block containing the miner transaction to be validated
      * @param cumulative_block_weight the block's weight
      * @param fee the total fees collected in the block
+     * @param fee_usd the total TX fees collected in xUSD in the block
+     * @param offshore_fee the total offshore fees collected in XHV in the block
+     * @param offshore_fee_usd the total offshore fees collected in xUSD in the block
      * @param base_reward return-by-reference the new block's generated coins
      * @param already_generated_coins the amount of currency generated prior to this block
      * @param partial_block_reward return-by-reference true if miner accepted only partial reward
@@ -1411,7 +1431,7 @@ namespace cryptonote
      *
      * @return false if anything is found wrong with the miner transaction, otherwise true
      */
-    bool validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version);
+    bool validate_miner_transaction(const block& b, size_t cumulative_block_weight, std::map<std::string, uint64_t>& fee_map, std::map<std::string, uint64_t>& offshore_fee_map, std::map<std::string, uint64_t>& xasset_fee_map, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version);
 
     /**
      * @brief reverts the blockchain to its previous state following a failed switch

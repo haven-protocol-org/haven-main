@@ -81,8 +81,12 @@ namespace cryptonote
   bool add_tx_pub_key_to_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key);
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const std::vector<uint8_t>& tx_extra);
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const transaction_prefix& tx);
+  bool get_offshore_from_tx_extra(const std::vector<uint8_t>& tx_extra, cryptonote::tx_extra_offshore& offshore);
+  bool get_memo_from_tx_extra(const std::vector<uint8_t>& tx_extra, cryptonote::tx_extra_memo& memo);
   bool add_additional_tx_pub_keys_to_extra(std::vector<uint8_t>& tx_extra, const std::vector<crypto::public_key>& additional_pub_keys);
   bool add_extra_nonce_to_tx_extra(std::vector<uint8_t>& tx_extra, const blobdata& extra_nonce);
+  bool add_offshore_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& offshore_data);
+  bool add_memo_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& memo);
   bool add_mm_merkle_root_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::hash& mm_merkle_root, size_t mm_merkle_tree_depth);
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type);
   void set_payment_id_to_tx_extra_nonce(blobdata& extra_nonce, const crypto::hash& payment_id);
