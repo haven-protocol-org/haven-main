@@ -1527,14 +1527,9 @@ namespace rct {
             onshore_col_idx = true;
         }
         std::string output_asset_type;
-        if (output.target.type() == typeid(cryptonote::txout_to_key)) {
-          output_asset_type = "XHV";
-        } else if (output.target.type() == typeid(cryptonote::txout_offshore)) {
-          output_asset_type = "XUSD";
-        } else if (output.target.type() == typeid(cryptonote::txout_xasset)) {
-          output_asset_type = boost::get<cryptonote::txout_xasset>(output.target).asset_type;
-        } else {
-          LOG_PRINT_L1("Invalid output type detected");
+        bool ok = cryptonote::get_output_asset_type(output, output_asset_type);
+        if (!ok) {
+          LOG_ERROR("Failed to get output type");
           return false;
         }
 
@@ -1545,7 +1540,7 @@ namespace rct {
           } else if (output_asset_type == strDest) {
             masks_D.push_back(rv.outPk[i].mask);
           } else {
-            LOG_PRINT_L1("Invalid output detected (wrong asset type)");
+            LOG_ERROR("Invalid output detected (wrong asset type)");
             return false;
           }
         }

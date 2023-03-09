@@ -2630,8 +2630,13 @@ namespace cryptonote
 
         cryptonote::tx_verification_context tvc{};
         relay_method tx_relay = e.meta.get_relay_method();
-        if (!add_tx(tx, e.txid, blob, e.meta.weight, tvc, tx_relay, relayed, version))
-        {
+        bool ok = false;
+        if (version >= HF_VERSION_HAVEN2) {
+          ok = add_tx2(tx, e.txid, blob, e.meta.weight, tvc, tx_relay, relayed, version);
+        } else {
+          ok = add_tx(tx, e.txid, blob, e.meta.weight, tvc, tx_relay, relayed, version);
+        }
+        if (!ok) {
           MINFO("Failed to re-validate tx " << e.txid << " for v" << (unsigned)version << ", dropped");
           continue;
         }

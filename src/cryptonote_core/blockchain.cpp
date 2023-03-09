@@ -1468,7 +1468,7 @@ bool Blockchain::validate_miner_transaction(
 ){
   LOG_PRINT_L3("Blockchain::" << __func__);
 
-  // collect all unique assets from fees except xhv since it is handled separetly.
+  // collect all unique assets from fees except xhv since it is handled separately.
   std::set<std::string> unique_assets;
   for (const auto& asset : fee_map) {
     if (asset.first != "XHV") {
@@ -1529,9 +1529,12 @@ bool Blockchain::validate_miner_transaction(
   if (version >= 3) {
     if (already_generated_coins != 0)
     {
-      // validate first output is xhv
-      if (b.miner_tx.vout[1].target.type() != typeid(txout_haven_key)) {
-        MERROR_VER("Second output of a miner tx must be txout_haven_key(XHV) type");
+      // validate first & second outputs are XHV
+      std::string first_output_asset_type, second_output_asset_type;
+      bool ok = cryptonote::get_output_asset_type(b.miner_tx.vout[0], first_output_asset_type);
+      ok     |= cryptonote::get_output_asset_type(b.miner_tx.vout[1], second_output_asset_type);
+      if ((first_output_asset_type != "XHV") || (second_output_asset_type != "XHV")) {
+        MERROR_VER("First and second outputs of a miner tx must be XHV");
         return false;
       }
 
@@ -1555,63 +1558,53 @@ bool Blockchain::validate_miner_transaction(
       // Check for presence of xUSD or xAsset fees
       if (unique_assets.size() > 0) {
         for (uint64_t idx = 2; idx < output_size; idx += 2) {
-          std::string asset_type;
-          if (b.miner_tx.vout[idx].target.type() == typeid(txout_offshore)) {
-            asset_type = "XUSD";
-            if (version >= HF_VERSION_XASSET_FEES_V2) {
-              if (b.miner_tx.vout[idx + 1].target.type() != typeid(txout_offshore)) {
-                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx + 1 << "]");
-                return false;
-              }
-              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx + 1, boost::get<txout_offshore>(b.miner_tx.vout[idx + 1].target).key, m_nettype)) {
-                MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
-                return false;
-              }
-            }
-          } else if (b.miner_tx.vout[idx].target.type() == typeid(txout_xasset)) {
-            asset_type = boost::get<txout_xasset>(b.miner_tx.vout[idx].target).asset_type;
-            if (version >= HF_VERSION_XASSET_FEES_V2) {
-              if (asset_type == "XHV" || asset_type == "XUSD") { // these are not supposed to be here. Other cases are already covered below.
-                MERROR("xhv or xusd found in a xasset output.");
-                return false;
-              }
-              if (b.miner_tx.vout[idx + 1].target.type() != typeid(txout_xasset)) {
-                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx+1 << "]");
-                return false;
-              }
-              std::string asset_type_check = boost::get<txout_xasset>(b.miner_tx.vout[idx + 1].target).asset_type;
-              if (asset_type != asset_type_check) {
-                MERROR("Mismatch in tx.vout[" << idx << "] and tx.vout[" << idx + 1 << "] asset types (" << asset_type << " != " << asset_type_check <<")");
-                return false;
-              }
-              if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx + 1, boost::get<txout_xasset>(b.miner_tx.vout[idx +1 ].target).key, m_nettype)) {
-                MERROR("Governance reward public key incorrect (vout[" << idx + 1 <<"]).");
-                return false;
-              }
-            }
-          } else {
-            if (version >= HF_VERSION_XASSET_FEES_V2) {
-              MERROR("tx.vout[" << idx << "] is not valid type");
+          ok = cryptonote::get_output_asset_type(b.miner_tx.vout[idx], first_output_asset_type);
+          if (!ok) {
+            MERROR("Failed to get output asset type from miner TX vout[" << idx << "]");
+            return false;
+          }
+          if (version >= HF_VERSION_XASSET_FEES_V2) {
+            ok = cryptonote::get_output_asset_type(b.miner_tx.vout[idx+1], second_output_asset_type);
+            if (!ok) {
+              MERROR("Failed to get output asset type from miner TX vout[" << idx+1 << "]");
               return false;
-            } else {
-              continue;
+            } else if (first_output_asset_type != second_output_asset_type) {
+              MERROR("Mismatch in asset types for miner TX : tx.vout[" << idx << "] and tx.vout[" << idx + 1 << "]");
+              return false;
+            } else if (first_output_asset_type == "XHV") {
+              MERROR("XHV not allowed in additional asset types for miner TX : tx.vout[" << idx << "]");
+              return false;
+            } else if (second_output_asset_type == "XHV") {
+              MERROR("XHV not allowed in additional asset types for miner TX : tx.vout[" << idx+1 << "]");
+              return false;
+            }
+            crypto::public_key output_public_key;
+            ok = cryptonote::get_output_public_key(b.miner_tx.vout[idx + 1], output_public_key);
+            if (!ok) {
+              MERROR("Failed to get output public key from miner TX vout[" << idx+1 << "]");
+              return false;
+            }
+            if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, idx + 1, output_public_key, m_nettype)) {
+              MERROR("Governance reward public key incorrect (vout[" << idx+1 <<"]).");
+              return false;
             }
           }
-          uint64_t miner_reward_xasset = fee_map[asset_type];
+
+          uint64_t miner_reward_xasset = fee_map[first_output_asset_type];
           uint64_t governance_reward_xasset = get_governance_reward(m_db->height(), miner_reward_xasset);
           miner_reward_xasset -= governance_reward_xasset;
-          governance_reward_xasset += offshore_fee_map[asset_type];
+          governance_reward_xasset += offshore_fee_map[first_output_asset_type];
 
           // xAsset fees change fork
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             if (version >= HF_VERSION_USE_COLLATERAL) {
-              boost::multiprecision::uint128_t fee =  xasset_fee_map[asset_type];
+              boost::multiprecision::uint128_t fee =  xasset_fee_map[first_output_asset_type];
               // 80% to governance wallet
               governance_reward_xasset += (uint64_t)((fee * 4) / 5);
               // 20% to miners
               miner_reward_xasset += (uint64_t)(fee / 5);
             } else {
-              uint64_t fee =  xasset_fee_map[asset_type];
+              uint64_t fee =  xasset_fee_map[first_output_asset_type];
               // burn 80%
               fee -= (fee * 4) / 5;
               // split the rest
@@ -1623,11 +1616,11 @@ bool Blockchain::validate_miner_transaction(
           // the Nth(vout[N]) output is xAsset fee that goes to miner
           // the N+1th output is xAsset fee that goes to governance wallet
           if (b.miner_tx.vout[idx].amount != miner_reward_xasset) {
-            MERROR("Miner reward amount for " << asset_type << " is incorrect. Should be: " << print_money(miner_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx].amount));
+            MERROR("Miner reward amount for " << first_output_asset_type << " is incorrect. Should be: " << print_money(miner_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx].amount));
             return false;
           }
           if (b.miner_tx.vout[idx + 1].amount != governance_reward_xasset) {
-            MERROR("Governance reward amount for " << asset_type << " is incorrect. Should be: " << print_money(governance_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx+1].amount));
+            MERROR("Governance reward amount for " << second_output_asset_type << " is incorrect. Should be: " << print_money(governance_reward_xasset) << ", is: " << print_money(b.miner_tx.vout[idx+1].amount));
             return false;
           }
         }
@@ -1667,7 +1660,7 @@ bool Blockchain::validate_miner_transaction(
 
           // make sure each asset type in miner tx actually exist in at least one of the fee maps
           if (unique_assets.find(asset) == unique_assets.end()) {
-            MDEBUG("Maliciouis miner tx found. The block doesnt have a fee paid in " << asset << ", but at least one of the miner tx outputs was " << asset << ".");
+            MDEBUG("Malicious miner tx found. The block doesnt have a fee paid in " << asset << ", but at least one of the miner tx outputs was " << asset << ".");
             return false;
           }
 
@@ -3508,13 +3501,7 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
         std::map<std::string, uint32_t> asset_counter;
         std::string asset;
         for (const auto &o: tx.vout) {
-          if (o.target.type() == typeid(txout_to_key)) {
-            asset = "XHV";
-          } else if (o.target.type() == typeid(txout_offshore)) {
-            asset = "XUSD";
-          } else if (o.target.type() == typeid(txout_xasset)) {
-            asset = boost::get<txout_xasset>(o.target).asset_type;
-          } else {
+          if (!cryptonote::get_output_asset_type(o, asset)) {
             MERROR_VER("Invalid output type detected in conversion TX.");
             tvc.m_invalid_output = true;
             return false;
@@ -4459,6 +4446,7 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
         return false;
       }
 
+      /*
       // check whether output asset types matches
       if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
         if (asset_type != "XHV") {
@@ -4466,6 +4454,7 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
           return false;
         }
       }
+      */
 
       // The original code includes a check for the output corresponding to this input
       // to be a txout_to_key. This is removed, as the database does not store this info.
@@ -4600,19 +4589,17 @@ void Blockchain::return_tx_to_pool(std::vector<std::pair<transaction, blobdata>>
     // all the transactions in a popped block when a reorg happens.
     const size_t weight = get_transaction_weight(tx.first, tx.second.size());
     const crypto::hash tx_hash = get_transaction_hash(tx.first);
-    /*
     if (version >= HF_VERSION_HAVEN2) {
       if (!m_tx_pool.add_tx2(tx.first, tx_hash, tx.second, weight, tvc, relay_method::block, true, version))
       {
         MERROR("Failed to return taken transaction with hash: " << get_transaction_hash(tx.first) << " to tx_pool");
       }
     } else {
-    */
-    if (!m_tx_pool.add_tx(tx.first, tx_hash, tx.second, weight, tvc, relay_method::block, true, version))
-    {
-      MERROR("Failed to return taken transaction with hash: " << get_transaction_hash(tx.first) << " to tx_pool");
+      if (!m_tx_pool.add_tx(tx.first, tx_hash, tx.second, weight, tvc, relay_method::block, true, version))
+      {
+        MERROR("Failed to return taken transaction with hash: " << get_transaction_hash(tx.first) << " to tx_pool");
+      }
     }
-    //}
   }
 }
 //------------------------------------------------------------------
