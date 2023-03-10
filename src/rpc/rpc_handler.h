@@ -47,6 +47,7 @@ struct output_distribution_data
   std::vector<std::uint64_t> distribution;
   std::uint64_t start_height;
   std::uint64_t base;
+  std::uint64_t num_spendable_global_outs;
 };
 
 class RpcHandler

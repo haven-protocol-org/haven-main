@@ -39,6 +39,9 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 
+#include "bulletproofs.cc"
+#include "offshore/pricing_record.cpp"
+
 using namespace crypto;
 using namespace std;
 
@@ -1102,11 +1105,34 @@ namespace rct {
     
     //RCT simple    
     //for post-rct only
-    rctSig genRctSimple(const key &message, const ctkeyV & inSk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev) {
+    rctSig genRctSimple(
+      const key &message,
+      const ctkeyV & inSk,
+      const keyV & destinations,
+      const cryptonote::transaction_type tx_type,
+      const std::string& in_asset_type,
+      const vector<xmr_amount> &inamounts,
+      const std::vector<size_t>& inamounts_col_indices,
+      const vector<xmr_amount> &outamounts,
+      const std::map<size_t, std::pair<std::string, bool>>& outamounts_features,
+      const xmr_amount txnFee,
+      const xmr_amount txnOffshoreFee,
+      const xmr_amount onshore_col_amount,
+      const ctkeyM & mixRing,
+      const keyV &amount_keys,
+      const std::vector<unsigned int> & index,
+      ctkeyV &outSk,
+      uint8_t tx_version,
+      const offshore::pricing_record& pr,
+      const RCTConfig &rct_config,
+      hw::device &hwdev
+    ){
+
         const bool bulletproof_or_plus = rct_config.range_proof_type > RangeProofBorromean;
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() > 0, "Empty inamounts");
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() == inSk.size(), "Different number of inamounts/inSk");
         CHECK_AND_ASSERT_THROW_MES(outamounts.size() == destinations.size(), "Different number of amounts/destinations");
+        CHECK_AND_ASSERT_THROW_MES(outamounts.size() == outamounts_features.size(), "Different number of amounts/amount_features");
         CHECK_AND_ASSERT_THROW_MES(amount_keys.size() == destinations.size(), "Different number of amount_keys/destinations");
         CHECK_AND_ASSERT_THROW_MES(index.size() == inSk.size(), "Different number of index/inSk");
         CHECK_AND_ASSERT_THROW_MES(mixRing.size() == inSk.size(), "Different number of mixRing/inSk");
@@ -1120,8 +1146,17 @@ namespace rct {
           switch (rct_config.bp_version)
           {
             case 0:
-            case 4:
+            case 7:
               rv.type = RCTTypeBulletproofPlus;
+              break;
+            case 6:
+              rv.type = RCTTypeHaven3;
+              break;
+            case 5:
+              rv.type = RCTTypeHaven2;
+              break;
+            case 4:
+              rv.type = RCTTypeCLSAGN;
               break;
             case 3:
               rv.type = RCTTypeCLSAG;
@@ -1139,11 +1174,27 @@ namespace rct {
         else
           rv.type = RCTTypeSimple;
 
+        using tt = cryptonote::transaction_type;
+        bool conversion_tx = tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD;
+        bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3;
+
         rv.message = message;
         rv.outPk.resize(destinations.size());
         if (!bulletproof_or_plus)
           rv.p.rangeSigs.resize(destinations.size());
         rv.ecdhInfo.resize(destinations.size());
+
+        // initialize the maskSums array
+        if (rv.type == RCTTypeHaven3 && conversion_tx) {
+          rv.maskSums.resize(3);
+          rv.maskSums[0] = zero();
+          rv.maskSums[1] = zero();
+          rv.maskSums[2] = zero();
+        } else if (rv.type == RCTTypeHaven2) {
+          rv.maskSums.resize(2);
+          rv.maskSums[0] = zero();
+          rv.maskSums[1] = zero();
+        }
 
         size_t i;
         keyV masks(destinations.size()); //sk mask..
@@ -1197,6 +1248,24 @@ namespace rct {
                 {
                     rv.outPk[i].mask = rct::scalarmult8(C[i]);
                     outSk[i].mask = masks[i];
+                    if (conversion_tx) {
+                      // sum the change output masks
+                      if (outamounts_features.at(i).first == in_asset_type) {
+                        sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
+                      }
+
+                      if (rv.type == RCTTypeHaven3) {
+                        // save the collateral output mask for offshore
+                        if (tx_type == tt::OFFSHORE && outamounts_features.at(i).second) {
+                          sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
+                        }
+
+                        // save the actual col output(not change) mask for onshore
+                        if (use_onshore_col && outamounts_features.at(i).second && outamounts[i] == onshore_col_amount) {
+                          rv.maskSums[2] = masks[i];
+                        }
+                      }
+                    }
                 }
             }
             else while (amounts_proved < n_amounts)
@@ -1241,20 +1310,50 @@ namespace rct {
         }
 
         key sumout = zero();
+        key sumout_onshore_col = zero();
+        key atomic = d2h(COIN);
+        key inverse_atomic = invert(atomic);
         for (i = 0; i < outSk.size(); ++i)
         {
-            sc_add(sumout.bytes, outSk[i].mask.bytes, sumout.bytes);
+            key outSk_scaled = zero();
+            key tempkey = zero();
+            // Convert commitment mask by exchange rate for equalKeys() testing
+            if (tx_type == tt::OFFSHORE && outamounts_features.at(i).first == "XUSD") {
+              key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? std::min(pr.unused1, pr.xUSD) : pr.unused1)));
+              sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+            } else if (tx_type == tt::ONSHORE && outamounts_features.at(i).first == "XHV" && !outamounts_features.at(i).second) {
+              key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
+              sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
+              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+            } else if (tx_type == tt::XUSD_TO_XASSET && outamounts_features.at(i).first != "XHV" && outamounts_features.at(i).first != "XUSD") {
+              key inverse_rate_xasset = invert(d2h(pr[outamounts_features.at(i).first]));
+              sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate_xasset.bytes);
+            } else if (tx_type == tt::XASSET_TO_XUSD && outamounts_features.at(i).first == "XUSD") {
+              key rate_xasset = d2h(pr[in_asset_type]);
+              sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate_xasset.bytes);
+              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+            } else {
+              outSk_scaled = outSk[i].mask;
+            }
+
+            // exclude the onshore collateral outs(actual + change)
+            if (use_onshore_col && outamounts_features.at(i).second) {
+              sc_add(sumout_onshore_col.bytes, outSk_scaled.bytes, sumout_onshore_col.bytes);
+            } else {
+              sc_add(sumout.bytes, outSk_scaled.bytes, sumout.bytes);
+            }
 
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(outamounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
         }
-            
+
         //set txn fee
         rv.txnFee = txnFee;
-//        TODO: unused ??
-//        key txnFeeKey = scalarmultH(d2h(rv.txnFee));
+        rv.txnOffshoreFee = txnOffshoreFee;
         rv.mixRing = mixRing;
         keyV &pseudoOuts = bulletproof_or_plus ? rv.p.pseudoOuts : rv.pseudoOuts;
         pseudoOuts.resize(inamounts.size());
@@ -1262,15 +1361,52 @@ namespace rct {
             rv.p.CLSAGs.resize(inamounts.size());
         else
             rv.p.MGs.resize(inamounts.size());
+
+        // separete the actual and colleteral inputs
+        std::vector<std::pair<size_t, uint64_t>> actual_in_amounts;
+        std::vector<std::pair<size_t, uint64_t>> onshore_col_in_amounts;
+        for (i = 0; i < inamounts.size(); i++) {
+          auto it = std::find(inamounts_col_indices.begin(), inamounts_col_indices.end(), i);
+          if (it != inamounts_col_indices.end())
+            onshore_col_in_amounts.push_back(std::pair<size_t, uint64_t>(i, inamounts[i]));
+          else
+            actual_in_amounts.push_back(std::pair<size_t, uint64_t>(i, inamounts[i]));
+        }
+
+        // generate commitments per input
         key sumpouts = zero(); //sum pseudoOut masks
         keyV a(inamounts.size());
-        for (i = 0 ; i < inamounts.size() - 1; i++) {
-            skGen(a[i]);
-            sc_add(sumpouts.bytes, a[i].bytes, sumpouts.bytes);
-            genC(pseudoOuts[i], a[i], inamounts[i]);
+        for (i = 0 ; i < actual_in_amounts.size() - 1; i++) {
+          // Generate a random key
+          skGen(a[actual_in_amounts[i].first]);
+          // Sum the random keys as we iterate
+          sc_add(sumpouts.bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
+          // Generate a commitment to the amount with the random key
+          genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
         }
-        sc_sub(a[i].bytes, sumout.bytes, sumpouts.bytes);
-        genC(pseudoOuts[i], a[i], inamounts[i]);
+        sc_sub(a[actual_in_amounts[i].first].bytes, sumout.bytes, sumpouts.bytes);
+        genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
+
+        // set the sum of input blinding factors
+        if (conversion_tx) {
+          sc_add(rv.maskSums[0].bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
+        }
+
+        // generate the commitments for collateral inputs
+        if (use_onshore_col) {
+          sumpouts = zero();
+          for (i = 0; i < onshore_col_in_amounts.size() - 1; i++) {
+            // Generate a random key
+            skGen(a[onshore_col_in_amounts[i].first]);
+            // Sum the random keys as we iterate
+            sc_add(sumpouts.bytes, a[onshore_col_in_amounts[i].first].bytes, sumpouts.bytes);
+            // Generate a commitment to the amount with the random key
+            genC(pseudoOuts[onshore_col_in_amounts[i].first], a[onshore_col_in_amounts[i].first], onshore_col_in_amounts[i].second);
+          }
+          sc_sub(a[onshore_col_in_amounts[i].first].bytes, sumout_onshore_col.bytes, sumpouts.bytes);
+          genC(pseudoOuts[onshore_col_in_amounts[i].first], a[onshore_col_in_amounts[i].first], onshore_col_in_amounts[i].second);
+        }
+        DP(pseudoOuts[onshore_col_in_amounts[i].first]);
         DP(pseudoOuts[i]);
 
         key full_message = get_pre_mlsag_hash(rv,hwdev);
@@ -1292,7 +1428,27 @@ namespace rct {
         return rv;
     }
 
-    rctSig genRctSimple(const key &message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin, const RCTConfig &rct_config, hw::device &hwdev) {
+    rctSig genRctSimple(
+      const key &message,
+      const ctkeyV & inSk,
+      const ctkeyV & inPk,
+      const keyV & destinations,
+      const cryptonote::transaction_type tx_type,
+      const std::string& in_asset_type,
+      const vector<xmr_amount> &inamounts,
+      const std::vector<size_t>& inamounts_col_indices,
+      const vector<xmr_amount> &outamounts,
+      const std::map<size_t, std::pair<std::string, bool>>& outamounts_features,
+      const keyV &amount_keys,
+      const xmr_amount txnFee,
+      const xmr_amount txnOffshoreFee,
+      const xmr_amount onshore_col_amount,
+      unsigned int mixin,
+      uint8_t tx_version,
+      const offshore::pricing_record& pr,
+      const RCTConfig &rct_config,
+      hw::device &hwdev
+    ){
         std::vector<unsigned int> index;
         index.resize(inPk.size());
         ctkeyM mixRing;
@@ -1302,7 +1458,7 @@ namespace rct {
           mixRing[i].resize(mixin+1);
           index[i] = populateFromBlockchainSimple(mixRing[i], inPk[i], mixin);
         }
-        return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys, index, outSk, rct_config, hwdev);
+        return genRctSimple(message, inSk, destinations, tx_type, in_asset_type, inamounts, inamounts_col_indices, outamounts, outamounts_features, txnFee, txnOffshoreFee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx_version, pr, rct_config, hwdev);
     }
 
     //RingCT protocol
@@ -1619,14 +1775,14 @@ namespace rct {
     }
 
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key &mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
             false, "decodeRct called on non simple rctSig");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;

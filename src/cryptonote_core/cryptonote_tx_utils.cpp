@@ -213,7 +213,7 @@ namespace cryptonote
     uint64_t amount = 0;
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
-      if (dt.amount_usd != 0 && !dt.is_collateral) {
+      if (dt.dest_asset_type == "XUSD" && !dt.is_collateral) {
         amount += dt.amount;
       }
     }
@@ -245,8 +245,8 @@ namespace cryptonote
     uint64_t amount_usd = 0;
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
-      if (dt.amount != 0 && !dt.is_collateral) {
-        amount_usd += dt.amount_usd;
+      if (dt.dest_asset_type == "XHV" && !dt.is_collateral) {
+        amount_usd += dt.amount;
       }
     }
 
@@ -278,8 +278,8 @@ namespace cryptonote
     uint64_t amount_xasset = 0;
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
-      if (dt.amount_usd != 0) {
-        amount_xasset += dt.amount_xasset;
+      if (dt.dest_asset_type == "XUSD") {
+        amount_xasset += dt.amount;
       }
     }
 
@@ -312,8 +312,8 @@ namespace cryptonote
       // Filter out the change, which is never converted
       // All other destinations should have both pre and post converted amounts set so far except
       // the change destinations.
-      if (dt.amount_xasset != 0) {
-        amount_usd += dt.amount_usd;
+      if (dt.dest_asset_type != "XUSD") {
+        amount_usd += dt.amount;
       }
     }
 
@@ -749,8 +749,30 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, bool rct, const rct::RCTConfig &rct_config, bool shuffle_outs, bool use_view_tags)
-  {
+  bool construct_tx_with_tx_key(
+    const std::string& source_asset,
+    const std::string& dest_asset,
+    const offshore::pricing_record& pr,
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key,
+    subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    uint64_t unlock_time,
+    const uint32_t hf_version,
+    const uint64_t current_height,
+    const uint64_t onshore_col_amount,
+    const crypto::secret_key &tx_key,
+    const std::vector<crypto::secret_key> &additional_tx_keys,
+    bool rct,
+    const rct::RCTConfig &rct_config,
+    bool shuffle_outs,
+    bool use_view_tags
+  ){
+
     hw::device &hwdev = sender_account_keys.get_device();
 
     if (sources.empty())
@@ -763,8 +785,27 @@ namespace cryptonote
     tx.set_null();
     amount_keys.clear();
 
-    tx.version = rct ? 2 : 1;
+    // set version and unlock time
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+      tx.version = COLLATERAL_TRANSACTION_VERSION;
+    } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION){
+      tx.version = POU_TRANSACTION_VERSION;
+    } else if (hf_version >= HF_VERSION_HAVEN2) {
+      tx.version = 5;
+    } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      tx.version = 4;
+    } else if (hf_version >= HF_VERSION_CLSAG) {
+      tx.version = 3;
+    } else {
+      tx.version = 2;
+    }
     tx.unlock_time = unlock_time;
+
+    // set ther pricing record height
+    if (source_asset != dest_asset)
+      tx.pricing_record_height = current_height;
+    else
+      tx.pricing_record_height = 0;
 
     tx.extra = extra;
     crypto::public_key txkey_pub;
@@ -862,7 +903,9 @@ namespace cryptonote
         LOG_ERROR("real_output index (" << src_entr.real_output << ")bigger than output_keys.size()=" << src_entr.outputs.size());
         return false;
       }
-      summary_inputs_money += src_entr.amount;
+      // exclude the collateral to be seen as input money
+      if (src_entr.asset_type == source_asset)
+        summary_inputs_money += src_entr.amount;
 
       //key_derivation recv_derivation;
       in_contexts.push_back(input_generation_context_data());
@@ -887,9 +930,10 @@ namespace cryptonote
       }
 
       //put key image into tx input
-      txin_to_key input_to_key;
+      txin_haven_key input_to_key;
       input_to_key.amount = src_entr.amount;
       input_to_key.k_image = img;
+      input_to_key.asset_type = source_asset;
 
       //fill outputs array and use relative offsets
       for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
@@ -898,6 +942,19 @@ namespace cryptonote
       input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
       tx.vin.push_back(input_to_key);
     }
+
+    // calculate offshore fees before shuffling destinations
+    transaction_type tx_type;
+    if (!get_tx_type(source_asset, dest_asset, tx_type)) {
+      LOG_ERROR("invalid tx type");
+      return false;
+    }
+    uint64_t fee = 0;
+    uint64_t offshore_fee = 
+    (tx_type == transaction_type::OFFSHORE) ? get_offshore_fee(destinations, unlock_time - current_height - 1, hf_version) :
+    (tx_type == transaction_type::ONSHORE) ? get_onshore_fee(destinations, unlock_time - current_height - 1, hf_version) :
+    (tx_type == transaction_type::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(destinations, hf_version) :
+    (tx_type == transaction_type::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(destinations, hf_version) : 0;
 
     if (shuffle_outs)
     {
@@ -909,8 +966,8 @@ namespace cryptonote
     for (size_t n = 0; n < sources.size(); ++n)
       ins_order[n] = n;
     std::sort(ins_order.begin(), ins_order.end(), [&](const size_t i0, const size_t i1) {
-      const txin_to_key &tk0 = boost::get<txin_to_key>(tx.vin[i0]);
-      const txin_to_key &tk1 = boost::get<txin_to_key>(tx.vin[i1]);
+      const txin_haven_key &tk0 = boost::get<txin_haven_key>(tx.vin[i0]);
+      const txin_haven_key &tk1 = boost::get<txin_haven_key>(tx.vin[i1]);
       return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
     });
     tools::apply_permutation(ins_order, [&] (size_t i0, size_t i1) {
@@ -962,10 +1019,64 @@ namespace cryptonote
                                            use_view_tags, view_tag);
 
       tx_out out;
-      cryptonote::set_tx_out(dst_entr.amount, out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(dst_entr.dest_amount, out_eph_public_key, use_view_tags, view_tag, out);
+      
+      // Check for per-output-unlocks
+      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && source_asset != dest_asset) {
+        // initialize collateral indices vector
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && tx.collateral_indices.size() != 2) {
+          tx.collateral_indices.resize(2);
+          tx.collateral_indices[0] = 0;
+          tx.collateral_indices[1] = 0;
+        }
+
+        // set unlcok times and indiviual collateral indeces.
+        if (dst_entr.dest_asset_type == dest_asset) {
+          // Destination amount - needs a full unlock time
+          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral) {
+            // lock collateral ouput full and change as 0
+            if (dst_entr.amount == onshore_col_amount) {
+              tx.output_unlock_times.push_back(tx.unlock_time);
+              tx.collateral_indices[0] = output_index;
+            } else {
+              tx.output_unlock_times.push_back(0);
+              tx.collateral_indices[1] = output_index;
+            }
+          } else {
+            tx.output_unlock_times.push_back(tx.unlock_time);
+          }
+        } else if (dst_entr.dest_asset_type == source_asset) {
+          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::OFFSHORE && dst_entr.is_collateral) {
+            // Collateral output - needs a full unlock time
+            // offshores doesnt have collaterasl change since it is merged with actual change.
+            tx.output_unlock_times.push_back(tx.unlock_time);
+            tx.collateral_indices[0] = output_index;
+          } else {
+            // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
+            tx.output_unlock_times.push_back(0);
+          }
+        } else {
+          // Should never happen
+          LOG_ERROR("Invalid asset type detected: source = " << source_asset << ", dest = " << dest_asset << ", detected " << dst_entr.dest_asset_type);
+          return false;
+        }
+      } else {
+        if (tx.unlock_time - current_height > CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE)
+          tx.output_unlock_times.push_back(tx.unlock_time);
+        else
+          tx.output_unlock_times.push_back(0);
+      }
+
       tx.vout.push_back(out);
       output_index++;
       summary_outs_money += dst_entr.amount;
+
+      if (source_asset != dest_asset) {
+        if (dst_entr.dest_asset_type == dest_asset && !dst_entr.is_collateral) {
+          tx.amount_minted += dst_entr.dest_amount;
+          tx.amount_burnt += dst_entr.amount;
+        }
+      }
     }
     CHECK_AND_ASSERT_MES(additional_tx_public_keys.size() == additional_tx_keys.size(), false, "Internal error creating additional public keys");
 
@@ -988,6 +1099,13 @@ namespace cryptonote
     {
       LOG_ERROR("Transaction inputs money ("<< summary_inputs_money << ") less than outputs money (" << summary_outs_money << ")");
       return false;
+    }
+
+    // Add 80% of the conversion fee to the amount burnt
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2 && (tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD)) {
+      if (hf_version < HF_VERSION_USE_COLLATERAL) {
+        tx.amount_burnt += (offshore_fee * 4) / 5;
+      }
     }
 
     // check for watch only wallet
@@ -1070,11 +1188,18 @@ namespace cryptonote
       rct::ctkeyM mixRing(use_simple_rct ? sources.size() : n_total_outs);
       rct::keyV destinations;
       std::vector<uint64_t> inamounts, outamounts;
+      std::vector<size_t> inamounts_col_indices;
+      std::map<size_t, std::pair<std::string, bool>> outamounts_features;
       std::vector<unsigned int> index;
       for (size_t i = 0; i < sources.size(); ++i)
       {
+        if (sources[i].asset_type == "XHV" && tx_type == transaction_type::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
+          inamounts_col_indices.push_back(i);
+        }
+
         rct::ctkey ctkey;
-        amount_in += sources[i].amount;
+        if (sources[i].asset_type == source_asset)
+          amount_in += sources[i].amount;
         inamounts.push_back(sources[i].amount);
         index.push_back(sources[i].real_output);
         // inSk: (secret key, mask)
@@ -1091,6 +1216,10 @@ namespace cryptonote
         get_output_public_key(tx.vout[i], output_public_key);
         destinations.push_back(rct::pk2rct(output_public_key));
         outamounts.push_back(tx.vout[i].amount);
+        outamounts_features[i] = std::pair<std::string, bool>(
+          boost::get<txout_haven_key>(tx.vout[i].target).asset_type,
+          tx_type == transaction_type::ONSHORE && HF_VERSION_USE_COLLATERAL && std::find(tx.collateral_indices.begin(), tx.collateral_indices.end(), i) != tx.collateral_indices.end()
+        );
         amount_out += tx.vout[i].amount;
       }
 
@@ -1121,6 +1250,8 @@ namespace cryptonote
       // fee
       if (!use_simple_rct && amount_in > amount_out)
         outamounts.push_back(amount_in - amount_out);
+      else
+        fee = summary_inputs_money - summary_outs_money - offshore_fee;
 
       // zero out all amounts to mask rct outputs, real amounts are now encrypted
       for (size_t i = 0; i < tx.vin.size(); ++i)
@@ -1135,7 +1266,7 @@ namespace cryptonote
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;
       if (use_simple_rct)
-        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, inamounts, outamounts, amount_in - amount_out, mixRing, amount_keys, index, outSk, rct_config, hwdev);
+        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, tx_type, source_asset, inamounts, inamounts_col_indices, outamounts, outamounts_features, fee, offshore_fee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx.version, pr, rct_config, hwdev);
       else
         tx.rct_signatures = rct::genRct(rct::hash2rct(tx_prefix_hash), inSk, destinations, outamounts, mixRing, amount_keys, sources[0].real_output, outSk, rct_config, hwdev); // same index assumption
       memwipe(inSk.data(), inSk.size() * sizeof(rct::ctkey));
@@ -1150,8 +1281,27 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, bool rct, const rct::RCTConfig &rct_config, bool use_view_tags)
-  {
+  bool construct_tx_and_get_tx_key(
+    const std::string& source_asset,
+    const std::string& dest_asset,
+    const offshore::pricing_record& pr,
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    const uint64_t unlock_time,
+    const uint32_t hf_version,
+    const uint64_t current_height,
+    const uint64_t onshore_col_amount,
+    crypto::secret_key &tx_key,
+    std::vector<crypto::secret_key> &additional_tx_keys,
+    bool rct,
+    const rct::RCTConfig &rct_config,
+    bool use_view_tags
+  ){
     hw::device &hwdev = sender_account_keys.get_device();
     hwdev.open_tx(tx_key);
     try {
@@ -1171,7 +1321,28 @@ namespace cryptonote
       }
 
       bool shuffle_outs = true;
-      bool r = construct_tx_with_tx_key(sender_account_keys, subaddresses, sources, destinations, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, rct, rct_config, shuffle_outs, use_view_tags);
+      bool r = construct_tx_with_tx_key(
+        source_asset,
+        dest_asset,
+        pr,
+        sender_account_keys,
+        subaddresses,
+        sources,
+        destinations,
+        change_addr,
+        extra,
+        tx,
+        unlock_time,
+        hf_version,
+        current_height,
+        onshore_col_amount,
+        tx_key,
+        additional_tx_keys,
+        rct,
+        rct_config,
+        shuffle_outs,
+        use_view_tags
+      );
       hwdev.close_tx();
       return r;
     } catch(...) {
@@ -1187,7 +1358,7 @@ namespace cryptonote
      crypto::secret_key tx_key;
      std::vector<crypto::secret_key> additional_tx_keys;
      std::vector<tx_destination_entry> destinations_copy = destinations;
-     return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, false, { rct::RangeProofBorromean, 0});
+     return construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, 1, 1, 0, tx_key, additional_tx_keys, false, { rct::RangeProofBorromean, 0});
   }
   //---------------------------------------------------------------
   bool generate_genesis_block(

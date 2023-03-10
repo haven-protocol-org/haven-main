@@ -6440,9 +6440,9 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
     std::vector<crypto::hash> spent_key_txid  (tx.vin.size());
     for (size_t i = 0; i < tx.vin.size(); ++i)
     {
-      if (tx.vin[i].type() != typeid(cryptonote::txin_to_key))
+      if (tx.vin[i].type() != typeid(cryptonote::txin_haven_key))
         continue;
-      const cryptonote::txin_to_key& in_key = boost::get<cryptonote::txin_to_key>(tx.vin[i]);
+      const cryptonote::txin_haven_key& in_key = boost::get<cryptonote::txin_haven_key>(tx.vin[i]);
       const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(construction_data.selected_transfers[i]);
       const cryptonote::tx_source_entry *sptr = NULL;
       for (const auto &src: construction_data.sources)
@@ -6810,7 +6810,6 @@ bool simple_wallet::transfer_main(
             fail_msg_writer() << tr("failed to get max destination amount: ") << err;
             return false;
           }
-          de.asset_type = dest_asset;
         } else {
           fail_msg_writer() << tr("amount is wrong: ") << local_args[i] << ' ' << local_args[i + 1] <<
             ", " << tr("expected number from 0 to ") << print_money(std::numeric_limits<uint64_t>::max());
@@ -6835,6 +6834,7 @@ bool simple_wallet::transfer_main(
       return false;
     }
     de.addr = info.address;
+    de.dest_asset_type = dest_asset;
     de.is_subaddress = info.is_subaddress;
     de.is_integrated = info.has_payment_id;
 
@@ -6891,18 +6891,13 @@ bool simple_wallet::transfer_main(
           return false;
         }
         unlock_block = bc_height + locked_blocks;
-        success_msg_writer() << tr("source: ") << source_asset;
-        success_msg_writer() << tr("dest: ") << dest_asset;
-        success_msg_writer() << tr("tx_type: ") << "tx_type";
-        success_msg_writer() << tr("locked_blocks: ") << locked_blocks;
-        return true;
-        ptx_vector = m_wallet->create_transactions_2(dsts, fake_outs_count, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices);
+        ptx_vector = m_wallet->create_transactions_2(dsts, source_asset, fake_outs_count, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices);
       break;
       default:
         LOG_ERROR("Unknown transfer method, using default");
         /* FALLTHRU */
       case Transfer:
-        ptx_vector = m_wallet->create_transactions_2(dsts, fake_outs_count, 0 /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices);
+        ptx_vector = m_wallet->create_transactions_2(dsts, source_asset, fake_outs_count, 0 /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices);
       break;
     }
 
@@ -6977,7 +6972,8 @@ bool simple_wallet::transfer_main(
         {
           total_fee += ptx_vector[n].fee;
           for (auto i: ptx_vector[n].selected_transfers)
-            total_sent += m_wallet->get_transfer_details(i).amount();
+            if (m_wallet->get_transfer_details(i).asset_type == source_asset)
+              total_sent += m_wallet->get_transfer_details(i).amount();
           total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
           change += ptx_vector[n].change_dts.amount;
 
@@ -7026,9 +7022,9 @@ bool simple_wallet::transfer_main(
         {
           for (const auto &vin: ptx.tx.vin)
           {
-            if (vin.type() == typeid(txin_to_key))
+            if (vin.type() == typeid(txin_haven_key))
             {
-              const txin_to_key& in_to_key = boost::get<txin_to_key>(vin);
+              const txin_haven_key& in_to_key = boost::get<txin_haven_key>(vin);
               if (in_to_key.key_offsets.size() != min_ring_size)
                 default_ring_size = false;
             }
