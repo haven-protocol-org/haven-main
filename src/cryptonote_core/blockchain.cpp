@@ -1440,8 +1440,16 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
     return false;
   }
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
-  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
-
+  if (b.miner_tx.version >= POU_TRANSACTION_VERSION) {
+    // HF19, TXv6+ - use per_output unlock times vector
+    CHECK_AND_ASSERT_MES(b.miner_tx.output_unlock_times.size() == b.miner_tx.vout.size(), false, "coinbase transaction in the block has wrong number unlock times");
+    for (const auto pou: b.miner_tx.output_unlock_times) {
+      CHECK_AND_ASSERT_MES(pou == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, false, "coinbase transaction transaction has the wrong unlock time=" << pou << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+    }
+  } else {
+    CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+  }
+  
   //check outs overflow
   if(!check_outs_overflow(b.miner_tx))
   {

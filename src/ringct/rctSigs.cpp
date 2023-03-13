@@ -1518,8 +1518,8 @@ namespace rct {
       // Calculate sum of all C' and D'
       rct::keyV masks_C;
       rct::keyV masks_D;
-      size_t i = 0;
-      for (auto &output: vout) {
+      for (size_t i=0; i<vout.size(); i++) {
+
         bool onshore_col_idx = false;
         if (version >= HF_VERSION_USE_COLLATERAL) {
           // make sure onshore check is always first, it is segfault otherwise since col_indices are empty for transfers
@@ -1527,7 +1527,7 @@ namespace rct {
             onshore_col_idx = true;
         }
         std::string output_asset_type;
-        bool ok = cryptonote::get_output_asset_type(output, output_asset_type);
+        bool ok = cryptonote::get_output_asset_type(vout[i], output_asset_type);
         if (!ok) {
           LOG_ERROR("Failed to get output type");
           return false;
@@ -1544,7 +1544,6 @@ namespace rct {
             return false;
           }
         }
-        i++;
       }
       key sumOutpks_C = addKeys(masks_C);
       key sumOutpks_D = addKeys(masks_D);
@@ -1557,40 +1556,12 @@ namespace rct {
       // Calculate offshore conversion fee (also always in C colour)
       key txnOffshoreFeeKey = scalarmultH(d2h(rv.txnOffshoreFee));
 
-      /*
-        offshore TX:
-        sumPseudoOuts = addKeys(pseudoOuts); (total of inputs)
-        sumPseudoOuts_usd = zerokey; (no input usd amount)
-
-        sumXHV = total_output_value_in_XHV (after subtracting fees)
-        sumUSD = -total_output_value_in_USD
-
-        D_scaled = sumUSD 
-        yC_invert = 1 / exchange_rate_in_usd
-        D_final = -total_output_value_in_XHV
-        Zi = total_output_value_in_XHV - total_output_value_in_XHV = 0; 
-
-
-        XUSD -> XASSET TX:
-        sumPseudoOuts_usd = total_input_in_usd
-        sumPseudoOuts_xasset = zerokey; (no input xasset amount)
-
-
-        sumUSD = total_output_value_in_USD (after subtracting fees)
-        sumXASSET = -total_output_value_in_XASSET (without fees)
-
-        D_scaled = sumXASSET
-        y = exchange_rate_in_usd
-        D_final = sumXASSET * 1/ exchange_rate_in_usd = -total_output_value_in_USD
-        Zi = sumUSD + D_final = 0
-      */
-
       // exclude the onshore collateral inputs from proof-of-value calculation
       key sumPseudoOuts = zerokey;
       key sumColIns = zerokey;
       if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL) {
         for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
-          if (vin[i].type() == typeid(cryptonote::txin_to_key)) {
+          if (boost::get<cryptonote::txin_haven_key>(vin[i]).asset_type == "XHV") {
             sumColIns = addKeys(sumColIns, rv.p.pseudoOuts[i]);
           } else {
             sumPseudoOuts = addKeys(sumPseudoOuts, rv.p.pseudoOuts[i]);

@@ -356,8 +356,10 @@ namespace cryptonote
           // If collateral requirement is 0, we expect there not to be collateral outputs..
           if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
 
-            // validate that collateral ouput is XHV
-            if (tx.vout[tx.collateral_indices[0]].target.type() != typeid(txout_to_key)) {
+            // validate that collateral output is XHV
+            std::string col_asset_type;
+            bool ok = cryptonote::get_output_asset_type(tx.vout[tx.collateral_indices[0]], col_asset_type);
+            if (!ok || col_asset_type != "XHV") {
               LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
               tvc.m_verifivation_failed = true;
               return false;
@@ -365,7 +367,8 @@ namespace cryptonote
 
             // onshore tx has 2 col output, offshore has 1.
             if (tx_type == transaction_type::ONSHORE) {
-              if (tx.vout[tx.collateral_indices[1]].target.type() != typeid(txout_to_key)) {
+              ok = cryptonote::get_output_asset_type(tx.vout[tx.collateral_indices[1]], col_asset_type);
+              if (!ok || col_asset_type != "XHV") {
                 LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
                 tvc.m_verifivation_failed = true;
                 return false;
@@ -388,7 +391,7 @@ namespace cryptonote
 
         // Make sure that we have a suitable vector of unlock times for all the outputs
         if (tx.output_unlock_times.size() != tx.vout.size()) {
-          LOG_PRINT_L1("output_unlock_times vector is too short: " << tx.output_unlock_times.size() << " found, but we have " << tx.vout.size() << " outputs.");
+          LOG_ERROR("output_unlock_times vector is too short: " << tx.output_unlock_times.size() << " found, but we have " << tx.vout.size() << " outputs.");
           tvc.m_verifivation_failed = true;
           return false;
         }
@@ -403,14 +406,23 @@ namespace cryptonote
           }
           
           // Check if the output asset type is the same as the source
-          if (((tx.vout[i].target.type() == typeid(txout_to_key)) && (source == "XHV")) ||
-              ((tx.vout[i].target.type() == typeid(txout_offshore)) && (source == "XUSD")) ||
-              ((tx.vout[i].target.type() == typeid(txout_xasset)) && (source == boost::get<txout_xasset>(tx.vout[i].target).asset_type))) {
+          std::string output_asset_type;
+          bool ok = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);
+          if (!ok) {
+            LOG_ERROR("failed to get output asset type for output index " << i);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+          if (output_asset_type == source) {
             continue;
           }
 
           // Get the correct unlock time for this output
           unlock_time = get_tx_unlock_time(tx.output_unlock_times[i], tx.pricing_record_height, current_height);
+          uint64_t output_unlock_time = boost::get<txout_haven_key>(tx.vout[i].target).unlock_time - current_height;
+          if (output_unlock_time > unlock_time) {
+            LOG_ERROR("output unlock time mismatch for output index " << i << ": output reports " << output_unlock_time << " but calculated " << unlock_time);
+          }
 
           // No - enforce full unlock time
           uint64_t expected_unlock_time = 0;

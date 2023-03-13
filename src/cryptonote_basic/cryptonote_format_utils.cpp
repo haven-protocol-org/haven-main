@@ -1639,7 +1639,9 @@ namespace cryptonote
     const unsigned int prefix_size = t.prefix_size;
 
     // base rct
-    CHECK_AND_ASSERT_MES(prefix_size <= unprunable_size && unprunable_size <= blob.size(), false, "Inconsistent transaction prefix, unprunable and blob sizes");
+    if ((prefix_size > unprunable_size) || (unprunable_size > blob.size())) {
+      CHECK_AND_ASSERT_MES(prefix_size <= unprunable_size && unprunable_size <= blob.size(), false, "Inconsistent transaction prefix, unprunable and blob sizes");
+    }
     cryptonote::get_blob_hash(blobdata_ref(blob.data() + prefix_size, unprunable_size - prefix_size), hashes[1]);
 
     // prunable rct

@@ -139,8 +139,10 @@
       out.unlock_time = (version >= POU_TRANSACTION_VERSION) ? output_unlock_times[i] : unlock_time;            \
       out.is_collateral = false;                                                                                \
       if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                          \
-        if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {   \
-          out.is_collateral = true;                                                                             \
+        if (collateral_indices[0] != collateral_indices[1]) {                                                   \
+          if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) { \
+            out.is_collateral = true;                                                                           \
+          }                                                                                                     \
         }                                                                                                       \
       }                                                                                                         \
       tx_out foo;                                                                                               \
@@ -194,7 +196,9 @@
   std::vector<tx_out> vout_tmp;                                                                                 \
   vout_tmp.reserve(vout.size());                                                                                \
   output_unlock_times.resize(vout.size());                                                                      \
-  collateral_indices.clear();                                                                                   \
+  /*collateral_indices.clear();*/                                                                               \
+  uint8_t collateral_output_count = 0;                                                                          \
+  /*bool found_collateral = false;*/                                                                            \
   for (size_t i=0; i<vout.size(); i++) {                                                                        \
     txout_haven_key outhk = boost::get<txout_haven_key>(vout[i].target);                                        \
     tx_out foo;                                                                                                 \
@@ -215,7 +219,8 @@
     }                                                                                                           \
     output_unlock_times[i] = outhk.unlock_time;                                                                 \
     if (outhk.is_collateral) {                                                                                  \
-      collateral_indices.push_back(i);                                                                          \
+      collateral_output_count++;                                                                                \
+      /*collateral_indices.push_back(i);*/                                                                      \
     }                                                                                                           \
     vout_tmp.push_back(foo);                                                                                    \
   }                                                                                                             \
@@ -235,10 +240,10 @@
     VARINT_FIELD(amount_burnt)                                                                                  \
     VARINT_FIELD(amount_minted)                                                                                 \
     if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                            \
-      FIELD(collateral_indices)                                                                                 \
       if (collateral_indices.size() != 2) {                                                                     \
         return false;                                                                                           \
       }                                                                                                         \
+      FIELD(collateral_indices)                                                                                 \
       for (const auto vout_idx: collateral_indices) {                                                           \
         if (vout_idx >= vout.size())                                                                            \
           return false;                                                                                         \
