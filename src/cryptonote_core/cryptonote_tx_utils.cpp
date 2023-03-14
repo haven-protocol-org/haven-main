@@ -167,7 +167,10 @@ namespace cryptonote
     r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
     CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << "0" << ", "<< miner_address.m_spend_public_key << ")");
 
-    txout_to_key tk;
+    txout_haven_key tk;
+    tk.asset_type = "XHV";
+    tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+    tk.is_collateral = false;
     tk.key = out_eph_public_key;
 
     tx_out out;
@@ -189,7 +192,10 @@ namespace cryptonote
           return false;
         }
 
-        txout_to_key tk;
+        txout_haven_key tk;
+        tk.asset_type = "XHV";
+        tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+        tk.is_collateral = false;
         tk.key = out_eph_public_key;
         tx_out out;
         summary_amounts += out.amount = governance_reward;
@@ -252,26 +258,16 @@ namespace cryptonote
           CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
           idx++;
 
-          if (fee_map_entry.first == "XUSD") {
-            // Offshore TX
-            txout_offshore tk_off;
-            tk_off.key = out_eph_public_key;
-            
-            tx_out out_off;
-            out_off.amount = block_reward_xasset;
-            out_off.target = tk_off;
-            tx.vout.push_back(out_off);
-          } else {
-            // xAsset TX
-            txout_xasset tk_off;
-            tk_off.key = out_eph_public_key;
-            tk_off.asset_type = fee_map_entry.first;
-            
-            tx_out out_off;
-            out_off.amount = block_reward_xasset;
-            out_off.target = tk_off;
-            tx.vout.push_back(out_off);
-          }
+          txout_haven_key tk_miner;
+          tk_miner.asset_type = fee_map_entry.first;
+          tk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+          tk_miner.is_collateral = false;
+          tk_miner.key = out_eph_public_key;
+          
+          tx_out out_miner;
+          out_miner.amount = block_reward_xasset;
+          out_miner.target = tk_miner;
+          tx.vout.push_back(out_miner);
 
           crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
           if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
@@ -281,26 +277,16 @@ namespace cryptonote
           }
           idx++;
 
-          if (fee_map_entry.first == "XUSD") {
-            // Offshore TX
-            txout_offshore tk_gov;
-            tk_gov.key = out_eph_public_key_xasset;
-            
-            tx_out out_gov;
-            out_gov.amount = governance_reward_xasset;
-            out_gov.target = tk_gov;
-            tx.vout.push_back(out_gov);
-          } else {
-            // xAsset TX
-            txout_xasset tk_gov;
-            tk_gov.key = out_eph_public_key_xasset;
-            tk_gov.asset_type = fee_map_entry.first;
-            
-            tx_out out_gov;
-            out_gov.amount = governance_reward_xasset;
-            out_gov.target = tk_gov;
-            tx.vout.push_back(out_gov);
-          }
+          txout_haven_key tk_gov;
+          tk_gov.asset_type = fee_map_entry.first;
+          tk_gov.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+          tk_gov.is_collateral = false;
+          tk_gov.key = out_eph_public_key_xasset;
+          
+          tx_out out_gov;
+          out_gov.amount = governance_reward_xasset;
+          out_gov.target = tk_gov;
+          tx.vout.push_back(out_gov);
         }
       }
     }

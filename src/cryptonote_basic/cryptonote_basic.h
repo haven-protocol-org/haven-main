@@ -196,9 +196,6 @@
   std::vector<tx_out> vout_tmp;                                                                                 \
   vout_tmp.reserve(vout.size());                                                                                \
   output_unlock_times.resize(vout.size());                                                                      \
-  /*collateral_indices.clear();*/                                                                               \
-  uint8_t collateral_output_count = 0;                                                                          \
-  /*bool found_collateral = false;*/                                                                            \
   for (size_t i=0; i<vout.size(); i++) {                                                                        \
     txout_haven_key outhk = boost::get<txout_haven_key>(vout[i].target);                                        \
     tx_out foo;                                                                                                 \
@@ -219,8 +216,6 @@
     }                                                                                                           \
     output_unlock_times[i] = outhk.unlock_time;                                                                 \
     if (outhk.is_collateral) {                                                                                  \
-      collateral_output_count++;                                                                                \
-      /*collateral_indices.push_back(i);*/                                                                      \
     }                                                                                                           \
     vout_tmp.push_back(foo);                                                                                    \
   }                                                                                                             \
