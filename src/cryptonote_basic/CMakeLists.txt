@@ -70,6 +70,7 @@ target_link_libraries(cryptonote_basic
     cncrypto
     checkpoints
     cryptonote_format_utils_basic
+    offshore
     device
     ${Boost_DATE_TIME_LIBRARY}
     ${Boost_PROGRAM_OPTIONS_LIBRARY}

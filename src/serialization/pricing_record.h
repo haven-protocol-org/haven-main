@@ -39,6 +39,23 @@
 
 // read
 template <template <bool> class Archive>
+bool do_serialize(Archive<false> &ar, offshore::pricing_record_v1 &pr, uint8_t version)
+{
+  // very basic sanity check
+  if (ar.remaining_bytes() < sizeof(offshore::pricing_record_v1)) {
+    ar.stream().setstate(std::ios::failbit);
+    return false;
+  }
+
+  ar.serialize_blob(&pr, sizeof(offshore::pricing_record_v1), "");
+  if (!ar.stream().good())
+    return false;
+
+  return true;
+}
+
+// read
+template <template <bool> class Archive>
 bool do_serialize(Archive<false> &ar, offshore::pricing_record &pr, uint8_t version)
 {
   if (version < HF_VERSION_XASSET_FEES_V2)
@@ -74,6 +91,18 @@ bool do_serialize(Archive<false> &ar, offshore::pricing_record &pr, uint8_t vers
 
 // write
 template <template <bool> class Archive>
+bool do_serialize(Archive<true> &ar, offshore::pricing_record_v1 &pr, uint8_t version)
+{
+  ar.begin_string();
+  ar.serialize_blob(&pr, sizeof(offshore::pricing_record_v1), "");
+  if (!ar.stream().good())
+    return false;
+  ar.end_string();
+  return true;
+}
+
+// write
+template <template <bool> class Archive>
 bool do_serialize(Archive<true> &ar, offshore::pricing_record &pr, uint8_t version)
 {
   ar.begin_string();
@@ -95,3 +124,5 @@ bool do_serialize(Archive<true> &ar, offshore::pricing_record &pr, uint8_t versi
 }
 
 BLOB_SERIALIZER(offshore::pricing_record);
+BLOB_SERIALIZER(offshore::pricing_record_v1);
+

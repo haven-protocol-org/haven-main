@@ -339,7 +339,6 @@ namespace cryptonote
   }
   //---------------------------------------------------------------
   bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
-
     // Clear the source
     std::set<std::string> source_asset_types;
     source = "";
@@ -350,25 +349,13 @@ namespace cryptonote
           return false;
         }
         source_asset_types.insert("XHV");
-      } else if (tx.vin[i].type() == typeid(txin_to_key)) {
-        source_asset_types.insert("XHV");
-      } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-        source_asset_types.insert("XUSD");
-      } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-        source_asset_types.insert("XUSD");
-      } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
-        if (xasset == "XHV" || xasset == "XUSD") {
-          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
-          return false;
-        }
-        source_asset_types.insert(xasset);
+      } else if (tx.vin[i].type() == typeid(txin_haven_key)) {
+        source_asset_types.insert(boost::get<txin_haven_key>(tx.vin[i]).asset_type);
       } else {
-        LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
+        LOG_ERROR("Unexpected input type found: " << tx.vin[i].type().name());
         return false;
       }
     }
-
     std::vector<std::string> sat;
     sat.reserve(source_asset_types.size());
     std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
@@ -394,19 +381,12 @@ namespace cryptonote
     std::set<std::string> destination_asset_types;
     destination = "";
     for (const auto &out: tx.vout) {
-      if (out.target.type() == typeid(txout_to_key)) {
-        destination_asset_types.insert("XHV");
-      } else if (out.target.type() == typeid(txout_offshore)) {
-        destination_asset_types.insert("XUSD");
-      } else if (out.target.type() == typeid(txout_xasset)) {
-        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
-        if (xasset == "XHV" || xasset == "XUSD") {
-          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
-          return false;
-        }
-        destination_asset_types.insert(xasset);
+      if (out.target.type() == typeid(txout_haven_key)) {
+        destination_asset_types.insert(boost::get<txout_haven_key>(out.target).asset_type);
+      } else if (out.target.type() == typeid(txout_haven_tagged_key)) {
+        destination_asset_types.insert(boost::get<txout_haven_tagged_key>(out.target).asset_type);
       } else {
-        LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
+        LOG_ERROR("Unexpected output target type found: " << out.target.type().name());
         return false;
       }
     }
