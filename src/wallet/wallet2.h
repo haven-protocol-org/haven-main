@@ -369,6 +369,8 @@ private:
         FIELD(m_txid)
         FIELD(m_internal_output_index)
         FIELD(m_global_output_index)
+        FIELD(m_asset_type_output_index)
+        FIELD(m_asset_type_output_index_known)
         FIELD(m_spent)
         FIELD(m_frozen)
         FIELD(m_spent_height)
@@ -384,6 +386,7 @@ private:
         FIELD(m_multisig_k)
         FIELD(m_multisig_info)
         FIELD(m_uses)
+        FIELD(asset_type)
       END_SERIALIZE()
     };
 
@@ -433,6 +436,7 @@ private:
       crypto::hash m_tx_hash;
       uint64_t m_amount;
       amounts_container m_amounts;
+      std::string m_asset_type; // asset type of the m_amount
       uint64_t m_fee;
       uint64_t m_block_height;
       uint64_t m_unlock_time;
@@ -445,6 +449,7 @@ private:
         FIELD(m_tx_hash)
         VARINT_FIELD(m_amount)
         FIELD(m_amounts)
+        FIELD(m_asset_type)
         VARINT_FIELD(m_fee)
         VARINT_FIELD(m_block_height)
         VARINT_FIELD(m_unlock_time)
@@ -479,6 +484,7 @@ private:
       uint64_t m_amount_out;
       uint64_t m_change;
       time_t m_sent_time;
+      std::string m_source_asset;
       std::vector<cryptonote::tx_destination_entry> m_dests;
       crypto::hash m_payment_id;
       enum { pending, pending_not_in_pool, failed } m_state;
@@ -494,6 +500,7 @@ private:
         VARINT_FIELD(m_amount_out)
         VARINT_FIELD(m_change)
         VARINT_FIELD(m_sent_time)
+        FIELD(m_source_asset)
         FIELD(m_dests)
         FIELD(m_payment_id)
         if (version >= 1)
@@ -512,6 +519,7 @@ private:
       uint64_t m_amount_out;
       uint64_t m_change;
       uint64_t m_block_height;
+      std::string m_source_asset;
       std::vector<cryptonote::tx_destination_entry> m_dests;
       crypto::hash m_payment_id;
       uint64_t m_timestamp;
@@ -522,7 +530,7 @@ private:
 
       confirmed_transfer_details(): m_amount_in(0), m_amount_out(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::null_hash), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1) {}
       confirmed_transfer_details(const unconfirmed_transfer_details &utd, uint64_t height):
-        m_tx(utd.m_tx), m_amount_in(utd.m_amount_in), m_amount_out(utd.m_amount_out), m_change(utd.m_change), m_block_height(height), m_dests(utd.m_dests), m_payment_id(utd.m_payment_id), m_timestamp(utd.m_timestamp), m_unlock_time(utd.m_tx.unlock_time), m_subaddr_account(utd.m_subaddr_account), m_subaddr_indices(utd.m_subaddr_indices), m_rings(utd.m_rings) {}
+        m_tx(utd.m_tx), m_amount_in(utd.m_amount_in), m_amount_out(utd.m_amount_out), m_change(utd.m_change), m_block_height(height), m_source_asset(utd.m_source_asset), m_dests(utd.m_dests), m_payment_id(utd.m_payment_id), m_timestamp(utd.m_timestamp), m_unlock_time(utd.m_tx.unlock_time), m_subaddr_account(utd.m_subaddr_account), m_subaddr_indices(utd.m_subaddr_indices), m_rings(utd.m_rings) {}
 
       BEGIN_SERIALIZE_OBJECT()
         VERSION_FIELD(1)
@@ -532,6 +540,7 @@ private:
         VARINT_FIELD(m_amount_out)
         VARINT_FIELD(m_change)
         VARINT_FIELD(m_block_height)
+        FIELD(m_source_asset)
         FIELD(m_dests)
         FIELD(m_payment_id)
         VARINT_FIELD(m_timestamp)
@@ -1748,7 +1757,7 @@ private:
     bool prepare_file_names(const std::string& file_path);
     void process_unconfirmed(const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t height);
     void process_outgoing(const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t height, uint64_t ts, uint64_t spent, uint64_t received, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
-    void add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
+    void add_unconfirmed_tx(const cryptonote::transaction& tx, const std::string& source_asset, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
     void generate_genesis(cryptonote::block& b) const;
     void check_genesis(const crypto::hash& genesis_hash) const; //throws
     bool generate_chacha_key_from_secret_keys(crypto::chacha_key &key) const;

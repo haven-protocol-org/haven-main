@@ -162,7 +162,7 @@ namespace cryptonote
         crypto::derive_view_tag(derivation, no, view_tag);
 
       tx_out out;
-      cryptonote::set_tx_out(amount, out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(amount, "XHV", out_eph_public_key, use_view_tags, view_tag, out);
 
       tx.vout.push_back(out);
     }
@@ -988,7 +988,7 @@ namespace cryptonote
     size_t output_index = 0;
     for(const tx_destination_entry& dst_entr: destinations)
     {
-      CHECK_AND_ASSERT_MES(dst_entr.amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.amount);
+      CHECK_AND_ASSERT_MES(dst_entr.dest_amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.dest_amount);
       crypto::public_key out_eph_public_key;
       crypto::view_tag view_tag;
 
@@ -999,7 +999,7 @@ namespace cryptonote
                                            use_view_tags, view_tag);
 
       tx_out out;
-      cryptonote::set_tx_out(dst_entr.dest_amount, out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, out_eph_public_key, use_view_tags, view_tag, out);
       
       // Check for per-output-unlocks
       if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && source_asset != dest_asset) {
@@ -1237,7 +1237,7 @@ namespace cryptonote
       for (size_t i = 0; i < tx.vin.size(); ++i)
       {
         if (sources[i].rct)
-          boost::get<txin_to_key>(tx.vin[i]).amount = 0;
+          boost::get<txin_haven_key>(tx.vin[i]).amount = 0;
       }
       for (size_t i = 0; i < tx.vout.size(); ++i)
         tx.vout[i].amount = 0;

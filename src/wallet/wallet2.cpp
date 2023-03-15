@@ -2811,13 +2811,18 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     bool all_same = true;
     for (const auto& i : tx_money_got_in_outs)
     {
+      uint64_t unlock_time = 0;
+      if (tx.version >= POU_TRANSACTION_VERSION && source_asset != dest_asset)
+        unlock_time = *std::max_element(tx.output_unlock_times.begin(), tx.output_unlock_times.end());
+
       payment_details payment;
       payment.m_tx_hash      = txid;
       payment.m_fee          = fee;
       payment.m_amount       = source_asset == dest_asset ? i.second : tx.amount_minted;
+      payment.m_asset_type   = dest_asset;
       payment.m_amounts      = tx_amounts_individual_outs[i.first];
       payment.m_block_height = height;
-      payment.m_unlock_time  = tx.unlock_time;
+      payment.m_unlock_time  = unlock_time;
       payment.m_timestamp    = ts;
       payment.m_coinbase     = miner_tx;
       payment.m_subaddr_index = i.first;
@@ -6333,39 +6338,39 @@ std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_majo
   }
   if (!strict)
   {
-   for (const auto& utx: m_unconfirmed_txs)
-   {
-    if (utx.second.m_subaddr_account == index_major && utx.second.m_state != wallet2::unconfirmed_transfer_details::failed)
+    for (const auto& utx: m_unconfirmed_txs)
     {
-      // all changes go to 0-th subaddress (in the current subaddress account)
-      auto found = amount_per_subaddr.find(0);
-      if (found == amount_per_subaddr.end())
-        amount_per_subaddr[0] = utx.second.m_change;
-      else
-        found->second += utx.second.m_change;
+      if (utx.second.m_subaddr_account == index_major && utx.second.m_source_asset == asset && utx.second.m_state != wallet2::unconfirmed_transfer_details::failed)
+      {
+        // all changes go to 0-th subaddress (in the current subaddress account)
+        auto found = amount_per_subaddr.find(0);
+        if (found == amount_per_subaddr.end())
+          amount_per_subaddr[0] = utx.second.m_change;
+        else
+          found->second += utx.second.m_change;
 
-      // add transfers to same wallet
-      for (const auto &dest: utx.second.m_dests) {
-        auto index = get_subaddress_index(dest.addr);
-        if (index && (*index).major == index_major)
-        {
-          auto found = amount_per_subaddr.find((*index).minor);
-          if (found == amount_per_subaddr.end())
-            amount_per_subaddr[(*index).minor] = dest.amount;
-          else
-            found->second += dest.amount;
+        // add transfers to same wallet
+        for (const auto &dest: utx.second.m_dests) {
+          auto index = get_subaddress_index(dest.addr);
+          if (index && (*index).major == index_major)
+          {
+            auto found = amount_per_subaddr.find((*index).minor);
+            if (found == amount_per_subaddr.end())
+              amount_per_subaddr[(*index).minor] = dest.amount;
+            else
+              found->second += dest.amount;
+          }
         }
       }
     }
-   }
 
-   for (const auto& utx: m_unconfirmed_payments)
-   {
-    if (utx.second.m_pd.m_subaddr_index.major == index_major)
+    for (const auto& utx: m_unconfirmed_payments)
     {
-      amount_per_subaddr[utx.second.m_pd.m_subaddr_index.minor] += utx.second.m_pd.m_amount;
+      if (utx.second.m_pd.m_subaddr_index.major == index_major && utx.second.m_pd.m_asset_type == asset)
+      {
+        amount_per_subaddr[utx.second.m_pd.m_subaddr_index.minor] += utx.second.m_pd.m_amount;
+      }
     }
-   }
   }
   return amount_per_subaddr;
 }
@@ -6388,10 +6393,11 @@ std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::
       }
       else
       {
+        uint64_t output_unlock_height = td.m_tx.get_unlock_time(td.m_internal_output_index);
         uint64_t unlock_height = td.m_block_height + std::max<uint64_t>(CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE, CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS);
-        if (td.m_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && td.m_tx.unlock_time > unlock_height)
-          unlock_height = td.m_tx.unlock_time;
-        uint64_t unlock_time = td.m_tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER ? td.m_tx.unlock_time : 0;
+        if (output_unlock_height < CRYPTONOTE_MAX_BLOCK_NUMBER && output_unlock_height > unlock_height)
+          unlock_height = output_unlock_height;
+        uint64_t unlock_time = output_unlock_height >= CRYPTONOTE_MAX_BLOCK_NUMBER ? output_unlock_height : 0;
         blocks_to_unlock = unlock_height > blockchain_height ? unlock_height - blockchain_height : 0;
         time_to_unlock = unlock_time > now ? unlock_time - now : 0;
         amount = 0;
@@ -6782,9 +6788,10 @@ uint64_t wallet2::select_transfers(uint64_t needed_money, std::vector<size_t> un
   return found_money;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices)
+void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, const std::string& source_asset, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices)
 {
   unconfirmed_transfer_details& utd = m_unconfirmed_txs[cryptonote::get_transaction_hash(tx)];
+  utd.m_source_asset = source_asset;
   utd.m_amount_in = amount_in;
   utd.m_amount_out = 0;
   for (const auto &d: dests)
@@ -6904,7 +6911,7 @@ void wallet2::commit_tx(pending_tx& ptx)
       if (m_transfers[idx].asset_type == source_asset)
         amount_in += m_transfers[idx].amount();
   }
-  add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, ptx.change_dts.amount, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
+  add_unconfirmed_tx(ptx.tx, source_asset, amount_in, dests, payment_id, ptx.change_dts.amount, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
   if (store_tx_info() && ptx.tx_key != crypto::null_skey)
   {
     m_tx_keys[txid] = ptx.tx_key;
@@ -9791,7 +9798,7 @@ void wallet2::transfer_selected_rct(
   std::string key_images;
   bool all_are_txin_to_key = std::all_of(tx.vin.begin(), tx.vin.end(), [&](const txin_v& s_e) -> bool
   {
-    CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_to_key, in, false);
+    CHECKED_GET_SPECIFIC_VARIANT(s_e, const txin_haven_key, in, false);
     key_images += boost::to_string(in.k_image) + " ";
     return true;
   });
@@ -10613,6 +10620,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         THROW_WALLET_EXCEPTION_IF(dt.amount == 0, error::wallet_internal_error, "Failed to convert needed_money to XHV");
         break;
       default:
+        dt.dest_amount = dt.amount; // for regular transfers
         break;
     }
     needed_money += dt.amount;

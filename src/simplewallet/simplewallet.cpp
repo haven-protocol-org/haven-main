@@ -6084,17 +6084,22 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
   success_msg_writer() << tr("Currently selected account: [") << m_current_subaddress_account << tr("] ") << m_wallet->get_subaddress_label({m_current_subaddress_account, 0});
   const std::string tag = m_wallet->get_account_tags().second[m_current_subaddress_account];
   success_msg_writer() << tr("Tag: ") << (tag.empty() ? std::string{tr("(No tag assigned)")} : tag);
-  uint64_t blocks_to_unlock, time_to_unlock;
-  uint64_t unlocked_balance = m_wallet->unlocked_balance(m_current_subaddress_account, "XHV", false, &blocks_to_unlock, &time_to_unlock);
-  std::string unlock_time_message;
-  if (blocks_to_unlock > 0 && time_to_unlock > 0)
-    unlock_time_message = (boost::format(" (%lu block(s) and %s to unlock)") % blocks_to_unlock % get_human_readable_timespan(time_to_unlock)).str();
-  else if (blocks_to_unlock > 0)
-    unlock_time_message = (boost::format(" (%lu block(s) to unlock)") % blocks_to_unlock).str();
-  else if (time_to_unlock > 0)
-    unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock)).str();
-  success_msg_writer() << tr("Balance: ") << print_money(m_wallet->balance(m_current_subaddress_account, "XHV", false)) << ", "
-    << tr("unlocked balance: ") << print_money(unlocked_balance) << unlock_time_message << extra;
+  for (const auto& asset: offshore::ASSET_TYPES) {
+    uint64_t balance = m_wallet->balance(m_current_subaddress_account, asset, false);
+    if (balance == 0)
+      continue;
+    uint64_t blocks_to_unlock, time_to_unlock;
+    uint64_t unlocked_balance = m_wallet->unlocked_balance(m_current_subaddress_account, asset, false, &blocks_to_unlock, &time_to_unlock);
+    std::string unlock_time_message;
+    if (blocks_to_unlock > 0 && time_to_unlock > 0)
+      unlock_time_message = (boost::format(" (%lu block(s) and %s to unlock)") % blocks_to_unlock % get_human_readable_timespan(time_to_unlock)).str();
+    else if (blocks_to_unlock > 0)
+      unlock_time_message = (boost::format(" (%lu block(s) to unlock)") % blocks_to_unlock).str();
+    else if (time_to_unlock > 0)
+      unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock)).str();
+    success_msg_writer() << tr("Balance: ") << print_money(balance) << ", "
+      << tr("unlocked balance: ") << print_money(unlocked_balance) << "  " << asset << " " << unlock_time_message << extra;
+  }
   std::map<uint32_t, uint64_t> balance_per_subaddress = m_wallet->balance_per_subaddress(m_current_subaddress_account, "XHV", false);
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = m_wallet->unlocked_balance_per_subaddress(m_current_subaddress_account, "XHV", false);
   if (!detailed || balance_per_subaddress.empty())
@@ -9888,24 +9893,36 @@ void simple_wallet::print_accounts(const std::string& tag)
     success_msg_writer() << tr("Accounts with tag: ") << tag;
     success_msg_writer() << tr("Tag's description: ") << account_tags.first.find(tag)->second;
   }
-  success_msg_writer() << boost::format("  %15s %21s %21s %21s") % tr("Account") % tr("Balance") % tr("Unlocked balance") % tr("Label");
-  uint64_t total_balance = 0, total_unlocked_balance = 0;
-  for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
-  {
-    if (account_tags.second[account_index] != tag)
-      continue;
-    success_msg_writer() << boost::format(tr(" %c%8u %6s %21s %21s %21s"))
-      % (m_current_subaddress_account == account_index ? '*' : ' ')
-      % account_index
-      % m_wallet->get_subaddress_as_str({account_index, 0}).substr(0, 6)
-      % print_money(m_wallet->balance(account_index, "XHV", false))
-      % print_money(m_wallet->unlocked_balance(account_index, "XHV", false))
-      % m_wallet->get_subaddress_label({account_index, 0});
-    total_balance += m_wallet->balance(account_index, "XHV", false);
-    total_unlocked_balance += m_wallet->unlocked_balance(account_index, "XHV", false);
+  success_msg_writer() << boost::format("  %15s %21s %21s %21s %21s") % tr("Account") % tr("Balance") % tr("Unlocked balance") % tr("Asset") % tr("Label");
+  std::map<std::string, std::pair<uint64_t, uint64_t>> total_balances;
+  for (const auto& asset: offshore::ASSET_TYPES) {
+    uint64_t total_balance = 0, total_unlocked_balance = 0;
+    for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
+    {
+      if (account_tags.second[account_index] != tag)
+        continue;
+
+      auto balance = m_wallet->balance(account_index, asset, false);
+      auto unlocked_balance = m_wallet->unlocked_balance(account_index, asset, false);
+      if (balance == 0)
+        continue;
+      success_msg_writer() << boost::format(tr(" %c%8u %6s %21s %21s %21s %21s"))
+        % (m_current_subaddress_account == account_index ? '*' : ' ')
+        % account_index
+        % m_wallet->get_subaddress_as_str({account_index, 0}).substr(0, 6)
+        % print_money(balance)
+        % print_money(unlocked_balance)
+        % asset
+        % m_wallet->get_subaddress_label({account_index, 0});
+      total_balance += balance;
+      total_unlocked_balance += unlocked_balance;
+    }
+    if (total_balance > 0)
+      total_balances[asset] = std::pair<uint64_t, uint64_t>(total_balance, total_unlocked_balance);
   }
   success_msg_writer() << tr("------------------------------------------------------------------------------------");
-  success_msg_writer() << boost::format(tr("%15s   %21s %21s")) % "Total" % print_money(total_balance) % print_money(total_unlocked_balance);
+  for (const auto& it: total_balances)
+    success_msg_writer() << boost::format(tr("%15s   %21s %21s  %15s")) % "Total" % print_money(it.second.first) % print_money(it.second.second) % it.first;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
