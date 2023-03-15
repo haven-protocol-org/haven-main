@@ -102,26 +102,18 @@ namespace cryptonote
   struct tx_destination_entry
   {
     std::string original;
-    uint64_t amount;                    //money
-    uint64_t amount_usd;                //money
-    uint64_t amount_xasset;             //money
-    std::string asset_type;
-    account_public_address addr;        //destination address
+    uint64_t amount;              // destination money in source asset
+    uint64_t dest_amount;         // destination money in dest asset
+    std::string dest_asset_type;  // destination asset type
+    account_public_address addr;  // destination address
     bool is_subaddress;
     bool is_integrated;
     bool is_collateral;
 
-    tx_destination_entry() : amount(0), amount_usd(0), amount_xasset(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type(currency) { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type(currency) { }
+    tx_destination_entry() : amount(0), dest_amount(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : amount(a), dest_amount(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
 
     std::string address(network_type nettype, const crypto::hash &payment_id) const
     {
@@ -141,7 +133,8 @@ namespace cryptonote
     BEGIN_SERIALIZE_OBJECT()
       FIELD(original)
       VARINT_FIELD(amount)
-      FIELD(asset_type)
+      VARINT_FIELD(dest_amount)
+      FIELD(dest_asset_type)
       FIELD(addr)
       FIELD(is_subaddress)
       FIELD(is_integrated)
@@ -161,8 +154,49 @@ namespace cryptonote
   //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
   bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry> &sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time);
-  bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, bool rct = false, const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 }, bool shuffle_outs = true, bool use_view_tags = false);
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, bool rct = false, const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 }, bool use_view_tags = false);
+  bool construct_tx_with_tx_key(
+    const std::string& source_asset,
+    const std::string& dest_asset,
+    const offshore::pricing_record& pr,
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    uint64_t unlock_time,
+    const uint32_t hf_version,
+    const uint64_t current_height,
+    const uint64_t onshore_col_amount,
+    const crypto::secret_key &tx_key,
+    const std::vector<crypto::secret_key> &additional_tx_keys,
+    bool rct = false,
+    const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
+    bool shuffle_outs = true, 
+    bool use_view_tags = false
+  );
+  bool construct_tx_and_get_tx_key(
+    const std::string& source_asset,
+    const std::string& dest_asset,
+    const offshore::pricing_record& pr,
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    uint64_t unlock_time,
+    const uint32_t hf_version,
+    const uint64_t current_height,
+    const uint64_t onshore_col_amount,
+    crypto::secret_key &tx_key,
+    std::vector<crypto::secret_key> &additional_tx_keys,
+    bool rct = false,
+    const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
+    bool use_view_tags = false
+  );
   bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
                                       const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,
                                       const bool &need_additional_txkeys, const std::vector<crypto::secret_key> &additional_tx_keys,
@@ -249,6 +283,11 @@ namespace boost
       }
       a & x.original;
       a & x.is_integrated;
+      if (ver < 3)
+        return;
+      a & x.dest_asset_type;
+      a & x.dest_amount;
+      a & x.is_collateral;
     }
   }
 }

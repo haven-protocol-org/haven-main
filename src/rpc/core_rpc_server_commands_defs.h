@@ -490,10 +490,12 @@ namespace cryptonote
   {
     uint64_t amount;
     uint64_t index;
+    bool is_global_out;
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(amount)
       KV_SERIALIZE(index)
+      KV_SERIALIZE_OPT(is_global_out, false)
     END_KV_SERIALIZE_MAP()
   };
 
@@ -503,11 +505,13 @@ namespace cryptonote
     {
       std::vector<get_outputs_out> outputs;
       bool get_txid;
+      std::string asset_type;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
         KV_SERIALIZE(outputs)
         KV_SERIALIZE_OPT(get_txid, true)
+        KV_SERIALIZE(asset_type) // OPT flag?
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -519,6 +523,7 @@ namespace cryptonote
       bool unlocked;
       uint64_t height;
       crypto::hash txid;
+      uint64_t output_id;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_VAL_POD_AS_BLOB(key)
@@ -526,6 +531,7 @@ namespace cryptonote
         KV_SERIALIZE(unlocked)
         KV_SERIALIZE(height)
         KV_SERIALIZE_VAL_POD_AS_BLOB(txid)
+        KV_SERIALIZE(output_id)
       END_KV_SERIALIZE_MAP()
     };
 
@@ -1159,6 +1165,7 @@ namespace cryptonote
       uint64_t timestamp;
       std::string prev_hash;
       uint32_t nonce;
+      offshore::pricing_record pricing_record;
       bool orphan_status;
       uint64_t height;
       uint64_t depth;
@@ -1319,6 +1326,42 @@ namespace cryptonote
         KV_SERIALIZE(tx_hashes)
         KV_SERIALIZE(blob)
         KV_SERIALIZE(json)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_GET_CIRCULATING_SUPPLY
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+    struct supply_entry
+    {
+      std::string currency_label;
+      std::string amount;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(currency_label);
+        KV_SERIALIZE(amount);
+      END_KV_SERIALIZE_MAP()
+
+      supply_entry(std::string currency_label, std::string amount): currency_label(currency_label), amount(amount) {}
+      supply_entry() {}
+    };
+    
+    struct response_t
+    {
+      std::string status;
+      std::vector<supply_entry> supply_tally;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(supply_tally)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -2500,6 +2543,7 @@ namespace cryptonote
         else
           KV_SERIALIZE_N(data.distribution, "distribution")
         KV_SERIALIZE_N(data.base, "base")
+        KV_SERIALIZE_N(data.num_spendable_global_outs, "num_spendable_global_outs")
       END_KV_SERIALIZE_MAP()
     };
 

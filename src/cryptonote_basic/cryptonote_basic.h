@@ -219,8 +219,8 @@
     }                                                                                                           \
     vout_tmp.push_back(foo);                                                                                    \
   }                                                                                                             \
-  FIELD(vin_tmp)                                                                                                \
-  FIELD(vout_tmp)                                                                                               \
+  FIELD_N("vin", vin_tmp)                                                                                       \
+  FIELD_N("vout", vout_tmp)                                                                                     \
   FIELD(extra)                                                                                                  \
   if(version >= OFFSHORE_TRANSACTION_VERSION) {                                                                 \
     VARINT_FIELD(pricing_record_height)                                                                         \
@@ -513,6 +513,20 @@ namespace cryptonote
       amount_minted = 0;
       output_unlock_times.clear();
       collateral_indices.clear();
+    }
+
+    uint64_t get_unlock_time(size_t out_index) const
+    {
+      if (version >= POU_TRANSACTION_VERSION)
+      {
+        if (out_index >= output_unlock_times.size())
+        {
+          LOG_ERROR("Tried to get unlock time of a v6+ transaction with missing output unlock time");
+          return unlock_time;
+        }
+        return output_unlock_times[out_index];
+      }
+      return unlock_time;
     }
   };
 
