@@ -122,7 +122,7 @@ namespace
         const size_t n_scalars = ring_size;
         return rct::clsag{rct::keyV(n_scalars, I), I, I, I};
     }
-
+  /*
   rct::key sm(rct::key y, int n, const rct::key &x)
   {
     while (n--)
@@ -131,7 +131,7 @@ namespace
     return y;
   }
 
-  /* Compute the inverse of a scalar, the clever way */
+  // Compute the inverse of a scalar, the clever way
   rct::key invert(const rct::key &x)
   {
     rct::key _1, _10, _100, _11, _101, _111, _1001, _1011, _1111;
@@ -183,7 +183,7 @@ namespace
     CHECK_AND_ASSERT_THROW_MES(tmp == rct::identity(), "invert failed");
     return inv;
   }
-  
+  */  
 }
 
 namespace rct {
@@ -1721,16 +1721,38 @@ namespace rct {
 
       // C COLOUR
       key sumC;
-      // Remove the fees
-      subKeys(sumC, sumPseudoOuts, txnFeeKey);
-      subKeys(sumC, sumC, txnOffshoreFeeKey);
-      subKeys(sumC, sumC, sumOutpks_C);
+      // Remove the outputs from the inputs
+      subKeys(sumC, sumPseudoOuts, sumOutpks_C);
+      subKeys(sumC, sumC, txnFeeKey);
 
       // D COLOUR
       key sumD;
       // Subtract the sum of converted output commitments from the sum of consumed output commitments in D colour (if any are present)
       // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
       subKeys(sumD, zerokey, sumOutpks_D);
+
+      // E COLOUR
+      // This is only used when we need to process XHV fees on an xAsset conversion TX
+      key sumE;
+
+      if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+        // HERE BE DRAGONS!!!
+        // NEAC: Convert the fees for conversions to XHV
+        if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+          // All transfer types and offshores have fees in source asset type = C colour
+          subKeys(sumC, sumC, txnOffshoreFeeKey);
+        } else if (tx_type == tt::ONSHORE) {
+          // Onshores have fees in XHV = D colour
+          subKeys(sumD, sumD, txnOffshoreFeeKey);
+        } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+          // xAsset conversion have fees in XHV = E colour
+          subKeys(sumE, sumE, txnOffshoreFeeKey);
+        }
+        // LAND AHOY!!!
+      } else {
+        // Prior to BP+, all fees were in C colour
+        subKeys(sumC, sumC, txnOffshoreFeeKey);
+      }
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi

@@ -33,6 +33,7 @@
 
 #define TX_EXTRA_PADDING_MAX_COUNT          255
 #define TX_EXTRA_NONCE_MAX_COUNT            255
+#define TX_EXTRA_OFFSHORE_MAX_COUNT         255
 #define TX_EXTRA_MEMO_MAX_COUNT             255
 
 #define TX_EXTRA_TAG_PADDING                0x00

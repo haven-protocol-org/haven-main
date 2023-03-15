@@ -379,7 +379,7 @@ namespace cryptonote
             unlock_time = get_tx_unlock_time(tx.output_unlock_times[tx.collateral_indices[0]], tx.pricing_record_height, current_height);
             uint64_t expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
             if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
+              expected_unlock_time = TX_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
 
             if (unlock_time < expected_unlock_time) {
               LOG_ERROR("output_unlock_times[" << tx.collateral_indices[0] << "] is too short for collateral output: required unlock period is " << TX_V7_ONSHORE_UNLOCK_BLOCKS << " blocks but output unlock period is " << unlock_time << " blocks");
@@ -429,7 +429,7 @@ namespace cryptonote
           if (tx_type == transaction_type::OFFSHORE) {
             expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days
             if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS_TESTNET; // 60 blocks
+              expected_unlock_time = TX_OFFSHORE_UNLOCK_BLOCKS_TESTNET; // 60 blocks
           } else if (tx_type == transaction_type::ONSHORE) {
             if (version >= HF_VERSION_USE_COLLATERAL) {
               expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
@@ -437,11 +437,11 @@ namespace cryptonote
               expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hrs
             }
             if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
+              expected_unlock_time = TX_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
           } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
             expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days
             if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS_TESTNET; // 60 blocks
+              expected_unlock_time = TX_XASSET_UNLOCK_BLOCKS_TESTNET; // 60 blocks
           } else {
             LOG_ERROR("unexpected tx_type found - rejecting TX");
             tvc.m_verifivation_failed = true;
