@@ -40,6 +40,7 @@
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_protocol/enums.h"
+#include "offshore/asset_types.h"
 
 /** \file
  * Cryptonote Blockchain Database Interface
@@ -126,6 +127,7 @@ struct output_data_t
   crypto::public_key pubkey;       //!< the output's public key (for spend verification)
   uint64_t           unlock_time;  //!< the output's unlock time (or height)
   uint64_t           height;       //!< the height of the block which created the output
+  char               asset_type[8];   //!< the asset type of the output
   rct::key           commitment;   //!< the output's amount commitment (for spend verification)
 };
 #pragma pack(pop)
@@ -171,8 +173,11 @@ struct txpool_tx_meta_t
   uint8_t dandelionpp_stem : 1;
   uint8_t is_forwarding: 1;
   uint8_t bf_padding: 3;
+  uint8_t padding1[4];
+  uint64_t offshore_fee;
+  char fee_asset_type[8];
 
-  uint8_t padding[76]; // till 192 bytes
+  uint8_t padding[56]; // till 192 bytes
 
   void set_relay_method(relay_method method) noexcept;
   relay_method get_relay_method() const noexcept;
@@ -405,6 +410,7 @@ private:
                 , const difficulty_type& cumulative_difficulty
                 , const uint64_t& coins_generated
                 , uint64_t num_rct_outs
+                , offshore::asset_type_counts& cum_rct_by_asset_type
                 , const crypto::hash& blk_hash
                 ) = 0;
 
@@ -440,7 +446,7 @@ private:
    * @param tx_prunable_hash the hash of the prunable part of the transaction
    * @return the transaction ID
    */
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash) = 0;
+  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash, bool miner_tx) = 0;
 
   /**
    * @brief remove data about a transaction
@@ -458,7 +464,7 @@ private:
    * @param tx_hash the hash of the transaction to be removed
    * @param tx the transaction
    */
-  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx) = 0;
+  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx, bool miner_tx) = 0;
 
   /**
    * @brief store an output
@@ -486,7 +492,7 @@ private:
    * @param commitment the rct commitment to the output amount
    * @return amount output index
    */
-  virtual uint64_t add_output(const crypto::hash& tx_hash, const tx_out& tx_output, const uint64_t& local_index, const uint64_t unlock_time, const rct::key *commitment) = 0;
+  virtual std::pair<uint64_t, uint64_t> add_output(const crypto::hash& tx_hash, const tx_out& tx_output, const uint64_t& local_index, const uint64_t unlock_time, const rct::key *commitment) = 0;
 
   /**
    * @brief store amount output indices for a tx's outputs
@@ -501,7 +507,7 @@ private:
    * @param tx_id ID of the transaction containing these outputs
    * @param amount_output_indices the amount output indices of the transaction
    */
-  virtual void add_tx_amount_output_indices(const uint64_t tx_id, const std::vector<uint64_t>& amount_output_indices) = 0;
+  virtual void add_tx_amount_output_indices(const uint64_t tx_id, const std::vector<std::pair<uint64_t, uint64_t>>& amount_output_indices) = 0;
 
   /**
    * @brief store a spent key
@@ -547,7 +553,7 @@ private:
    *
    * @param tx_hash the hash of the transaction to be removed
    */
-  void remove_transaction(const crypto::hash& tx_hash);
+  void remove_transaction(const crypto::hash& tx_hash, bool miner_tx);
 
   uint64_t num_calls = 0;  //!< a performance metric
   uint64_t time_blk_hash = 0;  //!< a performance metric
@@ -972,10 +978,12 @@ public:
    * If the block does not exist, the subclass should throw BLOCK_DNE
    *
    * @param height the height requested
+   * @param asset_type if provided, returns that asset type's cumulatives
+   * @param default_tx_spendable_age the number of blocks old an output must be to be spendable
    *
    * @return the cumulative number of rct outputs
    */
-  virtual std::vector<uint64_t> get_block_cumulative_rct_outputs(const std::vector<uint64_t> &heights) const = 0;
+  virtual std::pair<std::vector<uint64_t>, uint64_t> get_block_cumulative_rct_outputs(const std::vector<uint64_t> &heights, const std::string asset_type, const uint64_t default_tx_spendable_age) const = 0;
 
   /**
    * @brief fetch the top block's timestamp
@@ -1162,6 +1170,13 @@ public:
    */
   virtual uint64_t height() const = 0;
 
+  /**
+   * @brief fetch the circulating supply tally values from the blockchain
+   *
+   * @return the current circulating supply tally values
+   */
+  virtual std::vector<std::pair<std::string, std::string>> get_circulating_supply() const = 0;
+  
 
   /**
    * <!--
@@ -1490,6 +1505,18 @@ public:
    */
   virtual void get_output_key(const epee::span<const uint64_t> &amounts, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const = 0;
   
+  /**
+   * @brief gets output id's using asset type output indices
+   *
+   * This function returns a list of global output id's
+   * using a list of asset type output indices.
+   *
+   * @param asset_type
+   * @param asset_type_output_indices a list of asset type output indices
+   * @param offsets return-by-reference list of outputs' global id
+   */
+  virtual void get_output_id_from_asset_type_output_index(const std::string asset_type, const std::vector<uint64_t> &asset_type_output_indices, std::vector<uint64_t> &output_indices) const = 0;
+
   /*
    * FIXME: Need to check with git blame and ask what this does to
    * document it
@@ -1511,7 +1538,7 @@ public:
    *
    * @return a list of amount-specific output indices
    */
-  virtual std::vector<std::vector<uint64_t>> get_tx_amount_output_indices(const uint64_t tx_id, size_t n_txes = 1) const = 0;
+  virtual std::vector<std::vector<std::pair<uint64_t, uint64_t>>> get_tx_amount_output_indices(const uint64_t tx_id, size_t n_txes = 1) const = 0;
 
   /**
    * @brief check if a key image is stored as spent
@@ -1746,6 +1773,25 @@ public:
    */
   virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const = 0;
 
+  /**
+   * @brief runs a function over all transactions stored
+   *
+   * The subclass should run the passed function for each transaction it has
+   * stored, passing (transaction_hash, transaction) as its parameters.
+   *
+   * If any call to the function returns false, the subclass should return
+   * false.  Otherwise, the subclass returns true.
+   *
+   * The subclass should throw DB_ERROR if any of the expected values are
+   * not found.  Current implementations simply return false.
+   *
+   * @param std::function fn the function to run
+   * @param bool pruned whether to only get pruned tx data, or the whole
+   *
+   * @return false if the function returns false for any transaction, otherwise true
+   */
+  virtual bool for_all_transactions_by_id(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const = 0;
+  
   /**
    * @brief runs a function over all outputs stored
    *

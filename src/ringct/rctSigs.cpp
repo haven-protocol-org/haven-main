@@ -38,6 +38,8 @@
 #include "bulletproofs_plus.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
+#include <boost/multiprecision/cpp_int.hpp>
+#include "offshore/asset_types.h"
 
 using namespace crypto;
 using namespace std;
@@ -117,6 +119,68 @@ namespace
         const size_t n_scalars = ring_size;
         return rct::clsag{rct::keyV(n_scalars, I), I, I, I};
     }
+
+  rct::key sm(rct::key y, int n, const rct::key &x)
+  {
+    while (n--)
+      sc_mul(y.bytes, y.bytes, y.bytes);
+    sc_mul(y.bytes, y.bytes, x.bytes);
+    return y;
+  }
+
+  /* Compute the inverse of a scalar, the clever way */
+  rct::key invert(const rct::key &x)
+  {
+    rct::key _1, _10, _100, _11, _101, _111, _1001, _1011, _1111;
+
+    _1 = x;
+    sc_mul(_10.bytes, _1.bytes, _1.bytes);
+    sc_mul(_100.bytes, _10.bytes, _10.bytes);
+    sc_mul(_11.bytes, _10.bytes, _1.bytes);
+    sc_mul(_101.bytes, _10.bytes, _11.bytes);
+    sc_mul(_111.bytes, _10.bytes, _101.bytes);
+    sc_mul(_1001.bytes, _10.bytes, _111.bytes);
+    sc_mul(_1011.bytes, _10.bytes, _1001.bytes);
+    sc_mul(_1111.bytes, _100.bytes, _1011.bytes);
+
+    rct::key inv;
+    sc_mul(inv.bytes, _1111.bytes, _1.bytes);
+
+    inv = sm(inv, 123 + 3, _101);
+    inv = sm(inv, 2 + 2, _11);
+    inv = sm(inv, 1 + 4, _1111);
+    inv = sm(inv, 1 + 4, _1111);
+    inv = sm(inv, 4, _1001);
+    inv = sm(inv, 2, _11);
+    inv = sm(inv, 1 + 4, _1111);
+    inv = sm(inv, 1 + 3, _101);
+    inv = sm(inv, 3 + 3, _101);
+    inv = sm(inv, 3, _111);
+    inv = sm(inv, 1 + 4, _1111);
+    inv = sm(inv, 2 + 3, _111);
+    inv = sm(inv, 2 + 2, _11);
+    inv = sm(inv, 1 + 4, _1011);
+    inv = sm(inv, 2 + 4, _1011);
+    inv = sm(inv, 6 + 4, _1001);
+    inv = sm(inv, 2 + 2, _11);
+    inv = sm(inv, 3 + 2, _11);
+    inv = sm(inv, 3 + 2, _11);
+    inv = sm(inv, 1 + 4, _1001);
+    inv = sm(inv, 1 + 3, _111);
+    inv = sm(inv, 2 + 4, _1111);
+    inv = sm(inv, 1 + 4, _1011);
+    inv = sm(inv, 3, _101);
+    inv = sm(inv, 2 + 4, _1111);
+    inv = sm(inv, 3, _101);
+    inv = sm(inv, 1 + 2, _11);
+
+    // Sanity check for successful inversion
+    rct::key tmp;
+    sc_mul(tmp.bytes, inv.bytes, x.bytes);
+    CHECK_AND_ASSERT_THROW_MES(tmp == rct::identity(), "invert failed");
+    return inv;
+  }
+  
 }
 
 namespace rct {
@@ -616,7 +680,7 @@ namespace rct {
       hashes.push_back(hash2rct(h));
 
       keyV kv;
-      if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG)
+      if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3)
       {
         kv.reserve((6*2+9) * rv.p.bulletproofs.size());
         for (const auto &p: rv.p.bulletproofs)
@@ -1073,7 +1137,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(amounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
         }
 
         //set txn fee
@@ -1120,8 +1184,17 @@ namespace rct {
           switch (rct_config.bp_version)
           {
             case 0:
-            case 4:
+            case 7:
               rv.type = RCTTypeBulletproofPlus;
+              break;
+            case 6:
+              rv.type = RCTTypeHaven3;
+              break;
+            case 5:
+              rv.type = RCTTypeHaven2;
+              break;
+            case 4:
+              rv.type = RCTTypeCLSAGN;
               break;
             case 3:
               rv.type = RCTTypeCLSAG;
@@ -1248,7 +1321,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(outamounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
         }
             
         //set txn fee
@@ -1376,16 +1449,528 @@ namespace rct {
         }
     }
 
+  // yC = constant for USD/XHV exchange rate
+  // Ci = pseudoOuts[i] *** Ci & Di are MUTUALLY EXCLUSIVE
+  // fcG' = fee in XHV = 0
+  // C'k = outPk[k].mask
+  // yD = constant for XHV/USD exchange rate (1/yC)
+  // Di = pseudoOuts[i] *** Ci & Di are MUTUALLY EXCLUSIVE
+  // fdG' = fee in USD = 0
+  // D'k = outPk_usd[k].mask
+  //
+  //ver RingCT simple
+  //assumes only post-rct style inputs (at least for max anonymity)
+  bool verRctSemanticsSimple2(
+    const rctSig& rv, 
+    const offshore::pricing_record& pr,
+    const cryptonote::transaction_type& tx_type,
+    const std::string& strSource, 
+    const std::string& strDest,
+    uint64_t amount_burnt,
+    const std::vector<cryptonote::tx_out> &vout,
+    const std::vector<cryptonote::txin_v> &vin,
+    const uint8_t version,
+    const std::vector<uint32_t>& collateral_indices,
+    const uint64_t amount_collateral
+  ){
+
+    try
+    {
+      PERF_TIMER(verRctSemanticsSimple2);
+
+      tools::threadpool& tpool = tools::threadpool::getInstanceForCompute();
+      tools::threadpool::waiter waiter(tpool);
+      std::deque<bool> results;
+      std::vector<const Bulletproof*> proofs;
+      size_t max_non_bp_proofs = 0, offset = 0;
+      using tt = cryptonote::transaction_type;
+
+      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
+
+      const bool bulletproof = is_rct_bulletproof(rv.type);
+      CHECK_AND_ASSERT_MES(bulletproof, false, "Only bulletproofs supported for Haven2");
+      CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
+      CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
+      CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
+      CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
+      CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
+      if (rv.type == RCTTypeHaven2) 
+        CHECK_AND_ASSERT_MES(rv.maskSums.size() == 2, false, "maskSums size is not 2");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
+      CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
+      CHECK_AND_ASSERT_MES(tx_type != tt::UNSET, false, "Invalid transaction type.");
+      if (strSource != strDest) {
+        CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
+        CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
+        if (rv.type == RCTTypeHaven3) {
+          CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
+          CHECK_AND_ASSERT_MES(collateral_indices.size() == 2, false, "collateral indices size is not 2");
+          if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
+            CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
+        }
+      }
+      
+      // OUTPUTS SUMMED FOR EACH COLOUR
+      key zerokey = rct::identity();
+      // Zi is intentionally set to a different value to zerokey, so that if a bug is introduced in the later logic, any comparison with zerokey will fail
+      key Zi = scalarmultH(d2h(1));
+
+      // Calculate sum of all C' and D'
+      rct::keyV masks_C;
+      rct::keyV masks_D;
+      for (size_t i=0; i<vout.size(); i++) {
+
+        bool onshore_col_idx = false;
+        if (version >= HF_VERSION_USE_COLLATERAL) {
+          // make sure onshore check is always first, it is segfault otherwise since col_indices are empty for transfers
+          if (tx_type == tt::ONSHORE && (i == collateral_indices[0] || i == collateral_indices[1]))
+            onshore_col_idx = true;
+        }
+        std::string output_asset_type;
+        bool ok = cryptonote::get_output_asset_type(vout[i], output_asset_type);
+        if (!ok) {
+          LOG_ERROR("Failed to get output type");
+          return false;
+        }
+
+        // exclude the onshore collateral ouputs from proof-of-value calculation
+        if (!onshore_col_idx) {
+          if (output_asset_type == strSource) {
+            masks_C.push_back(rv.outPk[i].mask);
+          } else if (output_asset_type == strDest) {
+            masks_D.push_back(rv.outPk[i].mask);
+          } else {
+            LOG_ERROR("Invalid output detected (wrong asset type)");
+            return false;
+          }
+        }
+      }
+      key sumOutpks_C = addKeys(masks_C);
+      key sumOutpks_D = addKeys(masks_D);
+      DP(sumOutpks_C);
+      DP(sumOutpks_D);
+
+      // FEES FOR EACH COLOUR
+      // Calculate tx fee for C colour
+      key txnFeeKey = scalarmultH(d2h(rv.txnFee));
+      // Calculate offshore conversion fee (also always in C colour)
+      key txnOffshoreFeeKey = scalarmultH(d2h(rv.txnOffshoreFee));
+
+      // exclude the onshore collateral inputs from proof-of-value calculation
+      key sumPseudoOuts = zerokey;
+      key sumColIns = zerokey;
+      if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL) {
+        for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
+          if (boost::get<cryptonote::txin_haven_key>(vin[i]).asset_type == "XHV") {
+            sumColIns = addKeys(sumColIns, rv.p.pseudoOuts[i]);
+          } else {
+            sumPseudoOuts = addKeys(sumPseudoOuts, rv.p.pseudoOuts[i]);
+          }
+        }
+      } else {
+        sumPseudoOuts = addKeys(rv.p.pseudoOuts);
+      }
+      DP(sumPseudoOuts);
+
+      // C COLOUR
+      key sumC;
+      // Remove the fees
+      subKeys(sumC, sumPseudoOuts, txnFeeKey);
+      subKeys(sumC, sumC, txnOffshoreFeeKey);
+      subKeys(sumC, sumC, sumOutpks_C);
+
+      // D COLOUR
+      key sumD;
+      // Subtract the sum of converted output commitments from the sum of consumed output commitments in D colour (if any are present)
+      // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
+      subKeys(sumD, zerokey, sumOutpks_D);
+
+      // NEAC: attempt to only calculate forward
+      // CALCULATE Zi
+      if (tx_type == tt::OFFSHORE) {
+        key D_scaled = scalarmultKey(sumD, d2h(COIN));
+        key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
+        key D_final = scalarmultKey(D_scaled, yC_invert);
+        Zi = addKeys(sumC, D_final);
+      } else if (tx_type == tt::ONSHORE) {
+        key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
+        key yC_invert = invert(d2h(COIN));
+        key D_final = scalarmultKey(D_scaled, yC_invert);
+        Zi = addKeys(sumC, D_final);
+      } else if (tx_type == tt::OFFSHORE_TRANSFER) {
+        Zi = addKeys(sumC, sumD);
+      } else if (tx_type == tt::XUSD_TO_XASSET) {
+        key D_scaled = scalarmultKey(sumD, d2h(COIN));
+        key yC_invert = invert(d2h(pr[strDest]));
+        key D_final = scalarmultKey(D_scaled, yC_invert);
+        Zi = addKeys(sumC, D_final);
+      } else if (tx_type == tt::XASSET_TO_XUSD) {
+        key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
+        key yC_invert = invert(d2h(COIN));
+        key D_final = scalarmultKey(D_scaled, yC_invert);
+        Zi = addKeys(sumC, D_final);
+      } else if (tx_type == tt::XASSET_TRANSFER) {
+        Zi = addKeys(sumC, sumD);
+      } else if (tx_type == tt::TRANSFER) {
+        Zi = addKeys(sumC, sumD);
+      } else {
+        LOG_PRINT_L1("Invalid transaction type specified");
+        return false;
+      }
+
+      //check Zi == 0
+      if (!equalKeys(Zi, zerokey)) {
+        LOG_PRINT_L1("Sum check failed (Zi)");
+        return false;
+      }
+
+      // Validate TX amount burnt/mint for conversions
+      if (strSource != strDest) {
+
+        if ((version < HF_VERSION_USE_COLLATERAL) && (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET)) {
+          // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
+          // So we subtract that from amount_burnt and validate only the actual coversion amount because
+          // fees are not converted. They are just burned.
+
+          // calculate the burnt fee. Should be the 80% of the offshoreFee
+          boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
+          boost::multiprecision::uint128_t burnt_fee = (fee_128 * 4) / 5;
+
+          // subtract it from amount burnt
+          amount_burnt -= (uint64_t)burnt_fee;
+        }
+
+        // m = sum of all masks of inputs
+        // n = sum of masks of change + collateral outputs
+        // rv.maskSums[0] = m
+        // rv.maskSums[1] = n
+        // The value the current sumC is C = xG + aH where 
+        // x = m - n, a = actual converted amount(burnt), and G, H are constants
+
+        // add the n back to x, so x = m in calculation C = xG + aH
+        // but we can't add it directly. So first calculate the C for n(mask) and 0(amount)
+        key C_n;
+        genC(C_n, rv.maskSums[1], 0);
+        key C_burnt = addKeys(sumC, C_n);
+
+        // Now, x actually should be rv.maskSums[0]
+        // so if we calculate a C with rv.maskSums[0] and amount_burnt, C should be same as C_burnt
+        key pseudoC_burnt;
+        genC(pseudoC_burnt, rv.maskSums[0], amount_burnt);
+
+        // check whether they are equal
+        if (!equalKeys(C_burnt, pseudoC_burnt)) {
+          LOG_PRINT_L1("Tx amount burnt/minted validation failed.");
+          return false;
+        }
+      }
+
+      // validate the collateral
+      if ((version >= HF_VERSION_USE_COLLATERAL)) {
+        if (tx_type == tt::OFFSHORE) {
+          // get collateral commitment
+          key C_col = rv.outPk[collateral_indices[0]].mask;
+
+          // calculate needed commitment
+          key pseudoC_col;
+          genC(pseudoC_col, rv.maskSums[2], amount_collateral);
+
+          if (!equalKeys(pseudoC_col, C_col)) {
+            LOG_ERROR("Offshore collateral verification failed.");
+            return false;
+          }
+        }
+
+        if (tx_type == tt::ONSHORE) {
+          // calculate needed commitment
+          key col_C;
+          genC(col_C, rv.maskSums[2], amount_collateral);
+          
+          // try to match with actual col ouput
+          if (!equalKeys(col_C, rv.outPk[collateral_indices[0]].mask)) {
+            LOG_PRINT_L1("Onshore collateral check failed.");
+            return false;
+          }
+
+          // check inputs == outputs
+          key sumColOut = addKeys(rv.outPk[collateral_indices[0]].mask, rv.outPk[collateral_indices[1]].mask);
+          if (!equalKeys(sumColOut, sumColIns)) {
+            LOG_PRINT_L1("Onshore collateral inputs != outputs");
+            return false;
+          }
+        }
+      }
+
+      for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
+        proofs.push_back(&rv.p.bulletproofs[i]);
+    
+      if (!proofs.empty() && !verBulletproof(proofs))
+      {
+        LOG_PRINT_L1("Aggregate range proof verified failed");
+        return false;
+      }
+      
+      return true;
+    }
+    // we can get deep throws from ge_frombytes_vartime if input isn't valid
+    catch (const std::exception &e)
+    {
+      LOG_PRINT_L1("Error in verRctSemanticsSimple: " << e.what());
+      return false;
+    }
+    catch (...)
+    {
+      LOG_PRINT_L1("Error in verRctSemanticsSimple, but not an actual exception");
+      return false;
+    }
+  }
+  
+  // yC = constant for USD/XHV exchange rate
+  // Ci = pseudoOuts[i] *** Ci & Di are MUTUALLY EXCLUSIVE
+  // fcG' = fee in XHV = 0
+  // C'k = outPk[k].mask
+  // yD = constant for XHV/USD exchange rate (1/yC)
+  // Di = pseudoOuts[i] *** Ci & Di are MUTUALLY EXCLUSIVE
+  // fdG' = fee in USD = 0
+  // D'k = outPk_usd[k].mask
+  //
     //ver RingCT simple
     //assumes only post-rct style inputs (at least for max anonymity)
-    bool verRctSemanticsSimple(const std::vector<const rctSig*> & rvv) {
-      try
+  bool verRctSemanticsSimple(
+    const rctSig& rv, 
+    const offshore::pricing_record& pr, 
+    const cryptonote::transaction_type& type,
+    const std::string& strSource, 
+    const std::string& strDest
+  ){
+    try
       {
         PERF_TIMER(verRctSemanticsSimple);
 
         tools::threadpool& tpool = tools::threadpool::getInstanceForCompute();
         tools::threadpool::waiter waiter(tpool);
         std::deque<bool> results;
+
+        std::vector<const Bulletproof*> proofs;
+        size_t max_non_bp_proofs = 0, offset = 0;
+
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN,
+                             false, "verRctSemanticsSimple called on non simple rctSig");
+        
+        const bool bulletproof = is_rct_bulletproof(rv.type);
+        if (bulletproof)
+          {
+            CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
+            if ((rv.type == RCTTypeCLSAG) || (rv.type == RCTTypeCLSAGN))
+              {
+                CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
+                CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
+              }
+            else
+              {
+                CHECK_AND_ASSERT_MES(rv.p.CLSAGs.empty(), false, "CLSAGs are not empty for MLSAG");
+                CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.MGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.MGs");
+              }
+            CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
+          }
+        else
+          {
+            CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.p.rangeSigs.size(), false, "Mismatched sizes of outPk and rv.p.rangeSigs");
+            CHECK_AND_ASSERT_MES(rv.pseudoOuts.size() == rv.p.MGs.size(), false, "Mismatched sizes of rv.pseudoOuts and rv.p.MGs");
+            CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.empty(), false, "rv.p.pseudoOuts is not empty");
+          }
+        CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
+        CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
+        CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
+        CHECK_AND_ASSERT_MES(type != cryptonote::transaction_type::UNSET, false, "Invalid transaction type.");
+        if (strSource != strDest) {
+          CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pr found for a conversion tx");
+        }
+      
+        if (!bulletproof)
+          max_non_bp_proofs += rv.p.rangeSigs.size();
+
+        results.resize(max_non_bp_proofs);
+
+        const keyV &pseudoOuts = bulletproof ? rv.p.pseudoOuts : rv.pseudoOuts;
+
+        // OUTPUTS SUMMED FOR EACH COLOUR
+        key zerokey = rct::identity();
+        // Zi is intentionally set to a different value to zerokey, so that if a bug is introduced in the later logic, any comparison with zerokey will fail
+        key Zi = scalarmultH(d2h(1));
+
+        // Calculate sum of all C'
+        rct::keyV masks(rv.outPk.size());
+        for (size_t i = 0; i < rv.outPk.size(); i++) {
+          masks[i] = rv.outPk[i].mask;
+        }
+        key sumOutpks = addKeys(masks);
+        DP(sumOutpks);
+
+        // Calculate sum of all D'
+        rct::keyV masks_usd(rv.outPk_usd.size());
+        for (size_t i = 0; i < rv.outPk_usd.size(); i++) {
+          masks_usd[i] = rv.outPk_usd[i].mask;
+        }
+        key sumOutpks_usd = addKeys(masks_usd);
+        DP(sumOutpks_usd);
+
+        // Calculate sum of all E' (xAssets)
+        rct::keyV masks_xasset(rv.outPk_xasset.size());
+        for (size_t i = 0; i < rv.outPk_xasset.size(); i++) {
+          masks_xasset[i] = rv.outPk_xasset[i].mask;
+        }
+        key sumOutpks_xasset = addKeys(masks_xasset);
+        DP(sumOutpks_xasset);
+
+        // FEES FOR EACH COLOUR
+        const key txnFeeKey = scalarmultH(d2h(rv.txnFee));
+        const key txnOffshoreFeeKey = scalarmultH(d2h(rv.txnOffshoreFee));
+        const key txnFeeKey_usd = scalarmultH(d2h(rv.txnFee_usd));
+        const key txnOffshoreFeeKey_usd = scalarmultH(d2h(rv.txnOffshoreFee_usd));
+        const key txnFeeKey_xasset = scalarmultH(d2h(rv.txnFee_xasset));
+        const key txnOffshoreFeeKey_xasset = scalarmultH(d2h(rv.txnOffshoreFee_xasset));
+
+        /*
+          offshore TX:
+          sumPseudoOuts = addKeys(pseudoOuts); (total of inputs)
+          sumPseudoOuts_usd = zerokey; (no input usd amount)
+
+          sumXHV = total_output_value_in_XHV (after subtracting fees)
+          sumUSD = -total_output_value_in_USD
+
+          D_scaled = sumUSD 
+          yC_invert = 1 / exchange_rate_in_usd
+          D_final = -total_output_value_in_XHV
+          Zi = total_output_value_in_XHV - total_output_value_in_XHV = 0; 
+
+
+          XUSD -> XASSET TX:
+          sumPseudoOuts_usd = total_input_in_usd
+          sumPseudoOuts_xasset = zerokey; (no input xasset amount)
+
+
+          sumUSD = total_output_value_in_USD (after subtracting fees)
+          sumXASSET = -total_output_value_in_XASSET (without fees)
+
+          D_scaled = sumXASSET
+          y = exchange_rate_in_usd
+          D_final = sumXASSET * 1/ exchange_rate_in_usd = -total_output_value_in_USD
+          Zi = sumUSD + D_final = 0
+        */
+        using tx_type = cryptonote::transaction_type;
+        key sumPseudoOuts = (strSource == "XHV") ? addKeys(pseudoOuts) : zerokey;
+        key sumPseudoOuts_usd = (strSource == "XUSD") ? addKeys(pseudoOuts) : zerokey;
+        key sumPseudoOuts_xasset = (strSource != "XHV" && strSource != "XUSD") ? addKeys(pseudoOuts) : zerokey;
+        
+        DP(sumPseudoOuts);
+        DP(sumPseudoOuts_usd);
+        DP(sumPseudoOuts_xasset);
+
+        // C COLOUR
+        key sumXHV;
+        // Remove the fees
+        subKeys(sumXHV, sumPseudoOuts, txnFeeKey);
+        subKeys(sumXHV, sumXHV, txnOffshoreFeeKey);
+        subKeys(sumXHV, sumXHV, sumOutpks);
+
+        // Variant COLOUR (C or D depending on the direction of the transaction)
+        key sumUSD;
+        // Remove the fees
+        subKeys(sumUSD, sumPseudoOuts_usd, txnFeeKey_usd);
+        subKeys(sumUSD, sumUSD, txnOffshoreFeeKey_usd);
+        subKeys(sumUSD, sumUSD, sumOutpks_usd);
+
+        // D COLOUR
+        key sumXASSET;
+        // Remove the fees
+        subKeys(sumXASSET, sumPseudoOuts_xasset, txnFeeKey_xasset);
+        subKeys(sumXASSET, sumXASSET, txnOffshoreFeeKey_xasset);
+        subKeys(sumXASSET, sumXASSET, sumOutpks_xasset);
+
+        // NEAC: attempt to only calculate forward
+        // CALCULATE Zi
+        if (type == tx_type::OFFSHORE) {
+          key D_scaled = scalarmultKey(sumUSD, d2h(COIN));
+          key yC_invert = invert(d2h(pr.unused1));
+          key D_final = scalarmultKey(D_scaled, yC_invert);
+          Zi = addKeys(sumXHV, D_final);
+        } else if (type == tx_type::ONSHORE) {
+          key C_scaled = scalarmultKey(sumXHV, d2h(pr.unused1));
+          key yD_invert = invert(d2h(COIN));
+          key C_final = scalarmultKey(C_scaled, yD_invert);
+          Zi = addKeys(C_final, sumUSD);
+        } else if (type == tx_type::OFFSHORE_TRANSFER) {
+          Zi = addKeys(sumXHV, sumUSD);
+        } else if (type == tx_type::XUSD_TO_XASSET) {
+          key D_scaled = scalarmultKey(sumXASSET, d2h(COIN));
+          key yC_invert = invert(d2h(pr[strDest]));
+          key D_final = scalarmultKey(D_scaled, yC_invert);
+          Zi = addKeys(sumUSD, D_final);
+        } else if (type == tx_type::XASSET_TO_XUSD) {
+          key C_scaled = scalarmultKey(sumUSD, d2h(pr[strSource]));
+          key yD_invert = invert(d2h(COIN));
+          key C_final = scalarmultKey(C_scaled, yD_invert);
+          Zi = addKeys(C_final, sumXASSET);
+        } else if (type == tx_type::XASSET_TRANSFER) {
+          Zi = addKeys(sumUSD, sumXASSET);
+        } else if (type == tx_type::TRANSFER) {
+          Zi = addKeys(sumXHV, sumUSD);
+        } else {
+          LOG_PRINT_L1("Invalid transaction type specified");
+          return false;
+        }
+
+        //check Zi == 0
+        if (!equalKeys(Zi, zerokey)) {
+          LOG_PRINT_L1("Sum check failed (Zi)");
+          return false;
+        }
+
+        if (bulletproof)
+          {
+            for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
+              proofs.push_back(&rv.p.bulletproofs[i]);
+          }
+        else
+          {
+            for (size_t i = 0; i < rv.p.rangeSigs.size(); i++)
+              tpool.submit(&waiter, [&, i, offset] { results[i+offset] = verRange(rv.outPk[i].mask, rv.p.rangeSigs[i]); });
+            offset += rv.p.rangeSigs.size();
+          }
+    
+        if (!proofs.empty() && !verBulletproof(proofs))
+          {
+            LOG_PRINT_L1("Aggregate range proof verified failed");
+            return false;
+          }
+          if (!waiter.wait())
+            return false;
+      
+        for (size_t i = 0; i < results.size(); ++i) {
+          if (!results[i]) {
+            LOG_PRINT_L1("Range proof verified failed for proof " << i);
+            return false;
+          }
+        }
+      
+        return true;
+      }
+    // we can get deep throws from ge_frombytes_vartime if input isn't valid
+    catch (const std::exception &e)
+      {
+        LOG_PRINT_L1("Error in verRctSemanticsSimple: " << e.what());
+        return false;
+      }
+    catch (...)
+      {
+        LOG_PRINT_L1("Error in verRctSemanticsSimple, but not an actual exception");
+        return false;
+      }
+
+
+/*
+
         std::vector<const Bulletproof*> bp_proofs;
         std::vector<const BulletproofPlus*> bpp_proofs;
         size_t max_non_bp_proofs = 0, offset = 0;
@@ -1394,7 +1979,7 @@ namespace rct {
         {
           CHECK_AND_ASSERT_MES(rvp, false, "rctSig pointer is NULL");
           const rctSig &rv = *rvp;
-          CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
+          CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
               false, "verRctSemanticsSimple called on non simple rctSig");
           const bool bulletproof = is_rct_bulletproof(rv.type);
           const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -1509,11 +2094,7 @@ namespace rct {
         LOG_PRINT_L1("Error in verRctSemanticsSimple, but not an actual exception");
         return false;
       }
-    }
-
-    bool verRctSemanticsSimple(const rctSig & rv)
-    {
-      return verRctSemanticsSimple(std::vector<const rctSig*>(1, &rv));
+*/
     }
 
     //ver RingCT simple
@@ -1523,7 +2104,7 @@ namespace rct {
       {
         PERF_TIMER(verRctNonSemanticsSimple);
 
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
             false, "verRctNonSemanticsSimple called on non simple rctSig");
         const bool bulletproof = is_rct_bulletproof(rv.type);
         const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -1595,7 +2176,7 @@ namespace rct {
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;
@@ -1619,14 +2200,14 @@ namespace rct {
     }
 
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key &mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
             false, "decodeRct called on non simple rctSig");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;
@@ -1648,4 +2229,69 @@ namespace rct {
       key mask;
       return decodeRctSimple(rv, sk, i, mask, hwdev);
     }
+
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version) {
+
+    if (source == "XHV" && destination == "XUSD") {
+      boost::multiprecision::uint128_t xhv_128 = amount_burnt;
+      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;
+      boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
+      xusd_128 /= COIN;
+      boost::multiprecision::uint128_t minted_128 = amount_minted;
+      if (xusd_128 != minted_128) {
+        LOG_PRINT_L1("Minted/burnt verification failed (offshore)");
+        return false;
+      }
+    } else if (source == "XUSD" && destination == "XHV") {
+      boost::multiprecision::uint128_t xusd_128 = amount_burnt;
+      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1;
+      boost::multiprecision::uint128_t xhv_128 = xusd_128 * COIN;
+      xhv_128 /= exchange_128;
+      boost::multiprecision::uint128_t minted_128 = amount_minted;
+      if ((uint64_t)xhv_128 != minted_128) {
+        LOG_PRINT_L1("Minted/burnt verification failed (onshore)");
+        return false;
+      }
+    } else if (source == "XUSD" && destination != "XHV" && destination != "XUSD") {
+      boost::multiprecision::uint128_t xusd_128 = amount_burnt;
+      if (version < HF_VERSION_USE_COLLATERAL) {
+        if (version >= HF_VERSION_HAVEN2) {
+          xusd_128 -= ((rv.txnOffshoreFee * 4) / 5);
+        } else if (version >= HF_VERSION_XASSET_FEES_V2) {
+          xusd_128 -= ((rv.txnOffshoreFee_usd * 4) / 5);
+        }
+      }
+      boost::multiprecision::uint128_t exchange_128 = pr[destination];
+      boost::multiprecision::uint128_t xasset_128 = xusd_128 * exchange_128;
+      xasset_128 /= COIN;
+      boost::multiprecision::uint128_t minted_128 = amount_minted;
+      if (xasset_128 != minted_128) {
+        LOG_PRINT_L1("Minted/burnt verification failed (xusd_to_xasset)");
+        return false;
+      }
+    } else if (source != "XHV" && source != "XUSD" && destination == "XUSD") {
+      boost::multiprecision::uint128_t xasset_128 = amount_burnt;
+      if (version < HF_VERSION_USE_COLLATERAL) {
+        if (version >= HF_VERSION_HAVEN2) {
+          xasset_128 -= ((rv.txnOffshoreFee * 4) / 5);
+        } else if (version >= HF_VERSION_XASSET_FEES_V2) {
+          xasset_128 -= ((rv.txnOffshoreFee_xasset * 4) / 5);
+        }
+      }
+      boost::multiprecision::uint128_t exchange_128 = pr[source];
+      boost::multiprecision::uint128_t xusd_128 = xasset_128 * COIN;
+      xusd_128 /= exchange_128;
+      boost::multiprecision::uint128_t minted_128 = amount_minted;
+      if ((uint64_t)xusd_128 != minted_128) {
+        LOG_PRINT_L1("Minted/burnt verification failed (xasset_to_xusd)");
+        return false;
+      }
+    } else {
+      LOG_PRINT_L1("Invalid request - minted/burnt values only valid for offshore/onshore/xusd_to_xasset/xasset_to_xusd TXs");
+      return false;
+    }
+
+    // Must have succeeded
+    return true;
+  }
 }

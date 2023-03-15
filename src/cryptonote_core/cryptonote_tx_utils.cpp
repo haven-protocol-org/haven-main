@@ -79,10 +79,47 @@ namespace cryptonote
     LOG_PRINT_L2("destinations include " << num_stdaddresses << " standard addresses and " << num_subaddresses << " subaddresses");
   }
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version) {
+  bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key)
+  {
+
+    crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
+    bool r = crypto::generate_key_derivation(address.m_view_public_key, tx_key.sec, derivation);
+    CHECK_AND_ASSERT_MES(r, false, "failed to generate_key_derivation(" << address.m_view_public_key << ", " << tx_key.sec << ")");
+
+    r = crypto::derive_public_key(derivation, output_index, address.m_spend_public_key, output_key);
+    CHECK_AND_ASSERT_MES(r, false, "failed to derive_public_key(" << derivation << ", "<< address.m_spend_public_key << ")");
+
+    return true;
+  }
+  //---------------------------------------------------------------
+  // Governance code credit to Loki project https://github.com/loki-project/loki
+  keypair get_deterministic_keypair_from_height(uint64_t height)
+  {
+    keypair k;
+
+    ec_scalar& sec = k.sec;
+
+    for (int i=0; i < 8; i++)
+    {
+      uint64_t height_byte = height & ((uint64_t)0xFF << (i*8));
+      uint8_t byte = height_byte >> i*8;
+      sec.data[i] = byte;
+    }
+    for (int i=8; i < 32; i++)
+    {
+      sec.data[i] = 0x00;
+    }
+
+    generate_keys(k.pub, k.sec, k.sec, true);
+
+    return k;
+  }
+  //---------------------------------------------------------------
+  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, std::map<std::string, uint64_t> fee_map,  std::map<std::string, uint64_t> offshore_fee_map, std::map<std::string, uint64_t> xasset_fee_map, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, cryptonote::network_type nettype) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
+    tx.output_unlock_times.clear();
 
     keypair txkey = keypair::generate(hw::get_device("default"));
     add_tx_pub_key_to_extra(tx, txkey.pub);
@@ -91,6 +128,8 @@ namespace cryptonote
         return false;
     if (!sort_tx_extra(tx.extra, tx.extra))
       return false;
+
+    keypair gov_key = get_deterministic_keypair_from_height(height);
 
     txin_gen in;
     in.height = height;
@@ -102,6 +141,188 @@ namespace cryptonote
       return false;
     }
 
+#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
+    // NEAC: need to iterate over the currency maps to output all fees
+    LOG_PRINT_L1("Creating block template: block reward " << block_reward);
+    for (const auto &fee: fee_map) {
+      LOG_PRINT_L1("\t" << fee.first << " fee " << fee);
+    }
+#endif
+
+    uint64_t governance_reward = 0;
+    if (hard_fork_version >= 3) {
+      if (already_generated_coins != 0)
+      {
+        governance_reward = get_governance_reward(height, block_reward);
+        block_reward -= governance_reward;
+      }
+    }
+
+    block_reward += fee_map["XHV"];
+    uint64_t summary_amounts = 0;
+    crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
+    crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+    bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
+    CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
+    r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
+    CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << "0" << ", "<< miner_address.m_spend_public_key << ")");
+
+    txout_haven_key tk;
+    tk.asset_type = "XHV";
+    tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+    tk.is_collateral = false;
+    tk.key = out_eph_public_key;
+
+    tx_out out;
+    summary_amounts += out.amount = block_reward;
+    out.target = tk;
+    tx.vout.push_back(out);
+
+    // add governance wallet output for xhv
+    cryptonote::address_parse_info governance_wallet_address;
+    if (hard_fork_version >= 3) {
+      if (already_generated_coins != 0)
+      {
+        add_tx_pub_key_to_extra(tx, gov_key.pub);
+        cryptonote::get_account_address_from_str(governance_wallet_address, nettype, get_governance_address(hard_fork_version, nettype));
+        crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+        if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, 1 /* second output in miner tx */, out_eph_public_key))
+        {
+          MERROR("Failed to generate deterministic output key for governance wallet output creation");
+          return false;
+        }
+
+        txout_haven_key tk;
+        tk.asset_type = "XHV";
+        tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+        tk.is_collateral = false;
+        tk.key = out_eph_public_key;
+        tx_out out;
+        summary_amounts += out.amount = governance_reward;
+        if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+          out.amount += offshore_fee_map["XHV"];
+        }
+
+        out.target = tk;
+        tx.vout.push_back(out);
+        CHECK_AND_ASSERT_MES(summary_amounts == (block_reward + governance_reward), false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << (block_reward + governance_reward));
+      }
+    }
+
+    if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+      // Add all of the outputs for all of the currencies in the contained TXs
+      uint64_t idx = 2;
+      for (auto &fee_map_entry: fee_map) {
+        // Skip XHV - we have already handled that above
+        if (fee_map_entry.first == "XHV")
+          continue;
+    
+        if (fee_map_entry.second != 0) {
+          uint64_t block_reward_xasset = fee_map_entry.second;
+          uint64_t governance_reward_xasset = 0;
+          governance_reward_xasset = get_governance_reward(height, fee_map_entry.second);
+          block_reward_xasset -= governance_reward_xasset;
+
+          // Add the conversion fee to the governance payment (if provided)
+          if (offshore_fee_map[fee_map_entry.first] != 0) {
+            governance_reward_xasset += offshore_fee_map[fee_map_entry.first];
+          }
+          
+          // handle xasset converion fees
+          if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
+            if (xasset_fee_map[fee_map_entry.first] != 0) {
+              if (hard_fork_version >= HF_VERSION_USE_COLLATERAL) {
+                // we got 1.5% from xasset conversions.
+                // 80% of it(1.2% of the inital value) goes to governance wallet
+                // 20% of it(0.3% of the inital value) goes to miners
+                boost::multiprecision::uint128_t fee = xasset_fee_map[fee_map_entry.first];
+                // 80%
+                governance_reward_xasset += (uint64_t)((fee * 4) / 5);
+                // 20%
+                block_reward_xasset += (uint64_t)(fee /5);
+              } else {
+                // we got 0.5% from xasset conversions. Here we wanna burn 80%(0.4% of the initial whole) of it and 
+                // spilit the rest between governance wallet and the miner
+                uint64_t fee = xasset_fee_map[fee_map_entry.first];
+                // burn 80%
+                fee -= (fee * 4) / 5;
+                // split the rest
+                block_reward_xasset += fee / 2;
+                governance_reward_xasset += fee / 2;
+              }
+            }
+          }
+
+          // Miner component of the xAsset TX fee
+          r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
+          CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
+          idx++;
+
+          txout_haven_key tk_miner;
+          tk_miner.asset_type = fee_map_entry.first;
+          tk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+          tk_miner.is_collateral = false;
+          tk_miner.key = out_eph_public_key;
+          
+          tx_out out_miner;
+          out_miner.amount = block_reward_xasset;
+          out_miner.target = tk_miner;
+          tx.vout.push_back(out_miner);
+
+          crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
+          if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
+          {
+            MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
+            return false;
+          }
+          idx++;
+
+          txout_haven_key tk_gov;
+          tk_gov.asset_type = fee_map_entry.first;
+          tk_gov.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+          tk_gov.is_collateral = false;
+          tk_gov.key = out_eph_public_key_xasset;
+          
+          tx_out out_gov;
+          out_gov.amount = governance_reward_xasset;
+          out_gov.target = tk_gov;
+          tx.vout.push_back(out_gov);
+        }
+      }
+    }
+
+    // set tx version
+    if (hard_fork_version >= HF_VERSION_USE_COLLATERAL ) {
+      tx.version = COLLATERAL_TRANSACTION_VERSION;
+    } else if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+      tx.version = POU_TRANSACTION_VERSION;
+    } else if (hard_fork_version >= HF_VERSION_HAVEN2) {
+      tx.version = 5;
+    } else if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
+      tx.version = 4;
+    } else if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+      tx.version = 3;
+    } else {
+      tx.version = 2;
+    }
+
+    //lock
+    tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+    tx.vin.push_back(in);
+    tx.invalidate_hashes();
+
+    // per-output-unlock times
+    if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION)
+      for (size_t i=0; i<tx.vout.size(); i++)
+        tx.output_unlock_times.push_back(tx.unlock_time);
+    
+    //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
+    //  << "), current_block_size=" << current_block_size << ", already_generated_coins=" << already_generated_coins << ", tx_id=" << get_transaction_hash(tx), LOG_LEVEL_2);
+    return true;
+  }
+
+  /*
+    
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
     LOG_PRINT_L1("Creating block template: reward " << block_reward <<
       ", fee " << fee);
@@ -184,6 +405,7 @@ namespace cryptonote
     //  << "), current_block_size=" << current_block_size << ", already_generated_coins=" << already_generated_coins << ", tx_id=" << get_transaction_hash(tx), LOG_LEVEL_2);
     return true;
   }
+  */
   //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr)
   {
@@ -205,6 +427,56 @@ namespace cryptonote
     if (count == 0 && change_addr)
       return change_addr->m_view_public_key;
     return addr.m_view_public_key;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_governance_reward(uint64_t height, uint64_t base_reward)
+  {
+    return base_reward / 20;
+  }
+  //---------------------------------------------------------------
+  bool validate_governance_reward_key(uint64_t height, const std::string& governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, cryptonote::network_type nettype)
+  {
+    keypair gov_key = get_deterministic_keypair_from_height(height);
+
+    cryptonote::address_parse_info governance_wallet_address;
+    cryptonote::get_account_address_from_str(governance_wallet_address, nettype, governance_wallet_address_str);
+    crypto::public_key correct_key;
+
+    if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, output_index, correct_key))
+    {
+      MERROR("Failed to generate deterministic output key for governance wallet output validation");
+      return false;
+    }
+
+    return correct_key == output_key;
+  }
+  //---------------------------------------------------------------
+  std::string get_governance_address(uint32_t version, network_type nettype) {
+    if (version >= HF_VERSION_XASSET_FULL) {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+      }
+    } else if (version >= 4) {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      }
+    } else {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS;
+      }
+    }
   }
   //---------------------------------------------------------------
   uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
@@ -338,148 +610,6 @@ namespace cryptonote
     return fee_estimate;
   }
   //---------------------------------------------------------------
-  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
-
-    // Clear the source
-    std::set<std::string> source_asset_types;
-    source = "";
-    for (size_t i = 0; i < tx.vin.size(); i++) {
-      if (tx.vin[i].type() == typeid(txin_gen)) {
-        if (!is_miner_tx) {
-          LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
-          return false;
-        }
-        source_asset_types.insert("XHV");
-      } else if (tx.vin[i].type() == typeid(txin_to_key)) {
-        source_asset_types.insert("XHV");
-      } else if (tx.vin[i].type() == typeid(txin_offshore)) {
-        source_asset_types.insert("XUSD");
-      } else if (tx.vin[i].type() == typeid(txin_onshore)) {
-        source_asset_types.insert("XUSD");
-      } else if (tx.vin[i].type() == typeid(txin_xasset)) {
-        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
-        if (xasset == "XHV" || xasset == "XUSD") {
-          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
-          return false;
-        }
-        source_asset_types.insert(xasset);
-      } else {
-        LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
-        return false;
-      }
-    }
-
-    std::vector<std::string> sat;
-    sat.reserve(source_asset_types.size());
-    std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
-    
-    // Sanity check that we only have 1 source asset type
-    if (tx.version >= COLLATERAL_TRANSACTION_VERSION && sat.size() == 2) {
-      // this is only possible for an onshore tx.
-      if ((sat[0] == "XHV" && sat[1] == "XUSD") || (sat[0] == "XUSD" && sat[1] == "XHV")) {
-        source = "XUSD";
-      } else {
-        LOG_ERROR("Impossible input asset types. Rejecting..");
-        return false;
-      }
-    } else {
-      if (sat.size() != 1) {
-        LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
-        return false;
-      }
-      source = sat[0];
-    }
-    
-    // Clear the destination
-    std::set<std::string> destination_asset_types;
-    destination = "";
-    for (const auto &out: tx.vout) {
-      if (out.target.type() == typeid(txout_to_key)) {
-        destination_asset_types.insert("XHV");
-      } else if (out.target.type() == typeid(txout_offshore)) {
-        destination_asset_types.insert("XUSD");
-      } else if (out.target.type() == typeid(txout_xasset)) {
-        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
-        if (xasset == "XHV" || xasset == "XUSD") {
-          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
-          return false;
-        }
-        destination_asset_types.insert(xasset);
-      } else {
-        LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
-        return false;
-      }
-    }
-
-    std::vector<std::string> dat;
-    dat.reserve(destination_asset_types.size());
-    std::copy(destination_asset_types.begin(), destination_asset_types.end(), std::back_inserter(dat));
-    
-    // Check that we have at least 1 destination_asset_type
-    if (!dat.size()) {
-      LOG_ERROR("No supported destinations asset types detected. Rejecting..");
-      return false;
-    }
-    
-    // Handle miner_txs differently - full validation is performed in validate_miner_transaction()
-    if (is_miner_tx) {
-      destination = "XHV";
-    } else {
-    
-      // Sanity check that we only have 1 or 2 destination asset types
-      if (dat.size() > 2) {
-        LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
-        return false;
-      } else if (dat.size() == 1) {
-        if (sat.size() != 1) {
-          LOG_ERROR("Impossible input asset types. Rejecting..");
-          return false;
-        }
-        if (dat[0] != source) {
-          LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
-          return false;
-        }
-        destination = dat[0];
-      } else {
-        if (sat.size() == 2) {
-          if (!((dat[0] == "XHV" && dat[1] == "XUSD") || (dat[0] == "XUSD" && dat[1] == "XHV"))) {
-            LOG_ERROR("Impossible input asset types. Rejecting..");
-            return false;
-          }
-        }
-        if (dat[0] == source) {
-          destination = dat[1];
-        } else if (dat[1] == source) {
-          destination = dat[0];
-        } else {
-          LOG_ERROR("Conversion outputs are incorrect asset types (source asset type not found - [" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
-          return false;
-        }
-      }
-    }
-    
-    // check both strSource and strDest are supported.
-    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
-      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
-      return false;
-    }
-    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
-      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
-      return false;
-    }
-
-    // Check for the 3 known exploited TXs that converted XJPY to XBTC
-    const std::vector<std::string> exploit_txs = {"4c87e7245142cb33a8ed4f039b7f33d4e4dd6b541a42a55992fd88efeefc40d1",
-                                                  "7089a8faf5bddf8640a3cb41338f1ec2cdd063b1622e3b27923e2c1c31c55418",
-                                                  "ad5d15085594b8f2643f058b05931c3e60966128b4c33298206e70bdf9d41c22"};
-
-    std::string tx_hash = epee::string_tools::pod_to_hex(txid);
-    if (std::find(exploit_txs.begin(), exploit_txs.end(), tx_hash) != exploit_txs.end()) {
-      destination = "XJPY";
-    }
-    return true;
-  }
-  //---------------------------------------------------------------
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type) {
 
     // check both source and destination are supported.
@@ -602,6 +732,7 @@ namespace cryptonote
       double vbs = rate_mcvbs + rate_offsvbs;
       const double min_vbs = 1.0;
       vbs = std::max(vbs, min_vbs);
+      vbs = std::floor(vbs);
       vbs *= COIN;
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
@@ -628,6 +759,7 @@ namespace cryptonote
       double vbs = std::max(rate_mcvbs, rate_srvbs) + rate_onsvbs;
       const double min_vbs = 1.0;
       vbs = std::max(vbs, min_vbs);
+      vbs = std::floor(vbs);
       vbs *= COIN;
       boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
       collateral_128 *= amount_128;
@@ -1223,6 +1355,23 @@ namespace cryptonote
 
   bool get_block_longhash(const Blockchain *pbc, const blobdata& bd, crypto::hash& res, const uint64_t height, const int major_version, const crypto::hash *seed_hash, const int miners)
   {
+    cn_pow_hash_v3 ctx;
+    if(major_version >= CRYPTONOTE_V3_POW_BLOCK_VERSION)
+    {
+      ctx.hash(bd.data(), bd.size(), res.data);
+    }
+    else if(major_version == CRYPTONOTE_V2_POW_BLOCK_VERSION)
+    {
+      cn_pow_hash_v2 ctx_v2 = cn_pow_hash_v2::make_borrowed_v2(ctx);
+      ctx_v2.hash(bd.data(), bd.size(), res.data);
+    }
+    else
+    {
+      cn_pow_hash_v1 ctx_v1 = cn_pow_hash_v1::make_borrowed_v1(ctx);
+      ctx_v1.hash(bd.data(), bd.size(), res.data);
+    }
+    return true;
+    /*
     // block 202612 bug workaround
     if (height == 202612)
     {
@@ -1251,6 +1400,7 @@ namespace cryptonote
       crypto::cn_slow_hash(bd.data(), bd.size(), res, pow_variant, height);
     }
     return true;
+    */
   }
 
   bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const crypto::hash *seed_hash, const int miners)

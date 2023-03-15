@@ -695,34 +695,22 @@ namespace nodetool
     std::set<std::string> full_addrs;
     if (m_nettype == cryptonote::TESTNET)
     {
+    /*
       full_addrs.insert("212.83.175.67:28080");
       full_addrs.insert("212.83.172.165:28080");
       full_addrs.insert("176.9.0.187:28080");
       full_addrs.insert("88.99.173.38:28080");
       full_addrs.insert("51.79.173.165:28080");
+    */
     }
     else if (m_nettype == cryptonote::STAGENET)
     {
-      full_addrs.insert("162.210.173.150:38080");
-      full_addrs.insert("176.9.0.187:38080");
-      full_addrs.insert("88.99.173.38:38080");
-      full_addrs.insert("51.79.173.165:38080");
     }
     else if (m_nettype == cryptonote::FAKECHAIN)
     {
     }
     else
     {
-      full_addrs.insert("212.83.175.67:18080");
-      full_addrs.insert("212.83.172.165:18080");
-      full_addrs.insert("176.9.0.187:18080");
-      full_addrs.insert("88.198.163.90:18080");
-      full_addrs.insert("95.217.25.101:18080");
-      full_addrs.insert("136.244.105.131:18080");
-      full_addrs.insert("104.238.221.81:18080");
-      full_addrs.insert("66.85.74.134:18080");
-      full_addrs.insert("88.99.173.38:18080");
-      full_addrs.insert("51.79.173.165:18080");
     }
     return full_addrs;
   }
@@ -848,25 +836,51 @@ namespace nodetool
     switch (zone)
     {
     case epee::net_utils::zone::public_:
+      if (m_nettype == cryptonote::TESTNET)
+      {
+        return {
+          "seed01-testnet.havenprotocol.org:27749",
+          "seed02-testnet.havenprotocol.org:27749",
+          "seed03-testnet.havenprotocol.org:27749",
+        };
+      }
+      else if (m_nettype == cryptonote::STAGENET)
+      {
+        return {
+          "seed01-stagenet.havenprotocol.org:37749",
+          "seed02-stagenet.havenprotocol.org:37749",
+          "seed03-stagenet.havenprotocol.org:37749",
+        };
+      }
+      else if (m_nettype == cryptonote::FAKECHAIN)
+      {
+        return {};
+      }
       return get_dns_seed_nodes();
     case epee::net_utils::zone::tor:
       if (m_nettype == cryptonote::MAINNET)
       {
+    /*
         return {
           "xwvz3ekocr3dkyxfkmgm2hvbpzx2ysqmaxgter7znnqrhoicygkfswid.onion:18083",
           "4pixvbejrvihnkxmduo2agsnmc3rrulrqc7s3cbwwrep6h6hrzsibeqd.onion:18083",
           "zbjkbsxc5munw3qusl7j2hpcmikhqocdf4pqhnhtpzw5nt5jrmofptid.onion:18083",
           "qz43zul2x56jexzoqgkx2trzwcfnr6l3hbtfcfx54g4r3eahy3bssjyd.onion:18083",
         };
+    */
+        return {};
       }
       return {};
     case epee::net_utils::zone::i2p:
       if (m_nettype == cryptonote::MAINNET)
       {
+    /*
         return {
           "s3l6ke4ed3df466khuebb4poienoingwof7oxtbo6j4n56sghe3a.b32.i2p:18080",
           "sel36x6fibfzujwvt4hf5gxolz6kd3jpvbjqg6o3ud2xtionyl2q.b32.i2p:18080"
         };
+    */
+        return {};
       }
       return {};
     default:

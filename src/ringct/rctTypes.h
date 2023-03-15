@@ -334,29 +334,13 @@ namespace rct {
           FIELD(type)
           if (type == RCTTypeNull)
             return ar.good();
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeBulletproofPlus)
-            return false;
+          if (type != RCTTypeBulletproofPlus)
+            return serialize_rctsig_base_old(ar, inputs, outputs);
           VARINT_FIELD(txnFee)
           VARINT_FIELD(txnOffshoreFee)
           // inputs/outputs not saved, only here for serialization help
           // FIELD(message) - not serialized, it can be reconstructed
           // FIELD(mixRing) - not serialized, it can be reconstructed
-          if (type == RCTTypeSimple) // moved to prunable with bulletproofs
-          {
-            ar.tag("pseudoOuts");
-            ar.begin_array();
-            PREPARE_CUSTOM_VECTOR_SERIALIZATION(inputs, pseudoOuts);
-            if (pseudoOuts.size() != inputs)
-              return false;
-            for (size_t i = 0; i < inputs; ++i)
-            {
-              FIELDS(pseudoOuts[i])
-              if (inputs - i > 1)
-                ar.delimit_array();
-            }
-            ar.end_array();
-          }
-
           ar.tag("ecdhInfo");
           ar.begin_array();
           PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, ecdhInfo);
@@ -364,19 +348,12 @@ namespace rct {
             return false;
           for (size_t i = 0; i < outputs; ++i)
           {
-            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus)
-            {
-              ar.begin_object();
-              if (!typename Archive<W>::is_saving())
-                memset(ecdhInfo[i].amount.bytes, 0, sizeof(ecdhInfo[i].amount.bytes));
-              crypto::hash8 &amount = (crypto::hash8&)ecdhInfo[i].amount;
-              FIELD(amount);
-              ar.end_object();
-            }
-            else
-            {
-              FIELDS(ecdhInfo[i])
-            }
+            ar.begin_object();
+            if (!typename Archive<W>::is_saving())
+              memset(ecdhInfo[i].amount.bytes, 0, sizeof(ecdhInfo[i].amount.bytes));
+            crypto::hash8 &amount = (crypto::hash8&)ecdhInfo[i].amount;
+            FIELD(amount);
+            ar.end_object();
             if (outputs - i > 1)
               ar.delimit_array();
           }
@@ -396,7 +373,7 @@ namespace rct {
           ar.end_array();
 
           // if txnOffshoreFee is not 0, it is a conversion tx
-          if (type == RCTTypeBulletproofPlus && txnOffshoreFee) {
+          if (txnOffshoreFee) {
             ar.tag("maskSums");
             ar.begin_array();
             PREPARE_CUSTOM_VECTOR_SERIALIZATION(3, maskSums);
@@ -413,11 +390,8 @@ namespace rct {
         }
 
         template<bool W, template <bool> class Archive>
-        bool serialize_old_rctsig_base(Archive<W> &ar, size_t inputs, size_t outputs)
+        bool serialize_rctsig_base_old(Archive<W> &ar, size_t inputs, size_t outputs)
       {
-        FIELD(type)
-        if (type == RCTTypeNull)
-          return ar.good();
         if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN && type != RCTTypeHaven2 && type != RCTTypeHaven3)
           return false;
         VARINT_FIELD(txnFee)

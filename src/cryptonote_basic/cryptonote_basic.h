@@ -139,8 +139,10 @@
       out.unlock_time = (version >= POU_TRANSACTION_VERSION) ? output_unlock_times[i] : unlock_time;            \
       out.is_collateral = false;                                                                                \
       if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                          \
-        if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) {   \
-          out.is_collateral = true;                                                                             \
+        if (collateral_indices[0] != collateral_indices[1]) {                                                   \
+          if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) { \
+            out.is_collateral = true;                                                                           \
+          }                                                                                                     \
         }                                                                                                       \
       }                                                                                                         \
       tx_out foo;                                                                                               \
@@ -194,7 +196,6 @@
   std::vector<tx_out> vout_tmp;                                                                                 \
   vout_tmp.reserve(vout.size());                                                                                \
   output_unlock_times.resize(vout.size());                                                                      \
-  collateral_indices.clear();                                                                                   \
   for (size_t i=0; i<vout.size(); i++) {                                                                        \
     txout_haven_key outhk = boost::get<txout_haven_key>(vout[i].target);                                        \
     tx_out foo;                                                                                                 \
@@ -215,7 +216,6 @@
     }                                                                                                           \
     output_unlock_times[i] = outhk.unlock_time;                                                                 \
     if (outhk.is_collateral) {                                                                                  \
-      collateral_indices.push_back(i);                                                                          \
     }                                                                                                           \
     vout_tmp.push_back(foo);                                                                                    \
   }                                                                                                             \
@@ -235,10 +235,10 @@
     VARINT_FIELD(amount_burnt)                                                                                  \
     VARINT_FIELD(amount_minted)                                                                                 \
     if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                            \
-      FIELD(collateral_indices)                                                                                 \
       if (collateral_indices.size() != 2) {                                                                     \
         return false;                                                                                           \
       }                                                                                                         \
+      FIELD(collateral_indices)                                                                                 \
       for (const auto vout_idx: collateral_indices) {                                                           \
         if (vout_idx >= vout.size())                                                                            \
           return false;                                                                                         \
@@ -507,6 +507,12 @@ namespace cryptonote
       vin.clear();
       vout.clear();
       extra.clear();
+      pricing_record_height = 0;
+      offshore_data.clear();
+      amount_burnt = 0;
+      amount_minted = 0;
+      output_unlock_times.clear();
+      collateral_indices.clear();
     }
   };
 
@@ -603,11 +609,7 @@ namespace cryptonote
         if (!vin.empty())
         {
           ar.begin_object();
-          bool r = false;
-          if (version < HAVEN_TYPES_TRANSACTION_VERSION)
-            r = rct_signatures.serialize_old_rctsig_base(ar, vin.size(), vout.size());
-          else
-            rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
+          bool r = rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
           if (!r || !ar.good()) return false;
           ar.end_object();
 
@@ -766,6 +768,7 @@ namespace cryptonote
     return boost::apply_visitor(txin_signature_size_visitor(), tx_in);
   }
 
+
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
@@ -776,6 +779,7 @@ namespace cryptonote
     uint64_t timestamp;
     crypto::hash  prev_id;
     uint32_t nonce;
+    offshore::pricing_record pricing_record;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(major_version)
@@ -783,6 +787,27 @@ namespace cryptonote
       VARINT_FIELD(timestamp)
       FIELD(prev_id)
       FIELD(nonce)
+      if (major_version >= HF_VERSION_OFFSHORE_PRICING)
+      {
+        if (major_version < HF_VERSION_XASSET_FEES_V2)
+        {
+          offshore::pricing_record_v1 pr_v1;
+          if (!typename Archive<W>::is_saving())
+          {
+            FIELD(pr_v1)
+            pr_v1.write_to_pr(pricing_record);
+          }
+          else
+          {
+            pr_v1.read_from_pr(pricing_record);
+            FIELD(pr_v1)
+          }
+        }
+        else
+        {
+          FIELD(pricing_record)
+        }
+      }
     END_SERIALIZE()
   };
 

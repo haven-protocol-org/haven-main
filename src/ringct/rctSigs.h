@@ -47,6 +47,9 @@ extern "C" {
 }
 #include "crypto/crypto.h"
 
+#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_protocol/enums.h"
+#include "offshore/pricing_record.h"
 
 #include "rctTypes.h"
 #include "rctOps.h"
@@ -129,15 +132,16 @@ namespace rct {
     rctSig genRctSimple(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev);
     bool verRct(const rctSig & rv, bool semantics);
     static inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
-    bool verRctSemanticsSimple(const rctSig & rv);
-    bool verRctSemanticsSimple(const std::vector<const rctSig*> & rv);
+  bool verRctSemanticsSimple2(const rctSig & rv, const offshore::pricing_record& pr, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest, uint64_t amount_burnt, const std::vector<cryptonote::tx_out> &vout, const std::vector<cryptonote::txin_v> &vin, const uint8_t version, const std::vector<uint32_t>& collateral_indices, const uint64_t amount_collateral);
+  bool verRctSemanticsSimple(const rctSig & rv, const offshore::pricing_record& pr, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest);
     bool verRctNonSemanticsSimple(const rctSig & rv);
-    static inline bool verRctSimple(const rctSig & rv) { return verRctSemanticsSimple(rv) && verRctNonSemanticsSimple(rv); }
     xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
     xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
     key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
+
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version);
 }
 #endif  /* RCTSIGS_H */
 

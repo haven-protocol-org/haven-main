@@ -711,5 +711,6 @@ namespace boost
 }
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 2)
-BOOST_CLASS_VERSION(rct::rctSig, 2)
+BOOST_CLASS_VERSION(rct::rctSigBase, 5)
+BOOST_CLASS_VERSION(rct::rctSig, 5)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)

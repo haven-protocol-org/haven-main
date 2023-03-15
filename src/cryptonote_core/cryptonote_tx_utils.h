@@ -38,7 +38,29 @@
 namespace cryptonote
 {
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1);
+  //---------------------------------------------------------------
+  bool construct_miner_tx(
+    size_t height,
+    size_t median_weight,
+    uint64_t already_generated_coins,
+    size_t current_block_weight,
+    std::map<std::string, uint64_t> fee_map,
+    std::map<std::string, uint64_t> offshore_fee_map,
+    std::map<std::string, uint64_t> xasset_fee_map,
+    const account_public_address &miner_address,
+    transaction& tx,
+    const blobdata& extra_nonce = blobdata(),
+    size_t max_outs = 999,
+    uint8_t hard_fork_version = 5,
+    cryptonote::network_type nettype = MAINNET
+  );
+
+  keypair get_deterministic_keypair_from_height(uint64_t height);
+
+  uint64_t get_governance_reward(uint64_t height, uint64_t base_reward);
+  bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key);
+  bool validate_governance_reward_key(uint64_t height, const std::string& governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, cryptonote::network_type nettype = MAINNET);
+  std::string get_governance_address(uint32_t version, network_type nettype);
 
   struct tx_source_entry
   {
@@ -53,6 +75,9 @@ namespace cryptonote
     bool rct;                           //true if the output is rct
     rct::key mask;                      //ringct amount mask
     rct::multisig_kLRki multisig_kLRki; //multisig info
+    uint64_t height;
+    offshore::pricing_record pr;
+    bool first_generation_input;
     std::string asset_type;
 
     void push_output(uint64_t idx, const crypto::public_key &k, uint64_t amount) { outputs.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(k), rct::zeroCommit(amount)}))); }
@@ -174,7 +199,6 @@ namespace cryptonote
   uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version);
   uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version);
   uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version);
-  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx);
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
   bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts);
   uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr);
@@ -187,8 +211,8 @@ namespace cryptonote
   uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
 }
 
-BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 1)
-BOOST_CLASS_VERSION(cryptonote::tx_destination_entry, 2)
+BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)
+BOOST_CLASS_VERSION(cryptonote::tx_destination_entry, 5)
 
 namespace boost
 {
