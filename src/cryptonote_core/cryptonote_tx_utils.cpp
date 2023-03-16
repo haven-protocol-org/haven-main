@@ -383,7 +383,7 @@ namespace cryptonote
         crypto::derive_view_tag(derivation, no, view_tag);
 
       tx_out out;
-      cryptonote::set_tx_out(amount, "XHV", out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(amount, "XHV", 0, false, out_eph_public_key, use_view_tags, view_tag, out);
 
       tx.vout.push_back(out);
     }
@@ -918,7 +918,9 @@ namespace cryptonote
     amount_keys.clear();
 
     // set version and unlock time
-    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+    if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+      tx.version = HAVEN_TYPES_TRANSACTION_VERSION;
+    } else if (hf_version >= HF_VERSION_USE_COLLATERAL) {
       tx.version = COLLATERAL_TRANSACTION_VERSION;
     } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION){
       tx.version = POU_TRANSACTION_VERSION;
@@ -931,7 +933,7 @@ namespace cryptonote
     } else {
       tx.version = 2;
     }
-    tx.unlock_time = unlock_time;
+    tx.unlock_time = (unlock_time - current_height) > CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE ? unlock_time : 0;
 
     // set ther pricing record height
     if (source_asset != dest_asset)
@@ -1150,55 +1152,20 @@ namespace cryptonote
                                            additional_tx_public_keys, amount_keys, out_eph_public_key,
                                            use_view_tags, view_tag);
 
-      tx_out out;
-      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, out_eph_public_key, use_view_tags, view_tag, out);
-      
-      // Check for per-output-unlocks
-      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && source_asset != dest_asset) {
-        // initialize collateral indices vector
-        if (hf_version >= HF_VERSION_USE_COLLATERAL && tx.collateral_indices.size() != 2) {
-          tx.collateral_indices.resize(2);
-          tx.collateral_indices[0] = 0;
-          tx.collateral_indices[1] = 0;
-        }
-
-        // set unlcok times and indiviual collateral indeces.
-        if (dst_entr.dest_asset_type == dest_asset) {
-          // Destination amount - needs a full unlock time
-          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral) {
-            // lock collateral ouput full and change as 0
-            if (dst_entr.amount == onshore_col_amount) {
-              tx.output_unlock_times.push_back(tx.unlock_time);
-              tx.collateral_indices[0] = output_index;
-            } else {
-              tx.output_unlock_times.push_back(0);
-              tx.collateral_indices[1] = output_index;
-            }
-          } else {
-            tx.output_unlock_times.push_back(tx.unlock_time);
-          }
-        } else if (dst_entr.dest_asset_type == source_asset) {
-          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::OFFSHORE && dst_entr.is_collateral) {
-            // Collateral output - needs a full unlock time
-            // offshores doesnt have collaterasl change since it is merged with actual change.
-            tx.output_unlock_times.push_back(tx.unlock_time);
-            tx.collateral_indices[0] = output_index;
-          } else {
-            // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
-            tx.output_unlock_times.push_back(0);
-          }
-        } else {
-          // Should never happen
-          LOG_ERROR("Invalid asset type detected: source = " << source_asset << ", dest = " << dest_asset << ", detected " << dst_entr.dest_asset_type);
-          return false;
-        }
+      // dont lock the change dests
+      uint64_t u_time = tx.unlock_time;
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE &&
+          dst_entr.is_collateral && dst_entr.amount != onshore_col_amount) {
+        u_time = 0;
       } else {
-        if (tx.unlock_time - current_height > CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE)
-          tx.output_unlock_times.push_back(tx.unlock_time);
-        else
-          tx.output_unlock_times.push_back(0);
+        if (dst_entr.dest_asset_type == source_asset) {
+          u_time = 0;
+        }
       }
 
+      tx_out out;
+      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, out_eph_public_key, use_view_tags, view_tag, out);
+      
       tx.vout.push_back(out);
       output_index++;
       summary_outs_money += dst_entr.amount;
@@ -1275,7 +1242,7 @@ namespace cryptonote
         std::vector<crypto::signature>& sigs = tx.signatures.back();
         sigs.resize(src_entr.outputs.size());
         if (!zero_secret_key)
-          crypto::generate_ring_signature(tx_prefix_hash, boost::get<txin_to_key>(tx.vin[i]).k_image, keys_ptrs, in_contexts[i].in_ephemeral.sec, src_entr.real_output, sigs.data());
+          crypto::generate_ring_signature(tx_prefix_hash, boost::get<txin_haven_key>(tx.vin[i]).k_image, keys_ptrs, in_contexts[i].in_ephemeral.sec, src_entr.real_output, sigs.data());
         ss_ring_s << "signatures:" << ENDL;
         std::for_each(sigs.begin(), sigs.end(), [&](const crypto::signature& s){ss_ring_s << s << ENDL;});
         ss_ring_s << "prefix_hash:" << tx_prefix_hash << ENDL << "in_ephemeral_key: " << in_contexts[i].in_ephemeral.sec << ENDL << "real_output: " << src_entr.real_output << ENDL;
@@ -1283,7 +1250,7 @@ namespace cryptonote
       }
 
       MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL << ss_ring_s.str());
-    }
+      }
     else
     {
       size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
@@ -1345,11 +1312,21 @@ namespace cryptonote
       for (size_t i = 0; i < tx.vout.size(); ++i)
       {
         crypto::public_key output_public_key;
-        get_output_public_key(tx.vout[i], output_public_key);
+        bool ok = cryptonote::get_output_public_key(tx.vout[i], output_public_key);
+        if (!ok) {
+          LOG_ERROR("failed to get output public key for tx.vout[" << i << "]");
+          return false;
+        }
+        std::string output_asset_type;
+        ok = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);
+        if (!ok) {
+          LOG_ERROR("failed to get output public key for tx.vout[" << i << "]");
+          return false;
+        }        
         destinations.push_back(rct::pk2rct(output_public_key));
         outamounts.push_back(tx.vout[i].amount);
         outamounts_features[i] = std::pair<std::string, bool>(
-          boost::get<txout_haven_key>(tx.vout[i].target).asset_type,
+          output_asset_type,
           tx_type == transaction_type::ONSHORE && HF_VERSION_USE_COLLATERAL && std::find(tx.collateral_indices.begin(), tx.collateral_indices.end(), i) != tx.collateral_indices.end()
         );
         amount_out += tx.vout[i].amount;
@@ -1394,6 +1371,32 @@ namespace cryptonote
       for (size_t i = 0; i < tx.vout.size(); ++i)
         tx.vout[i].amount = 0;
 
+      // HERE BE DRAGONS!!!
+      // NEAC: Convert the fees for conversions to XHV
+      if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+
+        // New Haven TXs only from BP+ - convert fees to XHV
+        switch(tx_type) {
+        case transaction_type::ONSHORE:
+          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
+          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
+          break;
+        case transaction_type::XUSD_TO_XASSET:
+          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
+          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
+          break;
+        case transaction_type::XASSET_TO_XUSD:
+          //fee = cryptonote::get_xusd_amount(fee, source_asset, pr, transaction_type::XASSET_TO_XUSD, hf_version);
+          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
+          offshore_fee = cryptonote::get_xusd_amount(offshore_fee, source_asset, pr, transaction_type::XASSET_TO_XUSD, hf_version);
+          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
+          break;
+        default:
+          break;
+        }
+      }
+      // LAND AHOY!!!
+      
       crypto::hash tx_prefix_hash;
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;

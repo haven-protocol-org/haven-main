@@ -1046,14 +1046,13 @@ namespace cryptonote
     std::set<std::string> destination_asset_types;
     destination = "";
     for (const auto &out: tx.vout) {
-      if (out.target.type() == typeid(txout_haven_key)) {
-        destination_asset_types.insert(boost::get<txout_haven_key>(out.target).asset_type);
-      } else if (out.target.type() == typeid(txout_haven_tagged_key)) {
-        destination_asset_types.insert(boost::get<txout_haven_tagged_key>(out.target).asset_type);
-      } else {
+      std::string output_asset_type;
+      bool ok = cryptonote::get_output_asset_type(out, output_asset_type);
+      if (!ok) {
         LOG_ERROR("Unexpected output target type found: " << out.target.type().name());
         return false;
       }
+      destination_asset_types.insert(output_asset_type);
     }
 
     std::vector<std::string> dat;
@@ -1207,7 +1206,7 @@ namespace cryptonote
     return res;
   }
   //---------------------------------------------------------------
-  void set_tx_out(const uint64_t amount, const std::string& asset_type, const crypto::public_key& output_public_key, const bool use_view_tags, const crypto::view_tag& view_tag, tx_out& out)
+  void set_tx_out(const uint64_t amount, const std::string& asset_type, uint64_t unlock_time, bool is_collateral, const crypto::public_key& output_public_key, const bool use_view_tags, const crypto::view_tag& view_tag, tx_out& out)
   {
     out.amount = amount;
     if (use_view_tags)
@@ -1216,6 +1215,8 @@ namespace cryptonote
       ttk.key = output_public_key;
       ttk.view_tag = view_tag;
       ttk.asset_type = asset_type;
+      ttk.unlock_time = unlock_time;
+      ttk.is_collateral = is_collateral;
       out.target = ttk;
     }
     else
@@ -1223,6 +1224,8 @@ namespace cryptonote
       txout_haven_key tk;
       tk.key = output_public_key;
       tk.asset_type = asset_type;
+      tk.unlock_time = unlock_time;
+      tk.is_collateral = is_collateral;
       out.target = tk;
     }
   }

@@ -6969,19 +6969,26 @@ bool simple_wallet::transfer_main(
     if (m_wallet->always_confirm_transfers() || ptx_vector.size() > 1)
     {
         uint64_t total_sent = 0;
-        uint64_t total_fee = 0;
+        uint64_t total_received = 0;
+        uint64_t total_tx_fee = 0;
+        uint64_t total_offshore_fee = 0;
         uint64_t dust_not_in_fee = 0;
         uint64_t dust_in_fee = 0;
         uint64_t change = 0;
         for (size_t n = 0; n < ptx_vector.size(); ++n)
         {
-          total_fee += ptx_vector[n].fee;
+          total_tx_fee += ptx_vector[n].tx.rct_signatures.txnFee;
+          total_offshore_fee += ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
           for (auto i: ptx_vector[n].selected_transfers)
             if (m_wallet->get_transfer_details(i).asset_type == source_asset)
               total_sent += m_wallet->get_transfer_details(i).amount();
           total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
           change += ptx_vector[n].change_dts.amount;
-
+          
+          for (const auto& dt: ptx_vector[n].dests) {
+            total_received += dt.dest_amount;
+          }
+ 
           if (ptx_vector[n].dust_added_to_fee)
             dust_in_fee += ptx_vector[n].dust;
           else
@@ -7000,17 +7007,27 @@ bool simple_wallet::transfer_main(
           if (subaddr_indices.size() > 1)
             prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
         }
-        prompt << boost::format(tr("Sending %s.  ")) % print_money(total_sent);
+        if (source_asset == dest_asset) {
+          prompt << boost::format(tr("Sending %s %s.\n")) % print_money(total_sent) % source_asset;
+        } else {
+          switch (tx_type)
+          {
+          case tt::OFFSHORE:
+            prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV (plus conversion fee %s XHV).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_offshore_fee);
+            break;
+          default:
+            break;
+          }
+        }
         if (ptx_vector.size() > 1)
         {
           prompt << boost::format(tr("Your transaction needs to be split into %llu transactions.  "
             "This will result in a transaction fee being applied to each transaction, for a total fee of %s")) %
-            ((unsigned long long)ptx_vector.size()) % print_money(total_fee);
+            ((unsigned long long)ptx_vector.size()) % print_money(total_tx_fee);
         }
         else
         {
-          prompt << boost::format(tr("The transaction fee is %s")) %
-            print_money(total_fee);
+          prompt << boost::format(tr("The transaction fee is %s %s")) % print_money(total_tx_fee) % source_asset;
         }
         if (dust_in_fee != 0) prompt << boost::format(tr(", of which %s is dust from change")) % print_money(dust_in_fee);
         if (dust_not_in_fee != 0)  prompt << tr(".") << ENDL << boost::format(tr("A total of %s from dust change will be sent to dust address")) 

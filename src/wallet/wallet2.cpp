@@ -1842,6 +1842,9 @@ static uint64_t decodeRct(const rct::rctSig & rv, const crypto::key_derivation &
     case rct::RCTTypeBulletproof:
     case rct::RCTTypeBulletproof2:
     case rct::RCTTypeCLSAG:
+    case rct::RCTTypeCLSAGN:
+    case rct::RCTTypeHaven2:
+    case rct::RCTTypeHaven3:
     case rct::RCTTypeBulletproofPlus:
       return rct::decodeRctSimple(rv, rct::sk2rct(scalar1), i, mask, hwdev);
     case rct::RCTTypeFull:
@@ -9377,7 +9380,7 @@ void wallet2::transfer_selected_rct(
   uint64_t needed_money = fee;
   uint64_t needed_col = 0;
   uint8_t hf_version = get_current_hard_fork();
-  uint64_t current_height = get_blockchain_current_height();
+  uint64_t current_height = get_blockchain_current_height()-1;
   bool using_onshore_collateral = hf_version >= HF_VERSION_USE_COLLATERAL && source_asset == "XUSD" && dest_asset == "XHV";
   LOG_PRINT_L2("transfer_selected_rct: starting with fee " << print_money (needed_money));
   LOG_PRINT_L2("selected transfers: " << strjoin(selected_transfers, " "));
@@ -11169,7 +11172,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
   std::unordered_map<account_public_address, std::pair<uint64_t, bool>> required;
   for (const auto &d: dsts)
   {
-    required[d.addr].first += d.amount;
+    required[d.addr].first += d.dest_amount;
     required[d.addr].second = d.is_subaddress;
   }
 

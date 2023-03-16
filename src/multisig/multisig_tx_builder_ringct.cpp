@@ -502,7 +502,7 @@ static bool set_tx_outputs(const rct::keyV& output_public_keys, cryptonote::tran
   const std::size_t num_destinations = output_public_keys.size();
   unsigned_tx.vout.resize(num_destinations);
   for (std::size_t i = 0; i < num_destinations; ++i)
-    cryptonote::set_tx_out(0, "XHV", rct::rct2pk(output_public_keys[i]), false, crypto::view_tag{}, unsigned_tx.vout[i]);
+    cryptonote::set_tx_out(0, "XHV", 0, false, rct::rct2pk(output_public_keys[i]), false, crypto::view_tag{}, unsigned_tx.vout[i]);
 
   return true;
 }
@@ -524,7 +524,7 @@ static bool set_tx_outputs_with_view_tags(
     "multisig signing protocol: internal error, view tag size mismatch.");
   unsigned_tx.vout.resize(num_destinations);
   for (std::size_t i = 0; i < num_destinations; ++i)
-    cryptonote::set_tx_out(0, "XHV", rct::rct2pk(output_public_keys[i]), true, view_tags[i], unsigned_tx.vout[i]);
+    cryptonote::set_tx_out(0, "XHV", 0, false, rct::rct2pk(output_public_keys[i]), true, view_tags[i], unsigned_tx.vout[i]);
 
   return true;
 }

@@ -553,11 +553,13 @@ namespace cryptonote
     {
       std::vector<get_outputs_out> outputs;
       bool get_txid;
+      std::string asset_type;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
         KV_SERIALIZE(outputs)
         KV_SERIALIZE(get_txid)
+        KV_SERIALIZE(asset_type)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -569,6 +571,7 @@ namespace cryptonote
       bool unlocked;
       uint64_t height;
       std::string txid;
+      uint64_t output_id;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(key)
@@ -576,6 +579,7 @@ namespace cryptonote
         KV_SERIALIZE(unlocked)
         KV_SERIALIZE(height)
         KV_SERIALIZE(txid)
+        KV_SERIALIZE(output_id)
       END_KV_SERIALIZE_MAP()
     };
 
@@ -1184,12 +1188,24 @@ namespace cryptonote
       uint64_t long_term_weight;
       std::string miner_tx_hash;
       
+      struct asset_reward {
+        std::string asset_type;
+        uint64_t amount;
+        
+        BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(asset_type)
+        KV_SERIALIZE(amount)
+        END_KV_SERIALIZE_MAP()
+      };
+      std::vector<asset_reward> rewards;
+    
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(major_version)
         KV_SERIALIZE(minor_version)
         KV_SERIALIZE(timestamp)
         KV_SERIALIZE(prev_hash)
         KV_SERIALIZE(nonce)
+        KV_SERIALIZE(pricing_record)
         KV_SERIALIZE(orphan_status)
         KV_SERIALIZE(height)
         KV_SERIALIZE(depth)
@@ -1207,6 +1223,7 @@ namespace cryptonote
         KV_SERIALIZE(pow_hash)
         KV_SERIALIZE_OPT(long_term_weight, (uint64_t)0)
         KV_SERIALIZE(miner_tx_hash)
+        KV_SERIALIZE(rewards)
       END_KV_SERIALIZE_MAP()
   };
 
@@ -1367,6 +1384,33 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  struct COMMAND_RPC_GET_COLLATERAL_REQUIREMENTS
+  {
+    struct request_t
+    {
+      std::string tx_type;
+      uint64_t amount;
+      
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(tx_type)
+        KV_SERIALIZE(amount);
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    
+    struct response_t
+    {
+      std::string status;
+      uint64_t collateral;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(collateral)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  
   struct peer {
     uint64_t id;
     std::string host;
