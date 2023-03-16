@@ -162,7 +162,7 @@ namespace cryptonote
         crypto::derive_view_tag(derivation, no, view_tag);
 
       tx_out out;
-      cryptonote::set_tx_out(amount, "XHV", out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(amount, "XHV", 0, false, out_eph_public_key, use_view_tags, view_tag, out);
 
       tx.vout.push_back(out);
     }
@@ -779,7 +779,7 @@ namespace cryptonote
     } else {
       tx.version = 2;
     }
-    tx.unlock_time = unlock_time;
+    tx.unlock_time = (unlock_time - current_height) > CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE ? unlock_time : 0;
 
     // set ther pricing record height
     if (source_asset != dest_asset)
@@ -998,54 +998,19 @@ namespace cryptonote
                                            additional_tx_public_keys, amount_keys, out_eph_public_key,
                                            use_view_tags, view_tag);
 
-      tx_out out;
-      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, out_eph_public_key, use_view_tags, view_tag, out);
-      
-      // Check for per-output-unlocks
-      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && source_asset != dest_asset) {
-        // initialize collateral indices vector
-        if (hf_version >= HF_VERSION_USE_COLLATERAL && tx.collateral_indices.size() != 2) {
-          tx.collateral_indices.resize(2);
-          tx.collateral_indices[0] = 0;
-          tx.collateral_indices[1] = 0;
-        }
-
-        // set unlcok times and indiviual collateral indeces.
-        if (dst_entr.dest_asset_type == dest_asset) {
-          // Destination amount - needs a full unlock time
-          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral) {
-            // lock collateral ouput full and change as 0
-            if (dst_entr.amount == onshore_col_amount) {
-              tx.output_unlock_times.push_back(tx.unlock_time);
-              tx.collateral_indices[0] = output_index;
-            } else {
-              tx.output_unlock_times.push_back(0);
-              tx.collateral_indices[1] = output_index;
-            }
-          } else {
-            tx.output_unlock_times.push_back(tx.unlock_time);
-          }
-        } else if (dst_entr.dest_asset_type == source_asset) {
-          if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::OFFSHORE && dst_entr.is_collateral) {
-            // Collateral output - needs a full unlock time
-            // offshores doesnt have collaterasl change since it is merged with actual change.
-            tx.output_unlock_times.push_back(tx.unlock_time);
-            tx.collateral_indices[0] = output_index;
-          } else {
-            // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
-            tx.output_unlock_times.push_back(0);
-          }
-        } else {
-          // Should never happen
-          LOG_ERROR("Invalid asset type detected: source = " << source_asset << ", dest = " << dest_asset << ", detected " << dst_entr.dest_asset_type);
-          return false;
-        }
+      // dont lock the change dests
+      uint64_t u_time = tx.unlock_time;
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && 
+        dst_entr.is_collateral && dst_entr.amount != onshore_col_amount) {
+        u_time = 0;
       } else {
-        if (tx.unlock_time - current_height > CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE)
-          tx.output_unlock_times.push_back(tx.unlock_time);
-        else
-          tx.output_unlock_times.push_back(0);
+        if (dst_entr.dest_asset_type == source_asset) {
+          u_time = 0;
+        }
       }
+
+      tx_out out;
+      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, out_eph_public_key, use_view_tags, view_tag, out);
 
       tx.vout.push_back(out);
       output_index++;
