@@ -2263,6 +2263,8 @@ namespace cryptonote
     response.timestamp = blk.timestamp;
     response.prev_hash = string_tools::pod_to_hex(blk.prev_id);
     response.nonce = blk.nonce;
+    if (blk.major_version >= HF_VERSION_OFFSHORE_PRICING)
+      response.pricing_record = blk.pricing_record;
     response.orphan_status = orphan_status;
     response.height = height;
     response.depth = m_core.get_current_blockchain_height() - height - 1;
