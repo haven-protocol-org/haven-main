@@ -519,14 +519,15 @@ namespace boost
 
       if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
         a & x.pricing_record_height;
-        a & x.amount_burnt;
-        a & x.amount_minted;
         if (x.version < 5)
           a & x.offshore_data;
 
         if (x.version >= POU_TRANSACTION_VERSION) {
           a & x.output_unlock_times;
         }
+        
+        a & x.amount_burnt;
+        a & x.amount_minted;
         
         // Support the old "collateral_indices" vector
         if (x.version >= COLLATERAL_TRANSACTION_VERSION) {

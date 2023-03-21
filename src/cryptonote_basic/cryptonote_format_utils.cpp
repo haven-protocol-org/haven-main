@@ -1197,6 +1197,21 @@ namespace cryptonote
       : boost::optional<crypto::view_tag>();
   }
   //---------------------------------------------------------------
+  bool is_output_collateral(const cryptonote::tx_out& out, bool& is_collateral)
+  {
+    if (out.target.type() == typeid(txout_haven_key))
+      is_collateral = boost::get< txout_haven_key >(out.target).is_collateral;
+    else if (out.target.type() == typeid(txout_haven_tagged_key))
+      is_collateral = boost::get< txout_haven_tagged_key >(out.target).is_collateral;
+    else
+    {
+      LOG_ERROR("Unexpected output target type found: " << out.target.type().name());
+      return false;
+    }
+
+    return true;
+  }
+  //---------------------------------------------------------------
   std::string short_hash_str(const crypto::hash& h)
   {
     std::string res = string_tools::pod_to_hex(h);

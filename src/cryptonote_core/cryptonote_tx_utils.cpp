@@ -1323,12 +1323,15 @@ namespace cryptonote
           LOG_ERROR("failed to get output public key for tx.vout[" << i << "]");
           return false;
         }        
+        bool is_collateral = false;
+        ok = cryptonote::is_output_collateral(tx.vout[i], is_collateral);
+        if (!ok) {
+          LOG_ERROR("failed to get is_collateral for tx.vout[" << i << "]");
+          return false;
+        }        
         destinations.push_back(rct::pk2rct(output_public_key));
         outamounts.push_back(tx.vout[i].amount);
-        outamounts_features[i] = std::pair<std::string, bool>(
-          output_asset_type,
-          tx_type == transaction_type::ONSHORE && HF_VERSION_USE_COLLATERAL && std::find(tx.collateral_indices.begin(), tx.collateral_indices.end(), i) != tx.collateral_indices.end()
-        );
+        outamounts_features[i] = std::pair<std::string, bool>(output_asset_type,is_collateral);
         amount_out += tx.vout[i].amount;
       }
 

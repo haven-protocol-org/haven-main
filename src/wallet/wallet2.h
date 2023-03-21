@@ -1799,6 +1799,7 @@ private:
     bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
     bool get_onshore_collateral_inputs(uint64_t col_amount, std::vector<size_t>& picked_inputs);
     transfers_iterator_container get_specific_transfers(const std::string& asset);
+    std::pair<transfers_iterator_container, transfers_iterator_container> get_specific_transfers(const std::string& asset, const std::string& collateral_asset = "XHV");
 
     void register_devices();
     hw::device& lookup_device(const std::string & device_descriptor);

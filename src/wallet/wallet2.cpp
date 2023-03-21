@@ -1974,6 +1974,18 @@ wallet2::transfers_iterator_container wallet2::get_specific_transfers(const std:
   return specific_transfers;
 }
 //----------------------------------------------------------------------------------------------------
+std::pair<wallet2::transfers_iterator_container, wallet2::transfers_iterator_container> wallet2::get_specific_transfers(const std::string& asset, const std::string& collateral_asset) {
+  transfers_iterator_container specific_transfers;
+  transfers_iterator_container specific_transfers_collateral;
+  for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
+    if (i->asset_type == asset)
+      specific_transfers.push_back(i);
+    if (i->asset_type == collateral_asset)
+      specific_transfers_collateral.push_back(i);
+  }
+  return make_pair(specific_transfers, specific_transfers_collateral);
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::get_pricing_record(offshore::pricing_record& pr, const uint64_t height)
 {
   // Issue an RPC call to get the block header (and thus the pricing record) at the specified height
@@ -9391,10 +9403,11 @@ void wallet2::transfer_selected_rct(
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
     // exclude the onshore collateral from needed money
-    if (!using_onshore_collateral || !dt.is_collateral)
+    if (!using_onshore_collateral || !dt.is_collateral) {
       needed_money += dt.amount;
-    LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
-    THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_nettype);
+      LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
+      THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_nettype);
+    }
   }
 
   // calculate total onshore collateral
@@ -10647,6 +10660,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     bool is_collateral = true;
     bool is_subaddress = subaddr_account != 0;
     dsts.push_back(tx_destination_entry(needed_col, get_subaddress({subaddr_account, 0}), is_subaddress, is_collateral));
+    dsts.back().dest_amount = needed_col;
   }
 
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr = unlocked_balance_per_subaddress(subaddr_account, source_asset, false);
