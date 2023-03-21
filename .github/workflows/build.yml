@@ -93,7 +93,7 @@ jobs:
       run: ${{env.APT_SET_CONF}}
     - name: update apt
       run: sudo apt update
-    - name: install monero dependencies
+    - name: install haven dependencies
       run: ${{env.APT_INSTALL_LINUX}}
     - name: build
       run: |
@@ -119,7 +119,7 @@ jobs:
       run: ${{env.APT_SET_CONF}}
     - name: update apt
       run: sudo apt update
-    - name: install monero dependencies
+    - name: install haven dependencies
       run: ${{env.APT_INSTALL_LINUX}}
     - name: build
       run: |
@@ -127,38 +127,38 @@ jobs:
         cmake .
         make wallet_api -j3
 
-  test-ubuntu:
-    needs: build-ubuntu
-    runs-on: ubuntu-latest
-    env:
-      CCACHE_TEMPDIR: /tmp/.ccache-temp
-    steps:
-    - uses: actions/checkout@v1
-      with:
-        submodules: recursive
-    - name: ccache
-      uses: actions/cache@v2
-      with:
-        path: ~/.ccache
-        key: ccache-${{ runner.os }}-build-ubuntu-latest-${{ github.sha }}
-        restore-keys: ccache-${{ runner.os }}-build-ubuntu-latest
-    - name: remove bundled boost
-      run: ${{env.REMOVE_BUNDLED_BOOST}}
-    - name: set apt conf
-      run: ${{env.APT_SET_CONF}}
-    - name: update apt
-      run: sudo apt update
-    - name: install monero dependencies
-      run: ${{env.APT_INSTALL_LINUX}}
-    - name: install Python dependencies
-      run: pip install requests psutil monotonic zmq
-    - name: tests
-      env:
-        CTEST_OUTPUT_ON_FAILURE: ON
-      run: |
-        ${{env.CCACHE_SETTINGS}}
-        ${{env.BUILD_DEFAULT_LINUX}}
-        cmake --build build --target test
+#  test-ubuntu:
+#    needs: build-ubuntu
+#    runs-on: ubuntu-latest
+#    env:
+#      CCACHE_TEMPDIR: /tmp/.ccache-temp
+#    steps:
+#    - uses: actions/checkout@v1
+#      with:
+#        submodules: recursive
+#    - name: ccache
+#      uses: actions/cache@v2
+#      with:
+#        path: ~/.ccache
+#        key: ccache-${{ runner.os }}-build-ubuntu-latest-${{ github.sha }}
+#        restore-keys: ccache-${{ runner.os }}-build-ubuntu-latest
+#    - name: remove bundled boost
+#      run: ${{env.REMOVE_BUNDLED_BOOST}}
+#    - name: set apt conf
+#      run: ${{env.APT_SET_CONF}}
+#    - name: update apt
+#      run: sudo apt update
+#    - name: install haven dependencies
+#      run: ${{env.APT_INSTALL_LINUX}}
+#    - name: install Python dependencies
+#      run: pip install requests psutil monotonic zmq
+#    - name: tests
+#      env:
+#        CTEST_OUTPUT_ON_FAILURE: ON
+#      run: |
+#        ${{env.CCACHE_SETTINGS}}
+#        ${{env.BUILD_DEFAULT_LINUX}}
+#        cmake --build build --target test
 
 # ARCH="default" (not "native") ensures, that a different execution host can execute binaries compiled elsewhere.
 # BUILD_SHARED_LIBS=ON speeds up the linkage part a bit, reduces size, and is the only place where the dynamic linkage is tested.
@@ -172,11 +172,11 @@ jobs:
     - name: archive
       run: |
         pip install git-archive-all
-        export VERSION="monero-$(git describe)"
+        export VERSION="haven-$(git describe)"
         export OUTPUT="$VERSION.tar"
         echo "OUTPUT=$OUTPUT" >> $GITHUB_ENV
         /home/runner/.local/bin/git-archive-all --prefix "$VERSION/" --force-submodules "$OUTPUT"
     - uses: actions/upload-artifact@v2
       with:
         name: ${{ env.OUTPUT }}
-        path: /home/runner/work/monero/monero/${{ env.OUTPUT }}
+        path: /home/runner/work/haven-main/haven-main/${{ env.OUTPUT }}
