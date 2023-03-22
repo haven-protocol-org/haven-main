@@ -2821,10 +2821,10 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     }
 
     uint64_t total_received_2 = sub_change;
-    for (const auto& i : tx_money_got_in_outs)
-      total_received_2 += i.second.at(source_asset);
+    for (auto& i : tx_money_got_in_outs)
+      total_received_2 += i.second[source_asset];
     // only for regular transfers
-    if (source_asset == dest_asset) {
+    if (source_asset == dest_asset && !miner_tx) {
       if (total_received_1 != total_received_2)
       {
         const el::Level level = el::Level::Warning;
@@ -2838,7 +2838,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     }
 
     bool all_same = true;
-    for (const auto& i : tx_money_got_in_outs)
+    for (auto& i : tx_money_got_in_outs)
     {
       uint64_t unlock_time = 0;
       if (tx.version >= POU_TRANSACTION_VERSION && source_asset != dest_asset)
@@ -2847,7 +2847,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
       payment_details payment;
       payment.m_tx_hash      = txid;
       payment.m_fee          = fee;
-      payment.m_amount       = source_asset == dest_asset ? i.second.at(dest_asset) : tx.amount_minted;
+      payment.m_amount       = source_asset == dest_asset ? i.second[dest_asset] : tx.amount_minted;
       payment.m_asset_type   = dest_asset;
       payment.m_amounts      = tx_amounts_individual_outs[i.first];
       payment.m_block_height = height;
@@ -9122,9 +9122,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         size_t i = base + n;
         if ((use_global_outs ? req.outputs[i].index : daemon_resp.outs[i].output_id) == td.m_global_output_index)
           if (daemon_resp.outs[i].key == td.get_public_key())
-            if (daemon_resp.outs[i].mask == mask) // TODO: this was different
-              if (daemon_resp.outs[i].unlocked)
-                real_out_found = true;
+              real_out_found = true;
       }
       THROW_WALLET_EXCEPTION_IF(!real_out_found, error::wallet_internal_error,
           "Daemon response did not include the requested real output");
@@ -9426,11 +9424,9 @@ void wallet2::transfer_selected_rct(
   }
 
   // calculate total onshore collateral
-  if (using_onshore_collateral) {
-    for(auto& dt: dsts) {
-      if (dt.is_collateral) {
-        needed_col += dt.amount;
-      }
+  for(auto& dt: dsts) {
+    if (dt.is_collateral) {
+      needed_col += dt.amount;
     }
   }
 
@@ -9556,7 +9552,7 @@ void wallet2::transfer_selected_rct(
       THROW_WALLET_EXCEPTION_IF(outs.size() < out_index + 1 ,  error::wallet_internal_error, "outs.size() < out_index + 1"); 
       THROW_WALLET_EXCEPTION_IF(outs[out_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
     } else {
-      THROW_WALLET_EXCEPTION_IF(outs_collateral.size() < out_index_col + 1 ,  error::wallet_internal_error, "outs.size() < out_index_col + 1"); 
+      THROW_WALLET_EXCEPTION_IF(outs_collateral.size() < out_index_col + 1 ,  error::wallet_internal_error, "outs_collateral.size() < out_index_col + 1"); 
       THROW_WALLET_EXCEPTION_IF(outs_collateral[out_index_col].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
     }
 
@@ -9841,6 +9837,7 @@ void wallet2::transfer_selected_rct(
   ptx.dust = 0;
   ptx.dust_added_to_fee = false;
   ptx.tx = tx;
+  ptx.col_amount = needed_col;
   ptx.change_dts = change_dts;
   ptx.selected_transfers = selected_transfers;
   tools::apply_permutation(ins_order, ptx.selected_transfers);
@@ -10675,7 +10672,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     bool is_collateral = true;
     bool is_subaddress = subaddr_account != 0;
     dsts.push_back(tx_destination_entry(needed_col, get_subaddress({subaddr_account, 0}), is_subaddress, is_collateral));
-    dsts.back().dest_amount = needed_col;
   }
 
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr = unlocked_balance_per_subaddress(subaddr_account, source_asset, false);
@@ -11032,9 +11028,17 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
         tx.selected_transfers.size() << " inputs");
-      if (use_rct)
+      if (use_rct) {
+        // get the inputs for collateral and append it to selected_tranfers
+        if (tx_type == tt::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
+          std::vector<size_t> col_ins;
+          THROW_WALLET_EXCEPTION_IF(!get_onshore_collateral_inputs(needed_col, col_ins), error::wallet_internal_error, "Failed to find sufficient inputs for onshore collateral");
+          for (const auto i: col_ins)
+            tx.selected_transfers.push_back(i);
+        }
         transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, extra,
           test_tx, test_ptx, rct_config, source_asset, dest_asset, pricing_record, use_view_tags);
+      }
       else
         transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
@@ -11058,9 +11062,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       {
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
-          if (use_rct)
+          if (use_rct) {
             transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, extra,
               test_tx, test_ptx, rct_config, source_asset, dest_asset, pricing_record, use_view_tags);
+          }
           else
             transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
               detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
@@ -11124,13 +11129,6 @@ skip_tx:
     cryptonote::transaction test_tx;
     pending_tx test_ptx;
 
-    // get the inputs for collateral and append it to selected_tranfers
-    if (tx_type == tt::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
-      std::vector<size_t> col_ins;
-      THROW_WALLET_EXCEPTION_IF(!get_onshore_collateral_inputs(needed_col, col_ins), error::wallet_internal_error, "Failed to find sufficient inputs for onshore collateral");
-      for (const auto i: col_ins)
-        tx.selected_transfers.push_back(i);
-    }
 
     if (use_rct) {
       transfer_selected_rct(tx.dsts,                    /* NOMOD std::vector<cryptonote::tx_destination_entry> dsts,*/

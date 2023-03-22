@@ -1067,7 +1067,7 @@ namespace cryptonote
       txin_haven_key input_to_key;
       input_to_key.amount = src_entr.amount;
       input_to_key.k_image = img;
-      input_to_key.asset_type = source_asset;
+      input_to_key.asset_type = src_entr.asset_type;
 
       //fill outputs array and use relative offsets
       for(const tx_source_entry::output_entry& out_entry: src_entr.outputs)
@@ -1168,7 +1168,7 @@ namespace cryptonote
       
       tx.vout.push_back(out);
       output_index++;
-      summary_outs_money += dst_entr.amount;
+      summary_outs_money += dst_entr.is_collateral ? 0 : dst_entr.amount;
 
       if (source_asset != dest_asset) {
         if (dst_entr.dest_asset_type == dest_asset && !dst_entr.is_collateral) {
@@ -1198,6 +1198,24 @@ namespace cryptonote
     {
       LOG_ERROR("Transaction inputs money ("<< summary_inputs_money << ") less than outputs money (" << summary_outs_money << ")");
       return false;
+    }
+    
+    // check col money
+    uint64_t col_in_money = 0, col_out_money = 0;
+    if (hf_version >= HF_VERSION_USE_COLLATERAL)
+    { 
+      for(const tx_source_entry& src_entr:  sources)
+        if (src_entr.asset_type == dest_asset)
+          col_in_money += src_entr.amount;
+      for(const tx_destination_entry& dst_entr: destinations)
+        if (dst_entr.is_collateral)
+          col_out_money += dst_entr.amount;
+
+      if((col_out_money != col_in_money) && tx_type == transaction_type::ONSHORE)
+      {
+        LOG_ERROR("Transaction collateral inputs money ("<< col_in_money << ") is not equal to outputs money (" << col_out_money << ")");
+        return false;
+      }
     }
 
     // Add 80% of the conversion fee to the amount burnt
@@ -1364,6 +1382,11 @@ namespace cryptonote
         outamounts.push_back(amount_in - amount_out);
       else
         fee = summary_inputs_money - summary_outs_money - offshore_fee;
+      
+      // since the col ins are added to the summary_inputs_money above for offshores, subtract it.
+      if (tx_type == transaction_type::OFFSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
+        fee -= col_out_money;
+      }
 
       // zero out all amounts to mask rct outputs, real amounts are now encrypted
       for (size_t i = 0; i < tx.vin.size(); ++i)

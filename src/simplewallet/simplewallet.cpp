@@ -6971,6 +6971,7 @@ bool simple_wallet::transfer_main(
     {
         uint64_t total_sent = 0;
         uint64_t total_received = 0;
+        uint64_t total_col = 0;
         uint64_t total_tx_fee = 0;
         uint64_t total_offshore_fee = 0;
         uint64_t dust_not_in_fee = 0;
@@ -6987,7 +6988,14 @@ bool simple_wallet::transfer_main(
           change += ptx_vector[n].change_dts.amount;
           
           for (const auto& dt: ptx_vector[n].dests) {
-            total_received += dt.dest_amount;
+            if (dt.is_collateral)
+              total_col += dt.dest_amount;
+            else
+              total_received += dt.dest_amount;
+          }
+          // remove the col form sent amount for offshores
+          if (tx_type == tt::OFFSHORE && m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+            total_sent -= total_col;
           }
  
           if (ptx_vector[n].dust_added_to_fee)
@@ -7015,6 +7023,21 @@ bool simple_wallet::transfer_main(
           {
           case tt::OFFSHORE:
             prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV (plus conversion fee %s XHV).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_offshore_fee);
+            if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+              prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
+            }
+            break;
+          case tt::ONSHORE:
+            prompt << boost::format(tr("Onshoring %s XHV by burning %s XUSD (plus conversion fee %s XHV).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_offshore_fee);
+            if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+              prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
+            }
+            break;
+          case tt::XUSD_TO_XASSET:
+            prompt << boost::format(tr("Converting %s XUSD to %s %s (plus conversion fee %s XUSD).\n")) % print_money(total_sent) % print_money(total_received) % dest_asset % print_money(total_offshore_fee);
+            break;
+          case tt::XASSET_TO_XUSD:
+            prompt << boost::format(tr("Converting %s %s to %s XUSD (plus conversion fee %s %s).\n")) % print_money(total_sent) % source_asset % print_money(total_received) % print_money(total_offshore_fee) % source_asset;
             break;
           default:
             break;

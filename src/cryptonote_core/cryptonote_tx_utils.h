@@ -111,7 +111,7 @@ namespace cryptonote
     bool is_collateral;
 
     tx_destination_entry() : amount(0), dest_amount(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : amount(a), dest_amount(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : amount(a), dest_amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), dest_asset_type("XHV") { }
     tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
     tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
 
