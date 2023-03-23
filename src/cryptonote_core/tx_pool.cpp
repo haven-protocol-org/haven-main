@@ -448,25 +448,81 @@ namespace cryptonote
       // validate conversion fees
       uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;
-      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
+      if (tx_type == transaction_type::OFFSHORE) {
+        
+        // Flat 1.5% fee
+        boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+        amount_128 *= 3;
+        amount_128 /= 200;
+        conversion_fee_check = (uint64_t)amount_128;
+        
+      } else if (tx_type == transaction_type::ONSHORE) {
+
         if (version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% fee
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
           amount_128 *= 3;
           amount_128 /= 200;
+
+          // HERE BE DRAGONS!!!
+          // NEAC: Convert the conversion fees to XHV
+          if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+            // Scale the fee into the correct colour (xUSD -> XHV)
+            amount_128 *= COIN;
+            amount_128 /= std::max(tvc.pr.xUSD, tvc.pr.unused1);
+          }
+          // LAND AHOY!!!
+          
           conversion_fee_check = (uint64_t)amount_128;
+
         } else if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
           // Flat 0.5% fee
           conversion_fee_check = tx.amount_burnt / 200;
         } else {
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         }
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
+      } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
         if (version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% conversion fee for xAsset TXs after the collateral fork
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
           amount_128 *= 3;
           amount_128 /= 200;
+
+          // HERE BE DRAGONS!!!
+          // NEAC: Convert the conversion fees to XHV
+          if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+            // Scale the fee into the correct colour (xUSD -> XHV)
+            amount_128 *= COIN;
+            amount_128 /= std::max(tvc.pr.xUSD, tvc.pr.unused1);
+          }
+          // LAND AHOY!!!
+          
+          conversion_fee_check = (uint64_t)amount_128;
+        } else {
+          // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
+          // for the tx.amount_burnt containing the 80% burnt fee proportion as well
+          boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+          amount_128 = (amount_128 * 10) / (2000 + 8);
+          conversion_fee_check = (uint64_t)amount_128;
+        }
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+        if (version >= HF_VERSION_USE_COLLATERAL) {
+          // Flat 1.5% conversion fee for xAsset TXs after the collateral fork
+          boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
+          amount_128 *= 3;
+          amount_128 /= 200;
+
+          // HERE BE DRAGONS!!!
+          // NEAC: Convert the conversion fees to XHV
+          if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+            // Scale the fee into the correct colour (xUSD -> XHV)
+            amount_128 *= COIN;
+            amount_128 /= tvc.pr[source];
+            amount_128 *= COIN;
+            amount_128 /= std::max(tvc.pr.xUSD, tvc.pr.unused1);
+          }
+          // LAND AHOY!!!
+          
           conversion_fee_check = (uint64_t)amount_128;
         } else {
           // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
@@ -2614,8 +2670,13 @@ namespace cryptonote
       total_conversion_xhv += conversion_this_tx_xhv;
       fee_map[meta.fee_asset_type] += meta.fee;
       if (source != dest) {
-        if (version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
-          // xAsset converison
+        if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+          // HERE BE DRAGONS!!!
+          // NEAC: All conversion fees are in XHV
+          offshore_fee_map["XHV"] += meta.offshore_fee;
+          // LAND AHOY!!!
+        } else if (version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
+          // xAsset conversion
           xasset_fee_map[meta.fee_asset_type] += meta.offshore_fee;
         } else {
           // offshore/onshore

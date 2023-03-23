@@ -5561,7 +5561,12 @@ leave: {
     total_conversion_xhv += conversion_this_tx_xhv;
     fee_map[fee_asset_type] += fee;
     if (source != dest) {
-      if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
+      if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+        // HERE BE DRAGONS!!!
+        // NEAC: All conversion fees are in XHV
+        offshore_fee_map["XHV"] += offshore_fee;
+        // LAND AHOY!!!
+      } else if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
         // xasset conversion
         xasset_fee_map[fee_asset_type] += offshore_fee;
       } else {

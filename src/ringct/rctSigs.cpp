@@ -1465,34 +1465,6 @@ namespace rct {
       // Calculate offshore conversion fee (also always in C colour)
       key txnOffshoreFeeKey = scalarmultH(d2h(rv.txnOffshoreFee));
 
-      /*
-        offshore TX:
-        sumPseudoOuts = addKeys(pseudoOuts); (total of inputs)
-        sumPseudoOuts_usd = zerokey; (no input usd amount)
-
-        sumXHV = total_output_value_in_XHV (after subtracting fees)
-        sumUSD = -total_output_value_in_USD
-
-        D_scaled = sumUSD 
-        yC_invert = 1 / exchange_rate_in_usd
-        D_final = -total_output_value_in_XHV
-        Zi = total_output_value_in_XHV - total_output_value_in_XHV = 0; 
-
-
-        XUSD -> XASSET TX:
-        sumPseudoOuts_usd = total_input_in_usd
-        sumPseudoOuts_xasset = zerokey; (no input xasset amount)
-
-
-        sumUSD = total_output_value_in_USD (after subtracting fees)
-        sumXASSET = -total_output_value_in_XASSET (without fees)
-
-        D_scaled = sumXASSET
-        y = exchange_rate_in_usd
-        D_final = sumXASSET * 1/ exchange_rate_in_usd = -total_output_value_in_USD
-        Zi = sumUSD + D_final = 0
-      */
-
       // exclude the onshore collateral inputs from proof-of-value calculation
       key sumPseudoOuts = zerokey;
       key sumColIns = zerokey;
@@ -1511,16 +1483,44 @@ namespace rct {
 
       // C COLOUR
       key sumC;
-      // Remove the fees
-      subKeys(sumC, sumPseudoOuts, txnFeeKey);
-      subKeys(sumC, sumC, txnOffshoreFeeKey);
-      subKeys(sumC, sumC, sumOutpks_C);
+      // Remove the outputs from the inputs
+      subKeys(sumC, sumPseudoOuts, sumOutpks_C);
+      subKeys(sumC, sumC, txnFeeKey);
 
       // D COLOUR
       key sumD;
       // Subtract the sum of converted output commitments from the sum of consumed output commitments in D colour (if any are present)
       // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
       subKeys(sumD, zerokey, sumOutpks_D);
+
+      // E COLOUR
+      // This is only used when we need to process XHV fees on an xAsset conversion TX
+      // When the E colour is to be used, the Zi calculation will result in a DELTA, rather than a zero balance
+      // The DELTA value is verifiable by
+      // 1. working out the fee in C colour (as a fixed % of the amount_burnt) and
+      // 2. forward-scaling using the exchange rate between the xAsset and XHV 
+      key sumE;
+
+      // E colour verification
+
+      if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+        // HERE BE DRAGONS!!!
+        // NEAC: Convert the fees for conversions to XHV
+        if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+          // All transfer types and offshores have fees in source asset type = C colour
+          subKeys(sumC, sumC, txnOffshoreFeeKey);
+        } else if (tx_type == tt::ONSHORE) {
+          // Onshores have fees in XHV = D colour
+          //subKeys(sumD, sumD, txnOffshoreFeeKey);
+        } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+          // xAsset conversion have fees in XHV = E colour
+          subKeys(sumE, zerokey, txnOffshoreFeeKey);
+        }
+        // LAND AHOY!!!
+      } else {
+        // Prior to BP+, all fees were in C colour
+        subKeys(sumC, sumC, txnOffshoreFeeKey);
+      }
 
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
@@ -1530,22 +1530,110 @@ namespace rct {
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
       } else if (tx_type == tt::ONSHORE) {
+
+        if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+
+          // HERE BE DRAGONS!!!
+          // NEAC: Convert the fees for conversions to XHV
+          
+          // C = xUSD
+          // Calculate the fee in C terms - 1.5%
+          uint64_t conversion_fee_in_C = (amount_burnt * 3) / 200;
+
+          // Subtract this from sumC to balance the zero-sum-check
+          key conversion_fee_verify_key = scalarmultH(d2h(conversion_fee_in_C));
+          subKeys(sumC, sumC, conversion_fee_verify_key);
+
+          // LAND AHOY!!!
+        }
+
         key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
         key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
+        
       } else if (tx_type == tt::OFFSHORE_TRANSFER) {
         Zi = addKeys(sumC, sumD);
       } else if (tx_type == tt::XUSD_TO_XASSET) {
+
+        if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+
+          // HERE BE DRAGONS!!!
+          // NEAC: Convert the fees for conversions to XHV
+          
+          // C = xUSD
+          // Calculate the fee in C terms - 1.5%
+          uint64_t conversion_fee_in_C = (amount_burnt * 3) / 200;
+
+          // Subtract this from sumC to balance the zero-sum-check
+          key conversion_fee_verify_key = scalarmultH(d2h(conversion_fee_in_C));
+          subKeys(sumC, sumC, conversion_fee_verify_key);
+
+          // Convert the calculated fee to E terms (xUSD -> XHV) - ALWAYS USE THE MA
+          boost::multiprecision::uint128_t conversion_fee_in_D_128 = conversion_fee_in_C;
+          boost::multiprecision::uint128_t exchange_128 = std::max(pr.xUSD, pr.unused1);
+          conversion_fee_in_D_128 *= COIN;
+          conversion_fee_in_D_128 /= exchange_128;
+          uint64_t conversion_fee_in_D = (uint64_t)conversion_fee_in_D_128;
+          
+          // Now verify that this is what is contained in rv.txnOffshoreFee
+          if (conversion_fee_in_D != rv.txnOffshoreFee) {
+            LOG_ERROR("invalid conversion fee detected - expected " << conversion_fee_in_D << " but received " << rv.txnOffshoreFee);
+            return false;
+          }
+
+          // LAND AHOY!!!
+        }
+
+        // Scale the D terms back into C for the zero-sum-check
         key D_scaled = scalarmultKey(sumD, d2h(COIN));
         key yC_invert = invert(d2h(pr[strDest]));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
+        
       } else if (tx_type == tt::XASSET_TO_XUSD) {
+
+        if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+
+          // HERE BE DRAGONS!!!
+          // NEAC: Convert the fees for conversions to XHV
+          
+          // C = xAsset
+          // Calculate the fee in C terms - 1.5%
+          uint64_t conversion_fee_in_C = (amount_burnt * 3) / 200;
+
+          // Subtract this from sumC to balance the zero-sum-check
+          key conversion_fee_verify_key = scalarmultH(d2h(conversion_fee_in_C));
+          subKeys(sumC, sumC, conversion_fee_verify_key);
+
+          // Convert the calculated fee to D terms (xAsset -> xUSD)
+          boost::multiprecision::uint128_t conversion_fee_in_D_128 = conversion_fee_in_C;
+          boost::multiprecision::uint128_t exchange_128 = pr[strSource];
+          conversion_fee_in_D_128 *= COIN;
+          conversion_fee_in_D_128 /= exchange_128;
+          // Now convert the calculated fee to E terms (xUSD -> XHV) - ALWAYS USE THE MA
+          boost::multiprecision::uint128_t conversion_fee_in_E_128 = conversion_fee_in_D_128;
+          boost::multiprecision::uint128_t exchange_2_128 = std::max(pr.xUSD, pr.unused1);
+          conversion_fee_in_E_128 *= COIN;
+          conversion_fee_in_E_128 /= exchange_2_128;
+          
+          uint64_t conversion_fee_in_E = (uint64_t)conversion_fee_in_E_128;
+          
+          // Now verify that this is what is contained in rv.txnOffshoreFee
+          if (conversion_fee_in_E != rv.txnOffshoreFee) {
+            LOG_ERROR("invalid conversion fee detected - expected " << conversion_fee_in_E << " but received " << rv.txnOffshoreFee);
+            return false;
+          }
+
+          // LAND AHOY!!!
+        }
+
+        // Scale the D terms back into C for the zero-sum-check
         key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
         key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
+        
       } else if (tx_type == tt::XASSET_TRANSFER) {
         Zi = addKeys(sumC, sumD);
       } else if (tx_type == tt::TRANSFER) {
@@ -1557,7 +1645,7 @@ namespace rct {
 
       //check Zi == 0
       if (!equalKeys(Zi, zerokey)) {
-        LOG_PRINT_L1("Sum check failed (Zi)");
+        LOG_ERROR("Sum check failed (Zi)");
         return false;
       }
 
@@ -1597,7 +1685,7 @@ namespace rct {
 
         // check whether they are equal
         if (!equalKeys(C_burnt, pseudoC_burnt)) {
-          LOG_PRINT_L1("Tx amount burnt/minted validation failed.");
+          LOG_ERROR("Tx amount burnt/minted validation failed.");
           return false;
         }
       }
@@ -1625,14 +1713,14 @@ namespace rct {
           
           // try to match with actual col ouput
           if (!equalKeys(col_C, rv.outPk[collateral_indices[0]].mask)) {
-            LOG_PRINT_L1("Onshore collateral check failed.");
+            LOG_ERROR("Onshore collateral check failed.");
             return false;
           }
 
           // check inputs == outputs
           key sumColOut = addKeys(rv.outPk[collateral_indices[0]].mask, rv.outPk[collateral_indices[1]].mask);
           if (!equalKeys(sumColOut, sumColIns)) {
-            LOG_PRINT_L1("Onshore collateral inputs != outputs");
+            LOG_ERROR("Onshore collateral inputs != outputs");
             return false;
           }
         }
@@ -1643,7 +1731,7 @@ namespace rct {
     
       if (!proofs.empty() && !verBulletproof(proofs))
       {
-        LOG_PRINT_L1("Aggregate range proof verified failed");
+        LOG_ERROR("Aggregate range proof verified failed");
         return false;
       }
       
@@ -1652,12 +1740,12 @@ namespace rct {
     // we can get deep throws from ge_frombytes_vartime if input isn't valid
     catch (const std::exception &e)
     {
-      LOG_PRINT_L1("Error in verRctSemanticsSimple: " << e.what());
+      LOG_ERROR("Error in verRctSemanticsSimple: " << e.what());
       return false;
     }
     catch (...)
     {
-      LOG_PRINT_L1("Error in verRctSemanticsSimple, but not an actual exception");
+      LOG_ERROR("Error in verRctSemanticsSimple, but not an actual exception");
       return false;
     }
   }

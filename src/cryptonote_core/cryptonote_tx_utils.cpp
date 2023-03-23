@@ -1558,6 +1558,32 @@ namespace cryptonote
       return false;
     }
     
+    // HERE BE DRAGONS!!!
+    // NEAC: Convert the fees for conversions to XHV
+    if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+
+      // New Haven TXs only from BP+ - convert fees to XHV
+      switch(tx_type) {
+      case transaction_type::ONSHORE:
+        //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
+        offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
+        break;
+      case transaction_type::XUSD_TO_XASSET:
+        //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
+        offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
+        break;
+      case transaction_type::XASSET_TO_XUSD:
+        //fee = cryptonote::get_xusd_amount(fee, source_asset, pr, transaction_type::XASSET_TO_XUSD, hf_version);
+        //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
+        offshore_fee = cryptonote::get_xusd_amount(offshore_fee, strSource, pr, transaction_type::XASSET_TO_XUSD, hf_version);
+        offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
+        break;
+      default:
+        break;
+      }
+    }
+    // LAND AHOY!!!
+      
     crypto::hash tx_prefix_hash;
     get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
     rct::ctkeyV outSk;
