@@ -9051,7 +9051,11 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
       uint64_t fee = pd.m_amount_in - pd.m_amount_out;
       std::vector<std::pair<std::string, uint64_t>> destinations;
+      uint64_t col_amount = 0;
       for (const auto &d: pd.m_dests) {
+        if (d.is_collateral) {
+          col_amount += d.amount;
+        }
         destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), d.amount});
       }
       std::string payment_id = string_tools::pod_to_hex(i->second.m_payment_id);
@@ -9064,7 +9068,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
         pd.m_timestamp,
         "out",
         true,
-        pd.m_amount_in - change - fee,
+        pd.m_amount_in - change - fee - col_amount,
         i->first,
         payment_id,
         fee,

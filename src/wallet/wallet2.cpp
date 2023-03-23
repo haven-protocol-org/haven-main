@@ -2841,7 +2841,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     for (auto& i : tx_money_got_in_outs)
     {
       uint64_t unlock_time = 0;
-      if (tx.version >= POU_TRANSACTION_VERSION && source_asset != dest_asset)
+      if ((tx.version >= POU_TRANSACTION_VERSION && source_asset != dest_asset) || miner_tx)
         unlock_time = *std::max_element(tx.output_unlock_times.begin(), tx.output_unlock_times.end());
 
       payment_details payment;
