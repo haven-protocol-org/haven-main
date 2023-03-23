@@ -1493,82 +1493,22 @@ namespace rct {
       // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
       subKeys(sumD, zerokey, sumOutpks_D);
 
-      // E COLOUR
-      // This is only used when we need to process XHV fees on an xAsset conversion TX
-      // When the E colour is to be used, the Zi calculation will result in a DELTA, rather than a zero balance
-      // The DELTA value is verifiable by
-      // 1. working out the fee in C colour (as a fixed % of the amount_burnt) and
-      // 2. forward-scaling using the exchange rate between the xAsset and XHV 
-      key sumE;
-
-      // E colour verification
-
       if (version >= HF_VERSION_BULLETPROOF_PLUS) {
         // HERE BE DRAGONS!!!
         // NEAC: Convert the fees for conversions to XHV
         if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
           // All transfer types and offshores have fees in source asset type = C colour
           subKeys(sumC, sumC, txnOffshoreFeeKey);
+          
         } else if (tx_type == tt::ONSHORE) {
-          // Onshores have fees in XHV = D colour
-          //subKeys(sumD, sumD, txnOffshoreFeeKey);
-        } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
-          // xAsset conversion have fees in XHV = E colour
-          subKeys(sumE, zerokey, txnOffshoreFeeKey);
-        }
-        // LAND AHOY!!!
-      } else {
-        // Prior to BP+, all fees were in C colour
-        subKeys(sumC, sumC, txnOffshoreFeeKey);
-      }
 
-      // NEAC: attempt to only calculate forward
-      // CALCULATE Zi
-      if (tx_type == tt::OFFSHORE) {
-        key D_scaled = scalarmultKey(sumD, d2h(COIN));
-        key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
-        key D_final = scalarmultKey(D_scaled, yC_invert);
-        Zi = addKeys(sumC, D_final);
-      } else if (tx_type == tt::ONSHORE) {
-
-        if (version >= HF_VERSION_BULLETPROOF_PLUS) {
-
-          // HERE BE DRAGONS!!!
-          // NEAC: Convert the fees for conversions to XHV
-          
-          // C = xUSD
           // Calculate the fee in C terms - 1.5%
           uint64_t conversion_fee_in_C = (amount_burnt * 3) / 200;
 
           // Subtract this from sumC to balance the zero-sum-check
           key conversion_fee_verify_key = scalarmultH(d2h(conversion_fee_in_C));
           subKeys(sumC, sumC, conversion_fee_verify_key);
-
-          // LAND AHOY!!!
-        }
-
-        key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
-        key yC_invert = invert(d2h(COIN));
-        key D_final = scalarmultKey(D_scaled, yC_invert);
-        Zi = addKeys(sumC, D_final);
-        
-      } else if (tx_type == tt::OFFSHORE_TRANSFER) {
-        Zi = addKeys(sumC, sumD);
-      } else if (tx_type == tt::XUSD_TO_XASSET) {
-
-        if (version >= HF_VERSION_BULLETPROOF_PLUS) {
-
-          // HERE BE DRAGONS!!!
-          // NEAC: Convert the fees for conversions to XHV
           
-          // C = xUSD
-          // Calculate the fee in C terms - 1.5%
-          uint64_t conversion_fee_in_C = (amount_burnt * 3) / 200;
-
-          // Subtract this from sumC to balance the zero-sum-check
-          key conversion_fee_verify_key = scalarmultH(d2h(conversion_fee_in_C));
-          subKeys(sumC, sumC, conversion_fee_verify_key);
-
           // Convert the calculated fee to E terms (xUSD -> XHV) - ALWAYS USE THE MA
           boost::multiprecision::uint128_t conversion_fee_in_D_128 = conversion_fee_in_C;
           boost::multiprecision::uint128_t exchange_128 = std::max(pr.xUSD, pr.unused1);
@@ -1582,23 +1522,30 @@ namespace rct {
             return false;
           }
 
-          // LAND AHOY!!!
-        }
+        } else if (tx_type == tt::XUSD_TO_XASSET) {
 
-        // Scale the D terms back into C for the zero-sum-check
-        key D_scaled = scalarmultKey(sumD, d2h(COIN));
-        key yC_invert = invert(d2h(pr[strDest]));
-        key D_final = scalarmultKey(D_scaled, yC_invert);
-        Zi = addKeys(sumC, D_final);
-        
-      } else if (tx_type == tt::XASSET_TO_XUSD) {
+          // Calculate the fee in C terms - 1.5%
+          uint64_t conversion_fee_in_C = (amount_burnt * 3) / 200;
 
-        if (version >= HF_VERSION_BULLETPROOF_PLUS) {
-
-          // HERE BE DRAGONS!!!
-          // NEAC: Convert the fees for conversions to XHV
+          // Subtract this from sumC to balance the zero-sum-check
+          key conversion_fee_verify_key = scalarmultH(d2h(conversion_fee_in_C));
+          subKeys(sumC, sumC, conversion_fee_verify_key);
           
-          // C = xAsset
+          // Convert the calculated fee to E terms (xUSD -> XHV) - ALWAYS USE THE MA
+          boost::multiprecision::uint128_t conversion_fee_in_D_128 = conversion_fee_in_C;
+          boost::multiprecision::uint128_t exchange_128 = std::max(pr.xUSD, pr.unused1);
+          conversion_fee_in_D_128 *= COIN;
+          conversion_fee_in_D_128 /= exchange_128;
+          uint64_t conversion_fee_in_D = (uint64_t)conversion_fee_in_D_128;
+          
+          // Now verify that this is what is contained in rv.txnOffshoreFee
+          if (conversion_fee_in_D != rv.txnOffshoreFee) {
+            LOG_ERROR("invalid conversion fee detected - expected " << conversion_fee_in_D << " but received " << rv.txnOffshoreFee);
+            return false;
+          }
+
+        } else if (tx_type == tt::XASSET_TO_XUSD) {
+
           // Calculate the fee in C terms - 1.5%
           uint64_t conversion_fee_in_C = (amount_burnt * 3) / 200;
 
@@ -1624,16 +1571,39 @@ namespace rct {
             LOG_ERROR("invalid conversion fee detected - expected " << conversion_fee_in_E << " but received " << rv.txnOffshoreFee);
             return false;
           }
-
-          // LAND AHOY!!!
         }
 
+      } else {
+        // Prior to BP+, all fees were in C colour
+        subKeys(sumC, sumC, txnOffshoreFeeKey);
+      }
+
+      // NEAC: attempt to only calculate forward
+      // CALCULATE Zi
+      if (tx_type == tt::OFFSHORE) {
+        key D_scaled = scalarmultKey(sumD, d2h(COIN));
+        key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
+        key D_final = scalarmultKey(D_scaled, yC_invert);
+        Zi = addKeys(sumC, D_final);
+      } else if (tx_type == tt::ONSHORE) {
+        key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
+        key yC_invert = invert(d2h(COIN));
+        key D_final = scalarmultKey(D_scaled, yC_invert);
+        Zi = addKeys(sumC, D_final);
+      } else if (tx_type == tt::OFFSHORE_TRANSFER) {
+        Zi = addKeys(sumC, sumD);
+      } else if (tx_type == tt::XUSD_TO_XASSET) {
+        // Scale the D terms back into C for the zero-sum-check
+        key D_scaled = scalarmultKey(sumD, d2h(COIN));
+        key yC_invert = invert(d2h(pr[strDest]));
+        key D_final = scalarmultKey(D_scaled, yC_invert);
+        Zi = addKeys(sumC, D_final);
+      } else if (tx_type == tt::XASSET_TO_XUSD) {
         // Scale the D terms back into C for the zero-sum-check
         key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
         key yC_invert = invert(d2h(COIN));
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
-        
       } else if (tx_type == tt::XASSET_TRANSFER) {
         Zi = addKeys(sumC, sumD);
       } else if (tx_type == tt::TRANSFER) {
