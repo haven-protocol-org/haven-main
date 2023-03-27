@@ -610,12 +610,12 @@ namespace cryptonote
             vin_tmp.push_back(in);
           } else if (vin_entry.asset_type == "XUSD") {
             is_offshore_tx = false;
-            is_onshore_tx = true;
             int xhv_outputs = std::count_if(vout.begin(), vout.end(), [](tx_out &foo_v) {
               txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);
               return out.asset_type == "XHV";
             });
             if (xhv_outputs) {
+              is_onshore_tx = true;
               txin_onshore in;
               in.amount = vin_entry.amount;
               in.key_offsets = vin_entry.key_offsets;
@@ -693,7 +693,13 @@ namespace cryptonote
               if ((is_offshore_tx || is_onshore_tx) && collateral_indices_temp.size() != 2) {
                 return false;
               }
-              collateral_indices = collateral_indices_temp;
+              if (is_offshore_tx || is_onshore_tx) {
+                collateral_indices = collateral_indices_temp;
+              } else {
+                collateral_indices.clear();
+                collateral_indices.push_back(0);
+                collateral_indices.push_back(0);
+              }
             }
             FIELD(collateral_indices)
             for (const auto vout_idx: collateral_indices) {

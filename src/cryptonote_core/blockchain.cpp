@@ -4298,13 +4298,16 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
     needed_fee *= fee_per_kb;
   }
 
-  // convert fee to asset type value
-  if (source != "XHV" && source != dest) {
-    if (pr.unused1 && pr.xUSD && pr[source]) {
-      needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
-      // xasset amount if fee is paid in xasset
-      if (source != "XUSD") {
-        needed_fee = get_xasset_amount(needed_fee, source, pr);
+  // HF21+ conversion TXs use XHV for all fees
+  if (version < HF_VERSION_BULLETPROOF_PLUS) {
+    // convert fee to asset type value
+    if (source != "XHV" && source != dest) {
+      if (pr.unused1 && pr.xUSD && pr[source]) {
+        needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
+        // xasset amount if fee is paid in xasset
+        if (source != "XUSD") {
+          needed_fee = get_xasset_amount(needed_fee, source, pr);
+        }
       }
     }
   }
@@ -4480,9 +4483,10 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
   {
     std::vector<rct::ctkey >& m_output_keys;
     const Blockchain& m_bch;
+    const std::string& m_asset_type; // just to get the access to txin_xasset.asset_type
     const uint8_t hf_version;
-    outputs_visitor(std::vector<rct::ctkey>& output_keys, const Blockchain& bch, uint8_t hf_version) :
-      m_output_keys(output_keys), m_bch(bch), hf_version(hf_version)
+    outputs_visitor(std::vector<rct::ctkey>& output_keys, const Blockchain& bch, const std::string& asset_type, uint8_t hf_version) :
+      m_output_keys(output_keys), m_bch(bch), m_asset_type(asset_type), hf_version(hf_version)
     {
     }
     bool handle_output(uint64_t unlock_time, const std::string& asset_type, const crypto::public_key &pubkey, const rct::key &commitment)
@@ -4494,15 +4498,13 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
         return false;
       }
 
-      /*
       // check whether output asset types matches
       if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
-        if (asset_type != "XHV") {
-          MERROR_VER("One of outputs for one of inputs has wrong asset type. Expected = " << asset_type << " Got = " << "XHV");
+        if (asset_type != m_asset_type) {
+          MERROR_VER("One of outputs for one of inputs has wrong asset type. Expected = " << asset_type << " Got = " << m_asset_type);
           return false;
         }
       }
-      */
 
       // The original code includes a check for the output corresponding to this input
       // to be a txout_to_key. This is removed, as the database does not store this info.
@@ -4519,7 +4521,7 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
   output_keys.clear();
 
   // collect output keys
-  outputs_visitor vi(output_keys, *this, hf_version);
+  outputs_visitor vi(output_keys, *this, txin.asset_type, hf_version);
   if (!scan_outputkeys_for_indexes(hf_version, tx_version, txin, vi, tx_prefix_hash, pmax_related_block_height))
   {
     MERROR_VER("Failed to get output keys for tx with amount = " << print_money(txin.amount) << " and count indexes " << txin.key_offsets.size());
