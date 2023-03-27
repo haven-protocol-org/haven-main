@@ -55,6 +55,7 @@ using namespace epee;
 #include "rpc/rpc_args.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "daemonizer/daemonizer.h"
+#include "offshore/asset_types.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "wallet.rpc"
@@ -449,58 +450,73 @@ namespace tools
   bool wallet_rpc_server::on_getbalance(const wallet_rpc::COMMAND_RPC_GET_BALANCE::request& req, wallet_rpc::COMMAND_RPC_GET_BALANCE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
     if (!m_wallet) return not_open(er);
+
+    std::string asset_type = req.asset_type.empty() ? "XHV" : boost::algorithm::to_upper_copy(req.asset_type);
+    // verify that asset is valid
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) == offshore::ASSET_TYPES.end()) {
+      er.message = std::string("Invalid source asset specified: ") + asset_type; 
+      return false;
+    }
+    std::vector<std::string> assets = req.all_assets ? offshore::ASSET_TYPES : std::vector<std::string>{asset_type};
+
     try
     {
-      res.balance = req.all_accounts ? m_wallet->balance_all(req.strict, "XHV") : m_wallet->balance(req.account_index, "XHV", req.strict);
-      res.unlocked_balance = req.all_accounts ? m_wallet->unlocked_balance_all(req.strict, "XHV", &res.blocks_to_unlock, &res.time_to_unlock) : m_wallet->unlocked_balance(req.account_index, "XHV", req.strict, &res.blocks_to_unlock, &res.time_to_unlock);
-      res.multisig_import_needed = m_wallet->multisig() && m_wallet->has_multisig_partial_key_images();
-      std::map<uint32_t, std::map<uint32_t, uint64_t>> balance_per_subaddress_per_account;
-      std::map<uint32_t, std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>>> unlocked_balance_per_subaddress_per_account;
-      if (req.all_accounts)
-      {
-        for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
+      for (const auto& asset: assets) {
+        wallet_rpc::COMMAND_RPC_GET_BALANCE::balance_info balance_info;
+        balance_info.balance = req.all_accounts ? m_wallet->balance_all(req.strict, asset) : m_wallet->balance(req.account_index, asset, req.strict);
+        if (!balance_info.balance)
+          continue;
+        balance_info.unlocked_balance = req.all_accounts ? m_wallet->unlocked_balance_all(req.strict, asset, &balance_info.blocks_to_unlock, &balance_info.time_to_unlock) : m_wallet->unlocked_balance(req.account_index, "XHV", req.strict, &balance_info.blocks_to_unlock, &balance_info.time_to_unlock);
+        balance_info.multisig_import_needed = m_wallet->multisig() && m_wallet->has_multisig_partial_key_images();
+        std::map<uint32_t, std::map<uint32_t, uint64_t>> balance_per_subaddress_per_account;
+        std::map<uint32_t, std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>>> unlocked_balance_per_subaddress_per_account;
+        if (req.all_accounts)
         {
-          balance_per_subaddress_per_account[account_index] = m_wallet->balance_per_subaddress(account_index, "XHV", req.strict);
-          unlocked_balance_per_subaddress_per_account[account_index] = m_wallet->unlocked_balance_per_subaddress(account_index, "XHV", req.strict);
-        }
-      }
-      else
-      {
-        balance_per_subaddress_per_account[req.account_index] = m_wallet->balance_per_subaddress(req.account_index, "XHV", req.strict);
-        unlocked_balance_per_subaddress_per_account[req.account_index] = m_wallet->unlocked_balance_per_subaddress(req.account_index, "XHV", req.strict);
-      }
-      std::vector<tools::wallet2::transfer_details> transfers;
-      m_wallet->get_transfers(transfers);
-      for (const auto& p : balance_per_subaddress_per_account)
-      {
-        uint32_t account_index = p.first;
-        std::map<uint32_t, uint64_t> balance_per_subaddress = p.second;
-        std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = unlocked_balance_per_subaddress_per_account[account_index];
-        std::set<uint32_t> address_indices;
-        if (!req.all_accounts && !req.address_indices.empty())
-        {
-          address_indices = req.address_indices;
+          for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
+          {
+            balance_per_subaddress_per_account[account_index] = m_wallet->balance_per_subaddress(account_index, asset, req.strict);
+            unlocked_balance_per_subaddress_per_account[account_index] = m_wallet->unlocked_balance_per_subaddress(account_index, asset, req.strict);
+          }
         }
         else
         {
-          for (const auto& i : balance_per_subaddress)
-            address_indices.insert(i.first);
+          balance_per_subaddress_per_account[req.account_index] = m_wallet->balance_per_subaddress(req.account_index, asset, req.strict);
+          unlocked_balance_per_subaddress_per_account[req.account_index] = m_wallet->unlocked_balance_per_subaddress(req.account_index, asset, req.strict);
         }
-        for (uint32_t i : address_indices)
+        tools::wallet2::transfers_iterator_container transfers = m_wallet->get_specific_transfers(asset);
+        for (const auto& p : balance_per_subaddress_per_account)
         {
-          wallet_rpc::COMMAND_RPC_GET_BALANCE::per_subaddress_info info;
-          info.account_index = account_index;
-          info.address_index = i;
-          cryptonote::subaddress_index index = {info.account_index, info.address_index};
-          info.address = m_wallet->get_subaddress_as_str(index);
-          info.balance = balance_per_subaddress[i];
-          info.unlocked_balance = unlocked_balance_per_subaddress[i].first;
-          info.blocks_to_unlock = unlocked_balance_per_subaddress[i].second.first;
-          info.time_to_unlock = unlocked_balance_per_subaddress[i].second.second;
-          info.label = m_wallet->get_subaddress_label(index);
-          info.num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&](const tools::wallet2::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == index; });
-          res.per_subaddress.emplace_back(std::move(info));
+          uint32_t account_index = p.first;
+          std::map<uint32_t, uint64_t> balance_per_subaddress = p.second;
+          std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = unlocked_balance_per_subaddress_per_account[account_index];
+          std::set<uint32_t> address_indices;
+          if (!req.all_accounts && !req.address_indices.empty())
+          {
+            address_indices = req.address_indices;
+          }
+          else
+          {
+            for (const auto& i : balance_per_subaddress)
+              address_indices.insert(i.first);
+          }
+          for (uint32_t i : address_indices)
+          {
+            wallet_rpc::COMMAND_RPC_GET_BALANCE::per_subaddress_info info;
+            info.account_index = account_index;
+            info.address_index = i;
+            cryptonote::subaddress_index index = {info.account_index, info.address_index};
+            info.address = m_wallet->get_subaddress_as_str(index);
+            info.balance = balance_per_subaddress[i];
+            info.unlocked_balance = unlocked_balance_per_subaddress[i].first;
+            info.blocks_to_unlock = unlocked_balance_per_subaddress[i].second.first;
+            info.time_to_unlock = unlocked_balance_per_subaddress[i].second.second;
+            info.label = m_wallet->get_subaddress_label(index);
+            info.num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&](const auto& td) { return !td->m_spent && td->m_subaddr_index == index; });
+            balance_info.per_subaddress.emplace_back(std::move(info));
+          }
         }
+        balance_info.asset_type = asset;
+        res.balances.emplace_back(std::move(balance_info));
       }
     }
     catch (const std::exception& e)
@@ -866,8 +882,18 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool wallet_rpc_server::validate_transfer(const std::list<wallet_rpc::transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination, epee::json_rpc::error& er)
+  bool wallet_rpc_server::validate_transfer(const std::string& source_asset, const std::string& dest_asset, const std::list<wallet_rpc::transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination, epee::json_rpc::error& er)
   {
+    // verify that assets are valid
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source_asset) == offshore::ASSET_TYPES.end()) {
+      er.message = std::string("Invalid source asset specified: ") + source_asset; 
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), dest_asset) == offshore::ASSET_TYPES.end()) {
+      er.message = std::string("Invalid destination asset specified: ") + dest_asset; 
+      return false;
+    }
+
     crypto::hash8 integrated_payment_id = crypto::null_hash8;
     std::string extra_nonce;
     for (auto it = destinations.begin(); it != destinations.end(); it++)
@@ -900,6 +926,7 @@ namespace tools
       de.addr = info.address;
       de.is_subaddress = info.is_subaddress;
       de.amount = it->amount;
+      de.dest_asset_type = dest_asset;
       de.is_integrated = info.has_payment_id;
       dsts.push_back(de);
 
@@ -977,7 +1004,7 @@ namespace tools
   static uint64_t total_amount(const tools::wallet2::pending_tx &ptx)
   {
     uint64_t amount = 0;
-    for (const auto &dest: ptx.dests) amount += dest.amount;
+    for (const auto &dest: ptx.dests) amount += dest.is_collateral ? 0 : dest.amount;
     return amount;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -1004,7 +1031,7 @@ namespace tools
       tools::wallet_rpc::key_image_list key_image_list;
       bool all_are_txin_to_key = std::all_of(ptx.tx.vin.begin(), ptx.tx.vin.end(), [&](const cryptonote::txin_v& s_e) -> bool
       {
-        CHECKED_GET_SPECIFIC_VARIANT(s_e, const cryptonote::txin_to_key, in, false);
+        CHECKED_GET_SPECIFIC_VARIANT(s_e, const cryptonote::txin_haven_key, in, false);
         key_image_list.key_images.push_back(epee::string_tools::pod_to_hex(in.k_image));
         return true;
       });
@@ -1070,8 +1097,12 @@ namespace tools
 
     CHECK_MULTISIG_ENABLED();
 
+    // uniform the asset types
+    std::string source_asset = req.source_asset.empty() ? "XHV" : boost::algorithm::to_upper_copy(req.source_asset);
+    std::string destination_asset = req.destination_asset.empty() ? "XHV" : boost::algorithm::to_upper_copy(req.destination_asset);
+
     // validate the transfer requested and populate dsts & extra
-    if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
+    if (!validate_transfer(source_asset, destination_asset, req.destinations, req.payment_id, dsts, extra, true, er))
     {
       return false;
     }
@@ -1080,7 +1111,7 @@ namespace tools
     {
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
-      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, "XHV", mixin, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, source_asset, mixin, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
 
       if (ptx_vector.empty())
       {
@@ -1124,8 +1155,12 @@ namespace tools
 
     CHECK_MULTISIG_ENABLED();
 
-    // validate the transfer requested and populate dsts & extra; RPC_TRANSFER::request and RPC_TRANSFER_SPLIT::request are identical types.
-    if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
+    // uniform the asset types
+    std::string source_asset = req.source_asset.empty() ? "XHV" : boost::algorithm::to_upper_copy(req.source_asset);
+    std::string destination_asset = req.destination_asset.empty() ? "XHV" : boost::algorithm::to_upper_copy(req.destination_asset);
+
+    // validate the transfer requested and populate dsts & extra
+    if (!validate_transfer(source_asset, destination_asset, req.destinations, req.payment_id, dsts, extra, true, er))
     {
       return false;
     }
@@ -1135,7 +1170,7 @@ namespace tools
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
       LOG_PRINT_L2("on_transfer_split calling create_transactions_2");
-      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, "XHV", mixin, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, source_asset, mixin, req.unlock_time, priority, extra, req.account_index, req.subaddr_indices);
       LOG_PRINT_L2("on_transfer_split called create_transactions_2");
 
       if (ptx_vector.empty())
@@ -1565,7 +1600,7 @@ namespace tools
     destination.push_back(wallet_rpc::transfer_destination());
     destination.back().amount = 0;
     destination.back().address = req.address;
-    if (!validate_transfer(destination, req.payment_id, dsts, extra, true, er))
+    if (!validate_transfer("XHV", "XHV", destination, req.payment_id, dsts, extra, true, er))
     {
       return false;
     }
@@ -1632,7 +1667,7 @@ namespace tools
     destination.push_back(wallet_rpc::transfer_destination());
     destination.back().amount = 0;
     destination.back().address = req.address;
-    if (!validate_transfer(destination, req.payment_id, dsts, extra, true, er))
+    if (!validate_transfer("XHV", "XHV", destination, req.payment_id, dsts, extra, true, er))
     {
       return false;
     }

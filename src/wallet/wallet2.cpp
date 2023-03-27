@@ -6621,7 +6621,11 @@ void wallet2::rescan_blockchain(bool hard, bool refresh, bool keep_key_images)
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_transfer_unlocked(const transfer_details& td)
 {
-  return is_transfer_unlocked(td.m_tx.unlock_time, td.m_block_height);
+  if (td.m_tx.version >= POU_TRANSACTION_VERSION) {
+    return is_transfer_unlocked(td.m_tx.get_unlock_time(td.m_internal_output_index), td.m_block_height);
+  } else {
+    return is_transfer_unlocked(td.m_tx.unlock_time, td.m_block_height);
+  }
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height)
@@ -9122,6 +9126,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         size_t i = base + n;
         if ((use_global_outs ? req.outputs[i].index : daemon_resp.outs[i].output_id) == td.m_global_output_index)
           if (daemon_resp.outs[i].key == td.get_public_key())
+            if (daemon_resp.outs[i].unlocked)
               real_out_found = true;
       }
       THROW_WALLET_EXCEPTION_IF(!real_out_found, error::wallet_internal_error,
