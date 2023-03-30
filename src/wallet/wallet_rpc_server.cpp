@@ -351,6 +351,7 @@ namespace tools
     entry.height = pd.m_block_height;
     entry.timestamp = pd.m_timestamp;
     entry.amount = pd.m_amount;
+    entry.asset_type = pd.m_asset_type;
     entry.amounts = pd.m_amounts;
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = !m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
@@ -376,6 +377,7 @@ namespace tools
     entry.fee = pd.m_amount_in - pd.m_amount_out;
     uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
     entry.amount = pd.m_amount_in - change - entry.fee;
+    entry.asset_type = pd.m_source_asset;
     entry.note = m_wallet->get_tx_note(txid);
 
     for (const auto &d: pd.m_dests) {
@@ -408,6 +410,7 @@ namespace tools
     entry.unlock_time = pd.m_tx.unlock_time;
     entry.locked = true;
     entry.note = m_wallet->get_tx_note(txid);
+    entry.asset_type = pd.m_source_asset;
 
     for (const auto &d: pd.m_dests) {
       entry.destinations.push_back(wallet_rpc::transfer_destination());
@@ -434,6 +437,7 @@ namespace tools
     entry.height = 0;
     entry.timestamp = pd.m_timestamp;
     entry.amount = pd.m_amount;
+    entry.asset_type = pd.m_asset_type;
     entry.amounts = pd.m_amounts;
     entry.unlock_time = pd.m_unlock_time;
     entry.locked = true;
@@ -1905,22 +1909,22 @@ namespace tools
       return false;
     }
 
-      if(sizeof(payment_id) == payment_id_blob.size())
-      {
-        payment_id = *reinterpret_cast<const crypto::hash*>(payment_id_blob.data());
-      }
-      else if(sizeof(payment_id8) == payment_id_blob.size())
-      {
-        payment_id8 = *reinterpret_cast<const crypto::hash8*>(payment_id_blob.data());
-        memcpy(payment_id.data, payment_id8.data, 8);
-        memset(payment_id.data + 8, 0, 24);
-      }
-      else
-      {
-        er.code = WALLET_RPC_ERROR_CODE_WRONG_PAYMENT_ID;
-        er.message = "Payment ID has invalid size: " + req.payment_id;
-        return false;
-      }
+    if(sizeof(payment_id) == payment_id_blob.size())
+    {
+      payment_id = *reinterpret_cast<const crypto::hash*>(payment_id_blob.data());
+    }
+    else if(sizeof(payment_id8) == payment_id_blob.size())
+    {
+      payment_id8 = *reinterpret_cast<const crypto::hash8*>(payment_id_blob.data());
+      memcpy(payment_id.data, payment_id8.data, 8);
+      memset(payment_id.data + 8, 0, 24);
+    }
+    else
+    {
+      er.code = WALLET_RPC_ERROR_CODE_WRONG_PAYMENT_ID;
+      er.message = "Payment ID has invalid size: " + req.payment_id;
+      return false;
+    }
 
     res.payments.clear();
     std::list<wallet2::payment_details> payment_list;
@@ -1928,14 +1932,15 @@ namespace tools
     for (auto & payment : payment_list)
     {
       wallet_rpc::payment_details rpc_payment;
-      rpc_payment.payment_id   = req.payment_id;
-      rpc_payment.tx_hash      = epee::string_tools::pod_to_hex(payment.m_tx_hash);
-      rpc_payment.amount       = payment.m_amount;
-      rpc_payment.block_height = payment.m_block_height;
-      rpc_payment.unlock_time  = payment.m_unlock_time;
-      rpc_payment.locked       = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
+      rpc_payment.payment_id    = req.payment_id;
+      rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.m_tx_hash);
+      rpc_payment.amount        = payment.m_amount;
+      rpc_payment.asset_type    = payment.m_asset_type;
+      rpc_payment.block_height  = payment.m_block_height;
+      rpc_payment.unlock_time   = payment.m_unlock_time;
+      rpc_payment.locked        = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
       rpc_payment.subaddr_index = payment.m_subaddr_index;
-      rpc_payment.address      = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
+      rpc_payment.address       = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
       res.payments.push_back(rpc_payment);
     }
 
@@ -1956,14 +1961,15 @@ namespace tools
       for (auto & payment : payment_list)
       {
         wallet_rpc::payment_details rpc_payment;
-        rpc_payment.payment_id   = epee::string_tools::pod_to_hex(payment.first);
-        rpc_payment.tx_hash      = epee::string_tools::pod_to_hex(payment.second.m_tx_hash);
-        rpc_payment.amount       = payment.second.m_amount;
-        rpc_payment.block_height = payment.second.m_block_height;
-        rpc_payment.unlock_time  = payment.second.m_unlock_time;
+        rpc_payment.payment_id    = epee::string_tools::pod_to_hex(payment.first);
+        rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.second.m_tx_hash);
+        rpc_payment.amount        = payment.second.m_amount;
+        rpc_payment.asset_type    = payment.second.m_asset_type;
+        rpc_payment.block_height  = payment.second.m_block_height;
+        rpc_payment.unlock_time   = payment.second.m_unlock_time;
         rpc_payment.subaddr_index = payment.second.m_subaddr_index;
-        rpc_payment.address      = m_wallet->get_subaddress_as_str(payment.second.m_subaddr_index);
-        rpc_payment.locked       = !m_wallet->is_transfer_unlocked(payment.second.m_unlock_time, payment.second.m_block_height);
+        rpc_payment.address       = m_wallet->get_subaddress_as_str(payment.second.m_subaddr_index);
+        rpc_payment.locked        = !m_wallet->is_transfer_unlocked(payment.second.m_unlock_time, payment.second.m_block_height);
         res.payments.push_back(std::move(rpc_payment));
       }
 
@@ -2011,14 +2017,15 @@ namespace tools
       for (auto & payment : payment_list)
       {
         wallet_rpc::payment_details rpc_payment;
-        rpc_payment.payment_id   = payment_id_str;
-        rpc_payment.tx_hash      = epee::string_tools::pod_to_hex(payment.m_tx_hash);
-        rpc_payment.amount       = payment.m_amount;
-        rpc_payment.block_height = payment.m_block_height;
-        rpc_payment.unlock_time  = payment.m_unlock_time;
+        rpc_payment.payment_id    = payment_id_str;
+        rpc_payment.tx_hash       = epee::string_tools::pod_to_hex(payment.m_tx_hash);
+        rpc_payment.amount        = payment.m_amount;
+        rpc_payment.asset_type    = payment.m_asset_type;
+        rpc_payment.block_height  = payment.m_block_height;
+        rpc_payment.unlock_time   = payment.m_unlock_time;
         rpc_payment.subaddr_index = payment.m_subaddr_index;
-        rpc_payment.address      = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
-        rpc_payment.locked       = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
+        rpc_payment.address       = m_wallet->get_subaddress_as_str(payment.m_subaddr_index);
+        rpc_payment.locked        = !m_wallet->is_transfer_unlocked(payment.m_unlock_time, payment.m_block_height);
         res.payments.push_back(std::move(rpc_payment));
       }
     }
@@ -2059,16 +2066,17 @@ namespace tools
         if (req.account_index != td.m_subaddr_index.major || (!req.subaddr_indices.empty() && req.subaddr_indices.count(td.m_subaddr_index.minor) == 0))
           continue;
         wallet_rpc::transfer_details rpc_transfers;
-        rpc_transfers.amount       = td.amount();
-        rpc_transfers.spent        = td.m_spent;
-        rpc_transfers.global_index = td.m_global_output_index;
-        rpc_transfers.tx_hash      = epee::string_tools::pod_to_hex(td.m_txid);
+        rpc_transfers.amount        = td.amount();
+        rpc_transfers.asset_type    = td.asset_type;
+        rpc_transfers.spent         = td.m_spent;
+        rpc_transfers.global_index  = td.m_global_output_index;
+        rpc_transfers.tx_hash       = epee::string_tools::pod_to_hex(td.m_txid);
         rpc_transfers.subaddr_index = {td.m_subaddr_index.major, td.m_subaddr_index.minor};
-        rpc_transfers.key_image    = td.m_key_image_known ? epee::string_tools::pod_to_hex(td.m_key_image) : "";
-        rpc_transfers.pubkey       = epee::string_tools::pod_to_hex(td.get_public_key());
-        rpc_transfers.block_height = td.m_block_height;
-        rpc_transfers.frozen       = td.m_frozen;
-        rpc_transfers.unlocked     = m_wallet->is_transfer_unlocked(td);
+        rpc_transfers.key_image     = td.m_key_image_known ? epee::string_tools::pod_to_hex(td.m_key_image) : "";
+        rpc_transfers.pubkey        = epee::string_tools::pod_to_hex(td.get_public_key());
+        rpc_transfers.block_height  = td.m_block_height;
+        rpc_transfers.frozen        = td.m_frozen;
+        rpc_transfers.unlocked      = m_wallet->is_transfer_unlocked(td);
         res.transfers.push_back(rpc_transfers);
       }
     }
