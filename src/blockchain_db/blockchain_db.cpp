@@ -231,7 +231,15 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
   for (uint64_t i = 0; i < tx.vout.size(); ++i)
   {
     uint64_t unlock_time = 0;
-    if (tx.version >= POU_TRANSACTION_VERSION)
+    if (tx.version >= HAVEN_TYPES_TRANSACTION_VERSION)
+    {
+      bool ok = cryptonote::get_output_unlock_time(tx.vout[i], unlock_time);
+      if (!ok) {
+        LOG_ERROR("Unsupported input type, failed to get unlock_time, aborting transaction addition");
+        throw std::runtime_error("Unexpected input unlock_time, aborting");
+      }
+    }
+    else if (tx.version >= POU_TRANSACTION_VERSION)
     {
       unlock_time = tx.output_unlock_times[i];
     }

@@ -42,7 +42,7 @@
 #define CRYPTONOTE_MAX_TX_PER_BLOCK                     0x10000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
-#define CURRENT_TRANSACTION_VERSION                     7
+#define CURRENT_TRANSACTION_VERSION                     8
 #define OFFSHORE_TRANSACTION_VERSION                    3
 #define POU_TRANSACTION_VERSION                         6
 #define COLLATERAL_TRANSACTION_VERSION                  7
@@ -224,6 +224,8 @@
 #define HF_VERSION_BULLETPROOF_PLUS             21
 #define HF_VERSION_VIEW_TAGS                    21
 #define HF_VERSION_2021_SCALING                 21
+#define HF_VERSION_CONVERSION_FEES_IN_XHV       21
+#define HF_VERSION_SLIPPAGE                     21
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x13

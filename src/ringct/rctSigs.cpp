@@ -1249,7 +1249,7 @@ namespace rct {
         rv.ecdhInfo.resize(destinations.size());
 
         // initialize the maskSums array
-        if (rv.type == RCTTypeHaven3 && conversion_tx) {
+        if (rv.type >= RCTTypeHaven3 && conversion_tx) {
           rv.maskSums.resize(3);
           rv.maskSums[0] = zero();
           rv.maskSums[1] = zero();
@@ -1318,7 +1318,7 @@ namespace rct {
                         sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
                       }
 
-                      if (rv.type == RCTTypeHaven3) {
+                      if (rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus) {
                         // save the collateral output mask for offshore
                         if (tx_type == tt::OFFSHORE && outamounts_features.at(i).second.first) {
                           sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
@@ -1453,7 +1453,10 @@ namespace rct {
 
         // set the sum of input blinding factors
         if (conversion_tx) {
+          // HERE BE DRAGONS!!!
+          // NEAC: Why are we doing math here??? maskSums[0] = sumout
           sc_add(rv.maskSums[0].bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
+          // LAND AHOY!!!
         }
 
         // generate the commitments for collateral inputs
@@ -1618,7 +1621,8 @@ namespace rct {
     const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
     const std::vector<uint32_t>& collateral_indices,
-    const uint64_t amount_collateral
+    const uint64_t amount_collateral,
+    const uint64_t amount_slippage
   ){
 
     try
@@ -1632,11 +1636,15 @@ namespace rct {
       size_t max_non_bp_proofs = 0, offset = 0;
       using tt = cryptonote::transaction_type;
 
-      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
+      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
 
       const bool bulletproof = is_rct_bulletproof(rv.type);
-      CHECK_AND_ASSERT_MES(bulletproof, false, "Only bulletproofs supported for Haven2");
-      CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
+      const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
+      CHECK_AND_ASSERT_MES(bulletproof || bulletproof_plus, false, "Only bulletproofs supported for Haven2");
+      if (bulletproof_plus)
+        CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_plus_amounts(rv.p.bulletproofs_plus), false, "Mismatched sizes of outPk and bulletproofs_plus");
+      else if (bulletproof)
+        CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
       CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
       CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
       CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
@@ -1668,7 +1676,18 @@ namespace rct {
       for (size_t i=0; i<vout.size(); i++) {
 
         bool onshore_col_idx = false;
-        if (version >= HF_VERSION_USE_COLLATERAL) {
+        if (version >= HF_VERSION_SLIPPAGE) {
+          if (tx_type == tt::ONSHORE) {
+            bool is_collateral = false;
+            bool is_collateral_change = false;
+            bool ok = cryptonote::is_output_collateral(vout[i], is_collateral, is_collateral_change);
+            if (!ok) {
+              LOG_ERROR("Failed to get output collateral status");
+              return false;
+            }
+            onshore_col_idx = (is_collateral || is_collateral_change);
+          }
+        } else if (version >= HF_VERSION_USE_COLLATERAL) {
           // make sure onshore check is always first, it is segfault otherwise since col_indices are empty for transfers
           if (tx_type == tt::ONSHORE && (i == collateral_indices[0] || i == collateral_indices[1]))
             onshore_col_idx = true;
@@ -1735,7 +1754,7 @@ namespace rct {
       // This is only used when we need to process XHV fees on an xAsset conversion TX
       key sumE;
 
-      if (version >= HF_VERSION_BULLETPROOF_PLUS) {
+      if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         // HERE BE DRAGONS!!!
         // NEAC: Convert the fees for conversions to XHV
         if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
@@ -1754,6 +1773,17 @@ namespace rct {
         subKeys(sumC, sumC, txnOffshoreFeeKey);
       }
 
+      if (version >= HF_VERSION_SLIPPAGE) {
+        // Handle any slippage
+        key slippageKey = scalarmultH(d2h(amount_slippage));
+        if (tx_type == tt::OFFSHORE) {
+          subKeys(sumC, sumC, slippageKey);
+        } else if (tx_type == tt::ONSHORE) {
+          subKeys(sumC, sumC, slippageKey);
+          //subKeys(sumD, sumD, slippageKey);
+        }
+      }
+      
       // NEAC: attempt to only calculate forward
       // CALCULATE Zi
       if (tx_type == tt::OFFSHORE) {
@@ -1796,6 +1826,23 @@ namespace rct {
       // Validate TX amount burnt/mint for conversions
       if (strSource != strDest) {
 
+        if (version >= HF_VERSION_SLIPPAGE) {
+          // Subtract the slippage from the amount_burnt
+          amount_burnt -= amount_slippage;
+        }
+
+        key txnOffshoreFeeKeyInC = zerokey;
+        if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
+          if (tx_type == tt::ONSHORE) {
+            // Need to convert the offshore fee to xUSD and deduct from the sumC
+            boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
+            boost::multiprecision::uint128_t exchange_128 = std::max(pr.unused1, pr.xUSD);
+            fee_128 *= exchange_128;
+            fee_128 /= COIN;
+            txnOffshoreFeeKeyInC = scalarmultH(d2h((uint64_t)fee_128));
+          }
+        }
+        
         if ((version < HF_VERSION_USE_COLLATERAL) && (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET)) {
           // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
           // So we subtract that from amount_burnt and validate only the actual coversion amount because

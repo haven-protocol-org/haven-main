@@ -972,16 +972,35 @@ namespace cryptonote
           tx_info[n].tvc.pr = blocks_pr[0].second.pricing_record;
         }
 
+        const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain_storage.get_db().get_circulating_supply();
+
+        // Get the slippage
+        if (hf_version >= HF_VERSION_SLIPPAGE && tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
+          bool r = get_slippage(tx_info[n].tvc.m_type,
+                                tx_info[n].tvc.m_source_asset,
+                                tx_info[n].tvc.m_dest_asset,
+                                tx_info[n].tx->amount_burnt,
+                                tx_info[n].tvc.m_slippage,
+                                tx_info[n].tvc.pr,
+                                supply_amounts
+                                );
+          if (!r) {
+            MERROR_VER("Failed to obtain slippage");
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            continue;
+          }
+        }
+        
         // Get the collateral requirements
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_info[n].tvc.m_type == tt::OFFSHORE || tx_info[n].tvc.m_type == tt::ONSHORE)) {
-
-          const std::vector<std::pair<std::string, std::string>>& amounts = m_blockchain_storage.get_db().get_circulating_supply();
           bool r = get_collateral_requirements(
             tx_info[n].tvc.m_type, 
             tx_info[n].tx->amount_burnt,
             tx_info[n].tvc.m_collateral,
             tx_info[n].tvc.pr,
-            amounts
+            supply_amounts
           );
           if (!r) {
             MERROR_VER("Failed to obtain collateral requirements");
@@ -1085,7 +1104,7 @@ namespace cryptonote
           continue;
 
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven3 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeBulletproofPlus) {
-            if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tx->collateral_indices, tx_info[n].tvc.m_collateral))
+            if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tx->collateral_indices, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage))
             {
               // 2 tx that used reorged pricing reocord for callateral calculation.
               if (epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
