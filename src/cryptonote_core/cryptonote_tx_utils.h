@@ -109,11 +109,12 @@ namespace cryptonote
     bool is_subaddress;
     bool is_integrated;
     bool is_collateral;
+    bool is_collateral_change;
 
-    tx_destination_entry() : amount(0), dest_amount(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : amount(a), dest_amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), dest_asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), dest_asset_type("XHV") { }
+    tx_destination_entry() : amount(0), dest_amount(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral, bool is_collateral_change) : amount(a), dest_amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), is_collateral_change(is_collateral_change), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
 
     std::string address(network_type nettype, const crypto::hash &payment_id) const
     {
@@ -139,6 +140,7 @@ namespace cryptonote
       FIELD(is_subaddress)
       FIELD(is_integrated)
       FIELD(is_collateral)
+      FIELD(is_collateral_change)
     END_SERIALIZE()
   };
 

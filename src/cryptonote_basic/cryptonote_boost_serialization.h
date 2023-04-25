@@ -589,11 +589,14 @@ namespace boost
         }
         // Clone the output unlock time into the output itself
         out.unlock_time = x.output_unlock_times[i];
-        // Set the is_collateral flag
+        // Set the is_collateral and is_collateral_change flags
         out.is_collateral = false;
+        out.is_collateral_change = false;
         if (x.version >= COLLATERAL_TRANSACTION_VERSION && x.amount_burnt) {
-          if (std::find(x.collateral_indices.begin(), x.collateral_indices.end(), i) != x.collateral_indices.end()) {
+          if (x.collateral_indices[0] == i) {
             out.is_collateral = true;
+          } else if (x.collateral_indices[1] == i) {
+            out.is_collateral_change = true;
           }
         }
 
@@ -669,11 +672,14 @@ namespace boost
       }
       // Clone the output unlock time into the output itself
       out.unlock_time = (x.version >= POU_TRANSACTION_VERSION) ? x.output_unlock_times[i] : x.unlock_time;
-      // Set the is_collateral flag
+      // Set the is_collateral and is_collateral_change flags
       out.is_collateral = false;
+      out.is_collateral_change = false;
       if (x.version >= COLLATERAL_TRANSACTION_VERSION && x.amount_burnt) {
-        if (std::find(x.collateral_indices.begin(), x.collateral_indices.end(), i) != x.collateral_indices.end()) {
+        if (x.collateral_indices[0] == i) {
           out.is_collateral = true;
+        } else if (x.collateral_indices[1] == i) {
+          out.is_collateral_change = true;
         }
       }
 

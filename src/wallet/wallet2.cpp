@@ -9673,7 +9673,8 @@ void wallet2::transfer_selected_rct(
     change_dst_col.dest_asset_type = "XHV";
     change_dst_col.addr = get_subaddress({subaddr_account, 0});
     change_dst_col.is_subaddress = subaddr_account != 0;
-    change_dst_col.is_collateral = true;
+    change_dst_col.is_collateral = false;
+    change_dst_col.is_collateral_change = true;
     splitted_dsts.push_back(change_dst_col);
   }
 
@@ -10675,8 +10676,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   if (needed_col > 0) {
     LOG_PRINT_L2("transfer: adding collateral " << print_money(needed_col));
     bool is_collateral = true;
+    bool is_collateral_change = false;
     bool is_subaddress = subaddr_account != 0;
-    dsts.push_back(tx_destination_entry(needed_col, get_subaddress({subaddr_account, 0}), is_subaddress, is_collateral));
+    dsts.push_back(tx_destination_entry(needed_col, get_subaddress({subaddr_account, 0}), is_subaddress, is_collateral, is_collateral_change));
   }
 
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr = unlocked_balance_per_subaddress(subaddr_account, source_asset, false);

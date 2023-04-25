@@ -1178,7 +1178,7 @@ namespace rct {
       const vector<xmr_amount> &inamounts,
       const std::vector<size_t>& inamounts_col_indices,
       const vector<xmr_amount> &outamounts,
-      const std::map<size_t, std::pair<std::string, bool>>& outamounts_features,
+      const std::map<size_t, std::pair<std::string, std::pair<bool,bool>>>& outamounts_features,
       const xmr_amount txnFee,
       const xmr_amount txnOffshoreFee,
       const xmr_amount onshore_col_amount,
@@ -1320,12 +1320,12 @@ namespace rct {
 
                       if (rv.type == RCTTypeHaven3) {
                         // save the collateral output mask for offshore
-                        if (tx_type == tt::OFFSHORE && outamounts_features.at(i).second) {
+                        if (tx_type == tt::OFFSHORE && outamounts_features.at(i).second.first) {
                           sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
                         }
 
                         // save the actual col output(not change) mask for onshore
-                        if (use_onshore_col && outamounts_features.at(i).second && outamounts[i] == onshore_col_amount) {
+                        if (use_onshore_col && outamounts_features.at(i).second.first) {
                           rv.maskSums[2] = masks[i];
                         }
                       }
@@ -1386,7 +1386,7 @@ namespace rct {
               key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? std::min(pr.unused1, pr.xUSD) : pr.unused1)));
               sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
               sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
-            } else if (tx_type == tt::ONSHORE && outamounts_features.at(i).first == "XHV" && !outamounts_features.at(i).second) {
+            } else if (tx_type == tt::ONSHORE && outamounts_features.at(i).first == "XHV" && !outamounts_features.at(i).second.first && !outamounts_features.at(i).second.second) {
               key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
               sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
               sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
@@ -1403,7 +1403,7 @@ namespace rct {
             }
 
             // exclude the onshore collateral outs(actual + change)
-            if (use_onshore_col && outamounts_features.at(i).second) {
+            if (use_onshore_col && (outamounts_features.at(i).second.first || outamounts_features.at(i).second.second)) {
               sc_add(sumout_onshore_col.bytes, outSk_scaled.bytes, sumout_onshore_col.bytes);
             } else {
               sc_add(sumout.bytes, outSk_scaled.bytes, sumout.bytes);
@@ -1502,7 +1502,7 @@ namespace rct {
       const vector<xmr_amount> &inamounts,
       const std::vector<size_t>& inamounts_col_indices,
       const vector<xmr_amount> &outamounts,
-      const std::map<size_t, std::pair<std::string, bool>>& outamounts_features,
+      const std::map<size_t, std::pair<std::string, std::pair<bool,bool>>>& outamounts_features,
       const keyV &amount_keys,
       const xmr_amount txnFee,
       const xmr_amount txnOffshoreFee,

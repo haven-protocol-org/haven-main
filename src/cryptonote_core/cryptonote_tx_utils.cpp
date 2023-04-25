@@ -517,7 +517,7 @@ namespace cryptonote
     uint64_t amount_usd = 0;
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
-      if (dt.dest_asset_type == "XHV" && !dt.is_collateral) {
+      if (dt.dest_asset_type == "XHV" && !dt.is_collateral && !dt.is_collateral_change) {
         amount_usd += dt.amount;
       }
     }
@@ -1154,8 +1154,7 @@ namespace cryptonote
 
       // dont lock the change dests
       uint64_t u_time = tx.unlock_time;
-      if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE &&
-          dst_entr.is_collateral && dst_entr.amount != onshore_col_amount) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral_change) {
         u_time = 0;
       } else {
         if (dst_entr.dest_asset_type == source_asset) {
@@ -1164,14 +1163,14 @@ namespace cryptonote
       }
 
       tx_out out;
-      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, dst_entr.is_collateral_change, out_eph_public_key, use_view_tags, view_tag, out);
       
       tx.vout.push_back(out);
       output_index++;
-      summary_outs_money += dst_entr.is_collateral ? 0 : dst_entr.amount;
+      summary_outs_money += (dst_entr.is_collateral || dst_entr.is_collateral_change) ? 0 : dst_entr.amount;
 
       if (source_asset != dest_asset) {
-        if (dst_entr.dest_asset_type == dest_asset && !dst_entr.is_collateral) {
+        if (dst_entr.dest_asset_type == dest_asset && !dst_entr.is_collateral && !dst_entr.is_collateral_change) {
           tx.amount_minted += dst_entr.dest_amount;
           tx.amount_burnt += dst_entr.amount;
         }
@@ -1208,7 +1207,7 @@ namespace cryptonote
         if (src_entr.asset_type == dest_asset)
           col_in_money += src_entr.amount;
       for(const tx_destination_entry& dst_entr: destinations)
-        if (dst_entr.is_collateral)
+        if (dst_entr.is_collateral || dst_entr.is_collateral_change)
           col_out_money += dst_entr.amount;
 
       if((col_out_money != col_in_money) && tx_type == transaction_type::ONSHORE)
@@ -1306,7 +1305,7 @@ namespace cryptonote
       rct::keyV destinations;
       std::vector<uint64_t> inamounts, outamounts;
       std::vector<size_t> inamounts_col_indices;
-      std::map<size_t, std::pair<std::string, bool>> outamounts_features;
+      std::map<size_t, std::pair<std::string, std::pair<bool,bool>>> outamounts_features;
       std::vector<unsigned int> index;
       for (size_t i = 0; i < sources.size(); ++i)
       {
@@ -1342,14 +1341,15 @@ namespace cryptonote
           return false;
         }        
         bool is_collateral = false;
-        ok = cryptonote::is_output_collateral(tx.vout[i], is_collateral);
+        bool is_collateral_change = false;
+        ok = cryptonote::is_output_collateral(tx.vout[i], is_collateral, is_collateral_change);
         if (!ok) {
           LOG_ERROR("failed to get is_collateral for tx.vout[" << i << "]");
           return false;
         }        
         destinations.push_back(rct::pk2rct(output_public_key));
         outamounts.push_back(tx.vout[i].amount);
-        outamounts_features[i] = std::pair<std::string, bool>(output_asset_type,is_collateral);
+        outamounts_features[i] = std::pair<std::string, std::pair<bool, bool>>(output_asset_type,{is_collateral,is_collateral_change});
         amount_out += tx.vout[i].amount;
       }
 
