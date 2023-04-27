@@ -1578,7 +1578,7 @@ namespace cryptonote
 
       // HERE BE DRAGONS!!!
       // NEAC: Convert the fees for conversions to XHV
-      if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+      if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
 
         // New Haven TXs only from BP+ - convert fees to XHV
         switch(tx_type) {

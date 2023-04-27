@@ -224,7 +224,7 @@
 #define HF_VERSION_BULLETPROOF_PLUS             21
 #define HF_VERSION_VIEW_TAGS                    21
 #define HF_VERSION_2021_SCALING                 21
-#define HF_VERSION_CONVERSION_FEES_IN_XHV       21
+#define HF_VERSION_CONVERSION_FEES_IN_XHV       20
 #define HF_VERSION_SLIPPAGE                     21
 
 #define STAGENET_VERSION                        0x0e

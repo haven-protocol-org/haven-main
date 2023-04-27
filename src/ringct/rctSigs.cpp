@@ -1763,9 +1763,48 @@ namespace rct {
         } else if (tx_type == tt::ONSHORE) {
           // Onshores have fees in XHV = D colour
           subKeys(sumD, sumD, txnOffshoreFeeKey);
-        } else if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
-          // xAsset conversion have fees in XHV = E colour
-          subKeys(sumE, sumE, txnOffshoreFeeKey);
+        } else if (tx_type == tt::XUSD_TO_XASSET) {
+
+          // Verify the amount of the conversion fee, starting with amount_burnt
+          boost::multiprecision::uint128_t fee_128 = amount_burnt;
+          fee_128 *= 3;
+          fee_128 /= 200; // This is the correct fee in xUSD
+          boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
+          boost::multiprecision::uint128_t exchange_128 = std::max(pr.unused1, pr.xUSD);
+          conversion_fee_128 *= COIN;
+          conversion_fee_128 /= exchange_128;
+          if (conversion_fee_128 != rv.txnOffshoreFee) {
+            LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
+            return false;
+          }
+
+          // Deduct the fee from our C terms
+          key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
+          subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
+          
+        } else if (tx_type == tt::XASSET_TO_XUSD) {
+
+          // Verify the amount of the conversion fee, starting with amount_burnt
+          boost::multiprecision::uint128_t fee_128 = amount_burnt;
+          fee_128 *= 3;
+          fee_128 /= 200; // This is the correct fee in xUSD
+          boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
+          // First, convert from xAsset -> xUSD
+          boost::multiprecision::uint128_t exchange_128 = pr[strSource];
+          conversion_fee_128 *= COIN;
+          conversion_fee_128 /= exchange_128;
+          // Now convert from xUSD -> XHV
+          exchange_128 = std::max(pr.unused1, pr.xUSD);
+          conversion_fee_128 *= COIN;
+          conversion_fee_128 /= exchange_128;
+          if (conversion_fee_128 != rv.txnOffshoreFee) {
+            LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
+            return false;
+          }
+
+          // Deduct the fee from our C terms
+          key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
+          subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
         }
         // LAND AHOY!!!
       } else {
@@ -1840,6 +1879,9 @@ namespace rct {
             fee_128 *= exchange_128;
             fee_128 /= COIN;
             txnOffshoreFeeKeyInC = scalarmultH(d2h((uint64_t)fee_128));
+
+            // To verify the amount_burnt amount, we need to deduct the conversion fee in C, which isn't done prior (except for offshore) from our C summand
+            subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
           }
         }
         
