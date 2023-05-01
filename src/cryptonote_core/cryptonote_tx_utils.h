@@ -171,6 +171,7 @@ namespace cryptonote
     const uint32_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
+    const uint64_t xhv_fee,
     const crypto::secret_key &tx_key,
     const std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct = false,
@@ -193,6 +194,7 @@ namespace cryptonote
     const uint32_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
+    const uint64_t xhv_fee,
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct = false,
@@ -243,7 +245,7 @@ namespace cryptonote
   // Get conversion rate for any conversion TX
   bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate);
   // Get a converted amount, given the conversion rate and source amount
-  bool get_converted_amount(const uint64_t& conversion_rate, uint64_t& source_amount, uint64_t& dest_amount);
+  bool get_converted_amount(const uint64_t& conversion_rate, const uint64_t& source_amount, uint64_t& dest_amount);
   // Get offshore amount in xAsset
   uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr);
   // Get offshore amount in XUSD, not XHV

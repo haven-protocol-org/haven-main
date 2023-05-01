@@ -4382,7 +4382,7 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   }
 
   // HF21+ conversion TXs use XHV for all fees
-  if (version < HF_VERSION_BULLETPROOF_PLUS) {
+  if (version < HF_VERSION_CONVERSION_FEES_IN_XHV) {
     // convert fee to asset type value
     if (source != "XHV" && source != dest) {
       if (pr.unused1 && pr.xUSD && pr[source]) {

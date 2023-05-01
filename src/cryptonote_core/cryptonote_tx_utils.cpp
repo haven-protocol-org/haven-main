@@ -914,6 +914,11 @@ namespace cryptonote
   }
   //---------------------------------------------------------------
   bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate) {
+    // Check for transfers
+    if (from_asset == to_asset) {
+      rate = COIN;
+      return true;
+    }
     if (from_asset == "XHV") {
       // XHV as source
       if (to_asset == "XUSD") {
@@ -941,7 +946,12 @@ namespace cryptonote
           LOG_ERROR("Missing exchange rate for conversion (" << from_asset << "," << to_asset << ") - aborting");
           return false;
         }
-        rate = std::max(pr.xUSD, pr.unused1);
+        boost::multiprecision::uint128_t rate_128 = COIN;
+        rate_128 *= COIN;
+        rate_128 /= std::max(pr.xUSD, pr.unused1);
+        rate = rate_128.convert_to<uint64_t>();
+        rate -= (rate % 100000000);
+        
       } else {
         // Scale directly to xAsset (xusd_to_xasset)
         if (!pr[to_asset]) {
@@ -973,7 +983,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool get_converted_amount(const uint64_t& conversion_rate, uint64_t& source_amount, uint64_t& dest_amount) {
+  bool get_converted_amount(const uint64_t& conversion_rate, const uint64_t& source_amount, uint64_t& dest_amount) {
     if (!conversion_rate || !source_amount) {
       LOG_ERROR("Invalid conversion rate or input amount for conversion (" << conversion_rate << "," << source_amount << ") - aborting");
       return false;
@@ -1076,6 +1086,7 @@ namespace cryptonote
     const uint32_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
+    const uint64_t xhv_fee,
     const crypto::secret_key &tx_key,
     const std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct,
@@ -1600,6 +1611,22 @@ namespace cryptonote
           break;
         }
       }
+      uint64_t conversion_rate = 0;
+      uint64_t tx_fee_check = 0;
+      bool ok = cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate);
+      if (!ok) {
+        LOG_ERROR("Failed to get conversion rate for fees - aborting");
+        return false;
+      }
+      ok = cryptonote::get_converted_amount(conversion_rate, xhv_fee, tx_fee_check);
+      if (!ok) {
+        LOG_ERROR("Failed to get converted TX fee amount - aborting");
+        return false;
+      }
+      if (tx_fee_check != fee) {
+        LOG_ERROR("Converted TX fee amount is incorrect: got " << print_money(tx_fee_check) << " XHV, got " << print_money(fee) << " XHV - aborting");
+        return false;
+      }
       // LAND AHOY!!!
       
       crypto::hash tx_prefix_hash;
@@ -1636,6 +1663,7 @@ namespace cryptonote
     const uint32_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
+    const uint64_t xhv_fee,
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct,
@@ -1676,6 +1704,7 @@ namespace cryptonote
         hf_version,
         current_height,
         onshore_col_amount,
+        xhv_fee,
         tx_key,
         additional_tx_keys,
         rct,
@@ -1698,7 +1727,7 @@ namespace cryptonote
      crypto::secret_key tx_key;
      std::vector<crypto::secret_key> additional_tx_keys;
      std::vector<tx_destination_entry> destinations_copy = destinations;
-     return construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, 1, 1, 0, tx_key, additional_tx_keys, false, { rct::RangeProofBorromean, 0});
+     return construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, 1, 1, 0, 0, tx_key, additional_tx_keys, false, { rct::RangeProofBorromean, 0});
   }
   //---------------------------------------------------------------
   bool generate_genesis_block(

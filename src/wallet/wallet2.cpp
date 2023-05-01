@@ -7157,7 +7157,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     rct::RCTConfig rct_config = sd.rct_config;
     crypto::secret_key tx_key;
     std::vector<crypto::secret_key> additional_tx_keys;
-    bool r = cryptonote::construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), m_account.get_keys(), m_subaddresses, sd.sources, sd.splitted_dsts, sd.change_dts.addr, sd.extra, ptx.tx, sd.unlock_time, 1, 1, 0, tx_key, additional_tx_keys, sd.use_rct, rct_config, sd.use_view_tags);
+    bool r = cryptonote::construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), m_account.get_keys(), m_subaddresses, sd.sources, sd.splitted_dsts, sd.change_dts.addr, sd.extra, ptx.tx, sd.unlock_time, 1, 1, 0, 0, tx_key, additional_tx_keys, sd.use_rct, rct_config, sd.use_view_tags);
     THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sd.sources, sd.splitted_dsts, sd.unlock_time, m_nettype);
     // we don't test tx size, because we don't know the current limit, due to not having a blockchain,
     // and it's a bit pointless to fail there anyway, since it'd be a (good) guess only. We sign anyway,
@@ -9336,7 +9336,7 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   crypto::secret_key tx_key;
   std::vector<crypto::secret_key> additional_tx_keys;
   LOG_PRINT_L2("constructing tx");
-  bool r = cryptonote::construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, 1, 1, 0, tx_key, additional_tx_keys, false, {}, use_view_tags);
+  bool r = cryptonote::construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, 1, 1, 0, 0, tx_key, additional_tx_keys, false, {}, use_view_tags);
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -9393,6 +9393,7 @@ void wallet2::transfer_selected_rct(
   std::unordered_set<crypto::public_key> &valid_public_keys_cache,
   uint64_t unlock_time,
   uint64_t fee,
+  uint64_t xhv_fee,
   const std::vector<uint8_t>& extra,
   cryptonote::transaction& tx,
   pending_tx &ptx,
@@ -9727,6 +9728,7 @@ void wallet2::transfer_selected_rct(
       hf_version,
       current_height,
       needed_col,
+      xhv_fee,
       tx_key,
       additional_tx_keys,
       true,
@@ -10518,9 +10520,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     pending_tx ptx;
     size_t weight;
     uint64_t needed_fee;
+    uint64_t needed_fee_xhv;
     std::vector<std::vector<tools::wallet2::get_outs_entry>> outs;
 
-    TX() : weight(0), needed_fee(0) {}
+    TX() : weight(0), needed_fee(0), needed_fee_xhv(0) {}
 
     /* Add an output to the transaction.
      * Returns True if the output was added, False if there are no more available output slots.
@@ -10559,7 +10562,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   };
   std::vector<TX> txes;
   bool adding_fee; // true if new outputs go towards fee, rather than destinations
-  uint64_t needed_fee, available_for_fee = 0;
+  uint64_t needed_fee, needed_fee_xhv, available_for_fee = 0;
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
   const bool use_rct = use_fork_rules(4, 0);
@@ -10598,8 +10601,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const uint32_t hf_version = get_current_hard_fork();
   const auto specific_transfers = get_specific_transfers(source_asset);
   offshore::pricing_record pricing_record;
+  uint64_t conversion_rate = COIN;
+  uint64_t fee_conversion_rate = COIN;
   if (source_asset != dest_asset) {
     THROW_WALLET_EXCEPTION_IF(!get_pricing_record(pricing_record, current_height), error::wallet_internal_error, "Failed to get pricing record");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate), error::wallet_internal_error, "Failed to get conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, "XHV", fee_conversion_rate), error::wallet_internal_error, "Failed to get fee conversion rate");
   }
 
   // Get the circulating supply data
@@ -10793,6 +10800,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   accumulated_change = 0;
   adding_fee = false;
   needed_fee = 0;
+  needed_fee_xhv = 0;
   std::vector<std::vector<tools::wallet2::get_outs_entry>> outs;
   std::vector<std::vector<tools::wallet2::get_outs_entry>> outs_collateral;
 
@@ -10808,6 +10816,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     // this is used to build a tx that's 1 or 2 inputs, and 2 outputs, which
     // will get us a known fee.
     uint64_t estimated_fee = estimate_fee(use_per_byte_fee, use_rct, 2, fake_outs_count, 2, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags, base_fee, fee_quantization_mask);
+
+    if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV && source_asset != dest_asset && source_asset != "XHV") {
+      uint64_t converted_fee = 0;
+      THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, estimated_fee, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (1)");
+      estimated_fee = converted_fee;
+    }
+      
     preferred_inputs = pick_preferred_rct_inputs(needed_money + estimated_fee, specific_transfers, subaddr_account, subaddr_indices);
     if (!preferred_inputs.empty())
     {
@@ -10988,6 +11003,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       const size_t num_outputs = get_num_outputs(tx.dsts, m_transfers, tx.selected_transfers);
       needed_fee = estimate_fee(use_per_byte_fee, use_rct ,tx.selected_transfers.size(), fake_outs_count, num_outputs, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags, base_fee, fee_quantization_mask);
+      needed_fee_xhv = needed_fee;
+      
+      if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV && source_asset != dest_asset && source_asset != "XHV") {
+        uint64_t converted_fee = 0;
+        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (2)");
+        needed_fee = converted_fee;
+      }
+      
       needed_fee += offshore_fee;
 
       auto try_carving_from_partial_payment = [&](uint64_t needed_fee, uint64_t available_for_fee)
@@ -11043,14 +11066,19 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           for (const auto i: col_ins)
             tx.selected_transfers.push_back(i);
         }
-        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, extra,
+        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee_xhv, extra,
           test_tx, test_ptx, rct_config, source_asset, dest_asset, pricing_record, use_view_tags);
       }
       else
         transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
-      needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
+      needed_fee = needed_fee_xhv = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
+      if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV && source_asset != dest_asset && source_asset != "XHV") {
+        uint64_t converted_fee = 0;
+        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (3)");
+        needed_fee = converted_fee;
+      }
       needed_fee += offshore_fee;
       available_for_fee = test_ptx.fee + test_ptx.change_dts.amount + (!test_ptx.dust_added_to_fee ? test_ptx.dust : 0);
       LOG_PRINT_L2("Made a " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(available_for_fee) << " available for fee (" <<
@@ -11070,14 +11098,19 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
           if (use_rct) {
-            transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, extra,
+            transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee_xhv, extra,
               test_tx, test_ptx, rct_config, source_asset, dest_asset, pricing_record, use_view_tags);
           }
           else
             transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
               detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
           txBlob = t_serializable_object_to_blob(test_ptx.tx);
-          needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
+          needed_fee =  needed_fee_xhv = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
+          if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV && source_asset != dest_asset && source_asset != "XHV") {
+            uint64_t converted_fee = 0;
+            THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (4)");
+            needed_fee = converted_fee;
+          }
           LOG_PRINT_L2("Made an attempt at a  final " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(test_ptx.fee) <<
             " fee  and " << print_money(test_ptx.change_dts.amount) << " change");
         }
@@ -11090,6 +11123,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         tx.weight = get_transaction_weight(test_tx, txBlob.size());
         tx.outs = outs;
         tx.needed_fee = test_ptx.fee;
+        tx.needed_fee_xhv = needed_fee_xhv;
         accumulated_fee += test_ptx.fee;
         accumulated_change += test_ptx.change_dts.amount;
         adding_fee = false;
@@ -11146,6 +11180,7 @@ skip_tx:
                             valid_public_keys_cache,
                             unlock_time,                /* CONST uint64_t unlock_time,  */
                             tx.needed_fee,              /* CONST uint64_t fee, */
+                            tx.needed_fee_xhv,          /* CONST uint64_t fee, */
                             extra,                      /* const std::vector<uint8_t>& extra, */
                             test_tx,                    /* OUT   cryptonote::transaction& tx, */
                             test_ptx,                   /* OUT   cryptonote::transaction& tx, */
@@ -11466,7 +11501,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " destinations and " <<
         tx.selected_transfers.size() << " outputs");
       if (use_rct)
-        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, extra,
+        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee, extra,
           test_tx, test_ptx, rct_config, "XHV", "XHV", offshore::pricing_record(), use_view_tags);
       else
         transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
@@ -11503,7 +11538,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
           dt.amount = dt_amount + dt_residue;
         }
         if (use_rct)
-          transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, extra, 
+          transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee, extra, 
             test_tx, test_ptx, rct_config, "XHV", "XHV", offshore::pricing_record(), use_view_tags);
         else
           transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
@@ -11542,7 +11577,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
     cryptonote::transaction test_tx;
     pending_tx test_ptx;
     if (use_rct) {
-      transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, outs_collateral, valid_public_keys_cache, unlock_time, tx.needed_fee, extra,
+      transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, outs_collateral, valid_public_keys_cache, unlock_time, tx.needed_fee, tx.needed_fee, extra,
         test_tx, test_ptx, rct_config, "XHV", "XHV", offshore::pricing_record(), use_view_tags);
     } else {
       transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, valid_public_keys_cache, unlock_time, tx.needed_fee, extra,

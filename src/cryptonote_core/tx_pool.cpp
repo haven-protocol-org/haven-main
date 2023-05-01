@@ -521,7 +521,13 @@ namespace cryptonote
     crypto::hash max_used_block_id = null_hash;
     uint64_t max_used_block_height = 0;
     cryptonote::txpool_tx_meta_t meta{};
-    strcpy(meta.fee_asset_type, source.c_str());
+    if ((version >= HF_VERSION_CONVERSION_FEES_IN_XHV) && (source != dest)) {
+      // All fees are in XHV
+      strcpy(meta.fee_asset_type, "XHV");
+    } else {
+      // Fees are in source asset type
+      strcpy(meta.fee_asset_type, source.c_str());
+    }
     bool ch_inp_res = check_tx_inputs([&tx]()->cryptonote::transaction&{ return tx; }, id, max_used_block_height, max_used_block_id, tvc, kept_by_block);
     if(!ch_inp_res)
     {

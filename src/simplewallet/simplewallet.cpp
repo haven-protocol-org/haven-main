@@ -7022,22 +7022,22 @@ bool simple_wallet::transfer_main(
           switch (tx_type)
           {
           case tt::OFFSHORE:
-            prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV (plus conversion fee %s XHV).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_offshore_fee);
+            prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV.\n")) % print_money(total_received) % print_money(total_sent);
             if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
               prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
             }
             break;
           case tt::ONSHORE:
-            prompt << boost::format(tr("Onshoring %s XHV by burning %s XUSD (plus conversion fee %s XHV).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_offshore_fee);
+            prompt << boost::format(tr("Onshoring %s XHV by burning %s XUSD.\n")) % print_money(total_received) % print_money(total_sent);
             if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
               prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
             }
             break;
           case tt::XUSD_TO_XASSET:
-            prompt << boost::format(tr("Converting %s XUSD to %s %s (plus conversion fee %s XUSD).\n")) % print_money(total_sent) % print_money(total_received) % dest_asset % print_money(total_offshore_fee);
+            prompt << boost::format(tr("Converting %s XUSD to %s %s.\n")) % print_money(total_sent) % print_money(total_received) % dest_asset;
             break;
           case tt::XASSET_TO_XUSD:
-            prompt << boost::format(tr("Converting %s %s to %s XUSD (plus conversion fee %s %s).\n")) % print_money(total_sent) % source_asset % print_money(total_received) % print_money(total_offshore_fee) % source_asset;
+            prompt << boost::format(tr("Converting %s %s to %s XUSD.\n")) % print_money(total_sent) % source_asset % print_money(total_received);
             break;
           default:
             break;
@@ -7051,7 +7051,15 @@ bool simple_wallet::transfer_main(
         }
         else
         {
-          prompt << boost::format(tr("The transaction fee is %s %s")) % print_money(total_tx_fee) % source_asset;
+          if (source_asset != dest_asset) {
+            if (m_wallet->use_fork_rules(HF_VERSION_CONVERSION_FEES_IN_XHV, 0)) {
+              prompt << boost::format(tr("Transaction fee is %s XHV.\nConversion fee is %s XHV.\n")) % print_money(total_tx_fee) % print_money(total_offshore_fee);
+            } else {
+              prompt << boost::format(tr("Transaction fee is %s XHV.\nConversion fee is %s %s.\n")) % print_money(total_tx_fee) % print_money(total_offshore_fee) % source_asset;
+            }
+          } else {
+            prompt << boost::format(tr("The transaction fee is %s %s.\n")) % print_money(total_tx_fee) % source_asset;
+          }
         }
         if (dust_in_fee != 0) prompt << boost::format(tr(", of which %s is dust from change")) % print_money(dust_in_fee);
         if (dust_not_in_fee != 0)  prompt << tr(".") << ENDL << boost::format(tr("A total of %s from dust change will be sent to dust address")) 
