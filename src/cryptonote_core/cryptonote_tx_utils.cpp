@@ -974,7 +974,7 @@ namespace cryptonote
       rate_128 /= pr.xUSD;
       if (to_asset == "XHV") {
         rate_128 *= COIN;
-        rate_128 /= pr[to_asset];
+        rate_128 /= std::max(pr.xUSD, pr.unused1);
       }
       // truncate and bail out
       rate = rate_128.convert_to<uint64_t>();
@@ -1611,15 +1611,17 @@ namespace cryptonote
           break;
         }
       }
-      uint64_t conversion_rate = 0;
+      uint64_t conversion_rate = COIN;
       uint64_t tx_fee_check = 0;
-      bool ok = cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate);
-      if (!ok) {
-        LOG_ERROR("Failed to get conversion rate for fees - aborting");
-        return false;
+      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
+
+        // Get a conversion rate
+        if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
+          LOG_ERROR("Failed to get conversion rate for fees - aborting");
+          return false;
+        }
       }
-      ok = cryptonote::get_converted_amount(conversion_rate, xhv_fee, tx_fee_check);
-      if (!ok) {
+      if (!cryptonote::get_converted_amount(conversion_rate, xhv_fee, tx_fee_check)) {
         LOG_ERROR("Failed to get converted TX fee amount - aborting");
         return false;
       }
