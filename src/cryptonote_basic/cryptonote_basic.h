@@ -622,8 +622,15 @@ namespace cryptonote
           } else if (vin_entry.asset_type == "XUSD") {
             is_offshore_tx = false;
             int xhv_outputs = std::count_if(vout.begin(), vout.end(), [](tx_out &foo_v) {
-              txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);
-              return out.asset_type == "XHV";
+              if (foo_v.target.type() == typeid(txout_haven_key)) {
+                txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);
+                return out.asset_type == "XHV";
+              } else if (foo_v.target.type() == typeid(txout_haven_tagged_key)) {
+                txout_haven_tagged_key out = boost::get<txout_haven_tagged_key>(foo_v.target);
+                return out.asset_type == "XHV";
+              } else {
+                return false;
+              }
             });
             if (xhv_outputs) {
               is_onshore_tx = true;

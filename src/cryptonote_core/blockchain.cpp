@@ -5159,7 +5159,7 @@ leave:
         }
 
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.collateral_indices, collateral, slippage))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
         {
           // 2 tx that used reorged pricing record for collateral calculation.
           if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"

@@ -218,14 +218,15 @@
 #define HF_VERSION_USE_COLLATERAL               20
 
 // Post-v0.18-rebase
-#define HF_VERSION_MIN_MIXIN_15                 21
-#define HF_VERSION_EXACT_COINBASE               21
-#define HF_VERSION_DETERMINISTIC_UNLOCK_TIME    21
-#define HF_VERSION_BULLETPROOF_PLUS             21
-#define HF_VERSION_VIEW_TAGS                    21
-#define HF_VERSION_2021_SCALING                 21
-#define HF_VERSION_CONVERSION_FEES_IN_XHV       20
-#define HF_VERSION_SLIPPAGE                     21
+#define HF_VERSION_USE_HAVEN_TYPES              21
+#define HF_VERSION_CONVERSION_FEES_IN_XHV       21
+#define HF_VERSION_SLIPPAGE                     22
+#define HF_VERSION_MIN_MIXIN_15                 22
+#define HF_VERSION_EXACT_COINBASE               22
+#define HF_VERSION_DETERMINISTIC_UNLOCK_TIME    22
+#define HF_VERSION_BULLETPROOF_PLUS             22
+#define HF_VERSION_VIEW_TAGS                    22
+#define HF_VERSION_2021_SCALING                 22
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x13

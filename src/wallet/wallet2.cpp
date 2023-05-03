@@ -2531,12 +2531,12 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               if (m_multisig_rescan_info && m_multisig_rescan_info->front().size() >= m_transfers.size())
                 update_multisig_rescan_info(*m_multisig_rescan_k, *m_multisig_rescan_info, m_transfers.size() - 1);
             }
-	          LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
-	          if (0 != m_callback)
-              if (tx.version >= POU_TRANSACTION_VERSION)
-	              m_callback->on_money_received(height, txid, tx, td.m_amount, td.asset_type, 0, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.output_unlock_times[o]);
-              else
-	              m_callback->on_money_received(height, txid, tx, td.m_amount, td.asset_type, 0, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.unlock_time);
+            LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
+            if (0 != m_callback) {
+              uint64_t output_unlock_time = 0;
+              THROW_WALLET_EXCEPTION_IF(!cryptonote::get_output_unlock_time(tx.vout[o], output_unlock_time), error::wallet_internal_error, "Failed to get output_unlock_time for output idx " + o);
+              m_callback->on_money_received(height, txid, tx, td.m_amount, td.asset_type, 0, td.m_subaddr_index, spends_one_of_ours(tx), output_unlock_time);
+            }
           }
           total_received_1 += amount;
           notify = true;
@@ -2840,9 +2840,12 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     bool all_same = true;
     for (auto& i : tx_money_got_in_outs)
     {
-      uint64_t unlock_time = 0;
-      if ((tx.version >= POU_TRANSACTION_VERSION && source_asset != dest_asset) || miner_tx)
-        unlock_time = *std::max_element(tx.output_unlock_times.begin(), tx.output_unlock_times.end());
+      uint64_t max_unlock_time = 0;
+      for (size_t j=0; j<tx.vout.size(); j++) {
+        uint64_t output_unlock_time = 0;
+        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_output_unlock_time(tx.vout[j], output_unlock_time), error::wallet_internal_error, "Failed to get output unlock time for idx " + j);
+        max_unlock_time = (output_unlock_time > max_unlock_time) ? output_unlock_time : max_unlock_time;
+      }
 
       payment_details payment;
       payment.m_tx_hash      = txid;
@@ -2851,7 +2854,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
       payment.m_asset_type   = dest_asset;
       payment.m_amounts      = tx_amounts_individual_outs[i.first];
       payment.m_block_height = height;
-      payment.m_unlock_time  = unlock_time;
+      payment.m_unlock_time  = max_unlock_time;
       payment.m_timestamp    = ts;
       payment.m_coinbase     = miner_tx;
       payment.m_subaddr_index = i.first;

@@ -1620,7 +1620,6 @@ namespace rct {
     const std::vector<cryptonote::tx_out> &vout,
     const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
-    const std::vector<uint32_t>& collateral_indices,
     const uint64_t amount_collateral,
     const uint64_t amount_slippage
   ){
@@ -1633,9 +1632,9 @@ namespace rct {
       tools::threadpool::waiter waiter(tpool);
       std::deque<bool> results;
       std::vector<const Bulletproof*> proofs;
-      size_t max_non_bp_proofs = 0, offset = 0;
+      std::vector<uint32_t> collateral_indices = {0,0};
+      //size_t max_non_bp_proofs = 0, offset = 0;
       using tt = cryptonote::transaction_type;
-
       CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
 
       const bool bulletproof = is_rct_bulletproof(rv.type);
@@ -1657,9 +1656,8 @@ namespace rct {
       if (strSource != strDest) {
         CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
-        if (rv.type == RCTTypeHaven3) {
+        if (rv.type >= RCTTypeHaven3) {
           CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
-          CHECK_AND_ASSERT_MES(collateral_indices.size() == 2, false, "collateral indices size is not 2");
           if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
             CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
         }
@@ -1675,32 +1673,25 @@ namespace rct {
       rct::keyV masks_D;
       for (size_t i=0; i<vout.size(); i++) {
 
-        bool onshore_col_idx = false;
-        if (version >= HF_VERSION_SLIPPAGE) {
-          if (tx_type == tt::ONSHORE) {
-            bool is_collateral = false;
-            bool is_collateral_change = false;
-            bool ok = cryptonote::is_output_collateral(vout[i], is_collateral, is_collateral_change);
-            if (!ok) {
-              LOG_ERROR("Failed to get output collateral status");
-              return false;
-            }
-            onshore_col_idx = (is_collateral || is_collateral_change);
-          }
-        } else if (version >= HF_VERSION_USE_COLLATERAL) {
-          // make sure onshore check is always first, it is segfault otherwise since col_indices are empty for transfers
-          if (tx_type == tt::ONSHORE && (i == collateral_indices[0] || i == collateral_indices[1]))
-            onshore_col_idx = true;
+        bool is_collateral = false;
+        bool is_collateral_change = false;
+        bool ok = cryptonote::is_output_collateral(vout[i], is_collateral, is_collateral_change);
+        if (!ok) {
+          LOG_ERROR("Failed to get output collateral status");
+          return false;
         }
+        if (is_collateral) collateral_indices[0] = i;
+        if (is_collateral_change) collateral_indices[1] = i;
+        
         std::string output_asset_type;
-        bool ok = cryptonote::get_output_asset_type(vout[i], output_asset_type);
+        ok = cryptonote::get_output_asset_type(vout[i], output_asset_type);
         if (!ok) {
           LOG_ERROR("Failed to get output type");
           return false;
         }
 
         // exclude the onshore collateral ouputs from proof-of-value calculation
-        if (!onshore_col_idx) {
+        if (tx_type != tt::ONSHORE || (!is_collateral && !is_collateral_change)) {
           if (output_asset_type == strSource) {
             masks_C.push_back(rv.outPk[i].mask);
           } else if (output_asset_type == strDest) {
@@ -1749,10 +1740,6 @@ namespace rct {
       // Subtract the sum of converted output commitments from the sum of consumed output commitments in D colour (if any are present)
       // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
       subKeys(sumD, zerokey, sumOutpks_D);
-
-      // E COLOUR
-      // This is only used when we need to process XHV fees on an xAsset conversion TX
-      key sumE;
 
       if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         // HERE BE DRAGONS!!!
@@ -1925,7 +1912,9 @@ namespace rct {
 
       // validate the collateral
       if ((version >= HF_VERSION_USE_COLLATERAL)) {
-        if (tx_type == tt::OFFSHORE) {
+
+        if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
+
           // get collateral commitment
           key C_col = rv.outPk[collateral_indices[0]].mask;
 
@@ -1934,27 +1923,18 @@ namespace rct {
           genC(pseudoC_col, rv.maskSums[2], amount_collateral);
 
           if (!equalKeys(pseudoC_col, C_col)) {
-            LOG_ERROR("Offshore collateral verification failed.");
-            return false;
-          }
-        }
-
-        if (tx_type == tt::ONSHORE) {
-          // calculate needed commitment
-          key col_C;
-          genC(col_C, rv.maskSums[2], amount_collateral);
-          
-          // try to match with actual col ouput
-          if (!equalKeys(col_C, rv.outPk[collateral_indices[0]].mask)) {
-            LOG_PRINT_L1("Onshore collateral check failed.");
+            LOG_ERROR("Collateral commitment verification failed.");
             return false;
           }
 
-          // check inputs == outputs
-          key sumColOut = addKeys(rv.outPk[collateral_indices[0]].mask, rv.outPk[collateral_indices[1]].mask);
-          if (!equalKeys(sumColOut, sumColIns)) {
-            LOG_PRINT_L1("Onshore collateral inputs != outputs");
-            return false;
+          if (tx_type == tt::ONSHORE) {
+
+            // check collateral inputs == outputs
+            key sumColOut = addKeys(rv.outPk[collateral_indices[0]].mask, rv.outPk[collateral_indices[1]].mask);
+            if (!equalKeys(sumColOut, sumColIns)) {
+              LOG_PRINT_L1("Onshore collateral inputs != outputs");
+              return false;
+            }
           }
         }
       }

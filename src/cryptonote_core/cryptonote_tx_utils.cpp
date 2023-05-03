@@ -1108,7 +1108,7 @@ namespace cryptonote
     amount_keys.clear();
 
     // set version and unlock time
-    if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+    if (hf_version >= HF_VERSION_USE_HAVEN_TYPES) {
       tx.version = HAVEN_TYPES_TRANSACTION_VERSION;
     } else if (hf_version >= HF_VERSION_USE_COLLATERAL) {
       tx.version = COLLATERAL_TRANSACTION_VERSION;
