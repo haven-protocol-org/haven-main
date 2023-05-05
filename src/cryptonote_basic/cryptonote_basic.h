@@ -753,6 +753,18 @@ namespace cryptonote
 
     uint64_t get_unlock_time(size_t out_index) const
     {
+      if (version >= HAVEN_TYPES_TRANSACTION_VERSION) {
+        if (vout[out_index].target.type() == typeid(txout_haven_key)) {
+          txout_haven_key out = boost::get<txout_haven_key>(vout[out_index].target);
+          return out.unlock_time;
+        } else if (vout[out_index].target.type() == typeid(txout_haven_tagged_key)) {
+          txout_haven_tagged_key out = boost::get<txout_haven_tagged_key>(vout[out_index].target);
+          return out.unlock_time;
+        } else {
+          LOG_ERROR("Failed to get output unlock time of a v8+ transaction output");
+          return unlock_time;
+        }
+      }
       if (version >= POU_TRANSACTION_VERSION)
       {
         if (out_index >= output_unlock_times.size())

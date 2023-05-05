@@ -223,16 +223,19 @@ namespace boost
 
     // Only transactions prior to HAVEN_TYPES_TRANSACTION_VERSION are permitted to be anything other than txin_haven_key and txout_haven_key/txout_haven_tagged_key types, and thus need translation
     if (x.version < HAVEN_TYPES_TRANSACTION_VERSION) {
-      serialize_old_tx_prefix(a, x, ver);
-    }
 
-    // txin_haven_key + txout_haven_key supported on the chain
-    a & x.vin;
-    a & x.vout;
-    a & x.extra;
-    a & x.pricing_record_height;
-    a & x.amount_burnt;
-    a & x.amount_minted;
+      serialize_old_tx_prefix(a, x, ver);
+
+    } else {
+
+      // txin_haven_key + txout_haven_key supported on the chain
+      a & x.vin;
+      a & x.vout;
+      a & x.extra;
+      a & x.pricing_record_height;
+      a & x.amount_burnt;
+      a & x.amount_minted;
+    }
   }
 
   template <class Archive>

@@ -1188,6 +1188,7 @@ namespace rct {
       ctkeyV &outSk,
       uint8_t tx_version,
       const offshore::pricing_record& pr,
+      const uint64_t& conversion_rate,
       const RCTConfig &rct_config,
       hw::device &hwdev
     ){
@@ -1387,17 +1388,27 @@ namespace rct {
               sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
               sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
             } else if (tx_type == tt::ONSHORE && outamounts_features.at(i).first == "XHV" && !outamounts_features.at(i).second.first && !outamounts_features.at(i).second.second) {
-              key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
-              sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
-              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              // HERE BE DRAGONS!!!
+              key inverse_rate = invert(d2h(conversion_rate));
+              sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+              //key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
+              //sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
+              //sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              // LAND AHOY!!!
             } else if (tx_type == tt::XUSD_TO_XASSET && outamounts_features.at(i).first != "XHV" && outamounts_features.at(i).first != "XUSD") {
               key inverse_rate_xasset = invert(d2h(pr[outamounts_features.at(i).first]));
               sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
               sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate_xasset.bytes);
             } else if (tx_type == tt::XASSET_TO_XUSD && outamounts_features.at(i).first == "XUSD") {
-              key rate_xasset = d2h(pr[in_asset_type]);
-              sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate_xasset.bytes);
-              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              // HERE BE DRAGONS!!!
+              key inverse_rate = invert(d2h(conversion_rate));
+              sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+              //key rate_xasset = d2h(pr[in_asset_type]);
+              //sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate_xasset.bytes);
+              //sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              // LAND AHOY!!!
             } else {
               outSk_scaled = outSk[i].mask;
             }
@@ -1513,6 +1524,7 @@ namespace rct {
       unsigned int mixin,
       uint8_t tx_version,
       const offshore::pricing_record& pr,
+      const uint64_t& conversion_rate,
       const RCTConfig &rct_config,
       hw::device &hwdev
     ){
@@ -1525,7 +1537,7 @@ namespace rct {
           mixRing[i].resize(mixin+1);
           index[i] = populateFromBlockchainSimple(mixRing[i], inPk[i], mixin);
         }
-        return genRctSimple(message, inSk, destinations, tx_type, in_asset_type, inamounts, inamounts_col_indices, outamounts, outamounts_features, txnFee, txnOffshoreFee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx_version, pr, rct_config, hwdev);
+        return genRctSimple(message, inSk, destinations, tx_type, in_asset_type, inamounts, inamounts_col_indices, outamounts, outamounts_features, txnFee, txnOffshoreFee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx_version, pr, conversion_rate, rct_config, hwdev);
     }
 
     //RingCT protocol
@@ -1613,6 +1625,8 @@ namespace rct {
   bool verRctSemanticsSimple2(
     const rctSig& rv, 
     const offshore::pricing_record& pr,
+    const uint64_t& conversion_rate,
+    const uint64_t& fee_conversion_rate,
     const cryptonote::transaction_type& tx_type,
     const std::string& strSource, 
     const std::string& strDest,
@@ -1757,9 +1771,9 @@ namespace rct {
           fee_128 *= 3;
           fee_128 /= 200; // This is the correct fee in xUSD
           boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
-          boost::multiprecision::uint128_t exchange_128 = std::max(pr.unused1, pr.xUSD);
-          conversion_fee_128 *= COIN;
-          conversion_fee_128 /= exchange_128;
+          boost::multiprecision::uint128_t exchange_128 = fee_conversion_rate;
+          conversion_fee_128 *= exchange_128;
+          conversion_fee_128 /= COIN;
           if (conversion_fee_128 != rv.txnOffshoreFee) {
             LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
             return false;
@@ -1771,6 +1785,19 @@ namespace rct {
           
         } else if (tx_type == tt::XASSET_TO_XUSD) {
 
+          // Verify the amount of the conversion fee, starting with amount_burnt
+          boost::multiprecision::uint128_t fee_128 = amount_burnt;
+          fee_128 *= 3;
+          fee_128 /= 200; // This is the correct fee in the source xAsset
+          boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
+          boost::multiprecision::uint128_t exchange_128 = fee_conversion_rate;
+          conversion_fee_128 *= exchange_128;
+          conversion_fee_128 /= COIN;
+          if (conversion_fee_128 != rv.txnOffshoreFee) {
+            LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
+            return false;
+          }
+          /*
           // Verify the amount of the conversion fee, starting with amount_burnt
           boost::multiprecision::uint128_t fee_128 = amount_burnt;
           fee_128 *= 3;
@@ -1788,7 +1815,7 @@ namespace rct {
             LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
             return false;
           }
-
+          */
           // Deduct the fee from our C terms
           key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
           subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
@@ -1806,7 +1833,10 @@ namespace rct {
           subKeys(sumC, sumC, slippageKey);
         } else if (tx_type == tt::ONSHORE) {
           subKeys(sumC, sumC, slippageKey);
-          //subKeys(sumD, sumD, slippageKey);
+        } else if (tx_type == tt::XUSD_TO_XASSET) {
+          subKeys(sumC, sumC, slippageKey);
+        } else if (tx_type == tt::XASSET_TO_XUSD) {
+          subKeys(sumC, sumC, slippageKey);
         }
       }
       
@@ -1818,10 +1848,17 @@ namespace rct {
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
       } else if (tx_type == tt::ONSHORE) {
-        key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
-        key yC_invert = invert(d2h(COIN));
-        key D_final = scalarmultKey(D_scaled, yC_invert);
-        Zi = addKeys(sumC, D_final);
+        if (version >= HF_VERSION_SLIPPAGE) {
+          key D_scaled = scalarmultKey(sumD, d2h(COIN));
+          key yC_invert = invert(d2h(conversion_rate));
+          key D_final = scalarmultKey(D_scaled, yC_invert);
+          Zi = addKeys(sumC, D_final);
+        } else {
+          key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
+          key yC_invert = invert(d2h(COIN));
+          key D_final = scalarmultKey(D_scaled, yC_invert);
+          Zi = addKeys(sumC, D_final);
+        }
       } else if (tx_type == tt::OFFSHORE_TRANSFER) {
         Zi = addKeys(sumC, sumD);
       } else if (tx_type == tt::XUSD_TO_XASSET) {
@@ -1830,10 +1867,17 @@ namespace rct {
         key D_final = scalarmultKey(D_scaled, yC_invert);
         Zi = addKeys(sumC, D_final);
       } else if (tx_type == tt::XASSET_TO_XUSD) {
-        key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
-        key yC_invert = invert(d2h(COIN));
-        key D_final = scalarmultKey(D_scaled, yC_invert);
-        Zi = addKeys(sumC, D_final);
+        if (version >= HF_VERSION_SLIPPAGE) {
+          key D_scaled = scalarmultKey(sumD, d2h(COIN));
+          key yC_invert = invert(d2h(conversion_rate));
+          key D_final = scalarmultKey(D_scaled, yC_invert);
+          Zi = addKeys(sumC, D_final);
+        } else {
+          key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
+          key yC_invert = invert(d2h(COIN));
+          key D_final = scalarmultKey(D_scaled, yC_invert);
+          Zi = addKeys(sumC, D_final);
+        }
       } else if (tx_type == tt::XASSET_TRANSFER) {
         Zi = addKeys(sumC, sumD);
       } else if (tx_type == tt::TRANSFER) {
@@ -1862,9 +1906,9 @@ namespace rct {
           if (tx_type == tt::ONSHORE) {
             // Need to convert the offshore fee to xUSD and deduct from the sumC
             boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
-            boost::multiprecision::uint128_t exchange_128 = std::max(pr.unused1, pr.xUSD);
-            fee_128 *= exchange_128;
-            fee_128 /= COIN;
+            boost::multiprecision::uint128_t exchange_128 = conversion_rate;
+            fee_128 *= COIN;
+            fee_128 /= exchange_128;
             txnOffshoreFeeKeyInC = scalarmultH(d2h((uint64_t)fee_128));
 
             // To verify the amount_burnt amount, we need to deduct the conversion fee in C, which isn't done prior (except for offshore) from our C summand
@@ -2468,8 +2512,21 @@ namespace rct {
       return decodeRctSimple(rv, sk, i, mask, hwdev);
     }
 
-  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version) {
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const uint64_t& conversion_rate, const std::string& source, const std::string& destination, const uint8_t version) {
 
+    if (version >= HF_VERSION_SLIPPAGE) {
+      boost::multiprecision::uint128_t burnt_128 = amount_burnt;
+      boost::multiprecision::uint128_t conversion_rate_128 = conversion_rate;
+      burnt_128 *= conversion_rate_128;
+      burnt_128 /= COIN;
+      boost::multiprecision::uint128_t minted_128 = amount_minted;
+      if (burnt_128 != minted_128) {
+        LOG_PRINT_L1("Minted/burnt verification failed");
+        return false;
+      }
+      return true;
+    }
+    
     if (source == "XHV" && destination == "XUSD") {
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
       boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;

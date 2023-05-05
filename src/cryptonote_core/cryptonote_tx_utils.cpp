@@ -492,7 +492,7 @@ namespace cryptonote
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
       if (dt.dest_asset_type == "XUSD" && !dt.is_collateral) {
-        amount += dt.amount;
+        amount += dt.amount + dt.slippage;
       }
     }
 
@@ -524,7 +524,7 @@ namespace cryptonote
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
       if (dt.dest_asset_type == "XHV" && !dt.is_collateral && !dt.is_collateral_change) {
-        amount_usd += dt.amount;
+        amount_usd += dt.amount + dt.slippage;
       }
     }
 
@@ -557,7 +557,7 @@ namespace cryptonote
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
       if (dt.dest_asset_type == "XUSD") {
-        amount_xasset += dt.amount;
+        amount_xasset += dt.amount + dt.slippage;
       }
     }
 
@@ -591,7 +591,7 @@ namespace cryptonote
       // All other destinations should have both pre and post converted amounts set so far except
       // the change destinations.
       if (dt.dest_asset_type != "XUSD") {
-        amount_usd += dt.amount;
+        amount_usd += dt.amount + dt.slippage;
       }
     }
 
@@ -971,7 +971,7 @@ namespace cryptonote
       // scale to xUSD
       boost::multiprecision::uint128_t rate_128 = COIN;
       rate_128 *= COIN;
-      rate_128 /= pr.xUSD;
+      rate_128 /= pr[from_asset];
       if (to_asset == "XHV") {
         rate_128 *= COIN;
         rate_128 /= std::max(pr.xUSD, pr.unused1);
@@ -1330,12 +1330,16 @@ namespace cryptonote
     uint64_t summary_outs_money = 0;
     //fill outputs
     size_t output_index = 0;
+    uint64_t summary_outs_slippage = 0;
     for(const tx_destination_entry& dst_entr: destinations)
     {
       CHECK_AND_ASSERT_MES(dst_entr.dest_amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.dest_amount);
       crypto::public_key out_eph_public_key;
       crypto::view_tag view_tag;
 
+      // Sum all the slippage across the outputs
+      summary_outs_slippage += dst_entr.slippage;
+      
       hwdev.generate_output_ephemeral_keys(tx.version,sender_account_keys, txkey_pub, tx_key,
                                            dst_entr, change_addr, output_index,
                                            need_additional_txkeys, additional_tx_keys,
@@ -1357,12 +1361,12 @@ namespace cryptonote
       
       tx.vout.push_back(out);
       output_index++;
-      summary_outs_money += (dst_entr.is_collateral || dst_entr.is_collateral_change) ? 0 : dst_entr.amount;
+      summary_outs_money += (dst_entr.is_collateral || dst_entr.is_collateral_change) ? 0 : dst_entr.amount + dst_entr.slippage;
 
       if (source_asset != dest_asset) {
         if (dst_entr.dest_asset_type == dest_asset && !dst_entr.is_collateral && !dst_entr.is_collateral_change) {
           tx.amount_minted += dst_entr.dest_amount;
-          tx.amount_burnt += dst_entr.amount;
+          tx.amount_burnt += dst_entr.amount + dst_entr.slippage;
         }
       }
     }
@@ -1589,53 +1593,50 @@ namespace cryptonote
 
       // HERE BE DRAGONS!!!
       // NEAC: Convert the fees for conversions to XHV
+      uint64_t conversion_rate = COIN;
       if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
 
-        // New Haven TXs only from BP+ - convert fees to XHV
-        switch(tx_type) {
-        case transaction_type::ONSHORE:
-          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
-          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
-          break;
-        case transaction_type::XUSD_TO_XASSET:
-          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
-          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
-          break;
-        case transaction_type::XASSET_TO_XUSD:
-          //fee = cryptonote::get_xusd_amount(fee, source_asset, pr, transaction_type::XASSET_TO_XUSD, hf_version);
-          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
-          offshore_fee = cryptonote::get_xusd_amount(offshore_fee, source_asset, pr, transaction_type::XASSET_TO_XUSD, hf_version);
-          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
-          break;
-        default:
-          break;
-        }
-      }
-      uint64_t conversion_rate = COIN;
-      uint64_t tx_fee_check = 0;
-      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
+        // Convert TX fee to XHV
+        uint64_t tx_fee_check = 0;
+        if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
 
-        // Get a conversion rate
-        if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
-          LOG_ERROR("Failed to get conversion rate for fees - aborting");
-          return false;
+          // Get a conversion rate
+          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
+            LOG_ERROR("Failed to get conversion rate for fees - aborting");
+            return false;
+          }
+          if (!cryptonote::get_converted_amount(conversion_rate, xhv_fee, tx_fee_check)) {
+            LOG_ERROR("Failed to get converted TX fee amount - aborting");
+            return false;
+          }
+          if (tx_fee_check != fee) {
+            LOG_ERROR("Converted TX fee amount is incorrect: got " << print_money(tx_fee_check) << " XHV, got " << print_money(fee) << " XHV - aborting");
+            return false;
+          }
+
+          // Convert offshore fee to XHV
+          uint64_t offshore_fee_xhv = 0;
+          if (!cryptonote::get_converted_amount(conversion_rate, offshore_fee, offshore_fee_xhv)) {
+            LOG_ERROR("Failed to get converted conversion fee amount - aborting");
+            return false;
+          }
+          offshore_fee = offshore_fee_xhv;
         }
-      }
-      if (!cryptonote::get_converted_amount(conversion_rate, xhv_fee, tx_fee_check)) {
-        LOG_ERROR("Failed to get converted TX fee amount - aborting");
-        return false;
-      }
-      if (tx_fee_check != fee) {
-        LOG_ERROR("Converted TX fee amount is incorrect: got " << print_money(tx_fee_check) << " XHV, got " << print_money(fee) << " XHV - aborting");
-        return false;
       }
       // LAND AHOY!!!
+
+      // NEAC: get conversion rate - this replaces the direct use of the Pricing Record to avoid invert() scaling
+      conversion_rate = COIN;
+      if (!cryptonote::get_conversion_rate(pr, source_asset, dest_asset, conversion_rate)) {
+        LOG_ERROR("Failed to get conversion rate for output - aborting");
+        return false;
+      }
       
       crypto::hash tx_prefix_hash;
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;
       if (use_simple_rct)
-        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, tx_type, source_asset, inamounts, inamounts_col_indices, outamounts, outamounts_features, fee, offshore_fee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx.version, pr, rct_config, hwdev);
+        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, tx_type, source_asset, inamounts, inamounts_col_indices, outamounts, outamounts_features, fee, offshore_fee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx.version, pr, conversion_rate, rct_config, hwdev);
       else
         tx.rct_signatures = rct::genRct(rct::hash2rct(tx_prefix_hash), inSk, destinations, outamounts, mixRing, amount_keys, sources[0].real_output, outSk, rct_config, hwdev); // same index assumption
       memwipe(inSk.data(), inSk.size() * sizeof(rct::ctkey));

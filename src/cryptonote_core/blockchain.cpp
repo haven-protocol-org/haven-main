@@ -5158,8 +5158,24 @@ leave:
           }
         }
 
+        // NEAC: Get conversion rate so we can avoid doing an invert() on a number with excessive precision
+        uint64_t conversion_rate = COIN;
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, dest, conversion_rate)) {
+          LOG_PRINT_L2("Failed to get conversion rate of tx " << tx.hash);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+
+        // Get the fee conversion rate used
+        uint64_t fee_conversion_rate = COIN;
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, "XHV", fee_conversion_rate)) {
+          LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+          
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
         {
           // 2 tx that used reorged pricing record for collateral calculation.
           if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"

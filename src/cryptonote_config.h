@@ -220,7 +220,7 @@
 // Post-v0.18-rebase
 #define HF_VERSION_USE_HAVEN_TYPES              21
 #define HF_VERSION_CONVERSION_FEES_IN_XHV       21
-#define HF_VERSION_SLIPPAGE                     22
+#define HF_VERSION_SLIPPAGE                     21
 #define HF_VERSION_MIN_MIXIN_15                 22
 #define HF_VERSION_EXACT_COINBASE               22
 #define HF_VERSION_DETERMINISTIC_UNLOCK_TIME    22

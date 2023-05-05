@@ -173,6 +173,7 @@ namespace cryptonote
   //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {
+    using tt = cryptonote::transaction_type;
     const bool kept_by_block = (tx_relay == relay_method::block);
 
     // this should already be called with that lock, but let's make it explicit for clarity
@@ -236,7 +237,7 @@ namespace cryptonote
     // get vars we need from tvc
     std::string source = tvc.m_source_asset;
     std::string dest = tvc.m_dest_asset;
-    transaction_type tx_type = tvc.m_type;
+    tt tx_type = tvc.m_type;
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
     if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
@@ -289,7 +290,7 @@ namespace cryptonote
       }
 
       // check whether we have a valid exchange rate (some values in the pr might be 0)
-      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
+      if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
         if (!tvc.pr.unused1) { // using 24 hr MA in unused1
           LOG_ERROR("error: empty MA exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
@@ -300,13 +301,13 @@ namespace cryptonote
           tvc.m_verifivation_failed = true;
           return false;
         }
-      } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+      } else if (tx_type == tt::XUSD_TO_XASSET) {
         if (!tvc.pr[dest]) {
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
         }
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+      } else if (tx_type == tt::XASSET_TO_XUSD) {
         if (!tvc.pr[source]) {
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
@@ -338,8 +339,24 @@ namespace cryptonote
         return false;
       }
 
+      // Get the conversion rate used
+      uint64_t conversion_rate = COIN;
+      if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate)) {
+        LOG_ERROR("error: unable to obtain conversion rate.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      
+      // Get the fee conversion rate used
+      uint64_t fee_conversion_rate = COIN;
+      if (!cryptonote::get_conversion_rate(tvc.pr, source, "XHV", fee_conversion_rate)) {
+        LOG_ERROR("error: unable to obtain fee conversion rate.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      
       // Check the amount burnt and minted
-      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt - slippage, tx.amount_minted, tvc.pr, source, dest, version)) {
+      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt - slippage, tx.amount_minted, tvc.pr, conversion_rate, source, dest, version)) {
         LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
         tvc.m_verifivation_failed = true;
         return false;
@@ -390,29 +407,40 @@ namespace cryptonote
       if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         
         // Flat 1.5% fee IN XHV!!!
-        if (tx_type == transaction_type::OFFSHORE) {
-          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt;
+        if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+
+          // Include the slippage to get back to the original amount used in the fee calculation
+          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt;//+slippage;
+
+          // Calculate 1.5%
           conversion_fee_amount_128 *= 3;
           conversion_fee_amount_128 /= 200;
+
+          // Convert to XHV for fee comparison
+          conversion_fee_amount_128 *= fee_conversion_rate;
+          conversion_fee_amount_128 /= COIN;
           conversion_fee_check = (uint64_t)conversion_fee_amount_128;
-        } else if (tx_type == transaction_type::ONSHORE) {
+        /*
+        } else if (tx_type == tt::ONSHORE) {
           boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_minted + cryptonote::get_xhv_amount(slippage, tvc.pr, tx_type, version);
           conversion_fee_amount_128 *= 3;
           conversion_fee_amount_128 /= 200;
           conversion_fee_check = (uint64_t)conversion_fee_amount_128;
-        } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+        } else if (tx_type == tt::XUSD_TO_XASSET) {
+          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt+slippage;
+          conversion_fee_amount_128 *= 3;
+          conversion_fee_amount_128 /= 200;
+          conversion_fee_amount_128 *= fee_conversion_rate;
+          conversion_fee_amount_128 /= COIN;
+          conversion_fee_check = (uint64_t)conversion_fee_amount_128.convert_to<uint64_t>();
+        } else if (tx_type == tt::XASSET_TO_XUSD) {
           boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt+slippage;
           conversion_fee_amount_128 *= 3;
           conversion_fee_amount_128 /= 200;
           conversion_fee_check = (uint64_t)conversion_fee_amount_128.convert_to<uint64_t>();
-          conversion_fee_check = cryptonote::get_xhv_amount(conversion_fee_check, tvc.pr, transaction_type::ONSHORE, version);
-        } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
-          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt+slippage;
-          conversion_fee_amount_128 *= 3;
-          conversion_fee_amount_128 /= 200;
-          conversion_fee_check = (uint64_t)conversion_fee_amount_128.convert_to<uint64_t>();
-          conversion_fee_check = cryptonote::get_xusd_amount(conversion_fee_check, source, tvc.pr, transaction_type::XASSET_TO_XUSD, version);
-          conversion_fee_check = cryptonote::get_xhv_amount(conversion_fee_check, tvc.pr, transaction_type::ONSHORE, version);
+          conversion_fee_check = cryptonote::get_xusd_amount(conversion_fee_check, source, tvc.pr, tt::XASSET_TO_XUSD, version);
+          conversion_fee_check = cryptonote::get_xhv_amount(conversion_fee_check, tvc.pr, tt::ONSHORE, version);
+        */
         } else {
           // Should never happen
           LOG_ERROR("incorrect TX type for conversion");
@@ -420,7 +448,7 @@ namespace cryptonote
           return false;
         }
           
-      } else if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
+      } else if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
         if (version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% fee
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
@@ -435,7 +463,7 @@ namespace cryptonote
           uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         }
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
+      } else if (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET) {
         if (version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% conversion fee for xAsset TXs after the collateral fork
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
@@ -905,8 +933,16 @@ namespace cryptonote
           return false;
         }
 
+        // Get the conversion rate used
+        uint64_t conversion_rate = COIN;
+        if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate)) {
+          LOG_ERROR("error: unable to obtain conversion rate.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      
         // Check the amount burnt and minted
-        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, conversion_rate, source, dest, version)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
           tvc.m_verifivation_failed = true;
           return false;
@@ -2508,6 +2544,15 @@ namespace cryptonote
             continue;
           }
 
+          // Get the slippage
+          uint64_t slippage = 0;
+          if (version >= HF_VERSION_SLIPPAGE && source != dest) {
+            if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, bl.pricing_record, supply_amounts)) {
+              LOG_PRINT_L2("error: failed to obtain slippage requirements for tx " << tx.hash);
+              continue;
+            }
+          }
+          
           // Get the collateral requirement for the tx
           uint64_t collateral = 0;
           if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
@@ -2517,8 +2562,22 @@ namespace cryptonote
             }
           }
 
+          // NEAC: Get conversion rate so we can avoid doing an invert() on a number with excessive precision
+          uint64_t conversion_rate = COIN;
+          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, dest, conversion_rate)) {
+            LOG_PRINT_L2("error: failed to get conversion rate - aborting");
+            continue;
+          }
+          
+          // Get the fee conversion rate used
+          uint64_t fee_conversion_rate = COIN;
+          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, "XHV", fee_conversion_rate)) {
+            LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
+            continue;
+          }
+          
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, collateral, 0))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, collateral, slippage))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

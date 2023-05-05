@@ -9412,6 +9412,7 @@ void wallet2::transfer_selected_rct(
 
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   uint64_t needed_money = fee;
+  uint64_t needed_slippage = 0;
   uint64_t needed_col = 0;
   uint8_t hf_version = get_current_hard_fork();
   uint64_t current_height = get_blockchain_current_height()-1;
@@ -9426,16 +9427,17 @@ void wallet2::transfer_selected_rct(
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
     // exclude the onshore collateral from needed money
     if (!using_onshore_collateral || !dt.is_collateral) {
-      needed_money += dt.amount;
+      needed_money += dt.amount + dt.slippage;
+      needed_slippage += dt.slippage;
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
-      THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_nettype);
+      THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount + dt.slippage, error::tx_sum_overflow, dsts, fee, m_nettype);
     }
   }
 
   // calculate total onshore collateral
   for(auto& dt: dsts) {
     if (dt.is_collateral) {
-      needed_col += dt.amount;
+      needed_col += dt.amount + dt.slippage;
     }
   }
 
@@ -10600,6 +10602,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   tt tx_type;
   THROW_WALLET_EXCEPTION_IF(!get_tx_type(source_asset, dest_asset, tx_type), error::wallet_internal_error, "invalid tx type");
   const bool need_collateral = use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE);
+  const bool need_slippage = use_fork_rules(HF_VERSION_SLIPPAGE, 0) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD);
   const uint64_t current_height = get_blockchain_current_height()-1;
   const uint32_t hf_version = get_current_hard_fork();
   const auto specific_transfers = get_specific_transfers(source_asset);
@@ -10620,11 +10623,45 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   // throw if total amount overflows uint64_t
   needed_money = 0;
   uint64_t needed_col = 0;
+  uint64_t needed_slippage = 0;
   for(auto& dt: dsts)
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
     THROW_WALLET_EXCEPTION_IF(source_asset != dest_asset && dt.amount % 100000000, error::wallet_internal_error, "Offshore/xAsset TX amounts permit at most 4 decimal places");
 
+    // Sanity check that we are actually doing a conversion
+    if (source_asset == dest_asset) {
+      
+      dt.dest_amount = dt.amount; // for regular transfers
+
+    } else {
+    
+      // Get the conversion rate
+      uint64_t conversion_rate = 0;
+      bool r = cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate);
+      THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain conversion rate for conversion TX");
+
+      // Remove any slippage pre-conversion
+      if (need_slippage) {
+        r = cryptonote::get_slippage(tx_type, source_asset, dest_asset, dt.amount, dt.slippage, pricing_record, circ_amounts);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain slippage for conversion TX");
+        dt.amount -= dt.slippage;
+        needed_slippage += dt.slippage;
+      }
+      
+      // Get the destination amount
+      r = cryptonote::get_converted_amount(conversion_rate, dt.amount, dt.dest_amount);
+      THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain destination amount for conversion TX");
+
+      // Calculate the collateral
+      if (need_collateral) {
+        uint64_t collateral_amount = 0;
+        r = cryptonote::get_collateral_requirements(tx_type, dt.amount + dt.slippage, collateral_amount, pricing_record, circ_amounts);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
+        needed_col += collateral_amount;
+      }
+    }
+    /*
     switch (tx_type)
     {
       case tt::OFFSHORE:
@@ -10667,9 +10704,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         dt.dest_amount = dt.amount; // for regular transfers
         break;
     }
-    needed_money += dt.amount;
-    LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
-    THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, 0, m_nettype);
+    */
+    needed_money += dt.amount + dt.slippage;
+    if (dt.slippage)
+      LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << " with " << print_money(dt.slippage) << " slippage, for a total of " << print_money (needed_money));
+    else
+      LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));      
+    THROW_WALLET_EXCEPTION_IF(needed_money < (dt.amount + dt.slippage), error::tx_sum_overflow, dsts, 0, m_nettype);
   }
 
   // throw if attempting a transaction with no money
@@ -10681,6 +10722,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     : (tx_type == tt::XUSD_TO_XASSET) ? cryptonote::get_xusd_to_xasset_fee(dsts, hf_version)
     : (tx_type == tt::XASSET_TO_XUSD) ? cryptonote::get_xasset_to_xusd_fee(dsts, hf_version)
     : 0;
+  
+  // Report any slippage being included
+  if (needed_slippage > 0) {
+    LOG_PRINT_L2("transfer: adding slippage " << print_money(needed_slippage));
+  }
   
   // Add collateral to the dsts after calculating the conversion fee.
   if (needed_col > 0) {

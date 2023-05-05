@@ -235,8 +235,8 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     {
       bool ok = cryptonote::get_output_unlock_time(tx.vout[i], unlock_time);
       if (!ok) {
-        LOG_ERROR("Unsupported input type, failed to get unlock_time, aborting transaction addition");
-        throw std::runtime_error("Unexpected input unlock_time, aborting");
+        LOG_ERROR("Unsupported output type, failed to get unlock_time, aborting transaction addition");
+        throw std::runtime_error("Unexpected output unlock_time, aborting");
       }
     }
     else if (tx.version >= POU_TRANSACTION_VERSION)
@@ -266,8 +266,8 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
         std::string output_asset_type;
         bool r = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);
         if (!r) {
-          LOG_ERROR("Unsupported input type, failed to get asset type, aborting transaction addition");
-          throw std::runtime_error("Unexpected input asset type, aborting");
+          LOG_ERROR("Unsupported output type, failed to get asset type, aborting transaction addition");
+          throw std::runtime_error("Unexpected output asset type, aborting");
         }
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time,
                                               tx.version > 1 ? ((output_asset_type == "XHV") ? &tx.rct_signatures.outPk[i].mask :
