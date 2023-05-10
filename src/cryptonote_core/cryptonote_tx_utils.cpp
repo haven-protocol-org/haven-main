@@ -179,6 +179,28 @@ namespace cryptonote
     out.target = tk;
     tx.vout.push_back(out);
 
+    /*
+    // Add the genesis amounts FOR TESTNET ONLY
+    if (nettype == cryptonote::TESTNET && height == 0 && already_generated_coins == 0) {
+
+      // First additional genesis amount
+      r = crypto::derive_public_key(derivation, 1, miner_address.m_spend_public_key, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", 1, "<< miner_address.m_spend_public_key << ")");
+      
+      txout_haven_key tk_miner;
+      tk_miner.asset_type = "XHV";
+      tk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+      tk_miner.is_collateral = false;
+      tk_miner.is_collateral_change = false;
+      tk_miner.key = out_eph_public_key;
+      
+      tx_out out_miner;
+      out_miner.amount = HAVEN_MAX_TX_VALUE_TESTNET;
+      out_miner.target = tk_miner;
+      tx.vout.push_back(out_miner);
+    }
+    */
+    
     // add governance wallet output for xhv
     cryptonote::address_parse_info governance_wallet_address;
     if (hard_fork_version >= 3) {
@@ -668,12 +690,6 @@ namespace cryptonote
       return true;
     }
 
-    // HERE BE DRAGONS!!!
-    // NEAC: For testing purposes
-    slippage = amount / 10;
-    return true;
-    // LAND AHOY!!!
-    
     // Process the circulating supply data
     std::map<std::string, uint128_t> map_amounts;
     uint128_t mcap_xassets = 0;
@@ -1591,7 +1607,6 @@ namespace cryptonote
       for (size_t i = 0; i < tx.vout.size(); ++i)
         tx.vout[i].amount = 0;
 
-      // HERE BE DRAGONS!!!
       // NEAC: Convert the fees for conversions to XHV
       uint64_t conversion_rate = COIN;
       if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
@@ -1623,7 +1638,6 @@ namespace cryptonote
           offshore_fee = offshore_fee_xhv;
         }
       }
-      // LAND AHOY!!!
 
       // NEAC: get conversion rate - this replaces the direct use of the Pricing Record to avoid invert() scaling
       conversion_rate = COIN;
@@ -1636,7 +1650,7 @@ namespace cryptonote
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;
       if (use_simple_rct)
-        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, tx_type, source_asset, inamounts, inamounts_col_indices, outamounts, outamounts_features, fee, offshore_fee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx.version, pr, conversion_rate, rct_config, hwdev);
+        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, tx_type, source_asset, inamounts, inamounts_col_indices, outamounts, outamounts_features, fee, offshore_fee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx.version, pr, conversion_rate, hf_version, rct_config, hwdev);
       else
         tx.rct_signatures = rct::genRct(rct::hash2rct(tx_prefix_hash), inSk, destinations, outamounts, mixRing, amount_keys, sources[0].real_output, outSk, rct_config, hwdev); // same index assumption
       memwipe(inSk.data(), inSk.size() * sizeof(rct::ctkey));

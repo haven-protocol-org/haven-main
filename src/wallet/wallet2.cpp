@@ -2390,7 +2390,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
         // the first one was already checked
         for (size_t i = 1; i < tx.vout.size(); ++i)
         {
-          tx_scan_info[i].asset_type = boost::get<txout_haven_key>(tx.vout[i].target).asset_type;
+          THROW_WALLET_EXCEPTION_IF(!cryptonote::get_output_asset_type(tx.vout[i], tx_scan_info[i].asset_type), error::wallet_internal_error, "failed to get output asset type for index " + i);
           check_acc_out_precomp_once(tx.vout[i], derivation, additional_derivations, i, is_out_data_ptr, tx_scan_info[i], output_found[i]);
         }
         // then scan all outputs from 0
@@ -2416,7 +2416,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     {
       for (size_t i = 0; i < tx.vout.size(); ++i)
       {
-        tx_scan_info[i].asset_type = boost::get<txout_haven_key>(tx.vout[i].target).asset_type;
+        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_output_asset_type(tx.vout[i], tx_scan_info[i].asset_type), error::wallet_internal_error, "failed to get output asset type for index " + i);
         check_acc_out_precomp_once(tx.vout[i], derivation, additional_derivations, i, is_out_data_ptr, tx_scan_info[i], output_found[i]);
         THROW_WALLET_EXCEPTION_IF(tx_scan_info[i].error, error::acc_outs_lookup_error, tx, tx_pub_key, m_account.get_keys());
         if (tx_scan_info[i].received)
@@ -2467,7 +2467,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             td.m_global_output_index = o_indices[o];
             td.m_tx = (const cryptonote::transaction_prefix&)tx;
             td.m_txid = txid;
-            td.asset_type = boost::get<txout_haven_key>(tx.vout[o].target).asset_type;
+            THROW_WALLET_EXCEPTION_IF(!cryptonote::get_output_asset_type(tx.vout[o], td.asset_type), error::wallet_internal_error, "Failed to get output asset type");
             td.m_key_image = tx_scan_info[o].ki;
             td.m_key_image_known = !m_watch_only && !m_multisig;
 
@@ -2581,7 +2581,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             td.m_tx = (const cryptonote::transaction_prefix&)tx;
             td.m_txid = txid;
             td.m_amount = amount;
-            td.asset_type = boost::get<txout_haven_key>(tx.vout[o].target).asset_type;
+            THROW_WALLET_EXCEPTION_IF(!cryptonote::get_output_asset_type(tx.vout[o], td.asset_type), error::wallet_internal_error, "Failed to get output asset type for index " + o);
             td.m_pk_index = pk_index - 1;
             td.m_subaddr_index = tx_scan_info[o].received->index;
 
@@ -3101,6 +3101,24 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
   THROW_WALLET_EXCEPTION_IF(blocks.size() != parsed_blocks.size(), error::wallet_internal_error, "size mismatch");
   THROW_WALLET_EXCEPTION_IF(!m_blockchain.is_in_bounds(current_index), error::out_of_hashchain_bounds_error);
 
+  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  //Force processing of genesis transaction
+  bool is_genesis = false;
+  if ((m_blockchain.size() == 1) && (start_height == 0)) {
+    cryptonote::block genesis;
+    generate_genesis(genesis);
+
+    if (m_blockchain[0] == get_block_hash(genesis)) {
+      LOG_PRINT_L2("Processing genesis transaction: " << string_tools::pod_to_hex(get_transaction_hash(genesis.miner_tx)));
+      is_genesis = true;
+      //std::vector<uint64_t> o_indices_genesis = {0}; //genesis transaction output
+      //process_new_transaction(get_transaction_hash(genesis.miner_tx), genesis.miner_tx, o_indices_genesis, 0, genesis.timestamp, true, false, false);
+    } else {
+      LOG_ERROR("Skip processing of genesis transaction, genesis block hash does not match: " << string_tools::pod_to_hex(get_block_hash(genesis)));
+    }
+  }
+  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  
   tools::threadpool& tpool = tools::threadpool::getInstanceForCompute();
   tools::threadpool::waiter waiter(tpool);
 
@@ -3116,8 +3134,11 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
         error::wallet_internal_error, "Mismatched parsed_blocks[i].txes.size() and parsed_blocks[i].block.tx_hashes.size()");
     if (should_skip_block(parsed_blocks[i].block, start_height + i))
     {
-      txidx += 1 + parsed_blocks[i].block.tx_hashes.size();
-      continue;
+      // Check it isn't genesis block being skipped
+      if (!is_genesis || i>0) {
+        txidx += 1 + parsed_blocks[i].block.tx_hashes.size();
+        continue;
+      }
     }
     if (m_refresh_type != RefreshNoCoinbase)
       tpool.submit(&waiter, [&, i, txidx](){ cache_tx_data(parsed_blocks[i].block.miner_tx, get_transaction_hash(parsed_blocks[i].block.miner_tx), tx_cache_data[txidx]); });
@@ -3195,8 +3216,11 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
   {
     if (should_skip_block(parsed_blocks[i].block, start_height + i))
     {
-      txidx += 1 + parsed_blocks[i].block.tx_hashes.size();
-      continue;
+      // Check it isn't genesis block being skipped
+      if (!is_genesis || i>0) {
+        txidx += 1 + parsed_blocks[i].block.tx_hashes.size();
+        continue;
+      }
     }
 
     if (m_refresh_type != RefreshType::RefreshNoCoinbase)
@@ -3260,6 +3284,11 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
     if(current_index >= m_blockchain.size())
     {
       process_new_blockchain_entry(bl, blocks[i], parsed_blocks[i], bl_id, current_index, tx_cache_data, tx_cache_data_offset, output_tracker_cache);
+      ++blocks_added;
+    }
+    else if(is_genesis && i==0)
+    {
+      process_new_transaction(get_transaction_hash(bl.miner_tx), bl.miner_tx, parsed_blocks[i].o_indices.indices[0].indices, parsed_blocks[i].asset_type_output_indices.indices[0].indices, current_index, bl.major_version, bl.timestamp, true, false, false, tx_cache_data[tx_cache_data_offset], output_tracker_cache);
       ++blocks_added;
     }
     else if(bl_id != m_blockchain[current_index])
@@ -10729,7 +10758,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   }
   
   // Add collateral to the dsts after calculating the conversion fee.
-  if (needed_col > 0) {
+  if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == tt::OFFSHORE && needed_col > 0) {
     LOG_PRINT_L2("transfer: adding collateral " << print_money(needed_col));
     bool is_collateral = true;
     bool is_collateral_change = false;
@@ -11109,9 +11138,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         tx.selected_transfers.size() << " inputs");
       if (use_rct) {
         // get the inputs for collateral and append it to selected_tranfers
-        if (tx_type == tt::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
+        if (tx_type == tt::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL && needed_col > 0) {
           std::vector<size_t> col_ins;
           THROW_WALLET_EXCEPTION_IF(!get_onshore_collateral_inputs(needed_col, col_ins), error::wallet_internal_error, "Failed to find sufficient inputs for onshore collateral");
+          LOG_PRINT_L2("transfer: adding collateral " << print_money(needed_col) << " XHV to onshore");
+          bool is_collateral = true;
+          bool is_collateral_change = false;
+          bool is_subaddress = subaddr_account != 0;
+          tx.dsts.push_back(tx_destination_entry(needed_col, get_subaddress({subaddr_account, 0}), is_subaddress, is_collateral, is_collateral_change));
           for (const auto i: col_ins)
             tx.selected_transfers.push_back(i);
         }
@@ -13807,8 +13841,8 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
       bool miner_tx = cryptonote::is_coinbase(spent_tx);
       for (const cryptonote::tx_out& out : spent_tx.vout)
       {
-        std::string asset_type = boost::get<txout_haven_key>(out.target).asset_type;
         tx_scan_info_t tx_scan_info;
+        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_output_asset_type(out, tx_scan_info.asset_type), error::wallet_internal_error, "failed to get output asset type");
         check_acc_out_precomp(out, derivation, additional_derivations, output_index, tx_scan_info);
         THROW_WALLET_EXCEPTION_IF(tx_scan_info.error, error::wallet_internal_error, "check_acc_out_precomp failed");
         if (tx_scan_info.received)
@@ -13818,9 +13852,9 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
             rct::key mask;
             tx_scan_info.money_transfered = tools::decodeRct(spent_tx.rct_signatures, tx_scan_info.received->derivation, output_index, mask, hwdev);
           }
-          THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs[asset_type] >= std::numeric_limits<uint64_t>::max() - tx_scan_info.money_transfered,
+          THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs[tx_scan_info.asset_type] >= std::numeric_limits<uint64_t>::max() - tx_scan_info.money_transfered,
               error::wallet_internal_error, "Overflow in received amounts");
-          tx_money_got_in_outs[asset_type] += tx_scan_info.money_transfered;
+          tx_money_got_in_outs[tx_scan_info.asset_type] += tx_scan_info.money_transfered;
         }
         ++output_index;
       }

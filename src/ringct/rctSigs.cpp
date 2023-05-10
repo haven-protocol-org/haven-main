@@ -1189,6 +1189,7 @@ namespace rct {
       uint8_t tx_version,
       const offshore::pricing_record& pr,
       const uint64_t& conversion_rate,
+      const uint32_t hf_version,
       const RCTConfig &rct_config,
       hw::device &hwdev
     ){
@@ -1389,12 +1390,17 @@ namespace rct {
               sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
             } else if (tx_type == tt::ONSHORE && outamounts_features.at(i).first == "XHV" && !outamounts_features.at(i).second.first && !outamounts_features.at(i).second.second) {
               // HERE BE DRAGONS!!!
-              key inverse_rate = invert(d2h(conversion_rate));
-              sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
-              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
-              //key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
-              //sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
-              //sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              // Unfortunately, because we already had an implementation that used the rate going the wrong way previously,
+              // we need to continue supporting that implementation ad-infinitum
+              if (hf_version >= HF_VERSION_SLIPPAGE) {
+                key inverse_rate = invert(d2h(conversion_rate));
+                sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+                sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+              } else {
+                key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
+                sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
+                sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              }
               // LAND AHOY!!!
             } else if (tx_type == tt::XUSD_TO_XASSET && outamounts_features.at(i).first != "XHV" && outamounts_features.at(i).first != "XUSD") {
               key inverse_rate_xasset = invert(d2h(pr[outamounts_features.at(i).first]));
@@ -1402,12 +1408,17 @@ namespace rct {
               sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate_xasset.bytes);
             } else if (tx_type == tt::XASSET_TO_XUSD && outamounts_features.at(i).first == "XUSD") {
               // HERE BE DRAGONS!!!
-              key inverse_rate = invert(d2h(conversion_rate));
-              sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
-              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
-              //key rate_xasset = d2h(pr[in_asset_type]);
-              //sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate_xasset.bytes);
-              //sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              // Unfortunately, because we already had an implementation that used the rate going the wrong way previously,
+              // we need to continue supporting that implementation ad-infinitum
+              if (hf_version >= HF_VERSION_SLIPPAGE) {
+                key inverse_rate = invert(d2h(conversion_rate));
+                sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+                sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+              } else {
+                key rate_xasset = d2h(pr[in_asset_type]);
+                sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate_xasset.bytes);
+                sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
+              }
               // LAND AHOY!!!
             } else {
               outSk_scaled = outSk[i].mask;
@@ -1525,6 +1536,7 @@ namespace rct {
       uint8_t tx_version,
       const offshore::pricing_record& pr,
       const uint64_t& conversion_rate,
+      const uint32_t& hf_version,
       const RCTConfig &rct_config,
       hw::device &hwdev
     ){
@@ -1537,7 +1549,7 @@ namespace rct {
           mixRing[i].resize(mixin+1);
           index[i] = populateFromBlockchainSimple(mixRing[i], inPk[i], mixin);
         }
-        return genRctSimple(message, inSk, destinations, tx_type, in_asset_type, inamounts, inamounts_col_indices, outamounts, outamounts_features, txnFee, txnOffshoreFee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx_version, pr, conversion_rate, rct_config, hwdev);
+        return genRctSimple(message, inSk, destinations, tx_type, in_asset_type, inamounts, inamounts_col_indices, outamounts, outamounts_features, txnFee, txnOffshoreFee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx_version, pr, conversion_rate, hf_version, rct_config, hwdev);
     }
 
     //RingCT protocol
@@ -1797,25 +1809,7 @@ namespace rct {
             LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
             return false;
           }
-          /*
-          // Verify the amount of the conversion fee, starting with amount_burnt
-          boost::multiprecision::uint128_t fee_128 = amount_burnt;
-          fee_128 *= 3;
-          fee_128 /= 200; // This is the correct fee in xUSD
-          boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
-          // First, convert from xAsset -> xUSD
-          boost::multiprecision::uint128_t exchange_128 = pr[strSource];
-          conversion_fee_128 *= COIN;
-          conversion_fee_128 /= exchange_128;
-          // Now convert from xUSD -> XHV
-          exchange_128 = std::max(pr.unused1, pr.xUSD);
-          conversion_fee_128 *= COIN;
-          conversion_fee_128 /= exchange_128;
-          if (conversion_fee_128 != rv.txnOffshoreFee) {
-            LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
-            return false;
-          }
-          */
+          
           // Deduct the fee from our C terms
           key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
           subKeys(sumC, sumC, txnOffshoreFeeKeyInC);

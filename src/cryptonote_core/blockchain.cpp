@@ -1454,6 +1454,8 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
   if(!check_outs_overflow(b.miner_tx))
   {
     MERROR("miner transaction has money overflow in block " << get_block_hash(b));
+    cryptonote::transaction temp_tx = b.miner_tx;
+    MERROR(cryptonote::obj_to_json_str(temp_tx));
     return false;
   }
 
@@ -3859,13 +3861,12 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     size_t n_unmixable = 0, n_mixable = 0;
     size_t min_actual_mixin = std::numeric_limits<size_t>::max();
     size_t max_actual_mixin = 0;
-    // HERE BE DRAGONS!!!
     // NEAC: Resolve the min_mixin question for differing HFs
-    // Monero 0.18
-    //const size_t min_mixin = hf_version >= HF_VERSION_MIN_MIXIN_15 ? 15 : hf_version >= HF_VERSION_MIN_MIXIN_10 ? 10 : hf_version >= HF_VERSION_MIN_MIXIN_6 ? 6 : hf_version >= HF_VERSION_MIN_MIXIN_4 ? 4 : 2;
-    // Haven 0.16
-    const size_t min_mixin = hf_version >= HF_11_MIN_MIXIN_10 ? 10 : HF_2_MIN_MIXIN_9 ? 9 : 4;
-    // LAND AHOY!!!
+    const size_t min_mixin =
+      hf_version >= HF_VERSION_MIN_MIXIN_15 ? 15 :
+      hf_version >= HF_11_MIN_MIXIN_10 ? 10 :
+      hf_version >= HF_2_MIN_MIXIN_9 ? 9 :
+      4;
     for (const auto& txin : tx.vin)
     {
       // non txin_to_key inputs will be rejected below

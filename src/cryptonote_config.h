@@ -84,6 +84,7 @@
 // COIN - number of smallest units in one coin
 #define COIN                                            ((uint64_t)1000000000000) // pow(10, 12)
 #define HAVEN_MAX_TX_VALUE                              ((uint64_t)15000000000000000000ull)
+#define HAVEN_MAX_TX_VALUE_TESTNET                      ((uint64_t)18000000000000000000ull)
 
 #define FEE_PER_KB_OLD                                  ((uint64_t)10000000000) // pow(10, 10)
 #define FEE_PER_KB                                      ((uint64_t)2000000000) // 2 * pow(10, 9)
@@ -221,12 +222,12 @@
 #define HF_VERSION_USE_HAVEN_TYPES              21
 #define HF_VERSION_CONVERSION_FEES_IN_XHV       21
 #define HF_VERSION_SLIPPAGE                     21
-#define HF_VERSION_MIN_MIXIN_15                 22
-#define HF_VERSION_EXACT_COINBASE               22
-#define HF_VERSION_DETERMINISTIC_UNLOCK_TIME    22
-#define HF_VERSION_BULLETPROOF_PLUS             22
-#define HF_VERSION_VIEW_TAGS                    22
-#define HF_VERSION_2021_SCALING                 22
+#define HF_VERSION_MIN_MIXIN_15                 21
+#define HF_VERSION_EXACT_COINBASE               21
+#define HF_VERSION_DETERMINISTIC_UNLOCK_TIME    21
+#define HF_VERSION_BULLETPROOF_PLUS             21
+#define HF_VERSION_VIEW_TAGS                    21
+#define HF_VERSION_2021_SCALING                 21
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x13
@@ -318,7 +319,11 @@ namespace config
     boost::uuids::uuid const NETWORK_ID = { {
         0x05 ,0x39, 0xF1, 0x70 , 0x61, 0x04 , 0x41, 0x60, 0x17, 0x32, 0x00, 0x81, 0x16, 0xA1, TESTNET_VERSION, 0x11
       } };
-    std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
+    //std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
+    // 15M premine
+    //std::string const GENESIS_TX = "023c01ff00018080f0f6ec90ad95d0010258257b1a41b31c3576da9b7d2c2ce21fc723699f0789da616127bd945c0ae97a2101d76df0f2740ac1de2dd44c91b417c26650394d0aa6fc572a6f9499644f1b193e00";
+    // 18.4M premine
+    std::string const GENESIS_TX = "023c01ff00018cffffffffffffffff0102fa999deaf77e7666b1ce36a81107ee39ad51cd70eb5f99d3ce9d0afc40fb4ac821016f8a067f6f8b2988fa71c665f05521616f309a49b345af21633718507b73e83a00";
     uint32_t const GENESIS_NONCE = 10001;
 
     std::string const GOVERNANCE_WALLET_ADDRESS = "hvta9gEeEpp8tWm4DK3gzZH5dsoAkbtwBL19EGnaYjApRoo8bXQg2GJPjBiji6NMbLDUUkfZw9Q4sh558r37Ucjb9ZHaDUns8N";
