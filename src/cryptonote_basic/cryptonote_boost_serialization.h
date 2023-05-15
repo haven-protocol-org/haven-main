@@ -630,11 +630,13 @@ namespace boost
         vin_tmp.push_back(in);
       } else if (vin_entry.asset_type == "XUSD") {
         int xhv_outputs = std::count_if(x.vout.begin(), x.vout.end(), [](cryptonote::tx_out &foo_v) {
-          // HERE BE DRAGONS!!!
-          // NEAC: should call cryptonote::get_output_asset_type() because it might be a tagged key
-          cryptonote::txout_haven_key out = boost::get<cryptonote::txout_haven_key>(foo_v.target);
-          // LAND AHOY!!!
-          return out.asset_type == "XHV";
+          if (foo_v.target.type() == typeid(cryptonote::txout_haven_key)) {
+            return boost::get<cryptonote::txout_haven_key>(foo_v.target).asset_type == "XHV";
+          } else if (foo_v.target.type() == typeid(cryptonote::txout_haven_tagged_key)) {
+            return boost::get<cryptonote::txout_haven_tagged_key>(foo_v.target).asset_type == "XHV";
+          } else {
+            return false;
+          }
         });
         if (xhv_outputs) {
           cryptonote::txin_onshore in;

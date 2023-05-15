@@ -325,7 +325,7 @@ namespace cryptonote
       // Get the slippage
       uint64_t slippage = 0;
       if (version >= HF_VERSION_SLIPPAGE && source != dest) {
-        if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, tvc.pr, supply_amounts)) {
+        if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, tvc.pr, supply_amounts, version)) {
           LOG_ERROR("error: Invalid Tx found. 0 burnt/minted for a conversion tx.");
           tvc.m_verifivation_failed = true;
           return false;
@@ -393,12 +393,16 @@ namespace cryptonote
           return false;
         }
 
-        // Check the unlock time
-        ok = m_blockchain.check_unlock_time(output_unlock_time, current_height, tx_type, output_asset_type, is_collateral, is_collateral_change, version);
-        if (!ok) {
-          LOG_ERROR("incorrect output unlock time for output index " << i);
-          tvc.m_verifivation_failed = true;
-          return false;
+        // Skip output unlock time check if it's change for a conversion
+        if (source != output_asset_type || is_collateral || is_collateral_change) {
+
+          // Check the unlock time (use the PR height in case of TX being left in pool for >1 block - PR height validated as acceptable elsewhere)
+          ok = m_blockchain.check_unlock_time(output_unlock_time, tx.pricing_record_height, tx_type, output_asset_type, is_collateral, is_collateral_change, version);
+          if (!ok) {
+            LOG_ERROR("incorrect output unlock time for output index " << i);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
         }
       }
       
@@ -2366,7 +2370,7 @@ namespace cryptonote
 
     // set the block cap
     const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain.get_db().get_circulating_supply();
-    uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
+    uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr, version);
     uint64_t total_conversion_xhv = 0; // only offshore/onshroe
     MINFO("Block cap limit for offshore/onshore " << block_cap_xhv << " XHV");
 
@@ -2547,7 +2551,7 @@ namespace cryptonote
           // Get the slippage
           uint64_t slippage = 0;
           if (version >= HF_VERSION_SLIPPAGE && source != dest) {
-            if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, bl.pricing_record, supply_amounts)) {
+            if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, bl.pricing_record, supply_amounts, version)) {
               LOG_PRINT_L2("error: failed to obtain slippage requirements for tx " << tx.hash);
               continue;
             }

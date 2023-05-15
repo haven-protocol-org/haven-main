@@ -526,7 +526,8 @@ namespace cryptonote
             }
           }
           std::vector<txin_v> vin_tmp(vin);
-          bool is_offshore_tx = (amount_burnt != 0);
+          bool is_conversion_tx = (amount_burnt != 0);
+          bool is_offshore_tx = is_conversion_tx;
           bool is_onshore_tx = false;
           vin.clear();
           for (auto &vin_entry: vin_tmp) {
@@ -542,7 +543,7 @@ namespace cryptonote
               in.k_image = boost::get<txin_to_key>(vin_entry).k_image;
             } else if (vin_entry.type() == typeid(txin_offshore)) {
               is_offshore_tx = false;
-              is_onshore_tx = true;
+              is_onshore_tx = false;
               in.asset_type = "XUSD";
               in.amount = boost::get<txin_offshore>(vin_entry).amount;
               in.key_offsets = boost::get<txin_offshore>(vin_entry).key_offsets;
@@ -556,6 +557,7 @@ namespace cryptonote
               in.k_image = boost::get<txin_onshore>(vin_entry).k_image;
             } else if (vin_entry.type() == typeid(txin_xasset)) {
               is_offshore_tx = false;
+              is_onshore_tx = false;
               in.amount = boost::get<txin_xasset>(vin_entry).amount;
               in.key_offsets = boost::get<txin_xasset>(vin_entry).key_offsets;
               in.k_image = boost::get<txin_xasset>(vin_entry).k_image;

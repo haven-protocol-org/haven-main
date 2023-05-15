@@ -678,7 +678,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts)
+  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint32_t hf_version)
   {
     using namespace boost::multiprecision;
     using tt = transaction_type;
@@ -904,8 +904,13 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr)
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint32_t hf_version)
   {
+    // From the introduction of slippage, the block cap was effectively superfluous. This was achieved by using the max TX value as the block cap
+    if (hf_version >= HF_VERSION_SLIPPAGE) {
+      return HAVEN_MAX_TX_VALUE;
+    }
+    
     std::string str_xhv_supply;
     for (const auto& supply: supply_amounts) {
       if (supply.first == "XHV") {
@@ -938,8 +943,8 @@ namespace cryptonote
     if (from_asset == "XHV") {
       // XHV as source
       if (to_asset == "XUSD") {
-        // Scale to xUSD (offshore) and bail out
-        if (!pr.xUSD || !pr.unused1) {
+        // Scale to xUSD (offshore) and bail out (next line uses "&&" not "||" because historically a number of PRs didn't have both values present)
+        if (!pr.xUSD && !pr.unused1) {
           // Missing a rate that we need - return an error
           LOG_ERROR("Missing exchange rate for conversion (" << from_asset << "," << to_asset << ") - aborting");
           return false;
@@ -956,8 +961,8 @@ namespace cryptonote
     } else if (from_asset == "XUSD") {
       // xUSD as source
       if (to_asset == "XHV") {
-        // Scale directly to XHV (onshore)
-        if (!pr.xUSD || !pr.unused1) {
+        // Scale directly to XHV (onshore) and bail out (next line uses "&&" not "||" because historically a number of PRs didn't have both values present, see block #1010002)
+        if (!pr.xUSD && !pr.unused1) {
           // Missing a rate that we need - return an error
           LOG_ERROR("Missing exchange rate for conversion (" << from_asset << "," << to_asset << ") - aborting");
           return false;

@@ -3471,7 +3471,10 @@ bool Blockchain::check_unlock_time(const uint64_t output_unlock_time, const uint
           (!is_collateral_change && output_asset_type == "XHV"))
         return false;
     } else if (tx_type == transaction_type::ONSHORE) {
-      if (version >= HF_VERSION_USE_COLLATERAL && unlock_time < TX_V7_ONSHORE_UNLOCK_BLOCKS) return false;
+      if (version >= HF_VERSION_USE_COLLATERAL &&
+          unlock_time < TX_V7_ONSHORE_UNLOCK_BLOCKS &&
+          (!is_collateral_change && output_asset_type == "XHV"))
+        return false;
     } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
       if (version >= HF_VERSION_USE_COLLATERAL && unlock_time < TX_V7_XASSET_UNLOCK_BLOCKS) return false;
     } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
@@ -4965,7 +4968,7 @@ leave:
 
     // get the block cap
     supply_amounts = get_db().get_circulating_supply();
-    block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
+    block_cap_xhv = get_block_cap(supply_amounts, latest_pr, hf_version);
   }
 
   size_t tx_index = 0;
@@ -5141,7 +5144,7 @@ leave:
         // Get the slippage
         uint64_t slippage = 0;
         if (hf_version >= HF_VERSION_SLIPPAGE && source != dest) {
-          if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, pr_bl.pricing_record, supply_amounts)) {
+          if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, pr_bl.pricing_record, supply_amounts, hf_version)) {
             LOG_PRINT_L2("Failed to obtain slippage requirements for tx " << tx.hash);
             bvc.m_verifivation_failed = true;
             goto leave;

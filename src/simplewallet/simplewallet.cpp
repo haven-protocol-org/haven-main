@@ -203,7 +203,7 @@ namespace
   const char* USAGE_OFFSHORE_TRANSFER("offshore_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> [memo=<memo data>])");
   const char* USAGE_ONSHORE("onshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
   const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset type> [memo=<memo data>]");
-  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>) <xAsset type> [memo=<memo data>]");
+  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset type> [memo=<memo data>]");
   const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>) <xAsset type> [memo=<memo data>]");
   const char* USAGE_LOCKED_SWEEP_ALL("locked_sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] <address> <lockblocks> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
@@ -3320,7 +3320,7 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("xasset_to_xusd",
                            boost::bind(&simple_wallet::xasset_to_xusd, this, _1),
                            tr(USAGE_XASSET_TO_XUSD),
-                           tr("Converts the required amount of xAsset type <xAsset type> to send <xUSD amount> of Haven Dollars (xUSD), with optional <priority> [1-5]. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
+                           tr("Converts <xAsset amount> of xAsset type <xAsset type> to Haven Dollars (xUSD), with optional <priority> [1-5]. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
   m_cmd_binder.set_handler("xusd_to_xasset",
                            boost::bind(&simple_wallet::xusd_to_xasset, this, _1),
                            tr(USAGE_XUSD_TO_XASSET),

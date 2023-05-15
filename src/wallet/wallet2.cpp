@@ -10672,7 +10672,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
       // Remove any slippage pre-conversion
       if (need_slippage) {
-        r = cryptonote::get_slippage(tx_type, source_asset, dest_asset, dt.amount, dt.slippage, pricing_record, circ_amounts);
+        r = cryptonote::get_slippage(tx_type, source_asset, dest_asset, dt.amount, dt.slippage, pricing_record, circ_amounts, hf_version);
         THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain slippage for conversion TX");
         dt.amount -= dt.slippage;
         needed_slippage += dt.slippage;
