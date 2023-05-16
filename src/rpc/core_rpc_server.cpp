@@ -2957,7 +2957,8 @@ namespace cryptonote
       return true;
     }
     std::vector<std::pair<std::string, std::string>> amounts = m_core.get_blockchain_storage().get_db().get_circulating_supply();
-    r = cryptonote::get_collateral_requirements(tx_type, req.amount, res.collateral, blk.pricing_record, amounts);
+    const uint8_t hf_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
+    r = cryptonote::get_collateral_requirements(tx_type, req.amount, res.collateral, blk.pricing_record, amounts, hf_version);
     if (!r) {
       res.status = "Error retrieving collateral information";
       return true;

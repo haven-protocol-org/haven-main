@@ -86,9 +86,10 @@ namespace cryptonote {
     const int target_minutes = target / 60;
     const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE - (target_minutes-1);
 
+#define PREMINE true
 #if defined PREMINE
     if (already_generated_coins == 0) {
-      reward = HAVEN_MAX_TX_VALUE_TESTNET;
+      reward = HAVEN_MAX_TX_VALUE;
       return true;
     }
 #endif

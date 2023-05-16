@@ -551,7 +551,10 @@ namespace cryptonote
     }
 
     uint64_t fee_estimate = 0;
-     if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+    if (hf_version >= HF_VERSION_SLIPPAGE) {
+      // Flat 0.5% fee
+      fee_estimate = amount_usd / 200;
+    } else if (hf_version >= HF_VERSION_USE_COLLATERAL) {
       // Flat 1.5% fee
       fee_estimate = (amount_usd * 3) / 200;
     } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
@@ -772,7 +775,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts)
+  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint32_t hf_version)
   {
     using namespace boost::multiprecision;
     using tt = transaction_type;
@@ -813,6 +816,27 @@ namespace cryptonote
     cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
     double ratio_mcap = ratio_mcap_128.convert_to<double>();
 
+    // Do the right thing, based on the HF version
+    if (hf_version >= HF_VERSION_SLIPPAGE) {
+
+      if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+        collateral = 0;
+      } else {
+        // VBS rate = SQRT(MCAP^1.5) * 5
+        double vbs = std::floor(sqrt(pow(ratio_mcap, 1.5)));
+
+        // Convert amount to 128 bit
+        boost::multiprecision::uint128_t amount_128 = amount;
+
+        // Get the collateral amount
+        boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
+        collateral_128 *= amount_128;
+        collateral = collateral_128.convert_to<uint64_t>();
+        LOG_PRINT_L1("Conversion TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money(amount) << (tx_type == tt::OFFSHORE) ? " XHV" : " XUSD");
+      }
+      return true;
+    }
+    
     // Calculate the spread ratio
     double ratio_spread = (ratio_mcap >= 1.0) ? 0.0 : 1.0 - ratio_mcap;
     
@@ -831,7 +855,6 @@ namespace cryptonote
     boost::multiprecision::uint128_t amount_128 = amount;
   
     // Do the right thing based upon TX type
-    using tt = cryptonote::transaction_type;
     if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
       collateral = 0;
     } else if (tx_type == tt::OFFSHORE) {

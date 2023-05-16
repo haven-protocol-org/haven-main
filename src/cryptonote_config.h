@@ -66,6 +66,14 @@
 #define TX_ONSHORE_UNLOCK_BLOCKS_TESTNET                30      // 1 hour unlock time - FOR TESTING ONLY
 #define TX_XASSET_UNLOCK_BLOCKS_TESTNET                 60      // 2 hour unlock time - FOR TESTING ONLY
 
+// HF21 Unlock times
+#define HF21_COLLATERAL_LOCK_BLOCKS                     14*720  // 14 day unlock time
+#define HF21_SHORING_LOCK_BLOCKS                        720     // 1 day unlock time
+#define HF21_XASSET_LOCK_BLOCKS                         1440    // 2 day unlock time
+#define HF21_COLLATERAL_LOCK_BLOCKS_TESTNET             30      // 1 hour unlock time - FOR TESTING ONLY
+#define HF21_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
+#define HF21_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
+
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 
 // MONEY_SUPPLY - total number coins to be generated
@@ -321,9 +329,9 @@ namespace config
       } };
     //std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
     // 15M premine
-    //std::string const GENESIS_TX = "023c01ff00018080f0f6ec90ad95d0010258257b1a41b31c3576da9b7d2c2ce21fc723699f0789da616127bd945c0ae97a2101d76df0f2740ac1de2dd44c91b417c26650394d0aa6fc572a6f9499644f1b193e00";
+    std::string const GENESIS_TX = "023c01ff00018080f0f6ec90ad95d00102d12e955cf07c7569e9678afeb9c879c04f5e5850987c83feaea7afdb462b8f832101f352146306f0d841fed393dda5ad977cb009430442394c72f1fae952af0bb24700";
     // 18.4M premine
-    std::string const GENESIS_TX = "023c01ff00018cffffffffffffffff0102fa999deaf77e7666b1ce36a81107ee39ad51cd70eb5f99d3ce9d0afc40fb4ac821016f8a067f6f8b2988fa71c665f05521616f309a49b345af21633718507b73e83a00";
+    //std::string const GENESIS_TX = "023c01ff00018cffffffffffffffff0102fa999deaf77e7666b1ce36a81107ee39ad51cd70eb5f99d3ce9d0afc40fb4ac821016f8a067f6f8b2988fa71c665f05521616f309a49b345af21633718507b73e83a00";
     uint32_t const GENESIS_NONCE = 10001;
 
     std::string const GOVERNANCE_WALLET_ADDRESS = "hvta9gEeEpp8tWm4DK3gzZH5dsoAkbtwBL19EGnaYjApRoo8bXQg2GJPjBiji6NMbLDUUkfZw9Q4sh558r37Ucjb9ZHaDUns8N";

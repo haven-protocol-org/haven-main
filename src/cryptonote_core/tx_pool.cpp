@@ -416,35 +416,14 @@ namespace cryptonote
           // Include the slippage to get back to the original amount used in the fee calculation
           boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt;//+slippage;
 
-          // Calculate 1.5%
-          conversion_fee_amount_128 *= 3;
+          // Calculate 1.5% (0.5% for onshores, cos the Econ Workgroup love to fiddle with sh1t just to annoy me)
+          if (tx_type != tt::ONSHORE) conversion_fee_amount_128 *= 3;
           conversion_fee_amount_128 /= 200;
 
           // Convert to XHV for fee comparison
           conversion_fee_amount_128 *= fee_conversion_rate;
           conversion_fee_amount_128 /= COIN;
           conversion_fee_check = (uint64_t)conversion_fee_amount_128;
-        /*
-        } else if (tx_type == tt::ONSHORE) {
-          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_minted + cryptonote::get_xhv_amount(slippage, tvc.pr, tx_type, version);
-          conversion_fee_amount_128 *= 3;
-          conversion_fee_amount_128 /= 200;
-          conversion_fee_check = (uint64_t)conversion_fee_amount_128;
-        } else if (tx_type == tt::XUSD_TO_XASSET) {
-          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt+slippage;
-          conversion_fee_amount_128 *= 3;
-          conversion_fee_amount_128 /= 200;
-          conversion_fee_amount_128 *= fee_conversion_rate;
-          conversion_fee_amount_128 /= COIN;
-          conversion_fee_check = (uint64_t)conversion_fee_amount_128.convert_to<uint64_t>();
-        } else if (tx_type == tt::XASSET_TO_XUSD) {
-          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt+slippage;
-          conversion_fee_amount_128 *= 3;
-          conversion_fee_amount_128 /= 200;
-          conversion_fee_check = (uint64_t)conversion_fee_amount_128.convert_to<uint64_t>();
-          conversion_fee_check = cryptonote::get_xusd_amount(conversion_fee_check, source, tvc.pr, tt::XASSET_TO_XUSD, version);
-          conversion_fee_check = cryptonote::get_xhv_amount(conversion_fee_check, tvc.pr, tt::ONSHORE, version);
-        */
         } else {
           // Should never happen
           LOG_ERROR("incorrect TX type for conversion");
@@ -2560,7 +2539,7 @@ namespace cryptonote
           // Get the collateral requirement for the tx
           uint64_t collateral = 0;
           if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts)) {
+            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts, version)) {
               LOG_PRINT_L2("error: failed to get collateral requirements");
               continue;
             }

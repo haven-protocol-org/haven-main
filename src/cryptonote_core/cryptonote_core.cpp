@@ -1001,7 +1001,8 @@ namespace cryptonote
             tx_info[n].tx->amount_burnt,
             tx_info[n].tvc.m_collateral,
             tx_info[n].tvc.pr,
-            supply_amounts
+            supply_amounts,
+            hf_version
           );
           if (!r) {
             MERROR_VER("Failed to obtain collateral requirements");

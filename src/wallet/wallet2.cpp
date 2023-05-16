@@ -2115,7 +2115,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
       uint64_t left = 0, right = unlocked_xhv_balance;
       while (!found) {
         last_amount = (left + right) / 2;
-        bool r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+        bool r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts, hf_version);
         if (!r) {
           err = "Failed to get collateral requirements";
           return false;
@@ -2166,7 +2166,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
       uint64_t left = 0, right = unlocked_xusd_balance;
       while (!found) {
         last_amount = (left + right) / 2;
-        bool r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts);
+        bool r = cryptonote::get_collateral_requirements(tx_type, last_amount, collateral, pr, amounts, hf_version);
         if (!r) {
           err = "Failed to get collateral requirements";
           return false;
@@ -10685,55 +10685,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       // Calculate the collateral
       if (need_collateral) {
         uint64_t collateral_amount = 0;
-        r = cryptonote::get_collateral_requirements(tx_type, dt.amount + dt.slippage, collateral_amount, pricing_record, circ_amounts);
+        r = cryptonote::get_collateral_requirements(tx_type, dt.amount + dt.slippage, collateral_amount, pricing_record, circ_amounts, hf_version);
         THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
         needed_col += collateral_amount;
       }
     }
-    /*
-    switch (tx_type)
-    {
-      case tt::OFFSHORE:
-        // Input amount is source amount - convert so we have both
-        dt.dest_amount = cryptonote::get_xusd_amount(dt.amount, "XHV", pricing_record, tx_type, hf_version);
-        THROW_WALLET_EXCEPTION_IF(dt.dest_amount == 0, error::wallet_internal_error, "Failed to convert needed_money to xUSD");
-        // Calculate the collateral
-        if (need_collateral) {
-          uint64_t collateral_amount = 0;
-          bool r = cryptonote::get_collateral_requirements(tx_type, dt.amount, collateral_amount, pricing_record, circ_amounts);
-          THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
-          needed_col += collateral_amount;
-        }
-        break;
-      case tt::ONSHORE:
-        // Input amount is destination amount - convert so we have both
-        dt.dest_amount = dt.amount;
-        dt.amount = cryptonote::get_xusd_amount(dt.amount, "XHV", pricing_record, tx_type, hf_version);
-        THROW_WALLET_EXCEPTION_IF(dt.amount == 0, error::wallet_internal_error, "Failed to convert needed_money to XHV");
-        // Calculate the collateral
-        if (need_collateral) {
-          uint64_t collateral_amount = 0;
-          bool r = cryptonote::get_collateral_requirements(tx_type, dt.amount, collateral_amount, pricing_record, circ_amounts);
-          THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain collateral amount for offshore TX");
-          needed_col += collateral_amount;
-        }
-        break;
-      case tt::XUSD_TO_XASSET:
-        // Input amount is in XUSD - convert so we have both
-        dt.dest_amount = cryptonote::get_xasset_amount(dt.amount, dest_asset, pricing_record);
-        THROW_WALLET_EXCEPTION_IF(dt.dest_amount == 0, error::wallet_internal_error, "Failed to convert needed_money to XHV");
-        break;
-      case tt::XASSET_TO_XUSD:
-        // Input amount is in XUSD - convert so we have both
-        dt.dest_amount = dt.amount;
-        dt.amount = cryptonote::get_xasset_amount(dt.amount, source_asset, pricing_record);
-        THROW_WALLET_EXCEPTION_IF(dt.amount == 0, error::wallet_internal_error, "Failed to convert needed_money to XHV");
-        break;
-      default:
-        dt.dest_amount = dt.amount; // for regular transfers
-        break;
-    }
-    */
     needed_money += dt.amount + dt.slippage;
     if (dt.slippage)
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << " with " << print_money(dt.slippage) << " slippage, for a total of " << print_money (needed_money));
