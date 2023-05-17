@@ -170,7 +170,7 @@ namespace cryptonote
     const std::vector<uint8_t> &extra,
     transaction& tx,
     uint64_t unlock_time,
-    const uint32_t hf_version,
+    const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
     const uint64_t xhv_fee,
@@ -193,7 +193,7 @@ namespace cryptonote
     const std::vector<uint8_t> &extra,
     transaction& tx,
     uint64_t unlock_time,
-    const uint32_t hf_version,
+    const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
     const uint64_t xhv_fee,
@@ -235,14 +235,14 @@ namespace cryptonote
   crypto::hash get_block_longhash(const Blockchain *pb, const block& b, const uint64_t height, const int miners);
   void get_block_longhash_reorg(const uint64_t split_height);
 
-  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version);
-  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version);
-  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version);
-  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version);
+  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version);
+  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version);
+  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version);
+  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version);
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
-  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint32_t hf_version);
-  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint32_t hf_version);
-  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint32_t hf_version);
+  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version);
+  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version);
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint8_t hf_version);
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash);
   // Get conversion rate for any conversion TX
   bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate);
@@ -251,9 +251,9 @@ namespace cryptonote
   // Get offshore amount in xAsset
   uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr);
   // Get offshore amount in XUSD, not XHV
-  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
+  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
   // Get onshore amount in XHV, not XUSD
-  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
+  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
 }
 
 BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)

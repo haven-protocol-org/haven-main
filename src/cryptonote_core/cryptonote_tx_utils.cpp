@@ -507,7 +507,7 @@ namespace cryptonote
     }
   }
   //---------------------------------------------------------------
-  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
+  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount = 0;
@@ -539,7 +539,7 @@ namespace cryptonote
     return fee_estimate;
   }
   //---------------------------------------------------------------
-  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
+  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
@@ -575,7 +575,7 @@ namespace cryptonote
     return fee_estimate;
   }
   //---------------------------------------------------------------
-  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
+  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_xasset = 0;
@@ -607,7 +607,7 @@ namespace cryptonote
    return fee_estimate;
   }
   //---------------------------------------------------------------
-  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
+  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
@@ -681,7 +681,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint32_t hf_version)
+  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version)
   {
     using namespace boost::multiprecision;
     using tt = transaction_type;
@@ -775,7 +775,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint32_t hf_version)
+  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version)
   {
     using namespace boost::multiprecision;
     using tt = transaction_type;
@@ -927,7 +927,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint32_t hf_version)
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint8_t hf_version)
   {
     // From the introduction of slippage, the block cap was effectively superfluous. This was achieved by using the max TX value as the block cap
     if (hf_version >= HF_VERSION_SLIPPAGE) {
@@ -1051,7 +1051,7 @@ namespace cryptonote
     return (uint64_t)xasset_128;
   }
   //---------------------------------------------------------------
-  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version)
   {
 
     if (amount_asset_type == "XUSD") {
@@ -1082,7 +1082,7 @@ namespace cryptonote
     }
   }
   //---------------------------------------------------------------
-  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version)
   {
     // Now work out the amount
     boost::multiprecision::uint128_t xusd_128 = xusd_amount;
@@ -1127,7 +1127,7 @@ namespace cryptonote
     const std::vector<uint8_t> &extra,
     transaction& tx,
     uint64_t unlock_time,
-    const uint32_t hf_version,
+    const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
     const uint64_t xhv_fee,
@@ -1705,7 +1705,7 @@ namespace cryptonote
     const std::vector<uint8_t> &extra,
     transaction& tx,
     const uint64_t unlock_time,
-    const uint32_t hf_version,
+    const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
     const uint64_t xhv_fee,
