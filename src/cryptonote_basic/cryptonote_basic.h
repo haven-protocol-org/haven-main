@@ -138,10 +138,13 @@
       }                                                                                                         \
       out.unlock_time = (version >= POU_TRANSACTION_VERSION) ? output_unlock_times[i] : unlock_time;            \
       out.is_collateral = false;                                                                                \
+      out.is_collateral_change = false;                                                                         \
       if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {                                          \
         if (collateral_indices[0] != collateral_indices[1]) {                                                   \
-          if (std::find(collateral_indices.begin(), collateral_indices.end(), i) != collateral_indices.end()) { \
+          if (i == collateral_indices[0]) {                                                                     \
             out.is_collateral = true;                                                                           \
+          } else if (i == collateral_indices[1]) {                                                              \
+            out.is_collateral_change = true;                                                                    \
           }                                                                                                     \
         }                                                                                                       \
       }                                                                                                         \
@@ -302,17 +305,19 @@ namespace cryptonote
   struct txout_haven_key
   {
     txout_haven_key() { }
-    txout_haven_key(const crypto::public_key &_key, const std::string &_asset_type, const uint64_t &_unlock_time, const bool &_is_collateral) : key(_key), asset_type(_asset_type), unlock_time(_unlock_time), is_collateral(_is_collateral) { }
+    txout_haven_key(const crypto::public_key &_key, const std::string &_asset_type, const uint64_t &_unlock_time, const bool &_is_collateral, const bool &_is_collateral_change) : key(_key), asset_type(_asset_type), unlock_time(_unlock_time), is_collateral(_is_collateral), is_collateral_change(_is_collateral_change) { }
     crypto::public_key key;
     std::string asset_type;
     uint64_t unlock_time;
     bool is_collateral;
+    bool is_collateral_change;
  
     BEGIN_SERIALIZE_OBJECT()
       FIELD(key)
       FIELD(asset_type)
       VARINT_FIELD(unlock_time)
       FIELD(is_collateral)
+      FIELD(is_collateral_change)
     END_SERIALIZE()
    };
 
@@ -320,11 +325,12 @@ namespace cryptonote
   struct txout_haven_tagged_key
   {
     txout_haven_tagged_key() { }
-    txout_haven_tagged_key(const crypto::public_key &_key, const std::string &_asset_type, const uint64_t &_unlock_time, const bool &_is_collateral, const crypto::view_tag &_view_tag) : key(_key), asset_type(_asset_type), unlock_time(_unlock_time), is_collateral(_is_collateral), view_tag(_view_tag) { }
+    txout_haven_tagged_key(const crypto::public_key &_key, const std::string &_asset_type, const uint64_t &_unlock_time, const bool &_is_collateral, const bool &_is_collateral_change, const crypto::view_tag &_view_tag) : key(_key), asset_type(_asset_type), unlock_time(_unlock_time), is_collateral(_is_collateral), is_collateral_change(_is_collateral_change), view_tag(_view_tag) { }
     crypto::public_key key;
     std::string asset_type;
     uint64_t unlock_time;
     bool is_collateral;
+    bool is_collateral_change;
     crypto::view_tag view_tag; // optimization to reduce scanning time
  
     BEGIN_SERIALIZE_OBJECT()
@@ -332,6 +338,7 @@ namespace cryptonote
       FIELD(asset_type)
       VARINT_FIELD(unlock_time)
       FIELD(is_collateral)
+      FIELD(is_collateral_change)
       FIELD(view_tag)
     END_SERIALIZE()
    };
@@ -519,7 +526,8 @@ namespace cryptonote
             }
           }
           std::vector<txin_v> vin_tmp(vin);
-          bool is_offshore_tx = (amount_burnt != 0);
+          bool is_conversion_tx = (amount_burnt != 0);
+          bool is_offshore_tx = is_conversion_tx;
           bool is_onshore_tx = false;
           vin.clear();
           for (auto &vin_entry: vin_tmp) {
@@ -535,7 +543,7 @@ namespace cryptonote
               in.k_image = boost::get<txin_to_key>(vin_entry).k_image;
             } else if (vin_entry.type() == typeid(txin_offshore)) {
               is_offshore_tx = false;
-              is_onshore_tx = true;
+              is_onshore_tx = false;
               in.asset_type = "XUSD";
               in.amount = boost::get<txin_offshore>(vin_entry).amount;
               in.key_offsets = boost::get<txin_offshore>(vin_entry).key_offsets;
@@ -549,6 +557,7 @@ namespace cryptonote
               in.k_image = boost::get<txin_onshore>(vin_entry).k_image;
             } else if (vin_entry.type() == typeid(txin_xasset)) {
               is_offshore_tx = false;
+              is_onshore_tx = false;
               in.amount = boost::get<txin_xasset>(vin_entry).amount;
               in.key_offsets = boost::get<txin_xasset>(vin_entry).key_offsets;
               in.k_image = boost::get<txin_xasset>(vin_entry).k_image;
@@ -576,13 +585,17 @@ namespace cryptonote
             }
             out.unlock_time = (version >= POU_TRANSACTION_VERSION) ? output_unlock_times[i] : unlock_time;
             out.is_collateral = false;
+            out.is_collateral_change = false;
             if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
               if (((is_onshore_tx) &&
-                   (collateral_indices[0] == i || collateral_indices[1] == i)) ||
+                   (collateral_indices[0] == i)) ||
                   ((!is_onshore_tx) &&
                    (is_offshore_tx) &&
                    (collateral_indices[0] == i && collateral_indices[1] == 0))) {
                   out.is_collateral = true;
+              }
+              if (is_onshore_tx && collateral_indices[1] == i) {
+                out.is_collateral_change = true;
               }
             }
             tx_out foo;
@@ -611,8 +624,15 @@ namespace cryptonote
           } else if (vin_entry.asset_type == "XUSD") {
             is_offshore_tx = false;
             int xhv_outputs = std::count_if(vout.begin(), vout.end(), [](tx_out &foo_v) {
-              txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);
-              return out.asset_type == "XHV";
+              if (foo_v.target.type() == typeid(txout_haven_key)) {
+                txout_haven_key out = boost::get<txout_haven_key>(foo_v.target);
+                return out.asset_type == "XHV";
+              } else if (foo_v.target.type() == typeid(txout_haven_tagged_key)) {
+                txout_haven_tagged_key out = boost::get<txout_haven_tagged_key>(foo_v.target);
+                return out.asset_type == "XHV";
+              } else {
+                return false;
+              }
             });
             if (xhv_outputs) {
               is_onshore_tx = true;
@@ -642,6 +662,7 @@ namespace cryptonote
         vout_tmp.reserve(vout.size());
         output_unlock_times.resize(vout.size());
         std::vector<uint32_t> collateral_indices_temp;
+        collateral_indices_temp.resize(2);
         for (size_t i=0; i<vout.size(); i++) {
           txout_haven_key outhk = boost::get<txout_haven_key>(vout[i].target);
           tx_out foo;
@@ -662,7 +683,9 @@ namespace cryptonote
           }
           output_unlock_times[i] = outhk.unlock_time;
           if (outhk.is_collateral) {
-            collateral_indices_temp.push_back(i);
+            collateral_indices_temp[0] = i;
+          } else if (outhk.is_collateral_change) {
+            collateral_indices_temp[1] = i;
           }
           vout_tmp.push_back(foo);
         }
@@ -683,13 +706,6 @@ namespace cryptonote
           VARINT_FIELD(amount_minted)
           if (version >= COLLATERAL_TRANSACTION_VERSION && amount_burnt) {
             if (collateral_indices.size() != 2) {
-              if (is_offshore_tx) {
-                if (collateral_indices_temp.size() == 1) {
-                  collateral_indices_temp.push_back(0);
-                } else {
-                  return false;
-                }
-              }
               if ((is_offshore_tx || is_onshore_tx) && collateral_indices_temp.size() != 2) {
                 return false;
               }
@@ -739,6 +755,18 @@ namespace cryptonote
 
     uint64_t get_unlock_time(size_t out_index) const
     {
+      if (version >= HAVEN_TYPES_TRANSACTION_VERSION) {
+        if (vout[out_index].target.type() == typeid(txout_haven_key)) {
+          txout_haven_key out = boost::get<txout_haven_key>(vout[out_index].target);
+          return out.unlock_time;
+        } else if (vout[out_index].target.type() == typeid(txout_haven_tagged_key)) {
+          txout_haven_tagged_key out = boost::get<txout_haven_tagged_key>(vout[out_index].target);
+          return out.unlock_time;
+        } else {
+          LOG_ERROR("Failed to get output unlock time of a v8+ transaction output");
+          return unlock_time;
+        }
+      }
       if (version >= POU_TRANSACTION_VERSION)
       {
         if (out_index >= output_unlock_times.size())

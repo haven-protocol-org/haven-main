@@ -223,16 +223,19 @@ namespace boost
 
     // Only transactions prior to HAVEN_TYPES_TRANSACTION_VERSION are permitted to be anything other than txin_haven_key and txout_haven_key/txout_haven_tagged_key types, and thus need translation
     if (x.version < HAVEN_TYPES_TRANSACTION_VERSION) {
-      serialize_old_tx_prefix(a, x, ver);
-    }
 
-    // txin_haven_key + txout_haven_key supported on the chain
-    a & x.vin;
-    a & x.vout;
-    a & x.extra;
-    a & x.pricing_record_height;
-    a & x.amount_burnt;
-    a & x.amount_minted;
+      serialize_old_tx_prefix(a, x, ver);
+
+    } else {
+
+      // txin_haven_key + txout_haven_key supported on the chain
+      a & x.vin;
+      a & x.vout;
+      a & x.extra;
+      a & x.pricing_record_height;
+      a & x.amount_burnt;
+      a & x.amount_minted;
+    }
   }
 
   template <class Archive>
@@ -589,11 +592,14 @@ namespace boost
         }
         // Clone the output unlock time into the output itself
         out.unlock_time = x.output_unlock_times[i];
-        // Set the is_collateral flag
+        // Set the is_collateral and is_collateral_change flags
         out.is_collateral = false;
+        out.is_collateral_change = false;
         if (x.version >= COLLATERAL_TRANSACTION_VERSION && x.amount_burnt) {
-          if (std::find(x.collateral_indices.begin(), x.collateral_indices.end(), i) != x.collateral_indices.end()) {
+          if (x.collateral_indices[0] == i) {
             out.is_collateral = true;
+          } else if (x.collateral_indices[1] == i) {
+            out.is_collateral_change = true;
           }
         }
 
@@ -624,8 +630,13 @@ namespace boost
         vin_tmp.push_back(in);
       } else if (vin_entry.asset_type == "XUSD") {
         int xhv_outputs = std::count_if(x.vout.begin(), x.vout.end(), [](cryptonote::tx_out &foo_v) {
-          cryptonote::txout_haven_key out = boost::get<cryptonote::txout_haven_key>(foo_v.target);
-          return out.asset_type == "XHV";
+          if (foo_v.target.type() == typeid(cryptonote::txout_haven_key)) {
+            return boost::get<cryptonote::txout_haven_key>(foo_v.target).asset_type == "XHV";
+          } else if (foo_v.target.type() == typeid(cryptonote::txout_haven_tagged_key)) {
+            return boost::get<cryptonote::txout_haven_tagged_key>(foo_v.target).asset_type == "XHV";
+          } else {
+            return false;
+          }
         });
         if (xhv_outputs) {
           cryptonote::txin_onshore in;
@@ -669,11 +680,14 @@ namespace boost
       }
       // Clone the output unlock time into the output itself
       out.unlock_time = (x.version >= POU_TRANSACTION_VERSION) ? x.output_unlock_times[i] : x.unlock_time;
-      // Set the is_collateral flag
+      // Set the is_collateral and is_collateral_change flags
       out.is_collateral = false;
+      out.is_collateral_change = false;
       if (x.version >= COLLATERAL_TRANSACTION_VERSION && x.amount_burnt) {
-        if (std::find(x.collateral_indices.begin(), x.collateral_indices.end(), i) != x.collateral_indices.end()) {
+        if (x.collateral_indices[0] == i) {
           out.is_collateral = true;
+        } else if (x.collateral_indices[1] == i) {
+          out.is_collateral_change = true;
         }
       }
 

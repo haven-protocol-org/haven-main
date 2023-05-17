@@ -1080,6 +1080,7 @@ private:
       std::unordered_set<crypto::public_key> &valid_public_keys_cache,
       uint64_t unlock_time,
       uint64_t fee,
+      uint64_t xhv_fee,
       const std::vector<uint8_t>& extra,
       cryptonote::transaction& tx,
       pending_tx &ptx,

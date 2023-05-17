@@ -171,7 +171,7 @@ namespace cryptonote
   };
   static const command_line::arg_descriptor<std::string> arg_check_updates = {
     "check-updates"
-  , "Check for new versions of monero: [disabled|notify|download|update]"
+  , "Check for new versions of Haven: [disabled|notify|download|update]"
   , "disabled"
   };
   static const command_line::arg_descriptor<bool> arg_fluffy_blocks  = {
@@ -210,7 +210,7 @@ namespace cryptonote
   static const command_line::arg_descriptor<std::string> arg_block_rate_notify = {
     "block-rate-notify"
   , "Run a program when the block rate undergoes large fluctuations. This might "
-    "be a sign of large amounts of hash rate going on and off the Monero network, "
+    "be a sign of large amounts of hash rate going on and off the Haven network, "
     "and thus be of potential interest in predicting attacks. %t will be replaced "
     "by the number of minutes for the observation window, %b by the number of "
     "blocks observed within that window, and %e by the number of blocks that was "
@@ -504,8 +504,8 @@ namespace cryptonote
       if (boost::filesystem::exists(old_files / "blockchain.bin"))
       {
         MWARNING("Found old-style blockchain.bin in " << old_files.string());
-        MWARNING("Monero now uses a new format. You can either remove blockchain.bin to start syncing");
-        MWARNING("the blockchain anew, or use monero-blockchain-export and monero-blockchain-import to");
+        MWARNING("Haven now uses a new format. You can either remove blockchain.bin to start syncing");
+        MWARNING("the blockchain anew, or use haven-blockchain-export and haven-blockchain-import to");
         MWARNING("convert your existing blockchain.bin to the new format. See README.md for instructions.");
         return false;
       }
@@ -972,16 +972,37 @@ namespace cryptonote
           tx_info[n].tvc.pr = blocks_pr[0].second.pricing_record;
         }
 
+        const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain_storage.get_db().get_circulating_supply();
+
+        // Get the slippage
+        if (hf_version >= HF_VERSION_SLIPPAGE && tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
+          bool r = get_slippage(tx_info[n].tvc.m_type,
+                                tx_info[n].tvc.m_source_asset,
+                                tx_info[n].tvc.m_dest_asset,
+                                tx_info[n].tx->amount_burnt,
+                                tx_info[n].tvc.m_slippage,
+                                tx_info[n].tvc.pr,
+                                supply_amounts,
+                                hf_version
+                                );
+          if (!r) {
+            MERROR_VER("Failed to obtain slippage");
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            continue;
+          }
+        }
+        
         // Get the collateral requirements
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_info[n].tvc.m_type == tt::OFFSHORE || tx_info[n].tvc.m_type == tt::ONSHORE)) {
-
-          const std::vector<std::pair<std::string, std::string>>& amounts = m_blockchain_storage.get_db().get_circulating_supply();
           bool r = get_collateral_requirements(
             tx_info[n].tvc.m_type, 
             tx_info[n].tx->amount_burnt,
             tx_info[n].tvc.m_collateral,
             tx_info[n].tvc.pr,
-            amounts
+            supply_amounts,
+            hf_version
           );
           if (!r) {
             MERROR_VER("Failed to obtain collateral requirements");
@@ -1085,7 +1106,30 @@ namespace cryptonote
           continue;
 
         if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven3 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeBulletproofPlus) {
-            if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tx->collateral_indices, tx_info[n].tvc.m_collateral))
+
+          // NEAC: Get conversion rates for TX and for fees
+          uint64_t conversion_rate = COIN;
+          uint64_t fee_conversion_rate = COIN;
+          if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
+
+            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, conversion_rate)) {
+              MERROR_VER("Failed to get conversion rate - aborting");
+              set_semantics_failed(tx_info[n].tx_hash);
+              tx_info[n].tvc.m_verifivation_failed = true;
+              tx_info[n].result = false;
+              continue;
+            }
+
+            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, tx_info[n].tvc.m_source_asset, "XHV", fee_conversion_rate)) {
+              MERROR_VER("Failed to get fee conversion rate - aborting");
+              set_semantics_failed(tx_info[n].tx_hash);
+              tx_info[n].tvc.m_verifivation_failed = true;
+              tx_info[n].result = false;
+              continue;
+            }
+          }
+          
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, conversion_rate, fee_conversion_rate, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage))
             {
               // 2 tx that used reorged pricing reocord for callateral calculation.
               if (epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
@@ -1922,7 +1966,7 @@ namespace cryptonote
     {
       std::string main_message;
       if (m_offline)
-        main_message = "The daemon is running offline and will not attempt to sync to the Monero network.";
+        main_message = "The daemon is running offline and will not attempt to sync to the Haven network.";
       else
         main_message = "The daemon will start synchronizing with the network. This may take a long time to complete.";
       MGINFO_YELLOW(ENDL << "**********************************************************************" << ENDL
@@ -1970,7 +2014,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_updates()
   {
-    static const char software[] = "monero";
+    static const char software[] = "haven";
 #ifdef BUILD_TAG
     static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
     static const char subdir[] = "cli"; // because it can never be simple
@@ -2165,7 +2209,7 @@ namespace cryptonote
       MDEBUG("blocks in the last " << seconds[n] / 60 << " minutes: " << b << " (probability " << p << ")");
       if (p < threshold)
       {
-        MWARNING("There were " << b << (b == max_blocks_checked ? " or more" : "") << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Monero network or under attack, or your computer's time is off. Or it could be just sheer bad luck.");
+        MWARNING("There were " << b << (b == max_blocks_checked ? " or more" : "") << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Haven network or under attack, or your computer's time is off. Or it could be just sheer bad luck.");
 
         std::shared_ptr<tools::Notify> block_rate_notify = m_block_rate_notify;
         if (block_rate_notify)

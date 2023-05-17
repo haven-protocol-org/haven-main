@@ -171,6 +171,7 @@ namespace cryptonote
     tk.asset_type = "XHV";
     tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
     tk.is_collateral = false;
+    tk.is_collateral_change = false;
     tk.key = out_eph_public_key;
 
     tx_out out;
@@ -178,6 +179,28 @@ namespace cryptonote
     out.target = tk;
     tx.vout.push_back(out);
 
+    /*
+    // Add the genesis amounts FOR TESTNET ONLY
+    if (nettype == cryptonote::TESTNET && height == 0 && already_generated_coins == 0) {
+
+      // First additional genesis amount
+      r = crypto::derive_public_key(derivation, 1, miner_address.m_spend_public_key, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", 1, "<< miner_address.m_spend_public_key << ")");
+      
+      txout_haven_key tk_miner;
+      tk_miner.asset_type = "XHV";
+      tk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+      tk_miner.is_collateral = false;
+      tk_miner.is_collateral_change = false;
+      tk_miner.key = out_eph_public_key;
+      
+      tx_out out_miner;
+      out_miner.amount = HAVEN_MAX_TX_VALUE_TESTNET;
+      out_miner.target = tk_miner;
+      tx.vout.push_back(out_miner);
+    }
+    */
+    
     // add governance wallet output for xhv
     cryptonote::address_parse_info governance_wallet_address;
     if (hard_fork_version >= 3) {
@@ -196,6 +219,7 @@ namespace cryptonote
         tk.asset_type = "XHV";
         tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
         tk.is_collateral = false;
+        tk.is_collateral_change = false;
         tk.key = out_eph_public_key;
         tx_out out;
         summary_amounts += out.amount = governance_reward;
@@ -262,6 +286,7 @@ namespace cryptonote
           tk_miner.asset_type = fee_map_entry.first;
           tk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
           tk_miner.is_collateral = false;
+          tk_miner.is_collateral_change = false;
           tk_miner.key = out_eph_public_key;
           
           tx_out out_miner;
@@ -281,6 +306,7 @@ namespace cryptonote
           tk_gov.asset_type = fee_map_entry.first;
           tk_gov.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
           tk_gov.is_collateral = false;
+          tk_gov.is_collateral_change = false;
           tk_gov.key = out_eph_public_key_xasset;
           
           tx_out out_gov;
@@ -292,7 +318,9 @@ namespace cryptonote
     }
 
     // set tx version
-    if (hard_fork_version >= HF_VERSION_USE_COLLATERAL ) {
+    if (hard_fork_version >= HF_VERSION_SLIPPAGE) {
+      tx.version = HAVEN_TYPES_TRANSACTION_VERSION;
+    } else if (hard_fork_version >= HF_VERSION_USE_COLLATERAL) {
       tx.version = COLLATERAL_TRANSACTION_VERSION;
     } else if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
       tx.version = POU_TRANSACTION_VERSION;
@@ -479,14 +507,14 @@ namespace cryptonote
     }
   }
   //---------------------------------------------------------------
-  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
+  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount = 0;
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
       if (dt.dest_asset_type == "XUSD" && !dt.is_collateral) {
-        amount += dt.amount;
+        amount += dt.amount + dt.slippage;
       }
     }
 
@@ -511,19 +539,22 @@ namespace cryptonote
     return fee_estimate;
   }
   //---------------------------------------------------------------
-  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version) {
+  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
-      if (dt.dest_asset_type == "XHV" && !dt.is_collateral) {
-        amount_usd += dt.amount;
+      if (dt.dest_asset_type == "XHV" && !dt.is_collateral && !dt.is_collateral_change) {
+        amount_usd += dt.amount + dt.slippage;
       }
     }
 
     uint64_t fee_estimate = 0;
-     if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+    if (hf_version >= HF_VERSION_SLIPPAGE) {
+      // Flat 0.5% fee
+      fee_estimate = amount_usd / 200;
+    } else if (hf_version >= HF_VERSION_USE_COLLATERAL) {
       // Flat 1.5% fee
       fee_estimate = (amount_usd * 3) / 200;
     } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
@@ -544,14 +575,14 @@ namespace cryptonote
     return fee_estimate;
   }
   //---------------------------------------------------------------
-  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
+  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_xasset = 0;
     for (auto dt: dsts) {
       // Filter out the change, which is never converted
       if (dt.dest_asset_type == "XUSD") {
-        amount_xasset += dt.amount;
+        amount_xasset += dt.amount + dt.slippage;
       }
     }
 
@@ -576,7 +607,7 @@ namespace cryptonote
    return fee_estimate;
   }
   //---------------------------------------------------------------
-  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version) {
+  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version) {
 
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
@@ -585,7 +616,7 @@ namespace cryptonote
       // All other destinations should have both pre and post converted amounts set so far except
       // the change destinations.
       if (dt.dest_asset_type != "XUSD") {
-        amount_usd += dt.amount;
+        amount_usd += dt.amount + dt.slippage;
       }
     }
 
@@ -650,7 +681,101 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts)
+  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version)
+  {
+    using namespace boost::multiprecision;
+    using tt = transaction_type;
+
+    // Do the right thing based upon TX type
+    using tt = cryptonote::transaction_type;
+    if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
+      slippage = 0;
+      return true;
+    }
+
+    // Process the circulating supply data
+    std::map<std::string, uint128_t> map_amounts;
+    uint128_t mcap_xassets = 0;
+    for (const auto &i: amounts)
+    {
+      // Copy into the map for expediency
+      map_amounts[i.first] = uint128_t(i.second.c_str());
+
+      // Skip XHV from the xAssets MCAP
+      if (i.first == "XHV") continue;
+
+      // Get the pricing data for the xAsset
+      uint128_t price_xasset = pr[i.first];
+      
+      // Multiply by the amount of coin in circulation
+      uint128_t amount_xasset(i.second.c_str());
+      amount_xasset *= COIN;
+      amount_xasset /= price_xasset;
+      
+      // Sum into our total for all xAssets
+      mcap_xassets += amount_xasset;
+    }
+
+    // Calculate the XHV market cap
+    boost::multiprecision::uint128_t price_xhv =
+      (tx_type == tt::OFFSHORE) ? std::min(pr.unused1, pr.xUSD) :
+      (tx_type == tt::ONSHORE)  ? std::max(pr.unused1, pr.xUSD) :
+      0;
+    uint128_t mcap_xhv = map_amounts["XHV"];
+    mcap_xhv *= price_xhv;
+    mcap_xhv /= COIN;
+
+    // Calculate the market cap ratio
+    cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
+    if (ratio_mcap_128 < 1.0) ratio_mcap_128 = 1.0;
+    double ratio_mcap = ratio_mcap_128.convert_to<double>();
+    
+    uint128_t source_amount = amount;
+    uint128_t dest_amount = source_amount;
+
+    if (tx_type == tt::OFFSHORE) {
+      
+      // Calculate the dest amount
+      dest_amount *= price_xhv;
+      dest_amount /= COIN;
+      
+    } else if (tx_type == tt::ONSHORE) {
+      
+      // Calculate the source amount
+      source_amount *= COIN;
+      source_amount /= price_xhv;
+      
+    } else if (tx_type == tt::XUSD_TO_XASSET) {
+      
+      dest_amount *= COIN;
+      dest_amount /= pr[dest_asset];
+      
+    } else if (tx_type == tt::XASSET_TO_XUSD) {
+      
+      dest_amount *= pr[source_asset];
+      dest_amount /= COIN;
+      
+    } else {
+      LOG_ERROR("Invalid TX type detected " << (uint8_t)tx_type);
+      return false;
+    }
+
+    // Calculate the source pool %
+    cpp_bin_float_quad source_pool = source_amount.convert_to<cpp_bin_float_quad>() / map_amounts[source_asset].convert_to<cpp_bin_float_quad>();
+
+    // Calculate the dest pool %
+    cpp_bin_float_quad dest_pool = dest_amount.convert_to<cpp_bin_float_quad>() / map_amounts[dest_asset].convert_to<cpp_bin_float_quad>();
+
+    // Calculate the slippage
+    cpp_bin_float_quad slippage_sum_128 = (source_pool + dest_pool) * ratio_mcap_128;
+    if (slippage_sum_128 > 1.0) slippage_sum_128 = 1.0;
+    slippage_sum_128 *= source_amount.convert_to<cpp_bin_float_quad>();
+    slippage = slippage_sum_128.convert_to<uint64_t>();
+    slippage -= (slippage % 100000000);
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version)
   {
     using namespace boost::multiprecision;
     using tt = transaction_type;
@@ -691,6 +816,27 @@ namespace cryptonote
     cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
     double ratio_mcap = ratio_mcap_128.convert_to<double>();
 
+    // Do the right thing, based on the HF version
+    if (hf_version >= HF_VERSION_SLIPPAGE) {
+
+      if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+        collateral = 0;
+      } else {
+        // VBS rate = SQRT(MCAP^1.5) * 5
+        double vbs = std::floor(sqrt(pow(ratio_mcap, 1.5)));
+
+        // Convert amount to 128 bit
+        boost::multiprecision::uint128_t amount_128 = amount;
+
+        // Get the collateral amount
+        boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
+        collateral_128 *= amount_128;
+        collateral = collateral_128.convert_to<uint64_t>();
+        LOG_PRINT_L1("Conversion TX requires " << print_money(collateral) << " XHV as collateral to convert " << print_money(amount) << (tx_type == tt::OFFSHORE) ? " XHV" : " XUSD");
+      }
+      return true;
+    }
+    
     // Calculate the spread ratio
     double ratio_spread = (ratio_mcap >= 1.0) ? 0.0 : 1.0 - ratio_mcap;
     
@@ -709,7 +855,6 @@ namespace cryptonote
     boost::multiprecision::uint128_t amount_128 = amount;
   
     // Do the right thing based upon TX type
-    using tt = cryptonote::transaction_type;
     if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
       collateral = 0;
     } else if (tx_type == tt::OFFSHORE) {
@@ -782,8 +927,13 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr)
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint8_t hf_version)
   {
+    // From the introduction of slippage, the block cap was effectively superfluous. This was achieved by using the max TX value as the block cap
+    if (hf_version >= HF_VERSION_SLIPPAGE) {
+      return HAVEN_MAX_TX_VALUE;
+    }
+    
     std::string str_xhv_supply;
     for (const auto& supply: supply_amounts) {
       if (supply.first == "XHV") {
@@ -807,6 +957,89 @@ namespace cryptonote
     return (pow(xhv_market_cap * 3000, 0.42) + ((xhv_supply * 5) / 1000)) * COIN;
   }
   //---------------------------------------------------------------
+  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate) {
+    // Check for transfers
+    if (from_asset == to_asset) {
+      rate = COIN;
+      return true;
+    }
+    if (from_asset == "XHV") {
+      // XHV as source
+      if (to_asset == "XUSD") {
+        // Scale to xUSD (offshore) and bail out (next line uses "&&" not "||" because historically a number of PRs didn't have both values present)
+        if (!pr.xUSD && !pr.unused1) {
+          // Missing a rate that we need - return an error
+          LOG_ERROR("Missing exchange rate for conversion (" << from_asset << "," << to_asset << ") - aborting");
+          return false;
+        }
+        rate = std::min(pr.xUSD, pr.unused1);
+      } else {
+        // Scale to xUSD and then to the xAsset specified
+        boost::multiprecision::uint128_t rate_128 = pr.xUSD;
+        rate_128 *= pr[to_asset];
+        rate_128 /= COIN;
+        rate = rate_128.convert_to<uint64_t>();
+        rate -= (rate % 100000000);
+      }
+    } else if (from_asset == "XUSD") {
+      // xUSD as source
+      if (to_asset == "XHV") {
+        // Scale directly to XHV (onshore) and bail out (next line uses "&&" not "||" because historically a number of PRs didn't have both values present, see block #1010002)
+        if (!pr.xUSD && !pr.unused1) {
+          // Missing a rate that we need - return an error
+          LOG_ERROR("Missing exchange rate for conversion (" << from_asset << "," << to_asset << ") - aborting");
+          return false;
+        }
+        boost::multiprecision::uint128_t rate_128 = COIN;
+        rate_128 *= COIN;
+        rate_128 /= std::max(pr.xUSD, pr.unused1);
+        rate = rate_128.convert_to<uint64_t>();
+        rate -= (rate % 100000000);
+        
+      } else {
+        // Scale directly to xAsset (xusd_to_xasset)
+        if (!pr[to_asset]) {
+          // Missing a rate that we need - return an error
+          LOG_ERROR("Missing exchange rate for conversion (" << from_asset << "," << to_asset << ") - aborting");
+          return false;
+        }
+        rate = pr[to_asset];
+      }
+    } else {
+      // xAsset as source
+      if ((to_asset != "XUSD") && (to_asset != "XHV")) {
+        // Report an error and bail out
+        LOG_ERROR("Invalid exchange rate for conversion (" << from_asset << "," << to_asset << ") - aborting");
+        return false;
+      }
+      // scale to xUSD
+      boost::multiprecision::uint128_t rate_128 = COIN;
+      rate_128 *= COIN;
+      rate_128 /= pr[from_asset];
+      if (to_asset == "XHV") {
+        rate_128 *= COIN;
+        rate_128 /= std::max(pr.xUSD, pr.unused1);
+      }
+      // truncate and bail out
+      rate = rate_128.convert_to<uint64_t>();
+      rate -= (rate % 100000000);        
+    }
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool get_converted_amount(const uint64_t& conversion_rate, const uint64_t& source_amount, uint64_t& dest_amount) {
+    if (!conversion_rate || !source_amount) {
+      LOG_ERROR("Invalid conversion rate or input amount for conversion (" << conversion_rate << "," << source_amount << ") - aborting");
+      return false;
+    }
+    boost::multiprecision::uint128_t source_amount_128 = source_amount;
+    boost::multiprecision::uint128_t conversion_rate_128 = conversion_rate;
+    boost::multiprecision::uint128_t dest_amount_128 = source_amount_128 * conversion_rate_128;
+    dest_amount_128 /= COIN;
+    dest_amount = dest_amount_128.convert_to<uint64_t>();
+    return true;
+  }
+  //---------------------------------------------------------------
   uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr)
   {
     boost::multiprecision::uint128_t xusd_128 = xusd_amount;
@@ -818,7 +1051,7 @@ namespace cryptonote
     return (uint64_t)xasset_128;
   }
   //---------------------------------------------------------------
-  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version)
   {
 
     if (amount_asset_type == "XUSD") {
@@ -849,7 +1082,7 @@ namespace cryptonote
     }
   }
   //---------------------------------------------------------------
-  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version)
+  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version)
   {
     // Now work out the amount
     boost::multiprecision::uint128_t xusd_128 = xusd_amount;
@@ -894,9 +1127,10 @@ namespace cryptonote
     const std::vector<uint8_t> &extra,
     transaction& tx,
     uint64_t unlock_time,
-    const uint32_t hf_version,
+    const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
+    const uint64_t xhv_fee,
     const crypto::secret_key &tx_key,
     const std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct,
@@ -918,7 +1152,7 @@ namespace cryptonote
     amount_keys.clear();
 
     // set version and unlock time
-    if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+    if (hf_version >= HF_VERSION_USE_HAVEN_TYPES) {
       tx.version = HAVEN_TYPES_TRANSACTION_VERSION;
     } else if (hf_version >= HF_VERSION_USE_COLLATERAL) {
       tx.version = COLLATERAL_TRANSACTION_VERSION;
@@ -1140,12 +1374,16 @@ namespace cryptonote
     uint64_t summary_outs_money = 0;
     //fill outputs
     size_t output_index = 0;
+    uint64_t summary_outs_slippage = 0;
     for(const tx_destination_entry& dst_entr: destinations)
     {
       CHECK_AND_ASSERT_MES(dst_entr.dest_amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.dest_amount);
       crypto::public_key out_eph_public_key;
       crypto::view_tag view_tag;
 
+      // Sum all the slippage across the outputs
+      summary_outs_slippage += dst_entr.slippage;
+      
       hwdev.generate_output_ephemeral_keys(tx.version,sender_account_keys, txkey_pub, tx_key,
                                            dst_entr, change_addr, output_index,
                                            need_additional_txkeys, additional_tx_keys,
@@ -1154,8 +1392,7 @@ namespace cryptonote
 
       // dont lock the change dests
       uint64_t u_time = tx.unlock_time;
-      if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE &&
-          dst_entr.is_collateral && dst_entr.amount != onshore_col_amount) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral_change) {
         u_time = 0;
       } else {
         if (dst_entr.dest_asset_type == source_asset) {
@@ -1164,16 +1401,16 @@ namespace cryptonote
       }
 
       tx_out out;
-      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, dst_entr.is_collateral_change, out_eph_public_key, use_view_tags, view_tag, out);
       
       tx.vout.push_back(out);
       output_index++;
-      summary_outs_money += dst_entr.is_collateral ? 0 : dst_entr.amount;
+      summary_outs_money += (dst_entr.is_collateral || dst_entr.is_collateral_change) ? 0 : dst_entr.amount + dst_entr.slippage;
 
       if (source_asset != dest_asset) {
-        if (dst_entr.dest_asset_type == dest_asset && !dst_entr.is_collateral) {
+        if (dst_entr.dest_asset_type == dest_asset && !dst_entr.is_collateral && !dst_entr.is_collateral_change) {
           tx.amount_minted += dst_entr.dest_amount;
-          tx.amount_burnt += dst_entr.amount;
+          tx.amount_burnt += dst_entr.amount + dst_entr.slippage;
         }
       }
     }
@@ -1208,7 +1445,7 @@ namespace cryptonote
         if (src_entr.asset_type == dest_asset)
           col_in_money += src_entr.amount;
       for(const tx_destination_entry& dst_entr: destinations)
-        if (dst_entr.is_collateral)
+        if (dst_entr.is_collateral || dst_entr.is_collateral_change)
           col_out_money += dst_entr.amount;
 
       if((col_out_money != col_in_money) && tx_type == transaction_type::ONSHORE)
@@ -1306,7 +1543,7 @@ namespace cryptonote
       rct::keyV destinations;
       std::vector<uint64_t> inamounts, outamounts;
       std::vector<size_t> inamounts_col_indices;
-      std::map<size_t, std::pair<std::string, bool>> outamounts_features;
+      std::map<size_t, std::pair<std::string, std::pair<bool,bool>>> outamounts_features;
       std::vector<unsigned int> index;
       for (size_t i = 0; i < sources.size(); ++i)
       {
@@ -1342,14 +1579,15 @@ namespace cryptonote
           return false;
         }        
         bool is_collateral = false;
-        ok = cryptonote::is_output_collateral(tx.vout[i], is_collateral);
+        bool is_collateral_change = false;
+        ok = cryptonote::is_output_collateral(tx.vout[i], is_collateral, is_collateral_change);
         if (!ok) {
           LOG_ERROR("failed to get is_collateral for tx.vout[" << i << "]");
           return false;
         }        
         destinations.push_back(rct::pk2rct(output_public_key));
         outamounts.push_back(tx.vout[i].amount);
-        outamounts_features[i] = std::pair<std::string, bool>(output_asset_type,is_collateral);
+        outamounts_features[i] = std::pair<std::string, std::pair<bool, bool>>(output_asset_type,{is_collateral,is_collateral_change});
         amount_out += tx.vout[i].amount;
       }
 
@@ -1397,37 +1635,50 @@ namespace cryptonote
       for (size_t i = 0; i < tx.vout.size(); ++i)
         tx.vout[i].amount = 0;
 
-      // HERE BE DRAGONS!!!
       // NEAC: Convert the fees for conversions to XHV
-      if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+      uint64_t conversion_rate = COIN;
+      if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
 
-        // New Haven TXs only from BP+ - convert fees to XHV
-        switch(tx_type) {
-        case transaction_type::ONSHORE:
-          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
-          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
-          break;
-        case transaction_type::XUSD_TO_XASSET:
-          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
-          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
-          break;
-        case transaction_type::XASSET_TO_XUSD:
-          //fee = cryptonote::get_xusd_amount(fee, source_asset, pr, transaction_type::XASSET_TO_XUSD, hf_version);
-          //fee = cryptonote::get_xhv_amount(fee, pr, transaction_type::ONSHORE, hf_version);
-          offshore_fee = cryptonote::get_xusd_amount(offshore_fee, source_asset, pr, transaction_type::XASSET_TO_XUSD, hf_version);
-          offshore_fee = cryptonote::get_xhv_amount(offshore_fee, pr, transaction_type::ONSHORE, hf_version);
-          break;
-        default:
-          break;
+        // Convert TX fee to XHV
+        uint64_t tx_fee_check = 0;
+        if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
+
+          // Get a conversion rate
+          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
+            LOG_ERROR("Failed to get conversion rate for fees - aborting");
+            return false;
+          }
+          if (!cryptonote::get_converted_amount(conversion_rate, xhv_fee, tx_fee_check)) {
+            LOG_ERROR("Failed to get converted TX fee amount - aborting");
+            return false;
+          }
+          if (tx_fee_check != fee) {
+            LOG_ERROR("Converted TX fee amount is incorrect: got " << print_money(tx_fee_check) << " XHV, got " << print_money(fee) << " XHV - aborting");
+            return false;
+          }
+
+          // Convert offshore fee to XHV
+          uint64_t offshore_fee_xhv = 0;
+          if (!cryptonote::get_converted_amount(conversion_rate, offshore_fee, offshore_fee_xhv)) {
+            LOG_ERROR("Failed to get converted conversion fee amount - aborting");
+            return false;
+          }
+          offshore_fee = offshore_fee_xhv;
         }
       }
-      // LAND AHOY!!!
+
+      // NEAC: get conversion rate - this replaces the direct use of the Pricing Record to avoid invert() scaling
+      conversion_rate = COIN;
+      if (!cryptonote::get_conversion_rate(pr, source_asset, dest_asset, conversion_rate)) {
+        LOG_ERROR("Failed to get conversion rate for output - aborting");
+        return false;
+      }
       
       crypto::hash tx_prefix_hash;
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;
       if (use_simple_rct)
-        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, tx_type, source_asset, inamounts, inamounts_col_indices, outamounts, outamounts_features, fee, offshore_fee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx.version, pr, rct_config, hwdev);
+        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, tx_type, source_asset, inamounts, inamounts_col_indices, outamounts, outamounts_features, fee, offshore_fee, onshore_col_amount, mixRing, amount_keys, index, outSk, tx.version, pr, conversion_rate, hf_version, rct_config, hwdev);
       else
         tx.rct_signatures = rct::genRct(rct::hash2rct(tx_prefix_hash), inSk, destinations, outamounts, mixRing, amount_keys, sources[0].real_output, outSk, rct_config, hwdev); // same index assumption
       memwipe(inSk.data(), inSk.size() * sizeof(rct::ctkey));
@@ -1454,9 +1705,10 @@ namespace cryptonote
     const std::vector<uint8_t> &extra,
     transaction& tx,
     const uint64_t unlock_time,
-    const uint32_t hf_version,
+    const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
+    const uint64_t xhv_fee,
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct,
@@ -1497,6 +1749,7 @@ namespace cryptonote
         hf_version,
         current_height,
         onshore_col_amount,
+        xhv_fee,
         tx_key,
         additional_tx_keys,
         rct,
@@ -1519,7 +1772,7 @@ namespace cryptonote
      crypto::secret_key tx_key;
      std::vector<crypto::secret_key> additional_tx_keys;
      std::vector<tx_destination_entry> destinations_copy = destinations;
-     return construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, 1, 1, 0, tx_key, additional_tx_keys, false, { rct::RangeProofBorromean, 0});
+     return construct_tx_and_get_tx_key("XHV", "XHV", offshore::pricing_record(), sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, 1, 1, 0, 0, tx_key, additional_tx_keys, false, { rct::RangeProofBorromean, 0});
   }
   //---------------------------------------------------------------
   bool generate_genesis_block(

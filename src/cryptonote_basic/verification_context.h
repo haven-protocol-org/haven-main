@@ -59,6 +59,7 @@ namespace cryptonote
     transaction_type m_type;
     offshore::pricing_record pr;
     uint64_t m_collateral;
+    uint64_t m_slippage;
     bool tx_pr_height_verified = false;
   };
 

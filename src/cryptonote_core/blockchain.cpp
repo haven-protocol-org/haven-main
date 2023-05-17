@@ -1454,6 +1454,8 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
   if(!check_outs_overflow(b.miner_tx))
   {
     MERROR("miner transaction has money overflow in block " << get_block_hash(b));
+    cryptonote::transaction temp_tx = b.miner_tx;
+    MERROR(cryptonote::obj_to_json_str(temp_tx));
     return false;
   }
 
@@ -3407,6 +3409,136 @@ bool Blockchain::check_tx_inputs(transaction& tx, uint64_t& max_used_block_heigh
   return true;
 }
 //------------------------------------------------------------------
+bool Blockchain::check_unlock_time(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change, const uint8_t hf_version) const
+{
+  // Check for transfers calling us erroneously
+  if (tx_type == transaction_type::TRANSFER ||
+      tx_type == transaction_type::OFFSHORE_TRANSFER ||
+      tx_type == transaction_type::XASSET_TRANSFER) {
+    // Just return true - code elsewhere guarantees minimum 10 block unlock
+    return true;
+  }
+  
+  // Calculate the number of blocks the output is/was locked for
+  uint64_t unlock_time = 0;
+  if (tx_height <= 973672 || output_unlock_time > tx_height)
+    unlock_time = output_unlock_time - tx_height;
+
+  // Do the right thing based on version
+  if (hf_version < HF_PER_OUTPUT_UNLOCK_VERSION) {
+
+    // pre-v6 TX - unlock times not set per output
+    if ((tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) && (unlock_time < 180)) {
+      LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
+      return false;
+    }
+    if ((tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) && (unlock_time < 1440)) {
+      LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xAsset conversions)");
+      return false;
+    }
+  }
+
+  // Start implementing per-HF overrides of this function, so the logic is clearer
+  if (hf_version >= HF_VERSION_SLIPPAGE) {
+    return check_unlock_time_21(output_unlock_time, tx_height, tx_type, output_asset_type, is_collateral, is_collateral_change);
+  }
+  
+  // Different locktimes based upon nettype
+  if (m_nettype == TESTNET || m_nettype == STAGENET) {
+    // Testing locktimes
+    if (tx_type == transaction_type::OFFSHORE) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL &&
+          unlock_time < TX_OFFSHORE_UNLOCK_BLOCKS_TESTNET &&
+          (is_collateral || output_asset_type == "XUSD"))
+        return false;
+    } else if (tx_type == transaction_type::ONSHORE) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL &&
+          unlock_time < TX_ONSHORE_UNLOCK_BLOCKS_TESTNET &&
+          (!is_collateral_change && output_asset_type == "XHV"))
+        return false;
+    } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && unlock_time < TX_XASSET_UNLOCK_BLOCKS_TESTNET) return false;
+    } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && unlock_time < TX_XASSET_UNLOCK_BLOCKS_TESTNET) return false;
+    } else {
+      // Allow 10-block unlocks for transfers of any asset type
+      if (unlock_time < 10) return false;
+    }
+  } else {
+    // Mainnet locktimes
+    if (tx_type == transaction_type::OFFSHORE) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL &&
+          unlock_time < TX_V7_OFFSHORE_UNLOCK_BLOCKS &&
+          (is_collateral || output_asset_type == "XUSD"))
+        return false;
+      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION &&
+          unlock_time < TX_V6_OFFSHORE_UNLOCK_BLOCKS &&
+          (!is_collateral_change && output_asset_type == "XHV"))
+        return false;
+    } else if (tx_type == transaction_type::ONSHORE) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL &&
+          unlock_time < TX_V7_ONSHORE_UNLOCK_BLOCKS &&
+          (!is_collateral_change && output_asset_type == "XHV"))
+        return false;
+    } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && unlock_time < TX_V7_XASSET_UNLOCK_BLOCKS) return false;
+    } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL && unlock_time < TX_V7_XASSET_UNLOCK_BLOCKS) return false;
+    } else {
+      // Allow 10-block unlocks for transfers of any asset type
+      if (unlock_time < 10) return false;
+    }
+  }
+
+  // return success
+  return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::check_unlock_time_21(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const
+{
+  // Check for transfers calling us erroneously
+  if (tx_type == transaction_type::TRANSFER ||
+      tx_type == transaction_type::OFFSHORE_TRANSFER ||
+      tx_type == transaction_type::XASSET_TRANSFER) {
+    // Just return true - code elsewhere guarantees minimum 10 block unlock
+    return true;
+  }
+  if (is_collateral_change) return true;
+  
+  // Calculate the number of blocks the output is/was locked for
+  uint64_t unlock_time = 0;
+  if (tx_height <= 973672 || output_unlock_time > tx_height)
+    unlock_time = output_unlock_time - tx_height;
+
+  // Do the right thing, based on what the output actually is
+  if (is_collateral)
+    if (unlock_time < HF21_COLLATERAL_LOCK_BLOCKS) return false;
+    else return true;
+  if (tx_type == transaction_type::OFFSHORE)
+    if (output_asset_type == "XHV") return true;
+    else
+      if (unlock_time < HF21_SHORING_LOCK_BLOCKS) return false;
+      else return true;
+  if (tx_type == transaction_type::ONSHORE)
+    if (output_asset_type == "XUSD") return true;
+    else
+      if (unlock_time < HF21_SHORING_LOCK_BLOCKS) return false;
+      else return true;
+  if (tx_type == transaction_type::XUSD_TO_XASSET)
+    if (output_asset_type == "XUSD") return true;
+    else
+      if (unlock_time < HF21_XASSET_LOCK_BLOCKS) return false;
+      else return true;
+  if (tx_type == transaction_type::XASSET_TO_XUSD)
+    if (output_asset_type != "XUSD") return true;
+    else
+      if (unlock_time < HF21_XASSET_LOCK_BLOCKS) return false;
+      else return true;
+  
+  // Should never get here
+  return false;
+}
+//------------------------------------------------------------------
 bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context &tvc) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
@@ -3575,7 +3707,13 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+  if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+    // only accept rct::RCTTypeHaven3 txs after Haven3 fork.
+    if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_USE_COLLATERAL) {
     // only accept rct::RCTTypeHaven3 txs after Haven3 fork.
     if (tx.rct_signatures.type != rct::RCTTypeHaven3) {
       tvc.m_verifivation_failed = true;
@@ -3776,13 +3914,12 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     size_t n_unmixable = 0, n_mixable = 0;
     size_t min_actual_mixin = std::numeric_limits<size_t>::max();
     size_t max_actual_mixin = 0;
-    // HERE BE DRAGONS!!!
     // NEAC: Resolve the min_mixin question for differing HFs
-    // Monero 0.18
-    //const size_t min_mixin = hf_version >= HF_VERSION_MIN_MIXIN_15 ? 15 : hf_version >= HF_VERSION_MIN_MIXIN_10 ? 10 : hf_version >= HF_VERSION_MIN_MIXIN_6 ? 6 : hf_version >= HF_VERSION_MIN_MIXIN_4 ? 4 : 2;
-    // Haven 0.16
-    const size_t min_mixin = hf_version >= HF_11_MIN_MIXIN_10 ? 10 : HF_2_MIN_MIXIN_9 ? 9 : 4;
-    // LAND AHOY!!!
+    const size_t min_mixin =
+      hf_version >= HF_VERSION_MIN_MIXIN_15 ? 15 :
+      hf_version >= HF_11_MIN_MIXIN_10 ? 10 :
+      hf_version >= HF_2_MIN_MIXIN_9 ? 9 :
+      4;
     for (const auto& txin : tx.vin)
     {
       // non txin_to_key inputs will be rejected below
@@ -3825,7 +3962,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
     }
 
-    /*
     // The only circumstance where ring sizes less than expected are
     // allowed is when spending unmixable non-RCT outputs in the chain.
     // Caveat: at HF_VERSION_MIN_MIXIN_15, temporarily allow ring sizes
@@ -3854,13 +3990,14 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       tvc.m_low_mixin = true;
       return false;
     }
-    */
+    /*
     if (((hf_version == HF_VERSION_MIN_MIXIN_10 || hf_version == HF_VERSION_MIN_MIXIN_10+1) && min_actual_mixin != 10) || (hf_version >= HF_VERSION_MIN_MIXIN_10+2 && min_actual_mixin > 10))
     {
       MERROR_VER("Tx " << get_transaction_hash(tx) << " has invalid ring size (" << (min_actual_mixin + 1) << "), it should be 11");
       tvc.m_low_mixin = true;
       return false;
     }
+    */
 
     if (min_actual_mixin < min_mixin)
     {
@@ -4299,7 +4436,7 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   }
 
   // HF21+ conversion TXs use XHV for all fees
-  if (version < HF_VERSION_BULLETPROOF_PLUS) {
+  if (version < HF_VERSION_CONVERSION_FEES_IN_XHV) {
     // convert fee to asset type value
     if (source != "XHV" && source != dest) {
       if (pr.unused1 && pr.xUSD && pr[source]) {
@@ -4881,7 +5018,7 @@ leave:
 
     // get the block cap
     supply_amounts = get_db().get_circulating_supply();
-    block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
+    block_cap_xhv = get_block_cap(supply_amounts, latest_pr, hf_version);
   }
 
   size_t tx_index = 0;
@@ -5054,10 +5191,20 @@ leave:
           goto leave;
         }
 
+        // Get the slippage
+        uint64_t slippage = 0;
+        if (hf_version >= HF_VERSION_SLIPPAGE && source != dest) {
+          if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, pr_bl.pricing_record, supply_amounts, hf_version)) {
+            LOG_PRINT_L2("Failed to obtain slippage requirements for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+        }
+          
         // Get the collateral requirements
         uint64_t collateral = 0;
         if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, pr_bl.pricing_record, supply_amounts);
+          bool r = get_collateral_requirements(tx_type, tx.amount_burnt, collateral, pr_bl.pricing_record, supply_amounts, hf_version);
           if (!r) {
             LOG_PRINT_L2("Failed to obtain collateral requirements for tx " << tx.hash);
             bvc.m_verifivation_failed = true;
@@ -5065,8 +5212,24 @@ leave:
           }
         }
 
+        // NEAC: Get conversion rate so we can avoid doing an invert() on a number with excessive precision
+        uint64_t conversion_rate = COIN;
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, dest, conversion_rate)) {
+          LOG_PRINT_L2("Failed to get conversion rate of tx " << tx.hash);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+
+        // Get the fee conversion rate used
+        uint64_t fee_conversion_rate = COIN;
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, "XHV", fee_conversion_rate)) {
+          LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+          
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, tx.collateral_indices, collateral))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
         {
           // 2 tx that used reorged pricing record for collateral calculation.
           if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"

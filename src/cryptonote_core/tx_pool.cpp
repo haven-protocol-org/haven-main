@@ -173,6 +173,7 @@ namespace cryptonote
   //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {
+    using tt = cryptonote::transaction_type;
     const bool kept_by_block = (tx_relay == relay_method::block);
 
     // this should already be called with that lock, but let's make it explicit for clarity
@@ -236,7 +237,7 @@ namespace cryptonote
     // get vars we need from tvc
     std::string source = tvc.m_source_asset;
     std::string dest = tvc.m_dest_asset;
-    transaction_type tx_type = tvc.m_type;
+    tt tx_type = tvc.m_type;
     // since tvc can be empty for some situations such as "popping blocks",
     // we make sure those vars are populated.
     if (source.empty() || dest.empty() || tx_type == transaction_type::UNSET) {
@@ -289,7 +290,7 @@ namespace cryptonote
       }
 
       // check whether we have a valid exchange rate (some values in the pr might be 0)
-      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
+      if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
         if (!tvc.pr.unused1) { // using 24 hr MA in unused1
           LOG_ERROR("error: empty MA exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
@@ -300,13 +301,13 @@ namespace cryptonote
           tvc.m_verifivation_failed = true;
           return false;
         }
-      } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
+      } else if (tx_type == tt::XUSD_TO_XASSET) {
         if (!tvc.pr[dest]) {
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
         }
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+      } else if (tx_type == tt::XASSET_TO_XUSD) {
         if (!tvc.pr[source]) {
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
@@ -318,6 +319,19 @@ namespace cryptonote
         return false;
       }
     
+      // Get the circulating supply amounts
+      const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain.get_db().get_circulating_supply();
+
+      // Get the slippage
+      uint64_t slippage = 0;
+      if (version >= HF_VERSION_SLIPPAGE && source != dest) {
+        if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, tvc.pr, supply_amounts, version)) {
+          LOG_ERROR("error: Invalid Tx found. 0 burnt/minted for a conversion tx.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      }
+
       // check whether we have empty amount burnt/mint. Actual validation happens in verRctSemanticsSimple2()
       if (!tx.amount_burnt || !tx.amount_minted) {
         LOG_ERROR("error: Invalid Tx found. 0 burnt/minted for a conversion tx.");
@@ -325,146 +339,67 @@ namespace cryptonote
         return false;
       }
 
+      // Get the conversion rate used
+      uint64_t conversion_rate = COIN;
+      if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate)) {
+        LOG_ERROR("error: unable to obtain conversion rate.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      
+      // Get the fee conversion rate used
+      uint64_t fee_conversion_rate = COIN;
+      if (!cryptonote::get_conversion_rate(tvc.pr, source, "XHV", fee_conversion_rate)) {
+        LOG_ERROR("error: unable to obtain fee conversion rate.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      
       // Check the amount burnt and minted
-      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
+      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt - slippage, tx.amount_minted, tvc.pr, conversion_rate, source, dest, version)) {
         LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
         tvc.m_verifivation_failed = true;
         return false;
       }
 
-      // dont use current_height instead of pricing_record_height here. Otherwise daemon will reject the conversion txs that arent immediately mined in the next block.
-      // since it changes the priorit therefore the fee check calculation fails.
-      uint64_t unlock_time = get_tx_unlock_time(tx.unlock_time, tx.pricing_record_height, current_height);
+      // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
+      for (size_t i = 0; i < tx.vout.size(); ++i) {
 
-      if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
-
-        if (version >= HF_VERSION_USE_COLLATERAL) {
-          // validate collateral_indices vector
-          if (tx.collateral_indices.size() != 2) {
-            LOG_ERROR("error: Invalid Tx found. Collateral output indices not correct");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-          for (const auto vout_idx: tx.collateral_indices) {
-            if (vout_idx >= tx.vout.size()) {
-              LOG_ERROR("error: Invalid Tx found. Invalid collateral output indices");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
-          }
-
-          // If collateral requirement is 0, we expect there not to be collateral outputs..
-          if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-
-            // validate that collateral output is XHV
-            std::string col_asset_type;
-            bool ok = cryptonote::get_output_asset_type(tx.vout[tx.collateral_indices[0]], col_asset_type);
-            if (!ok || col_asset_type != "XHV") {
-              LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
-
-            // onshore tx has 2 col output, offshore has 1.
-            if (tx_type == transaction_type::ONSHORE) {
-              ok = cryptonote::get_output_asset_type(tx.vout[tx.collateral_indices[1]], col_asset_type);
-              if (!ok || col_asset_type != "XHV") {
-                LOG_ERROR("Non-XHV collateral output found for offshore/onhsore rx, rejecting..");
-                tvc.m_verifivation_failed = true;
-                return false;
-              }
-            }
-
-            // validate collateral output lock times
-            unlock_time = get_tx_unlock_time(tx.output_unlock_times[tx.collateral_indices[0]], tx.pricing_record_height, current_height);
-            uint64_t expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
-            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
-
-            if (unlock_time < expected_unlock_time) {
-              LOG_ERROR("output_unlock_times[" << tx.collateral_indices[0] << "] is too short for collateral output: required unlock period is " << TX_V7_ONSHORE_UNLOCK_BLOCKS << " blocks but output unlock period is " << unlock_time << " blocks");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
-          }
-        }
-
-        // Make sure that we have a suitable vector of unlock times for all the outputs
-        if (tx.output_unlock_times.size() != tx.vout.size()) {
-          LOG_ERROR("output_unlock_times vector is too short: " << tx.output_unlock_times.size() << " found, but we have " << tx.vout.size() << " outputs.");
+        // Check if the output is collateral or collateral_change
+        bool is_collateral = false;
+        bool is_collateral_change = false;
+        bool ok = cryptonote::is_output_collateral(tx.vout[i], is_collateral, is_collateral_change);
+        if (!ok) {
+          LOG_ERROR("failed to get output collateral status for output index " << i);
           tvc.m_verifivation_failed = true;
           return false;
         }
-        
-        // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
-        for (size_t i = 0; i < tx.vout.size(); ++i) {
-
-          // Skip checks on collateral
-          if ((tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) &&
-              (std::find(tx.collateral_indices.begin(), tx.collateral_indices.end(), i) != tx.collateral_indices.end())) {
-            continue;
-          }
           
-          // Check if the output asset type is the same as the source
-          std::string output_asset_type;
-          bool ok = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);
-          if (!ok) {
-            LOG_ERROR("failed to get output asset type for output index " << i);
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-          if (output_asset_type == source) {
-            continue;
-          }
-
-          // Get the correct unlock time for this output
-          unlock_time = get_tx_unlock_time(tx.output_unlock_times[i], tx.pricing_record_height, current_height);
-          uint64_t output_unlock_time = boost::get<txout_haven_key>(tx.vout[i].target).unlock_time - current_height;
-          if (output_unlock_time > unlock_time) {
-            LOG_ERROR("output unlock time mismatch for output index " << i << ": output reports " << output_unlock_time << " but calculated " << unlock_time);
-          }
-
-          // No - enforce full unlock time
-          uint64_t expected_unlock_time = 0;
-          if (tx_type == transaction_type::OFFSHORE) {
-            expected_unlock_time = TX_V6_OFFSHORE_UNLOCK_BLOCKS; // 21 days
-            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_OFFSHORE_UNLOCK_BLOCKS_TESTNET; // 60 blocks
-          } else if (tx_type == transaction_type::ONSHORE) {
-            if (version >= HF_VERSION_USE_COLLATERAL) {
-              expected_unlock_time = TX_V7_ONSHORE_UNLOCK_BLOCKS; // 21 days
-            } else {
-              expected_unlock_time = TX_V6_ONSHORE_UNLOCK_BLOCKS; // 12 hrs
-            }
-            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_ONSHORE_UNLOCK_BLOCKS_TESTNET; // 30 blocks
-          } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-            expected_unlock_time = TX_V6_XASSET_UNLOCK_BLOCKS; // 2 days
-            if (m_blockchain.get_nettype() == TESTNET || m_blockchain.get_nettype() == STAGENET)
-              expected_unlock_time = TX_XASSET_UNLOCK_BLOCKS_TESTNET; // 60 blocks
-          } else {
-            LOG_ERROR("unexpected tx_type found - rejecting TX");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-
-          if (unlock_time < expected_unlock_time) {
-            LOG_ERROR("output_unlock_times[" << i << "] is too short for converted output: required unlock period is " << expected_unlock_time << " blocks but output unlock period is " << unlock_time << " blocks");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
+        // Check if the output asset type is the same as the source
+        std::string output_asset_type;
+        ok = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);
+        if (!ok) {
+          LOG_ERROR("failed to get output asset type for output index " << i);
+          tvc.m_verifivation_failed = true;
+          return false;
         }
-      } else {
-        // pre-v6 TX - unlock times not set per output
-        if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-          if (unlock_time < 180) {
-            LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 180 blocks)");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-        } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-          if (unlock_time < 1440) {
-            LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
+
+        // Check output unlock time
+        uint64_t output_unlock_time;
+        ok = cryptonote::get_output_unlock_time(tx.vout[i], output_unlock_time);
+        if (!ok) {
+          LOG_ERROR("failed to get output unlock time for output index " << i);
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+
+        // Skip output unlock time check if it's change for a conversion
+        if (source != output_asset_type || is_collateral || is_collateral_change) {
+
+          // Check the unlock time (use the PR height in case of TX being left in pool for >1 block - PR height validated as acceptable elsewhere)
+          ok = m_blockchain.check_unlock_time(output_unlock_time, tx.pricing_record_height, tx_type, output_asset_type, is_collateral, is_collateral_change, version);
+          if (!ok) {
+            LOG_ERROR("incorrect output unlock time for output index " << i);
             tvc.m_verifivation_failed = true;
             return false;
           }
@@ -472,9 +407,31 @@ namespace cryptonote
       }
       
       // validate conversion fees
-      uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
       uint64_t conversion_fee_check = 0;
-      if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
+      if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
+        
+        // Flat 1.5% fee IN XHV!!!
+        if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
+
+          // Include the slippage to get back to the original amount used in the fee calculation
+          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt;//+slippage;
+
+          // Calculate 1.5% (0.5% for onshores, cos the Econ Workgroup love to fiddle with sh1t just to annoy me)
+          if (tx_type != tt::ONSHORE) conversion_fee_amount_128 *= 3;
+          conversion_fee_amount_128 /= 200;
+
+          // Convert to XHV for fee comparison
+          conversion_fee_amount_128 *= fee_conversion_rate;
+          conversion_fee_amount_128 /= COIN;
+          conversion_fee_check = (uint64_t)conversion_fee_amount_128;
+        } else {
+          // Should never happen
+          LOG_ERROR("incorrect TX type for conversion");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+          
+      } else if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
         if (version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% fee
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
@@ -485,9 +442,11 @@ namespace cryptonote
           // Flat 0.5% fee
           conversion_fee_check = tx.amount_burnt / 200;
         } else {
+          uint64_t unlock_time = tx.unlock_time - tx.pricing_record_height - 1;
+          uint64_t priority = (unlock_time >= 5040) ? 1 : (unlock_time >= 1440) ? 2 : (unlock_time >= 720) ? 3 : 4;
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         }
-      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
+      } else if (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET) {
         if (version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% conversion fee for xAsset TXs after the collateral fork
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
@@ -573,7 +532,13 @@ namespace cryptonote
     crypto::hash max_used_block_id = null_hash;
     uint64_t max_used_block_height = 0;
     cryptonote::txpool_tx_meta_t meta{};
-    strcpy(meta.fee_asset_type, source.c_str());
+    if ((version >= HF_VERSION_CONVERSION_FEES_IN_XHV) && (source != dest)) {
+      // All fees are in XHV
+      strcpy(meta.fee_asset_type, "XHV");
+    } else {
+      // Fees are in source asset type
+      strcpy(meta.fee_asset_type, source.c_str());
+    }
     bool ch_inp_res = check_tx_inputs([&tx]()->cryptonote::transaction&{ return tx; }, id, max_used_block_height, max_used_block_id, tvc, kept_by_block);
     if(!ch_inp_res)
     {
@@ -951,8 +916,16 @@ namespace cryptonote
           return false;
         }
 
+        // Get the conversion rate used
+        uint64_t conversion_rate = COIN;
+        if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate)) {
+          LOG_ERROR("error: unable to obtain conversion rate.");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+      
         // Check the amount burnt and minted
-        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, source, dest, version)) {
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, conversion_rate, source, dest, version)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
           tvc.m_verifivation_failed = true;
           return false;
@@ -2376,7 +2349,7 @@ namespace cryptonote
 
     // set the block cap
     const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain.get_db().get_circulating_supply();
-    uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr);
+    uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr, version);
     uint64_t total_conversion_xhv = 0; // only offshore/onshroe
     MINFO("Block cap limit for offshore/onshore " << block_cap_xhv << " XHV");
 
@@ -2554,17 +2527,40 @@ namespace cryptonote
             continue;
           }
 
+          // Get the slippage
+          uint64_t slippage = 0;
+          if (version >= HF_VERSION_SLIPPAGE && source != dest) {
+            if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, bl.pricing_record, supply_amounts, version)) {
+              LOG_PRINT_L2("error: failed to obtain slippage requirements for tx " << tx.hash);
+              continue;
+            }
+          }
+          
           // Get the collateral requirement for the tx
           uint64_t collateral = 0;
           if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts)) {
+            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts, version)) {
               LOG_PRINT_L2("error: failed to get collateral requirements");
               continue;
             }
           }
 
+          // NEAC: Get conversion rate so we can avoid doing an invert() on a number with excessive precision
+          uint64_t conversion_rate = COIN;
+          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, dest, conversion_rate)) {
+            LOG_PRINT_L2("error: failed to get conversion rate - aborting");
+            continue;
+          }
+          
+          // Get the fee conversion rate used
+          uint64_t fee_conversion_rate = COIN;
+          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, "XHV", fee_conversion_rate)) {
+            LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
+            continue;
+          }
+          
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, tx.collateral_indices, collateral))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, collateral, slippage))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

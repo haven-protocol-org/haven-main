@@ -42,7 +42,7 @@
 #define CRYPTONOTE_MAX_TX_PER_BLOCK                     0x10000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
-#define CURRENT_TRANSACTION_VERSION                     7
+#define CURRENT_TRANSACTION_VERSION                     8
 #define OFFSHORE_TRANSACTION_VERSION                    3
 #define POU_TRANSACTION_VERSION                         6
 #define COLLATERAL_TRANSACTION_VERSION                  7
@@ -66,6 +66,14 @@
 #define TX_ONSHORE_UNLOCK_BLOCKS_TESTNET                30      // 1 hour unlock time - FOR TESTING ONLY
 #define TX_XASSET_UNLOCK_BLOCKS_TESTNET                 60      // 2 hour unlock time - FOR TESTING ONLY
 
+// HF21 Unlock times
+#define HF21_COLLATERAL_LOCK_BLOCKS                     14*720  // 14 day unlock time
+#define HF21_SHORING_LOCK_BLOCKS                        720     // 1 day unlock time
+#define HF21_XASSET_LOCK_BLOCKS                         1440    // 2 day unlock time
+#define HF21_COLLATERAL_LOCK_BLOCKS_TESTNET             30      // 1 hour unlock time - FOR TESTING ONLY
+#define HF21_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
+#define HF21_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
+
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 
 // MONEY_SUPPLY - total number coins to be generated
@@ -84,6 +92,7 @@
 // COIN - number of smallest units in one coin
 #define COIN                                            ((uint64_t)1000000000000) // pow(10, 12)
 #define HAVEN_MAX_TX_VALUE                              ((uint64_t)15000000000000000000ull)
+#define HAVEN_MAX_TX_VALUE_TESTNET                      ((uint64_t)18000000000000000000ull)
 
 #define FEE_PER_KB_OLD                                  ((uint64_t)10000000000) // pow(10, 10)
 #define FEE_PER_KB                                      ((uint64_t)2000000000) // 2 * pow(10, 9)
@@ -218,6 +227,9 @@
 #define HF_VERSION_USE_COLLATERAL               20
 
 // Post-v0.18-rebase
+#define HF_VERSION_USE_HAVEN_TYPES              21
+#define HF_VERSION_CONVERSION_FEES_IN_XHV       21
+#define HF_VERSION_SLIPPAGE                     21
 #define HF_VERSION_MIN_MIXIN_15                 21
 #define HF_VERSION_EXACT_COINBASE               21
 #define HF_VERSION_DETERMINISTIC_UNLOCK_TIME    21
@@ -315,7 +327,11 @@ namespace config
     boost::uuids::uuid const NETWORK_ID = { {
         0x05 ,0x39, 0xF1, 0x70 , 0x61, 0x04 , 0x41, 0x60, 0x17, 0x32, 0x00, 0x81, 0x16, 0xA1, TESTNET_VERSION, 0x11
       } };
-    std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
+    //std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
+    // 15M premine
+    std::string const GENESIS_TX = "023c01ff00018080f0f6ec90ad95d00102d12e955cf07c7569e9678afeb9c879c04f5e5850987c83feaea7afdb462b8f832101f352146306f0d841fed393dda5ad977cb009430442394c72f1fae952af0bb24700";
+    // 18.4M premine
+    //std::string const GENESIS_TX = "023c01ff00018cffffffffffffffff0102fa999deaf77e7666b1ce36a81107ee39ad51cd70eb5f99d3ce9d0afc40fb4ac821016f8a067f6f8b2988fa71c665f05521616f309a49b345af21633718507b73e83a00";
     uint32_t const GENESIS_NONCE = 10001;
 
     std::string const GOVERNANCE_WALLET_ADDRESS = "hvta9gEeEpp8tWm4DK3gzZH5dsoAkbtwBL19EGnaYjApRoo8bXQg2GJPjBiji6NMbLDUUkfZw9Q4sh558r37Ucjb9ZHaDUns8N";

@@ -1141,6 +1141,23 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
+  bool get_output_unlock_time(const cryptonote::tx_out& out, uint64_t& output_unlock_time)
+  {
+    // before HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_haven_key
+    // after HF_VERSION_VIEW_TAGS, outputs with public keys are of type txout_haven_tagged_key
+    if (out.target.type() == typeid(txout_haven_key))
+      output_unlock_time = boost::get< txout_haven_key >(out.target).unlock_time;
+    else if (out.target.type() == typeid(txout_haven_tagged_key))
+      output_unlock_time = boost::get< txout_haven_tagged_key >(out.target).unlock_time;
+    else
+    {
+      LOG_ERROR("Unexpected output target type found: " << out.target.type().name());
+      return false;
+    }
+
+    return true;
+  }
+  //---------------------------------------------------------------
   bool get_output_rct_mask(const rct::rctSigBase& rct, const cryptonote::tx_out& out, const uint64_t& idx, rct::key& mask)
   {
     // Check that the output type is acceptable to us
@@ -1197,12 +1214,18 @@ namespace cryptonote
       : boost::optional<crypto::view_tag>();
   }
   //---------------------------------------------------------------
-  bool is_output_collateral(const cryptonote::tx_out& out, bool& is_collateral)
+  bool is_output_collateral(const cryptonote::tx_out& out, bool& is_collateral, bool& is_collateral_change)
   {
     if (out.target.type() == typeid(txout_haven_key))
+    {
       is_collateral = boost::get< txout_haven_key >(out.target).is_collateral;
+      is_collateral_change = boost::get< txout_haven_key >(out.target).is_collateral_change;
+    }
     else if (out.target.type() == typeid(txout_haven_tagged_key))
+    {
       is_collateral = boost::get< txout_haven_tagged_key >(out.target).is_collateral;
+      is_collateral_change = boost::get< txout_haven_tagged_key >(out.target).is_collateral_change;
+    }
     else
     {
       LOG_ERROR("Unexpected output target type found: " << out.target.type().name());
@@ -1221,7 +1244,7 @@ namespace cryptonote
     return res;
   }
   //---------------------------------------------------------------
-  void set_tx_out(const uint64_t amount, const std::string& asset_type, uint64_t unlock_time, bool is_collateral, const crypto::public_key& output_public_key, const bool use_view_tags, const crypto::view_tag& view_tag, tx_out& out)
+  void set_tx_out(const uint64_t amount, const std::string& asset_type, uint64_t unlock_time, bool is_collateral, bool is_collateral_change, const crypto::public_key& output_public_key, const bool use_view_tags, const crypto::view_tag& view_tag, tx_out& out)
   {
     out.amount = amount;
     if (use_view_tags)
@@ -1232,6 +1255,7 @@ namespace cryptonote
       ttk.asset_type = asset_type;
       ttk.unlock_time = unlock_time;
       ttk.is_collateral = is_collateral;
+      ttk.is_collateral_change = is_collateral_change;
       out.target = ttk;
     }
     else
@@ -1241,6 +1265,7 @@ namespace cryptonote
       tk.asset_type = asset_type;
       tk.unlock_time = unlock_time;
       tk.is_collateral = is_collateral;
+      tk.is_collateral_change = is_collateral_change;
       out.target = tk;
     }
   }

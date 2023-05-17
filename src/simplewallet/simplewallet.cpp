@@ -203,7 +203,7 @@ namespace
   const char* USAGE_OFFSHORE_TRANSFER("offshore_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> [memo=<memo data>])");
   const char* USAGE_ONSHORE("onshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
   const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset type> [memo=<memo data>]");
-  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>) <xAsset type> [memo=<memo data>]");
+  const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset type> [memo=<memo data>]");
   const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>) <xAsset type> [memo=<memo data>]");
   const char* USAGE_LOCKED_SWEEP_ALL("locked_sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] <address> <lockblocks> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
@@ -3320,7 +3320,7 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("xasset_to_xusd",
                            boost::bind(&simple_wallet::xasset_to_xusd, this, _1),
                            tr(USAGE_XASSET_TO_XUSD),
-                           tr("Converts the required amount of xAsset type <xAsset type> to send <xUSD amount> of Haven Dollars (xUSD), with optional <priority> [1-5]. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
+                           tr("Converts <xAsset amount> of xAsset type <xAsset type> to Haven Dollars (xUSD), with optional <priority> [1-5]. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
   m_cmd_binder.set_handler("xusd_to_xasset",
                            boost::bind(&simple_wallet::xusd_to_xasset, this, _1),
                            tr(USAGE_XUSD_TO_XASSET),
@@ -6972,6 +6972,7 @@ bool simple_wallet::transfer_main(
         uint64_t total_sent = 0;
         uint64_t total_received = 0;
         uint64_t total_col = 0;
+        uint64_t total_slippage = 0;
         uint64_t total_tx_fee = 0;
         uint64_t total_offshore_fee = 0;
         uint64_t dust_not_in_fee = 0;
@@ -6992,6 +6993,7 @@ bool simple_wallet::transfer_main(
               total_col += dt.dest_amount;
             else
               total_received += dt.dest_amount;
+            total_slippage += dt.slippage;
           }
           // remove the col form sent amount for offshores
           if (tx_type == tt::OFFSHORE && m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
@@ -7022,22 +7024,22 @@ bool simple_wallet::transfer_main(
           switch (tx_type)
           {
           case tt::OFFSHORE:
-            prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV (plus conversion fee %s XHV).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_offshore_fee);
+            prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV (of which %s XHV is slippage).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_slippage);
             if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
               prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
             }
             break;
           case tt::ONSHORE:
-            prompt << boost::format(tr("Onshoring %s XHV by burning %s XUSD (plus conversion fee %s XHV).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_offshore_fee);
+            prompt << boost::format(tr("Onshoring %s XHV by burning %s XUSD (of which %s XUSD is slippage).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_slippage);
             if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
               prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
             }
             break;
           case tt::XUSD_TO_XASSET:
-            prompt << boost::format(tr("Converting %s XUSD to %s %s (plus conversion fee %s XUSD).\n")) % print_money(total_sent) % print_money(total_received) % dest_asset % print_money(total_offshore_fee);
+            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage) to %s %s.\n")) % print_money(total_sent) % print_money(total_slippage) % print_money(total_received) % dest_asset;
             break;
           case tt::XASSET_TO_XUSD:
-            prompt << boost::format(tr("Converting %s %s to %s XUSD (plus conversion fee %s %s).\n")) % print_money(total_sent) % source_asset % print_money(total_received) % print_money(total_offshore_fee) % source_asset;
+            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage) to %s XUSD.\n")) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_money(total_received);
             break;
           default:
             break;
@@ -7051,7 +7053,15 @@ bool simple_wallet::transfer_main(
         }
         else
         {
-          prompt << boost::format(tr("The transaction fee is %s %s")) % print_money(total_tx_fee) % source_asset;
+          if (source_asset != dest_asset) {
+            if (m_wallet->use_fork_rules(HF_VERSION_CONVERSION_FEES_IN_XHV, 0)) {
+              prompt << boost::format(tr("Transaction fee is %s XHV.\nConversion fee is %s XHV.\n")) % print_money(total_tx_fee) % print_money(total_offshore_fee);
+            } else {
+              prompt << boost::format(tr("Transaction fee is %s XHV.\nConversion fee is %s %s.\n")) % print_money(total_tx_fee) % print_money(total_offshore_fee) % source_asset;
+            }
+          } else {
+            prompt << boost::format(tr("The transaction fee is %s %s.\n")) % print_money(total_tx_fee) % source_asset;
+          }
         }
         if (dust_in_fee != 0) prompt << boost::format(tr(", of which %s is dust from change")) % print_money(dust_in_fee);
         if (dust_not_in_fee != 0)  prompt << tr(".") << ENDL << boost::format(tr("A total of %s from dust change will be sent to dust address")) 
