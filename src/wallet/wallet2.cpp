@@ -1873,8 +1873,8 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
     if (!m_encrypt_keys_after_refresh)
     {
       boost::optional<epee::wipeable_string> pwd = m_callback->on_get_password(pool ? "output found in pool" : "output received");
-      THROW_WALLET_EXCEPTION_IF(!pwd, error::password_needed, tr("Password is needed to compute key image for incoming monero"));
-      THROW_WALLET_EXCEPTION_IF(!verify_password(*pwd), error::password_needed, tr("Invalid password: password is needed to compute key image for incoming monero"));
+      THROW_WALLET_EXCEPTION_IF(!pwd, error::password_needed, tr("Password is needed to compute key image for incoming Haven"));
+      THROW_WALLET_EXCEPTION_IF(!verify_password(*pwd), error::password_needed, tr("Invalid password: password is needed to compute key image for incoming Haven"));
       m_encrypt_keys_after_refresh.reset(new wallet_keys_unlocker(*this, m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only, *pwd));
     }
   }
@@ -3335,15 +3335,30 @@ void check_block_hard_fork_version(cryptonote::network_type nettype, uint8_t hf_
   const hardfork_t *wallet_hard_forks = nettype == TESTNET ? testnet_hard_forks
     : nettype == STAGENET ? stagenet_hard_forks : mainnet_hard_forks;
 
-  wallet_is_outdated = static_cast<size_t>(hf_version) > wallet_num_hard_forks;
+  wallet_is_outdated = static_cast<size_t>(hf_version) > wallet_hard_forks[wallet_num_hard_forks-1].version;
   if (wallet_is_outdated)
     return;
 
+  // Iterate over the hard forks to find the one matching the block
+  bool found = false;
+  size_t i=0;
+  for (;i<wallet_num_hard_forks; i++) {
+    if (wallet_hard_forks[i].version < static_cast<size_t>(hf_version)) continue;
+    if (wallet_hard_forks[i].version == static_cast<size_t>(hf_version)) {
+      found = true;
+    }
+    break;
+  }
+  if (!found) {
+    wallet_is_outdated = true;
+    return;
+  }
+  
   // check block's height falls within wallet's expected range for block's given version
-  uint64_t start_height = hf_version == 1 ? 0 : wallet_hard_forks[hf_version - 1].height;
-  uint64_t end_height = static_cast<size_t>(hf_version) + 1 > wallet_num_hard_forks
+  uint64_t start_height = hf_version == 1 ? 0 : wallet_hard_forks[i].height;
+  uint64_t end_height = i + 1 > wallet_num_hard_forks
     ? std::numeric_limits<uint64_t>::max()
-    : wallet_hard_forks[hf_version].height;
+    : wallet_hard_forks[i].height;
 
   daemon_is_outdated = height < start_height || height >= end_height;
 }
@@ -15089,7 +15104,7 @@ mms::multisig_wallet_state wallet2::get_multisig_wallet_state() const
   state.num_transfer_details = m_transfers.size();
   if (state.multisig)
   {
-    THROW_WALLET_EXCEPTION_IF(!m_original_keys_available, error::wallet_internal_error, "MMS use not possible because own original Monero address not available");
+    THROW_WALLET_EXCEPTION_IF(!m_original_keys_available, error::wallet_internal_error, "MMS use not possible because own original Haven address not available");
     state.address = m_original_address;
     state.view_secret_key = m_original_view_secret_key;
   }

@@ -773,7 +773,10 @@ namespace cryptonote
     cpp_bin_float_quad dest_pool = dest_amount.convert_to<cpp_bin_float_quad>() / map_amounts[dest_asset].convert_to<cpp_bin_float_quad>();
 
     // Calculate the slippage
-    cpp_bin_float_quad slippage_sum_128 = (source_pool + dest_pool) * ratio_mcap_128;
+    cpp_bin_float_quad slippage_sum_128 = (source_pool + dest_pool);
+    cpp_bin_float_quad multiplier_128 = sqrt(pow(ratio_mcap_128, 1.2));
+    if (multiplier_128 < 5.0) multiplier_128 = 5.0;
+    slippage_sum_128 *= multiplier_128;
 
     // Limit slippage to 99% so that the code doesn't break
     if (slippage_sum_128 >= 1.0) slippage_sum_128 = 0.99;
