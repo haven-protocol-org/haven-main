@@ -10857,7 +10857,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       estimated_fee = converted_fee;
     }
       
-    preferred_inputs = pick_preferred_rct_inputs(needed_money + estimated_fee, specific_transfers, subaddr_account, subaddr_indices);
+    preferred_inputs = pick_preferred_rct_inputs(needed_money + needed_slippage + estimated_fee, specific_transfers, subaddr_account, subaddr_indices);
     if (!preferred_inputs.empty())
     {
       string s;
@@ -10901,7 +10901,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     LOG_PRINT_L2("Start of loop with " << unused_transfers_indices->size() << " " << unused_dust_indices->size() << ", tx.dsts.size() " << tx.dsts.size());
     LOG_PRINT_L2("unused_transfers_indices: " << strjoin(*unused_transfers_indices, " "));
     LOG_PRINT_L2("unused_dust_indices: " << strjoin(*unused_dust_indices, " "));
-    LOG_PRINT_L2("dsts size " << dsts.size() << ", first " << (dsts.empty() ? "-" : cryptonote::print_money(dsts[0].amount)));
+    LOG_PRINT_L2("dsts size " << dsts.size() << ", first " << (dsts.empty() ? "-" : cryptonote::print_money(dsts[0].amount)) << ", slippage " << dsts[0].slippage);
     LOG_PRINT_L2("adding_fee " << adding_fee << ", use_rct " << use_rct);
 
     // if we need to spend money and don't have any left, we fail
@@ -10969,7 +10969,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     }
     else
     {
-      while (!dsts.empty() && dsts[0].amount <= available_amount && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags) < TX_WEIGHT_TARGET(upper_transaction_weight_limit))
+      while (!dsts.empty() && (dsts[0].amount + dsts[0].slippage) <= available_amount && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags) < TX_WEIGHT_TARGET(upper_transaction_weight_limit))
       {
         // we can fully pay that destination
         LOG_PRINT_L2("We can fully pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
@@ -10981,6 +10981,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           break;
         }
         available_amount -= dsts[0].amount;
+        available_amount -= dsts[0].slippage;
         dsts[0].amount = 0;
         pop_index(dsts, 0);
         ++original_output_index;

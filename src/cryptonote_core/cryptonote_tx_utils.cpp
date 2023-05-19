@@ -716,6 +716,12 @@ namespace cryptonote
       mcap_xassets += amount_xasset;
     }
 
+    // Check for seeding of pools
+    if (!map_amounts.count(dest_asset)) {
+      slippage = 0;
+      return true;
+    }
+
     // Calculate the XHV market cap
     boost::multiprecision::uint128_t price_xhv =
       (tx_type == tt::OFFSHORE) ? std::min(pr.unused1, pr.xUSD) :
@@ -768,7 +774,9 @@ namespace cryptonote
 
     // Calculate the slippage
     cpp_bin_float_quad slippage_sum_128 = (source_pool + dest_pool) * ratio_mcap_128;
-    if (slippage_sum_128 > 1.0) slippage_sum_128 = 1.0;
+
+    // Limit slippage to 99% so that the code doesn't break
+    if (slippage_sum_128 >= 1.0) slippage_sum_128 = 0.99;
     slippage_sum_128 *= source_amount.convert_to<cpp_bin_float_quad>();
     slippage = slippage_sum_128.convert_to<uint64_t>();
     slippage -= (slippage % 100000000);
@@ -824,6 +832,7 @@ namespace cryptonote
       } else {
         // VBS rate = SQRT(MCAP^1.5) * 5
         double vbs = std::floor(sqrt(pow(ratio_mcap, 1.5)));
+        vbs = std::min(5.0, std::max(vbs, 1.0));
 
         // Convert amount to 128 bit
         boost::multiprecision::uint128_t amount_128 = amount;
