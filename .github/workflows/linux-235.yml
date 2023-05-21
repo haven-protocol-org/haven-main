@@ -97,7 +97,7 @@ jobs:
       shell: bash
       run: |
         export checksum=($(sha256sum haven-linux-glibc235.tar.gz))
-        export payload='{"username": "Github", "content": "CLI (Linux 2.31) : '${BINARY_URL}${GITHUB_REF_NAME}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
+        export payload='{"username": "Github", "content": "CLI (Linux 2.35) : '${BINARY_URL}${GITHUB_REF_NAME}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
         echo $payload
         curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
 
