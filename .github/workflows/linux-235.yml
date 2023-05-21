@@ -1,9 +1,9 @@
-name: linux-231-cli
+name: linux-235-cli
 
 on: [push, pull_request]
 
 jobs:
-  build-linux-glibc-2-31:
+  build-linux-glibc-2-35:
     env:
       ZMQ_VERSION: v4.3.1
       CPPZMQ_VERSION: v4.3.0
@@ -19,8 +19,8 @@ jobs:
     - uses: actions/cache@v2
       with:
         path: ~/.ccache
-        key: ccache-${{ runner.os }}-build-231-${{ github.sha }}
-        restore-keys: ccache-${{ runner.os }}-build-231
+        key: ccache-${{ runner.os }}-build-235-${{ github.sha }}
+        restore-keys: ccache-${{ runner.os }}-build-235
     - name: remove bundled boost
       run: sudo rm -rf /usr/local/share/boost
     - name: set apt conf
@@ -66,21 +66,21 @@ jobs:
     - name: package haven CLI
       run: |
         cd build/release/bin/
-        tar -czvf haven-linux-glibc231.tar.gz *
-        echo ::set-output name=haven-linux-glibc231::$(sha256sum haven-linux-glibc231.tar.gz)
+        tar -czvf haven-linux-glibc235.tar.gz *
+        echo ::set-output name=haven-linux-glibc235::$(sha256sum haven-linux-glibc235.tar.gz)
     - uses: actions/upload-artifact@v2
       with:
-        name: haven-linux-glibc231.tar.gz
-        path: build/release/bin/haven-linux-glibc231.tar.gz
+        name: haven-linux-glibc235.tar.gz
+        path: build/release/bin/haven-linux-glibc235.tar.gz
         retention-days: 10
 
-  upload-linux-glibc-2-31:
-    needs: build-linux-glibc-2-31
+  upload-linux-glibc-2-35:
+    needs: build-linux-glibc-2-35
     runs-on: ubuntu-latest
     steps:
     - uses: actions/download-artifact@v2
       with:
-        name: haven-linux-glibc231.tar.gz
+        name: haven-linux-glibc235.tar.gz
     - name: Upload Haven CLI
       uses: shallwefootball/s3-upload-action@master
       with:
@@ -91,30 +91,30 @@ jobs:
         destination_dir: binaries/${{github.ref_name}}
     - name: notification
       env:
-        BINARY_NAME: /haven-linux-glibc231.tar.gz
+        BINARY_NAME: /haven-linux-glibc235.tar.gz
         BINARY_URL: https://docs.havenprotocol.org/binaries/
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
       shell: bash
       run: |
-        export checksum=($(sha256sum haven-linux-glibc231.tar.gz))
+        export checksum=($(sha256sum haven-linux-glibc235.tar.gz))
         export payload='{"username": "Github", "content": "CLI (Linux 2.31) : '${BINARY_URL}${GITHUB_REF_NAME}${BINARY_NAME}' (sha256 checksum : '${checksum}')"}'
         echo $payload
         curl -X POST -H "Content-Type: application/json" -d "$payload" $DISCORD_WEBHOOK
 
-  publish-linux-glibc-2-31:
-    needs: build-linux-glibc-2-31
+  publish-linux-glibc-2-35:
+    needs: build-linux-glibc-2-35
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
     - uses: actions/download-artifact@v2
       with:
-        name: haven-linux-glibc231.tar.gz
+        name: haven-linux-glibc235.tar.gz
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: haven-linux-glibc231.tar.gz
-        asset_name: haven-linux-glibc231.tar.gz
+        file: haven-linux-glibc235.tar.gz
+        asset_name: haven-linux-glibc235.tar.gz
         tag: ${{ github.ref }}
         overwrite: true
         body: ""
