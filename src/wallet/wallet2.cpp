@@ -3356,7 +3356,7 @@ void check_block_hard_fork_version(cryptonote::network_type nettype, uint8_t hf_
   
   // check block's height falls within wallet's expected range for block's given version
   uint64_t start_height = hf_version == 1 ? 0 : wallet_hard_forks[i].height;
-  uint64_t end_height = i + 1 > wallet_num_hard_forks
+  uint64_t end_height = i + 1 >= wallet_num_hard_forks
     ? std::numeric_limits<uint64_t>::max()
     : wallet_hard_forks[i].height;
 
