@@ -3358,7 +3358,7 @@ void check_block_hard_fork_version(cryptonote::network_type nettype, uint8_t hf_
   uint64_t start_height = hf_version == 1 ? 0 : wallet_hard_forks[i].height;
   uint64_t end_height = i + 1 >= wallet_num_hard_forks
     ? std::numeric_limits<uint64_t>::max()
-    : wallet_hard_forks[i].height;
+    : wallet_hard_forks[i+1].height;
 
   daemon_is_outdated = height < start_height || height >= end_height;
 }
