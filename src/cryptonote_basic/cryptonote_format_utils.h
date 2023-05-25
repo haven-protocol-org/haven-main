@@ -132,7 +132,7 @@ namespace cryptonote
   bool parse_and_validate_block_from_blob(const blobdata_ref& b_blob, block& b);
   bool parse_and_validate_block_from_blob(const blobdata_ref& b_blob, block& b, crypto::hash &block_hash);
   bool get_inputs_money_amount(const transaction& tx, uint64_t& money);
-  uint64_t get_outs_money_amount(const transaction& tx);
+  uint64_t get_outs_money_amount(const transaction& tx, const std::string& output_asset_type="XHV");
   bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx);
   bool get_output_asset_type(const cryptonote::tx_out& out, std::string& output_asset_type);
   bool get_output_unlock_time(const cryptonote::tx_out& out, uint64_t& output_unlock_time);
