@@ -246,9 +246,6 @@ int main(int argc, char const * argv[])
       std::cout << "Haven '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << ENDL << ENDL;
       std::cout << "Usage: " + std::string{argv[0]} + " [options|settings] [daemon_command...]" << std::endl << std::endl;
       std::cout << visible_options << std::endl;
-
-      print_genesis_tx_hex(cryptonote::TESTNET);
-      
       return 0;
     }
 

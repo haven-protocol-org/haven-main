@@ -695,13 +695,6 @@ namespace nodetool
     std::set<std::string> full_addrs;
     if (m_nettype == cryptonote::TESTNET)
     {
-    /*
-      full_addrs.insert("212.83.175.67:28080");
-      full_addrs.insert("212.83.172.165:28080");
-      full_addrs.insert("176.9.0.187:28080");
-      full_addrs.insert("88.99.173.38:28080");
-      full_addrs.insert("51.79.173.165:28080");
-    */
     }
     else if (m_nettype == cryptonote::STAGENET)
     {
@@ -718,17 +711,29 @@ namespace nodetool
   template<class t_payload_net_handler>
   std::set<std::string> node_server<t_payload_net_handler>::get_dns_seed_nodes()
   {
+    std::set<std::string> full_addrs;
+    std::set<std::string> seed_addrs;
     if (!m_exclusive_peers.empty() || m_offline)
     {
       return {};
     }
+    if (m_nettype == cryptonote::MAINNET)
+    {
+      seed_addrs.insert("seed01-mainnet.havenprotocol.org");
+      seed_addrs.insert("seed02-mainnet.havenprotocol.org");
+      seed_addrs.insert("seed03-mainnet.havenprotocol.org");
+    }
     if (m_nettype == cryptonote::TESTNET)
     {
-      return get_ip_seed_nodes();
+      seed_addrs.insert("seed01-testnet.havenprotocol.org");
+      seed_addrs.insert("seed02-testnet.havenprotocol.org");
+      seed_addrs.insert("seed03-testnet.havenprotocol.org");
     }
     if (m_nettype == cryptonote::STAGENET)
     {
-      return get_ip_seed_nodes();
+      seed_addrs.insert("seed01-stagenet.havenprotocol.org");
+      seed_addrs.insert("seed02-stagenet.havenprotocol.org");
+      seed_addrs.insert("seed03-stagenet.havenprotocol.org");
     }
     if (!m_enable_dns_seed_nodes)
     {
@@ -737,15 +742,13 @@ namespace nodetool
       return get_ip_seed_nodes();
     }
 
-    std::set<std::string> full_addrs;
-
     // for each hostname in the seed nodes list, attempt to DNS resolve and
     // add the result addresses as seed nodes
     // TODO: at some point add IPv6 support, but that won't be relevant
     // for some time yet.
 
     std::vector<std::vector<std::string>> dns_results;
-    dns_results.resize(m_seed_nodes_list.size());
+    dns_results.resize(seed_addrs.size());
 
     // some libc implementation provide only a very small stack
     // for threads, e.g. musl only gives +- 80kb, which is not
@@ -756,7 +759,7 @@ namespace nodetool
 
     std::list<boost::thread> dns_threads;
     uint64_t result_index = 0;
-    for (const std::string& addr_str : m_seed_nodes_list)
+    for (const std::string& addr_str : seed_addrs)
     {
       boost::thread th = boost::thread(thread_attributes, [=, &dns_results, &addr_str]
       {
@@ -838,11 +841,13 @@ namespace nodetool
     case epee::net_utils::zone::public_:
       if (m_nettype == cryptonote::TESTNET)
       {
+        /*
         return {
           "seed01-testnet.havenprotocol.org:27749",
           "seed02-testnet.havenprotocol.org:27749",
           "seed03-testnet.havenprotocol.org:27749",
         };
+        */
       }
       else if (m_nettype == cryptonote::STAGENET)
       {
