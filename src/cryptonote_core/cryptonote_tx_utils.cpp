@@ -726,7 +726,7 @@ namespace cryptonote
     boost::multiprecision::uint128_t price_xhv =
       (tx_type == tt::OFFSHORE) ? std::min(pr.unused1, pr.xUSD) :
       (tx_type == tt::ONSHORE)  ? std::max(pr.unused1, pr.xUSD) :
-      0;
+      pr.xUSD;
     uint128_t mcap_xhv = map_amounts["XHV"];
     mcap_xhv *= price_xhv;
     mcap_xhv /= COIN;
@@ -739,33 +739,18 @@ namespace cryptonote
     uint128_t source_amount = amount;
     uint128_t dest_amount = source_amount;
 
-    if (tx_type == tt::OFFSHORE) {
-      
-      // Calculate the dest amount
-      dest_amount *= price_xhv;
-      dest_amount /= COIN;
-      
-    } else if (tx_type == tt::ONSHORE) {
-      
-      // Calculate the source amount
-      source_amount *= COIN;
-      source_amount /= price_xhv;
-      
-    } else if (tx_type == tt::XUSD_TO_XASSET) {
-      
-      dest_amount *= COIN;
-      dest_amount /= pr[dest_asset];
-      
-    } else if (tx_type == tt::XASSET_TO_XUSD) {
-      
-      dest_amount *= pr[source_asset];
-      dest_amount /= COIN;
-      
-    } else {
-      LOG_ERROR("Invalid TX type detected " << (uint8_t)tx_type);
+    // Get the conversion rate to use
+    uint64_t conversion_rate = 0;
+    bool ok = cryptonote::get_conversion_rate(pr, source_asset, dest_asset, conversion_rate);
+    if (!ok) {
+      LOG_ERROR("Failed to get conversion rate, needed to calculate slippage - aborting");
       return false;
     }
 
+    // Get the converted amount
+    dest_amount *= conversion_rate;
+    dest_amount /= COIN;
+    
     // Calculate the source pool %
     cpp_bin_float_quad source_pool = source_amount.convert_to<cpp_bin_float_quad>() / map_amounts[source_asset].convert_to<cpp_bin_float_quad>();
 
