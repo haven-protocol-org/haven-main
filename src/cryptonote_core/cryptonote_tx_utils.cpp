@@ -826,6 +826,13 @@ namespace cryptonote
         // Convert amount to 128 bit
         boost::multiprecision::uint128_t amount_128 = amount;
 
+        // Check for onshore TX
+        if (tx_type == tt::ONSHORE) {
+          // Scale the amount
+          amount_128 *= COIN;
+          amount_128 /= price_xhv;
+        }
+        
         // Get the collateral amount
         boost::multiprecision::uint128_t collateral_128 = static_cast<uint64_t>(vbs);
         collateral_128 *= amount_128;

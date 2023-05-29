@@ -10872,7 +10872,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       estimated_fee = converted_fee;
     }
       
-    preferred_inputs = pick_preferred_rct_inputs(needed_money + needed_slippage + estimated_fee, specific_transfers, subaddr_account, subaddr_indices);
+    preferred_inputs = pick_preferred_rct_inputs(needed_money /*+ needed_slippage*/ + estimated_fee, specific_transfers, subaddr_account, subaddr_indices);
     if (!preferred_inputs.empty())
     {
       string s;
@@ -11009,8 +11009,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           " for " << print_money(available_amount) << "/" << print_money(dsts[0].amount));
         if (tx.add(dsts[0], available_amount, original_output_index, m_merge_destinations, BULLETPROOF_MAX_OUTPUTS-1))
         {
+          // HERE BE DRAGONS!!!
+          // NEAC: handle situation where there is enough to pay for dt.amount but _not_ dt.slippage (which also needs paying for!!!)
           dsts[0].amount -= available_amount;
           available_amount = 0;
+          // LAND AHOY!!!
         }
         else
         {

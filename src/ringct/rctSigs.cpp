@@ -1821,66 +1821,57 @@ namespace rct {
       }
 
       if (version >= HF_VERSION_SLIPPAGE) {
-        // Handle any slippage
-        key slippageKey = scalarmultH(d2h(amount_slippage));
-        if (tx_type == tt::OFFSHORE) {
+
+        if (strSource != strDest) {
+          // Handle any slippage (NEAC: should always be zero for non-conversions!)
+          key slippageKey = scalarmultH(d2h(amount_slippage));
           subKeys(sumC, sumC, slippageKey);
-        } else if (tx_type == tt::ONSHORE) {
-          subKeys(sumC, sumC, slippageKey);
-        } else if (tx_type == tt::XUSD_TO_XASSET) {
-          subKeys(sumC, sumC, slippageKey);
-        } else if (tx_type == tt::XASSET_TO_XUSD) {
-          subKeys(sumC, sumC, slippageKey);
-        }
-      }
-      
-      // NEAC: attempt to only calculate forward
-      // CALCULATE Zi
-      if (tx_type == tt::OFFSHORE) {
-        key D_scaled = scalarmultKey(sumD, d2h(COIN));
-        key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
-        key D_final = scalarmultKey(D_scaled, yC_invert);
-        Zi = addKeys(sumC, D_final);
-      } else if (tx_type == tt::ONSHORE) {
-        if (version >= HF_VERSION_SLIPPAGE) {
+          
+          // Scale D terms by the conversion rate (NEAC: should always be COIN for non-conversions!)
           key D_scaled = scalarmultKey(sumD, d2h(COIN));
           key yC_invert = invert(d2h(conversion_rate));
           key D_final = scalarmultKey(D_scaled, yC_invert);
           Zi = addKeys(sumC, D_final);
         } else {
+          Zi = addKeys(sumC, sumD);          
+        }
+        
+      } else {
+      
+        // NEAC: attempt to only calculate forward
+        // CALCULATE Zi
+        if (tx_type == tt::OFFSHORE) {
+          key D_scaled = scalarmultKey(sumD, d2h(COIN));
+          key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
+          key D_final = scalarmultKey(D_scaled, yC_invert);
+          Zi = addKeys(sumC, D_final);
+        } else if (tx_type == tt::ONSHORE) {
           key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
           key yC_invert = invert(d2h(COIN));
           key D_final = scalarmultKey(D_scaled, yC_invert);
           Zi = addKeys(sumC, D_final);
-        }
-      } else if (tx_type == tt::OFFSHORE_TRANSFER) {
-        Zi = addKeys(sumC, sumD);
-      } else if (tx_type == tt::XUSD_TO_XASSET) {
-        key D_scaled = scalarmultKey(sumD, d2h(COIN));
-        key yC_invert = invert(d2h(pr[strDest]));
-        key D_final = scalarmultKey(D_scaled, yC_invert);
-        Zi = addKeys(sumC, D_final);
-      } else if (tx_type == tt::XASSET_TO_XUSD) {
-        if (version >= HF_VERSION_SLIPPAGE) {
+        } else if (tx_type == tt::OFFSHORE_TRANSFER) {
+          Zi = addKeys(sumC, sumD);
+        } else if (tx_type == tt::XUSD_TO_XASSET) {
           key D_scaled = scalarmultKey(sumD, d2h(COIN));
-          key yC_invert = invert(d2h(conversion_rate));
+          key yC_invert = invert(d2h(pr[strDest]));
           key D_final = scalarmultKey(D_scaled, yC_invert);
           Zi = addKeys(sumC, D_final);
-        } else {
+        } else if (tx_type == tt::XASSET_TO_XUSD) {
           key D_scaled = scalarmultKey(sumD, d2h(pr[strSource]));
           key yC_invert = invert(d2h(COIN));
           key D_final = scalarmultKey(D_scaled, yC_invert);
           Zi = addKeys(sumC, D_final);
+        } else if (tx_type == tt::XASSET_TRANSFER) {
+          Zi = addKeys(sumC, sumD);
+        } else if (tx_type == tt::TRANSFER) {
+          Zi = addKeys(sumC, sumD);
+        } else {
+          LOG_PRINT_L1("Invalid transaction type specified");
+          return false;
         }
-      } else if (tx_type == tt::XASSET_TRANSFER) {
-        Zi = addKeys(sumC, sumD);
-      } else if (tx_type == tt::TRANSFER) {
-        Zi = addKeys(sumC, sumD);
-      } else {
-        LOG_PRINT_L1("Invalid transaction type specified");
-        return false;
       }
-
+      
       //check Zi == 0
       if (!equalKeys(Zi, zerokey)) {
         LOG_PRINT_L1("Sum check failed (Zi)");
