@@ -238,7 +238,7 @@
 #define HF_VERSION_2021_SCALING                 21
 
 #define STAGENET_VERSION                        0x0e
-#define TESTNET_VERSION                         0x14
+#define TESTNET_VERSION                         0x15
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 

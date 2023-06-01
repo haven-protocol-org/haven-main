@@ -820,7 +820,7 @@ namespace cryptonote
         collateral = 0;
       } else {
         // VBS rate = SQRT(MCAP^1.5) * 5
-        double vbs = std::floor(sqrt(pow(ratio_mcap, 1.5)));
+        double vbs = std::floor(sqrt(pow(ratio_mcap, 1.5)) * 5.0);
         vbs = std::min(5.0, std::max(vbs, 1.0));
 
         // Convert amount to 128 bit
@@ -984,7 +984,7 @@ namespace cryptonote
         rate_128 *= pr[to_asset];
         rate_128 /= COIN;
         rate = rate_128.convert_to<uint64_t>();
-        rate -= (rate % 100000000);
+        rate -= (rate % 10000);
       }
     } else if (from_asset == "XUSD") {
       // xUSD as source
@@ -999,7 +999,7 @@ namespace cryptonote
         rate_128 *= COIN;
         rate_128 /= std::max(pr.xUSD, pr.unused1);
         rate = rate_128.convert_to<uint64_t>();
-        rate -= (rate % 100000000);
+        rate -= (rate % 10000);
         
       } else {
         // Scale directly to xAsset (xusd_to_xasset)
@@ -1027,7 +1027,7 @@ namespace cryptonote
       }
       // truncate and bail out
       rate = rate_128.convert_to<uint64_t>();
-      rate -= (rate % 100000000);        
+      rate -= (rate % 10000);        
     }
     return true;
   }
@@ -1135,7 +1135,7 @@ namespace cryptonote
     const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
-    const uint64_t xhv_fee,
+    const uint64_t fee_xhv,
     const crypto::secret_key &tx_key,
     const std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct,
@@ -1647,23 +1647,28 @@ namespace cryptonote
         // Convert TX fee to XHV
         uint64_t tx_fee_check = 0;
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
-
-          // Get a conversion rate
-          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
+          // Get a conversion rate to verify the TX fee
+          uint64_t inverse_conversion_rate = COIN;
+          if (!cryptonote::get_conversion_rate(pr, "XHV", source_asset, inverse_conversion_rate)) {
             LOG_ERROR("Failed to get conversion rate for fees - aborting");
             return false;
           }
-          if (!cryptonote::get_converted_amount(conversion_rate, xhv_fee, tx_fee_check)) {
+          if (!cryptonote::get_converted_amount(inverse_conversion_rate, fee_xhv, tx_fee_check)) {
             LOG_ERROR("Failed to get converted TX fee amount - aborting");
             return false;
           }
           if (tx_fee_check != fee) {
-            LOG_ERROR("Converted TX fee amount is incorrect: got " << print_money(tx_fee_check) << " XHV, got " << print_money(fee) << " XHV - aborting");
+            LOG_ERROR("Converted TX fee amount is incorrect: got " << print_money(tx_fee_check) << " " << source_asset << ", expected " << print_money(fee) << " - aborting");
             return false;
           }
+          fee = fee_xhv;
 
           // Convert offshore fee to XHV
           uint64_t offshore_fee_xhv = 0;
+          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
+            LOG_ERROR("Failed to get conversion rate for fees - aborting");
+            return false;
+          }
           if (!cryptonote::get_converted_amount(conversion_rate, offshore_fee, offshore_fee_xhv)) {
             LOG_ERROR("Failed to get converted conversion fee amount - aborting");
             return false;
@@ -1713,7 +1718,7 @@ namespace cryptonote
     const uint8_t hf_version,
     const uint64_t current_height,
     const uint64_t onshore_col_amount,
-    const uint64_t xhv_fee,
+    const uint64_t fee_xhv,
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct,
@@ -1754,7 +1759,7 @@ namespace cryptonote
         hf_version,
         current_height,
         onshore_col_amount,
-        xhv_fee,
+        fee_xhv,
         tx_key,
         additional_tx_keys,
         rct,

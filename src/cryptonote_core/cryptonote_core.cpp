@@ -1110,6 +1110,7 @@ namespace cryptonote
           // NEAC: Get conversion rates for TX and for fees
           uint64_t conversion_rate = COIN;
           uint64_t fee_conversion_rate = COIN;
+          uint64_t tx_fee_conversion_rate = COIN;
           if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
 
             if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, conversion_rate)) {
@@ -1127,9 +1128,17 @@ namespace cryptonote
               tx_info[n].result = false;
               continue;
             }
+
+            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, "XHV", tx_info[n].tvc.m_source_asset, tx_fee_conversion_rate)) {
+              MERROR_VER("Failed to get TX fee conversion rate - aborting");
+              set_semantics_failed(tx_info[n].tx_hash);
+              tx_info[n].tvc.m_verifivation_failed = true;
+              tx_info[n].result = false;
+              continue;
+            }
           }
           
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, conversion_rate, fee_conversion_rate, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage))
             {
               // 2 tx that used reorged pricing reocord for callateral calculation.
               if (epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"

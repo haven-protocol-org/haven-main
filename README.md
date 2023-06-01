@@ -1,4 +1,4 @@
-# Haven Athena v3.1.9g
+# Haven Athena v3.1.9h
 
 Copyright (c) 2018-2023 Haven.
 Portions Copyright (c) 2014-2019 The Monero Project.
@@ -98,7 +98,7 @@ invokes cmake commands as needed.
 
     ```bash
     cd haven-main
-    git checkout v3.1.9g
+    git checkout v3.1.9h
     make release
     ```
 
@@ -188,7 +188,7 @@ application.
 * If you would like a specific [version/tag](https://github.com/haven-protocol-org/haven-main/tags), do a git checkout for that version. eg. 'v1.3.5'. If you don't care about the version and just want binaries from master, skip this step:
 
     ```bash
-    git checkout v3.1.9g
+    git checkout v3.1.9h
     ```
 
 * If you are on a 64-bit system, run:

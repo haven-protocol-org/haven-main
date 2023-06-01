@@ -10653,10 +10653,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   offshore::pricing_record pricing_record;
   uint64_t conversion_rate = COIN;
   uint64_t fee_conversion_rate = COIN;
+  uint64_t inverse_fee_conversion_rate = COIN;
   if (source_asset != dest_asset) {
     THROW_WALLET_EXCEPTION_IF(!get_pricing_record(pricing_record, current_height), error::wallet_internal_error, "Failed to get pricing record");
     THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate), error::wallet_internal_error, "Failed to get conversion rate");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, "XHV", fee_conversion_rate), error::wallet_internal_error, "Failed to get fee conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, "XHV", source_asset, fee_conversion_rate), error::wallet_internal_error, "Failed to get fee conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, "XHV", inverse_fee_conversion_rate), error::wallet_internal_error, "Failed to get inverse fee conversion rate");
   }
 
   // Get the circulating supply data
@@ -10998,6 +11000,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         available_amount -= dsts[0].amount;
         available_amount -= dsts[0].slippage;
         dsts[0].amount = 0;
+        dsts[0].slippage = 0;
         pop_index(dsts, 0);
         ++original_output_index;
       }
@@ -11011,8 +11014,22 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         {
           // HERE BE DRAGONS!!!
           // NEAC: handle situation where there is enough to pay for dt.amount but _not_ dt.slippage (which also needs paying for!!!)
-          dsts[0].amount -= available_amount;
-          available_amount = 0;
+          // Pay for slippage first
+          if (available_amount < dsts[0].slippage) {
+            dsts[0].slippage -= available_amount;
+            available_amount = 0;
+          } else {
+            available_amount -= dsts[0].slippage;
+            dsts[0].slippage = 0;
+            if (available_amount < dsts[0].amount) {
+              dsts[0].amount -= available_amount;
+              available_amount = 0;
+            } else {
+              // Should never happen!!!
+              available_amount -= dsts[0].amount;
+              dsts[0].amount = 0;
+            }
+          }
           // LAND AHOY!!!
         }
         else
@@ -11060,7 +11077,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       
       if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV && source_asset != dest_asset && source_asset != "XHV") {
         uint64_t converted_fee = 0;
-        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (2)");
+        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee_xhv, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (2)");
         needed_fee = converted_fee;
       }
       
@@ -11134,7 +11151,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       needed_fee = needed_fee_xhv = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
       if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV && source_asset != dest_asset && source_asset != "XHV") {
         uint64_t converted_fee = 0;
-        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (3)");
+        THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee_xhv, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (3)");
         needed_fee = converted_fee;
       }
       needed_fee += offshore_fee;
@@ -11163,12 +11180,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
             transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
               detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
           txBlob = t_serializable_object_to_blob(test_ptx.tx);
-          needed_fee =  needed_fee_xhv = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
+          needed_fee = needed_fee_xhv = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
           if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV && source_asset != dest_asset && source_asset != "XHV") {
             uint64_t converted_fee = 0;
-            THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (4)");
+            THROW_WALLET_EXCEPTION_IF(!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee_xhv, converted_fee), error::wallet_internal_error, "Failed to get converted transaction fee (4)");
             needed_fee = converted_fee;
           }
+          needed_fee += offshore_fee;
           LOG_PRINT_L2("Made an attempt at a  final " << get_weight_string(test_ptx.tx, txBlob.size()) << " tx, with " << print_money(test_ptx.fee) <<
             " fee  and " << print_money(test_ptx.change_dts.amount) << " change");
         }
@@ -11180,7 +11198,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         tx.ptx = test_ptx;
         tx.weight = get_transaction_weight(test_tx, txBlob.size());
         tx.outs = outs;
-        tx.needed_fee = test_ptx.fee;
+        tx.needed_fee = needed_fee;//test_ptx.fee;
         tx.needed_fee_xhv = needed_fee_xhv;
         accumulated_fee += test_ptx.fee;
         accumulated_change += test_ptx.change_dts.amount;

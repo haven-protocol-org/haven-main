@@ -4469,7 +4469,21 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   }
 
   // HF21+ conversion TXs use XHV for all fees
-  if (version < HF_VERSION_CONVERSION_FEES_IN_XHV) {
+  if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
+    // Fee is in source_asset terms - need to convert our needed value
+    uint64_t needed_fee_in_C = 0;
+    uint64_t fee_conversion_rate = 0;
+    if (!cryptonote::get_conversion_rate(pr, "XHV", source, fee_conversion_rate)) {
+      MERROR_VER("failed to get fee conversion rate for Blockchain::check_fee");
+      return false;
+    }
+    if (!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, needed_fee_in_C)) {
+      MERROR_VER("failed to get converted fee for Blockchain::check_fee");
+      return false;
+    }
+    needed_fee = needed_fee_in_C;
+
+  } else {
     // convert fee to asset type value
     if (source != "XHV" && source != dest) {
       if (pr.unused1 && pr.xUSD && pr[source]) {
@@ -5261,8 +5275,16 @@ leave:
           goto leave;
         }
           
+        // Get the TX fee conversion rate used
+        uint64_t tx_fee_conversion_rate = COIN;
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, "XHV", source, tx_fee_conversion_rate)) {
+          LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+          
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
         {
           // 2 tx that used reorged pricing record for collateral calculation.
           if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
