@@ -4468,24 +4468,24 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
     needed_fee *= fee_per_kb;
   }
 
-  // HF21+ conversion TXs use XHV for all fees
-  if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
-    // Fee is in source_asset terms - need to convert our needed value
-    uint64_t needed_fee_in_C = 0;
-    uint64_t fee_conversion_rate = 0;
-    if (!cryptonote::get_conversion_rate(pr, "XHV", source, fee_conversion_rate)) {
-      MERROR_VER("failed to get fee conversion rate for Blockchain::check_fee");
-      return false;
-    }
-    if (!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, needed_fee_in_C)) {
-      MERROR_VER("failed to get converted fee for Blockchain::check_fee");
-      return false;
-    }
-    needed_fee = needed_fee_in_C;
-
-  } else {
-    // convert fee to asset type value
-    if (source != "XHV" && source != dest) {
+  // Does the fee need scaling?
+  if (source != "XHV" && source != dest) {
+    // HF21+ conversion TXs use XHV for all fees
+    if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
+      // Fee is in source_asset terms - need to convert our needed value
+      uint64_t needed_fee_in_C = 0;
+      uint64_t fee_conversion_rate = 0;
+      if (!cryptonote::get_conversion_rate(pr, "XHV", source, fee_conversion_rate)) {
+        MERROR_VER("failed to get fee conversion rate for Blockchain::check_fee");
+        return false;
+      }
+      if (!cryptonote::get_converted_amount(fee_conversion_rate, needed_fee, needed_fee_in_C)) {
+        MERROR_VER("failed to get converted fee for Blockchain::check_fee");
+        return false;
+      }
+      needed_fee = needed_fee_in_C;
+    } else {
+      // convert fee to asset type value
       if (pr.unused1 && pr.xUSD && pr[source]) {
         needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
         // xasset amount if fee is paid in xasset
