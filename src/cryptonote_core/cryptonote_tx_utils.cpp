@@ -717,7 +717,7 @@ namespace cryptonote
     }
 
     // Check for seeding of pools
-    if (!map_amounts.count(dest_asset)) {
+    if (!map_amounts.count(dest_asset) || map_amounts[dest_asset] == 0) {
       slippage = 0;
       return true;
     }
