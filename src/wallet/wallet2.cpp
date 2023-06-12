@@ -92,6 +92,7 @@ using namespace epee;
 #include "device/device_cold.hpp"
 #include "device_trezor/device_trezor.hpp"
 #include "net/socks_connect.h"
+#include "offshore/asset_types.h"
 
 extern "C"
 {
@@ -11414,8 +11415,20 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
   return true;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
-{
+std::vector<wallet2::pending_tx> wallet2::create_transactions_all(
+  uint64_t below,
+  const cryptonote::account_public_address &address,
+  bool is_subaddress,
+  const size_t outputs,
+  const size_t fake_outs_count,
+  const uint64_t unlock_time,
+  uint32_t priority,
+  const std::vector<uint8_t>& extra,
+  uint32_t subaddr_account,
+  std::set<uint32_t> subaddr_indices,
+  const std::string &asset_type,
+  const cryptonote::transaction_type tx_type
+){
   std::vector<size_t> unused_transfers_indices;
   std::vector<size_t> unused_dust_indices;
   const bool use_rct = use_fork_rules(4, 0);
@@ -11434,15 +11447,17 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
   const uint64_t fractional_threshold = (base_fee * tx_weight_per_ring) / (use_per_byte_fee ? 1 : 1024);
   std::unordered_set<crypto::public_key> valid_public_keys_cache;
 
-  THROW_WALLET_EXCEPTION_IF(unlocked_balance(subaddr_account, "XHV", false) == 0, error::wallet_internal_error, "No unlocked balance in the specified account");
+  THROW_WALLET_EXCEPTION_IF(unlocked_balance(subaddr_account, asset_type, false) == 0, error::wallet_internal_error, "No unlocked balance in the specified account");
+
+  const auto &specific_transfers = get_specific_transfers(asset_type);
 
   std::map<uint32_t, std::pair<std::vector<size_t>, std::vector<size_t>>> unused_transfer_dust_indices_per_subaddr;
 
   // gather all dust and non-dust outputs of specified subaddress (if any) and below specified threshold (if any)
   bool fund_found = false;
-  for (size_t i = 0; i < m_transfers.size(); ++i)
+  for (size_t i = 0; i < specific_transfers.size(); ++i)
   {
-    const transfer_details& td = m_transfers[i];
+    const transfer_details& td = *specific_transfers[i];
     if (m_ignore_fractional_outputs && td.amount() < fractional_threshold)
     {
       MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which is below threshold " << print_money(fractional_threshold));
@@ -11454,9 +11469,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
       if (below == 0 || td.amount() < below)
       {
         if ((td.is_rct()) || is_valid_decomposed_amount(td.amount()))
-          unused_transfer_dust_indices_per_subaddr[td.m_subaddr_index.minor].first.push_back(i);
+          unused_transfer_dust_indices_per_subaddr[td.m_subaddr_index.minor].first.push_back((size_t)(INDEX_TO_M_TRANSFERS(i)));
         else
-          unused_transfer_dust_indices_per_subaddr[td.m_subaddr_index.minor].second.push_back(i);
+          unused_transfer_dust_indices_per_subaddr[td.m_subaddr_index.minor].second.push_back((size_t)(INDEX_TO_M_TRANSFERS(i)));
       }
     }
   }
@@ -11484,7 +11499,19 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
     }
   }
 
-  return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, fake_outs_count, unlock_time, priority, extra);
+  return create_transactions_from(
+          address,
+          is_subaddress,
+          outputs,
+          unused_transfers_indices,
+          unused_dust_indices,
+          asset_type,
+          tx_type,
+          fake_outs_count,
+          unlock_time,
+          priority,
+          extra
+        );
 }
 
 std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypto::key_image &ki, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra)
@@ -11492,12 +11519,15 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
   std::vector<size_t> unused_transfers_indices;
   std::vector<size_t> unused_dust_indices;
   const bool use_rct = use_fork_rules(4, 0);
+  std::string asset_type = "XHV";
   // find output with the given key image
   for (size_t i = 0; i < m_transfers.size(); ++i)
   {
     const transfer_details& td = m_transfers[i];
     if (td.m_key_image_known && td.m_key_image == ki && !is_spent(td, false) && !td.m_frozen && (use_rct ? true : !td.is_rct()) && is_transfer_unlocked(td))
     {
+      // Copy the asset type
+      asset_type = td.asset_type;
       if (td.is_rct() || is_valid_decomposed_amount(td.amount()))
         unused_transfers_indices.push_back(i);
       else
@@ -11505,11 +11535,22 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
       break;
     }
   }
-  return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, fake_outs_count, unlock_time, priority, extra);
+  return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, asset_type, (asset_type == "XHV") ? cryptonote::transaction_type::TRANSFER : (asset_type == "XUSD") ? cryptonote::transaction_type::OFFSHORE_TRANSFER : cryptonote::transaction_type::XASSET_TRANSFER, fake_outs_count, unlock_time, priority, extra);
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, std::vector<size_t> unused_transfers_indices, std::vector<size_t> unused_dust_indices, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra)
-{
+std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
+  const cryptonote::account_public_address &address,
+  bool is_subaddress,
+  const size_t outputs,
+  std::vector<size_t> unused_transfers_indices,
+  std::vector<size_t> unused_dust_indices,
+  const std::string& asset_type,
+  cryptonote::transaction_type tx_type,
+  const size_t fake_outs_count,
+  const uint64_t unlock_time,
+  uint32_t priority,
+  const std::vector<uint8_t>& extra
+){
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
   boost::unique_lock<hw::device> hwdev_lock (hwdev);
@@ -11541,7 +11582,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   const rct::RCTConfig rct_config {
     rct::RangeProofPaddedBulletproof,
-    bulletproof_plus ? 4 : 3
+    bulletproof_plus ? 7 : use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
+                  use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
+                  use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : 
+                  use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : 0
   };
   const bool use_view_tags = use_fork_rules(get_view_tag_fork(), 0);
   const uint64_t base_fee  = get_base_fee(priority);
@@ -11558,6 +11602,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
   accumulated_outputs = 0;
   accumulated_change = 0;
   needed_fee = 0;
+
+  // check both strSource and strDest are supported.
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset_type) == offshore::ASSET_TYPES.end()) {
+    THROW_WALLET_EXCEPTION_IF(1, error::wallet_internal_error, "Unsupported Asset Type!");
+  }
+
+  // check we have a valid tx type
+  using tt = cryptonote::transaction_type;
 
   // while we have something to send
   hwdev.set_mode(hw::device::TRANSACTION_CREATE_FAKE);
@@ -11620,7 +11672,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
         tx.selected_transfers.size() << " outputs");
       if (use_rct)
         transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee, extra,
-          test_tx, test_ptx, rct_config, "XHV", "XHV", offshore::pricing_record(), use_view_tags);
+          test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
       else
         transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
@@ -11653,11 +11705,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
             dt_residue = 1;
             residue -= 1;
           }
-          dt.amount = dt_amount + dt_residue;
+          dt.amount = dt.dest_amount = dt_amount + dt_residue;
+          dt.is_collateral = dt.is_collateral_change = false;
+          dt.dest_asset_type = asset_type;
         }
         if (use_rct)
           transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee, extra, 
-            test_tx, test_ptx, rct_config, "XHV", "XHV", offshore::pricing_record(), use_view_tags);
+            test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
         else
           transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
             detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
@@ -11696,7 +11750,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
     pending_tx test_ptx;
     if (use_rct) {
       transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, outs_collateral, valid_public_keys_cache, unlock_time, tx.needed_fee, tx.needed_fee, extra,
-        test_tx, test_ptx, rct_config, "XHV", "XHV", offshore::pricing_record(), use_view_tags);
+        test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
     } else {
       transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, valid_public_keys_cache, unlock_time, tx.needed_fee, extra,
         detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
@@ -11731,6 +11785,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
     a -= tx.ptx.fee;
   }
   std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", a, address, is_subaddress));
+  tx_destination_entry& de = synthetic_dsts.back();
+  de.dest_amount = de.amount;
+  de.dest_asset_type = asset_type;
+  de.is_collateral = de.is_collateral_change = false;
   THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, synthetic_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
 
   // if we made it this far, we're OK to actually send the transactions
@@ -12010,7 +12068,7 @@ std::vector<wallet2::pending_tx> wallet2::create_unmixable_sweep_transactions()
       unmixable_transfer_outputs.push_back(n);
   }
 
-  return create_transactions_from(m_account_public_address, false, 1, unmixable_transfer_outputs, unmixable_dust_outputs, 0 /*fake_outs_count */, 0 /* unlock_time */, 1 /*priority */, std::vector<uint8_t>());
+  return create_transactions_from(m_account_public_address, false, 1, unmixable_transfer_outputs, unmixable_dust_outputs, "XHV", cryptonote::transaction_type::TRANSFER, 0 /*fake_outs_count */, 0 /* unlock_time */, 1 /*priority */, std::vector<uint8_t>());
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::discard_unmixable_outputs()

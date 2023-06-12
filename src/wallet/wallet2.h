@@ -1121,9 +1121,43 @@ private:
       uint32_t subaddr_account,
       std::set<uint32_t> subaddr_indices
     );  // pass subaddr_indices by value on purpose
-    std::vector<wallet2::pending_tx> create_transactions_all(uint64_t below, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices);
-    std::vector<wallet2::pending_tx> create_transactions_single(const crypto::key_image &ki, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra);
-    std::vector<wallet2::pending_tx> create_transactions_from(const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, std::vector<size_t> unused_transfers_indices, std::vector<size_t> unused_dust_indices, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra);
+    std::vector<wallet2::pending_tx> create_transactions_all(
+      uint64_t below,
+      const cryptonote::account_public_address &address,
+      bool is_subaddress,
+      const size_t outputs,
+      const size_t fake_outs_count,
+      const uint64_t unlock_time,
+      uint32_t priority,
+      const std::vector<uint8_t>& extra,
+      uint32_t subaddr_account,
+      std::set<uint32_t> subaddr_indices,
+      const std::string &asset_type,
+      const cryptonote::transaction_type tx_type
+    );
+    std::vector<wallet2::pending_tx> create_transactions_single(
+      const crypto::key_image &ki,
+      const cryptonote::account_public_address &address,
+      bool is_subaddress,
+      const size_t outputs,
+      const size_t fake_outs_count,
+      const uint64_t unlock_time,
+      uint32_t priority,
+      const std::vector<uint8_t>& extra
+    );
+    std::vector<wallet2::pending_tx> create_transactions_from(
+      const cryptonote::account_public_address &address,
+      bool is_subaddress,
+      const size_t outputs,
+      std::vector<size_t> unused_transfers_indices,
+      std::vector<size_t> unused_dust_indices,
+      const std::string& asset_type,
+      cryptonote::transaction_type tx_type,
+      const size_t fake_outs_count,
+      const uint64_t unlock_time,
+      uint32_t priority,
+      const std::vector<uint8_t>& extra
+    );
     bool sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, std::vector<cryptonote::tx_destination_entry> dsts) const;
     void cold_tx_aux_import(const std::vector<pending_tx>& ptx, const std::vector<std::string>& tx_device_aux);
     void cold_sign_tx(const std::vector<pending_tx>& ptx_vector, signed_tx_set &exported_txs, std::vector<cryptonote::address_parse_info> &dsts_info, std::vector<std::string> & tx_device_aux);
@@ -1724,6 +1758,9 @@ private:
     transfers_iterator_container get_specific_transfers(const std::string& asset);
     std::pair<transfers_iterator_container, transfers_iterator_container> get_specific_transfers(const std::string& asset, const std::string& collateral_asset);
 
+    bool get_pricing_record(offshore::pricing_record& pr, const uint64_t height);
+    bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
+    
   private:
     /*!
      * \brief  Stores wallet information to wallet file.
@@ -1800,8 +1837,6 @@ private:
     crypto::chacha_key get_ringdb_key();
     void setup_keys(const epee::wipeable_string &password);
     size_t get_transfer_details(const crypto::key_image &ki) const;
-    bool get_pricing_record(offshore::pricing_record& pr, const uint64_t height);
-    bool get_circulating_supply(std::vector<std::pair<std::string, std::string>> &amounts);
     bool get_onshore_collateral_inputs(uint64_t col_amount, std::vector<size_t>& picked_inputs);
 
     void register_devices();

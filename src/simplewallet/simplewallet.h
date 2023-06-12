@@ -184,6 +184,16 @@ namespace cryptonote
     bool sweep_below(const std::vector<std::string> &args);
     bool sweep_single(const std::vector<std::string> &args);
     bool sweep_unmixable(const std::vector<std::string> &args);
+    
+    bool offshore_sweep_all(const std::vector<std::string> &args);
+    bool offshore_sweep_below(const std::vector<std::string> &args);
+    bool xasset_sweep_all(const std::vector<std::string> &args);
+    bool xasset_sweep_below(const std::vector<std::string> &args);
+
+    bool get_price(const std::vector<std::string> &args);
+    bool get_prices(const std::vector<std::string> &args);
+    bool get_block_cap(const std::vector<std::string> &args);
+    
     bool donate(const std::vector<std::string> &args);
     bool sign_transfer(const std::vector<std::string> &args);
     bool submit_transfer(const std::vector<std::string> &args);

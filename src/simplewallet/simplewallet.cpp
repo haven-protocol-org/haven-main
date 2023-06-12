@@ -210,6 +210,13 @@ namespace
   const char* USAGE_SWEEP_ACCOUNT("sweep_account <account> [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_BELOW("sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_SINGLE("sweep_single [<priority>] [<ring_size>] [outputs=<N>] <key_image> <address> [<payment_id (obsolete)>]");
+  const char* USAGE_OFFSHORE_SWEEP_ALL("offshore_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
+  const char* USAGE_OFFSHORE_SWEEP_BELOW("offshore_sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> [<payment_id (obsolete)>]");
+  const char* USAGE_XASSET_SWEEP_ALL("xasset_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> <xAsset type> [<payment_id (obsolete)>]");
+  const char* USAGE_XASSET_SWEEP_BELOW("xasset_sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> <xAsset type> [<payment_id (obsolete)>]");
+  const char* USAGE_GET_PRICE("get_price <xUSD amount> <ASSET_TYPE> [<ASSET_TYPE>...]");
+  const char* USAGE_GET_PRICES("get_prices <xUSD amount>");
+  const char* USAGE_GET_BLOCK_CAP("get_block_cap");
   const char* USAGE_DONATE("donate [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <amount> [<payment_id (obsolete)>]");
   const char* USAGE_SIGN_TRANSFER("sign_transfer [export_raw] [<filename>]");
   const char* USAGE_SET_LOG("set_log <level>|{+,-,}<categories>");
@@ -3352,6 +3359,33 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::sweep_single, _1),
                            tr(USAGE_SWEEP_SINGLE),
                            tr("Send a single output of the given key image to an address without change."));
+  m_cmd_binder.set_handler("offshore_sweep_all", boost::bind(&simple_wallet::offshore_sweep_all, this, _1),
+                           tr(USAGE_OFFSHORE_SWEEP_ALL),
+                           tr("Send all unlocked offshore balance to an address. If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet sweeps outputs received by those address indices. If omitted, the wallet randomly chooses an address index to be used. If the parameter \"outputs=<N>\" is specified and  N > 0, wallet splits the transaction into N even outputs."));
+  m_cmd_binder.set_handler("offshore_sweep_below",
+                           boost::bind(&simple_wallet::offshore_sweep_below, this, _1),
+                           tr(USAGE_OFFSHORE_SWEEP_BELOW),
+                           tr("Send all unlocked offshore outputs below the threshold to an address."));
+  m_cmd_binder.set_handler("xasset_sweep_all",
+                           boost::bind(&simple_wallet::xasset_sweep_all, this, _1),
+                           tr(USAGE_XASSET_SWEEP_ALL),
+                           tr("Send all unlocked balance for the xAsset type <xasset> to an address. If the parameter \"index=<N1>[,<N2>,...]\" or \"index=all\" is specified, the wallet sweeps outputs received by those or all address indices, respectively. If omitted, the wallet randomly chooses an address index to be used. If the parameter \"outputs=<N>\" is specified and  N > 0, wallet splits the transaction into N even outputs."));
+  m_cmd_binder.set_handler("xasset_sweep_below",
+                           boost::bind(&simple_wallet::xasset_sweep_below, this, _1),
+                           tr(USAGE_XASSET_SWEEP_BELOW),
+                           tr("Send all unlocked xAsset outputs of the specified currency below the threshold to an address."));
+  m_cmd_binder.set_handler("get_prices",
+                           boost::bind(&simple_wallet::get_prices, this, _1),
+                           tr(USAGE_GET_PRICES),
+                           tr("Displays the current value of <amount> Haven Dollars (XUSD) in the currently-supported xAsset currencies"));
+  m_cmd_binder.set_handler("get_price",
+                           boost::bind(&simple_wallet::get_price, this, _1),
+                           tr(USAGE_GET_PRICE),
+                           tr("Displays the current value of <amount> Haven Dollars (XUSD) in the specified xAsset currencies"));
+  m_cmd_binder.set_handler("get_block_cap",
+                           boost::bind(&simple_wallet::get_block_cap, this, _1),
+                           tr(USAGE_GET_BLOCK_CAP),
+                           tr("Displays the current allowed offshore/onshore amount for a block."));
   m_cmd_binder.set_handler("donate",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::donate, _1),
                            tr(USAGE_DONATE),
@@ -7337,6 +7371,108 @@ bool simple_wallet::xusd_to_xasset(const std::vector<std::string> &args)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::get_prices(const std::vector<std::string> &args)
+{
+  std::vector<std::string> local_args = args;
+  
+  // Verify the input argument is a number
+  if (args.size() == 0) {
+    local_args.push_back("1");
+  }
+
+  std::vector<std::string> currencies = {"xag", "xau", "xaud", "xbtc", "xcad", "xchf", "xcny", "xeur", "xgbp", "xjpy", "xnok", "xnzd", "xhv"};
+  local_args.insert(local_args.end(), currencies.begin(), currencies.end());
+  return get_price(local_args);
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::get_price(const std::vector<std::string> &args)
+{
+  // Verify the input argument is a number
+  if (args.size() < 2) {
+    fail_msg_writer() << tr("Missing parameter");
+    return false;
+  }
+  uint64_t xusd = 0;
+  try {
+    xusd = boost::lexical_cast<uint64_t>(args[0]);
+  }
+  catch(std::exception &e) {
+    fail_msg_writer() << boost::format(tr("Invalid amount %s specified.")) % args[0];
+    return false;
+  }
+  
+  // Get the current blockchain height
+  uint64_t current_height = m_wallet->get_blockchain_current_height()-1;
+
+  // Get the pricing record for the current height
+  offshore::pricing_record pr;
+  if (!m_wallet->get_pricing_record(pr, current_height)) {
+    fail_msg_writer() << boost::format(tr("Failed to get prices at height %d - maybe pricing record is missing?")) % current_height;
+    return false;
+  }
+
+  // Iterate over the provided currencies
+  message_writer(console_color_white, false) << boost::format(tr("Outputting value of %d xUSD in specified currencies:")) % xusd;
+  for (int i=1; i<args.size(); i++) {
+  
+    // Output the information to the user
+    const std::string lowercase = boost::algorithm::to_lower_copy(args[i]);
+    if (lowercase == "xag") 
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\t xAG %d")) % print_money(pr.xAG * xusd);
+    else if (lowercase == "xau") 
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\t xAU %d")) % print_money(pr.xAU * xusd);
+    else if (lowercase == "xaud") 
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txAUD %d")) % print_money(pr.xAUD * xusd);
+    else if (lowercase == "xbtc")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txBTC %d")) % print_money(pr.xBTC * xusd);
+    else if (lowercase == "xcad")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txCAD %d")) % print_money(pr.xCAD * xusd);
+    else if (lowercase == "xchf")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txCHF %d")) % print_money(pr.xCHF * xusd);
+    else if (lowercase == "xcny")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txCNY %d")) % print_money(pr.xCNY * xusd);
+    else if (lowercase == "xeur")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txEUR %d")) % print_money(pr.xEUR * xusd);
+    else if (lowercase == "xgbp")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txGBP %d")) % print_money(pr.xGBP * xusd);
+    else if (lowercase == "xjpy")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txJPY %d")) % print_money(pr.xJPY * xusd);
+    else if (lowercase == "xnok")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txNOK %d")) % print_money(pr.xNOK * xusd);
+    else if (lowercase == "xnzd")
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txNZD %d")) % print_money(pr.xNZD * xusd);
+    else if (lowercase == "xhv") {
+      uint64_t conversion_rate = COIN;
+      bool ok = cryptonote::get_conversion_rate(pr, "XUSD", "XHV", conversion_rate);
+      message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\t XHV %d")) % print_money(conversion_rate * xusd);
+    }
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::get_block_cap(const std::vector<std::string> &args) {
+  // get circulating supply
+  std::vector<std::pair<std::string, std::string>> supply_amounts;
+  if(!m_wallet->get_circulating_supply(supply_amounts)) {
+    fail_msg_writer() << "failed to get circulating supply. Make sure you are connected to a daemon.";
+    return false;
+  }
+
+  // get pricing record
+  std::string err;
+  uint64_t bc_height = get_daemon_blockchain_height(err);
+  offshore::pricing_record pr;
+  if (!m_wallet->get_pricing_record(pr, bc_height-1)) {
+    fail_msg_writer() << "failed to get pricing record. Make sure you are connected to a daemon.";
+    return false;
+  }
+  
+  // calculate current block cap
+  uint64_t block_cap = cryptonote::get_block_cap(supply_amounts, pr, m_wallet->get_current_hard_fork());
+  message_writer() <<  boost::format(tr("Current Block Cap(height %d): %d XHV")) % bc_height % print_money(block_cap);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::locked_sweep_all(const std::vector<std::string> &args_)
 {
   if (args_.size() < 1)
@@ -7457,15 +7593,28 @@ bool simple_wallet::sweep_unmixable(const std::vector<std::string> &args_)
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, const std::vector<std::string> &args_)
 {
-  auto print_usage = [this, account, below]()
+  std::string asset_type = (args_.size() > 1) ? args_.back() : "XHV";
+  auto print_usage = [this, account, below, asset_type]()
   {
     if (below)
     {
-      PRINT_USAGE(USAGE_SWEEP_BELOW);
+      if (asset_type == "XHV") {
+	      PRINT_USAGE(USAGE_SWEEP_BELOW);
+      } else if (asset_type == "XUSD") {
+	      PRINT_USAGE(USAGE_OFFSHORE_SWEEP_BELOW);
+      } else {
+	      PRINT_USAGE(USAGE_XASSET_SWEEP_BELOW);
+      }
     }
     else if (account == m_current_subaddress_account)
     {
-      PRINT_USAGE(USAGE_SWEEP_ALL);
+      if (asset_type == "XHV") {
+	      PRINT_USAGE(USAGE_SWEEP_ALL);
+      } else if (asset_type == "XUSD") {
+	      PRINT_USAGE(USAGE_OFFSHORE_SWEEP_ALL);
+      } else {
+	      PRINT_USAGE(USAGE_XASSET_SWEEP_ALL);
+      }
     }
     else
     {
@@ -7641,10 +7790,20 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
 
   SCOPED_WALLET_UNLOCK();
 
+  // determine the tx type
+  cryptonote::transaction_type tx_type;
+  if (asset_type == "XHV") {
+    tx_type = cryptonote::transaction_type::TRANSFER;
+  } else if (asset_type == "XUSD") {
+    tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
+  } else {
+    tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
+  }
+
   try
   {
     // figure out what tx will be necessary
-    auto ptx_vector = m_wallet->create_transactions_all(below, info.address, info.is_subaddress, outputs, fake_outs_count, unlock_block /* unlock_time */, priority, extra, account, subaddr_indices);
+    auto ptx_vector = m_wallet->create_transactions_all(below, info.address, info.is_subaddress, outputs, fake_outs_count, unlock_block /* unlock_time */, priority, extra, account, subaddr_indices, asset_type, tx_type);
 
     if (ptx_vector.empty())
     {
@@ -7682,15 +7841,19 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
     if (!process_ring_members(ptx_vector, prompt, m_wallet->print_ring_members()))
       return true;
     if (ptx_vector.size() > 1) {
-      prompt << boost::format(tr("Sweeping %s in %llu transactions for a total fee of %s.  Is this okay?")) %
+      prompt << boost::format(tr("Sweeping %s %s in %llu transactions for a total fee of %s %s.  Is this okay?")) %
         print_money(total_sent) %
+        asset_type %
         ((unsigned long long)ptx_vector.size()) %
-        print_money(total_fee);
+        print_money(total_fee) %
+        asset_type;
     }
     else {
-      prompt << boost::format(tr("Sweeping %s for a total fee of %s.  Is this okay?")) %
+      prompt << boost::format(tr("Sweeping %s %s for a total fee of %s %s.  Is this okay?")) %
         print_money(total_sent) %
-        print_money(total_fee);
+        asset_type %
+        print_money(total_fee) %
+        asset_type;
     }
     std::string accepted = input_line(prompt.str(), true);
     if (std::cin.eof())
@@ -8051,6 +8214,106 @@ bool simple_wallet::sweep_below(const std::vector<std::string> &args_)
   }
   sweep_main(m_current_subaddress_account, below, false, std::vector<std::string>(++args_.begin(), args_.end()));
   return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::offshore_sweep_all(const std::vector<std::string> &args_)
+{
+  auto local_args = args_;
+  local_args.push_back("XUSD");
+  return sweep_main(m_current_subaddress_account, 0, false, local_args);
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::offshore_sweep_below(const std::vector<std::string> &args_)
+{
+  uint64_t below = 0;
+  if (args_.size() < 1)
+  {
+    fail_msg_writer() << tr("missing threshold amount");
+    return true;
+  }
+  if (!cryptonote::parse_amount(below, args_[0]))
+  {
+    fail_msg_writer() << tr("invalid amount threshold");
+    return true;
+  }
+  auto local_args = args_;
+  local_args.erase(local_args.begin());
+  local_args.push_back("XUSD");
+  return sweep_main(m_current_subaddress_account, below, false, local_args);
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::xasset_sweep_all(const std::vector<std::string> &args_)
+{
+  // Simple sanity check - make sure we have the asset type specified
+  if (args_.size() < 1)
+  {
+    fail_msg_writer() << tr("No xAsset type provided.");
+    PRINT_USAGE(USAGE_XASSET_SWEEP_ALL);
+    return false;
+  }
+  // copy args
+  std::vector<std::string> local_args = args_;
+
+  // check and remove the asset type
+  std::string strCurrency = boost::algorithm::to_upper_copy(local_args.back());
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strCurrency) == offshore::ASSET_TYPES.end()) {
+    fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
+    return false;
+  }
+  if (strCurrency == "XUSD") {
+    fail_msg_writer() << "xAsset commands do not support xUSD. Please use the offshore_sweep_all() function.";
+    return false;
+  }
+  if (strCurrency == "XHV") {
+    fail_msg_writer() << "xAsset commands do not support XHV. Please use the sweep_all() function.";
+    return false;
+  }
+  local_args.pop_back();
+
+  // push the offshore data
+  local_args.push_back(strCurrency);
+
+  return sweep_main(m_current_subaddress_account, 0, false, local_args);
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::xasset_sweep_below(const std::vector<std::string> &args_)
+{
+  // copy args
+  std::vector<std::string> local_args = args_;
+
+  uint64_t below = 0;
+  if (local_args.size() < 2)
+  {
+    fail_msg_writer() << tr("missing threshold amount or xAsset type");
+    return true;
+  }
+  std::string amount = local_args.front();
+  local_args.erase(local_args.begin());
+  if (!cryptonote::parse_amount(below, amount))
+  {
+    fail_msg_writer() << tr("invalid amount threshold");
+    return true;
+  }
+  // check and remove the asset type
+  std::string strCurrency = boost::algorithm::to_upper_copy(local_args.back());
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strCurrency) == offshore::ASSET_TYPES.end()) {
+    fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % strCurrency;
+    return false;
+  }
+  if (strCurrency == "XUSD") {
+    fail_msg_writer() << "xAsset commands do not support xUSD. Please use the offshore_sweep_below() function.";
+    return false;
+  }
+  if (strCurrency == "XHV") {
+    fail_msg_writer() << "xAsset commands do not support XHV. Please use the sweep_below() function.";
+    return false;
+  }
+  local_args.pop_back();
+
+  // push the offshore data
+  local_args.push_back(strCurrency);
+
+  return sweep_main(m_current_subaddress_account, below, false, local_args);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::donate(const std::vector<std::string> &args_)

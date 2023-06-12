@@ -1627,11 +1627,27 @@ namespace tools
       subaddr_indices= req.subaddr_indices;
     }
 
+    //set the tx type
+    cryptonote::transaction_type tx_type;
+    if (!req.asset_type.empty()) {
+      if (req.asset_type == "XHV") {
+        tx_type = cryptonote::transaction_type::TRANSFER;
+      } else if(req.asset_type == "XUSD") {
+        tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
+      } else {
+        tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
+      }
+    } else {
+      er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+      er.message = "No asset type was specified.";
+      return  false;
+    }
+
     try
     {
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
       uint32_t priority = m_wallet->adjust_priority(req.priority);
-      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_all(req.below_amount, dsts[0].addr, dsts[0].is_subaddress, req.outputs, mixin, req.unlock_time, priority, extra, req.account_index, subaddr_indices);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_all(req.below_amount, dsts[0].addr, dsts[0].is_subaddress, req.outputs, mixin, req.unlock_time, priority, extra, req.account_index, subaddr_indices, req.asset_type, tx_type);
 
       return fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.fee_list, res.weight_list, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
           res.tx_hash_list, req.get_tx_hex, res.tx_blob_list, req.get_tx_metadata, res.tx_metadata_list, res.spent_key_images_list, er);
