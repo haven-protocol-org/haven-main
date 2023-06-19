@@ -228,7 +228,6 @@
 
 // Post-v0.18-rebase - Haven v3.2
 #define HF_VERSION_USE_CONVERSION_RATE          21
-#define HF_VERSION_USE_SOURCE_AMOUNTS           21
 #define HF_VERSION_USE_HAVEN_TYPES              21
 #define HF_VERSION_CONVERSION_FEES_IN_XHV       21
 #define HF_VERSION_USE_COLLATERAL_V2            21

@@ -1392,7 +1392,7 @@ namespace rct {
               // HERE BE DRAGONS!!!
               // Unfortunately, because we already had an implementation that used the rate going the wrong way previously,
               // we need to continue supporting that implementation ad-infinitum
-              if (hf_version >= HF_VERSION_USE_SOURCE_AMOUNTS) {
+              if (hf_version >= HF_VERSION_USE_CONVERSION_RATE) {
                 key inverse_rate = invert(d2h(conversion_rate));
                 sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
                 sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
@@ -1410,7 +1410,7 @@ namespace rct {
               // HERE BE DRAGONS!!!
               // Unfortunately, because we already had an implementation that used the rate going the wrong way previously,
               // we need to continue supporting that implementation ad-infinitum
-              if (hf_version >= HF_VERSION_USE_SOURCE_AMOUNTS) {
+              if (hf_version >= HF_VERSION_USE_CONVERSION_RATE) {
                 key inverse_rate = invert(d2h(conversion_rate));
                 sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
                 sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
@@ -1840,12 +1840,15 @@ namespace rct {
         subKeys(sumC, sumC, txnOffshoreFeeKey);
       }
 
-      if (version >= HF_VERSION_SLIPPAGE) {
+      if (version >= HF_VERSION_USE_CONVERSION_RATE) {
 
         if (strSource != strDest) {
-          // Handle any slippage (NEAC: should always be zero for non-conversions!)
-          key slippageKey = scalarmultH(d2h(amount_slippage));
-          subKeys(sumC, sumC, slippageKey);
+
+          if (version >= HF_VERSION_SLIPPAGE) {
+            // Handle any slippage (NEAC: should always be zero for non-conversions!)
+            key slippageKey = scalarmultH(d2h(amount_slippage));
+            subKeys(sumC, sumC, slippageKey);
+          }
           
           // Scale D terms by the conversion rate (NEAC: should always be COIN for non-conversions!)
           key D_scaled = scalarmultKey(sumD, d2h(COIN));
