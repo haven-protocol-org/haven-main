@@ -318,7 +318,7 @@ namespace cryptonote
     }
 
     // set tx version
-    if (hard_fork_version >= HF_VERSION_SLIPPAGE) {
+    if (hard_fork_version >= HF_VERSION_USE_HAVEN_TYPES) {
       tx.version = HAVEN_TYPES_TRANSACTION_VERSION;
     } else if (hard_fork_version >= HF_VERSION_USE_COLLATERAL) {
       tx.version = COLLATERAL_TRANSACTION_VERSION;
@@ -551,10 +551,7 @@ namespace cryptonote
     }
 
     uint64_t fee_estimate = 0;
-    if (hf_version >= HF_VERSION_SLIPPAGE) {
-      // Flat 0.5% fee
-      fee_estimate = amount_usd / 200;
-    } else if (hf_version >= HF_VERSION_USE_COLLATERAL) {
+    if (hf_version >= HF_VERSION_USE_COLLATERAL) {
       // Flat 1.5% fee
       fee_estimate = (amount_usd * 3) / 200;
     } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
@@ -814,14 +811,15 @@ namespace cryptonote
     double ratio_mcap = ratio_mcap_128.convert_to<double>();
 
     // Do the right thing, based on the HF version
-    if (hf_version >= HF_VERSION_SLIPPAGE) {
+    if (hf_version >= HF_VERSION_USE_COLLATERAL_V2) {
 
       if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
         collateral = 0;
       } else {
-        // VBS rate = SQRT(MCAP^1.5) * 5
-        double vbs = std::floor(sqrt(pow(ratio_mcap, 1.5)) * 5.0);
-        vbs = std::min(5.0, std::max(vbs, 1.0));
+        // VBS multiplier changes between onshore and offshore TXs
+        double vbs_scale = (tx_type == tt::ONSHORE) ? 12.0 : 5.0;
+        double vbs = std::floor(sqrt(ratio_mcap) * vbs_scale);
+        vbs = std::min(15.0, std::max(vbs, 1.0));
 
         // Convert amount to 128 bit
         boost::multiprecision::uint128_t amount_128 = amount;

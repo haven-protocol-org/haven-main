@@ -6418,25 +6418,30 @@ std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_majo
   {
     for (const auto& utx: m_unconfirmed_txs)
     {
-      if (utx.second.m_subaddr_account == index_major && utx.second.m_source_asset == asset && utx.second.m_state != wallet2::unconfirmed_transfer_details::failed)
+      if (utx.second.m_subaddr_account == index_major && /*(utx.second.m_source_asset == asset || asset == "XHV") &&*/ utx.second.m_state != wallet2::unconfirmed_transfer_details::failed)
       {
-        // all changes go to 0-th subaddress (in the current subaddress account)
-        auto found = amount_per_subaddr.find(0);
-        if (found == amount_per_subaddr.end())
-          amount_per_subaddr[0] = utx.second.m_change;
-        else
-          found->second += utx.second.m_change;
-
+        // Check for change
+        if (utx.second.m_source_asset == asset) {
+          // all changes go to 0-th subaddress (in the current subaddress account)
+          auto found = amount_per_subaddr.find(0);
+          if (found == amount_per_subaddr.end())
+            amount_per_subaddr[0] = utx.second.m_change;
+          else
+            found->second += utx.second.m_change;
+        }
         // add transfers to same wallet
         for (const auto &dest: utx.second.m_dests) {
-          auto index = get_subaddress_index(dest.addr);
-          if (index && (*index).major == index_major)
-          {
-            auto found = amount_per_subaddr.find((*index).minor);
-            if (found == amount_per_subaddr.end())
-              amount_per_subaddr[(*index).minor] = dest.amount;
-            else
-              found->second += dest.amount;
+          if ((asset == "XHV" && (dest.is_collateral || dest.is_collateral_change)) ||
+              (dest.dest_asset_type == asset)) {
+            auto index = get_subaddress_index(dest.addr);
+            if (index && (*index).major == index_major)
+            {
+              auto found = amount_per_subaddr.find((*index).minor);
+              if (found == amount_per_subaddr.end())
+                amount_per_subaddr[(*index).minor] = dest.amount + dest.slippage;
+              else
+                found->second += dest.amount + dest.slippage;
+            }
           }
         }
       }
@@ -6870,14 +6875,15 @@ uint64_t wallet2::select_transfers(uint64_t needed_money, std::vector<size_t> un
   return found_money;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, const std::string& source_asset, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices)
+void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, const std::string& source_asset, uint64_t amount_in, uint64_t amount_collateral, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices)
 {
   unconfirmed_transfer_details& utd = m_unconfirmed_txs[cryptonote::get_transaction_hash(tx)];
   utd.m_source_asset = source_asset;
   utd.m_amount_in = amount_in;
   utd.m_amount_out = 0;
   for (const auto &d: dests)
-    utd.m_amount_out += d.amount;
+    if (source_asset == "XHV" || (!d.is_collateral && !d.is_collateral_change))
+      utd.m_amount_out += (d.amount + d.slippage);
   utd.m_amount_out += change_amount; // dests does not contain change
   utd.m_change = change_amount;
   utd.m_sent_time = time(NULL);
@@ -6984,7 +6990,7 @@ void wallet2::commit_tx(pending_tx& ptx)
 
   crypto::hash payment_id = crypto::null_hash;
   std::vector<cryptonote::tx_destination_entry> dests;
-  uint64_t amount_in = 0;
+  uint64_t amount_in = 0, amount_collateral = 0;
   if (store_tx_info())
   {
     payment_id = get_payment_id(ptx);
@@ -6992,8 +6998,10 @@ void wallet2::commit_tx(pending_tx& ptx)
     for(size_t idx: ptx.selected_transfers)
       if (m_transfers[idx].asset_type == source_asset)
         amount_in += m_transfers[idx].amount();
+      else if (m_transfers[idx].asset_type == "XHV" && source_asset == "XUSD" && dest_asset == "XHV")
+        amount_collateral += m_transfers[idx].amount();
   }
-  add_unconfirmed_tx(ptx.tx, source_asset, amount_in, dests, payment_id, ptx.change_dts.amount, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
+    add_unconfirmed_tx(ptx.tx, source_asset, amount_in, amount_collateral, dests, payment_id, ptx.change_dts.amount, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
   if (store_tx_info() && ptx.tx_key != crypto::null_skey)
   {
     m_tx_keys[txid] = ptx.tx_key;
@@ -10686,12 +10694,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       dt.dest_amount = dt.amount; // for regular transfers
 
     } else {
-    
-      // Get the conversion rate
-      uint64_t conversion_rate = 0;
-      bool r = cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate);
-      THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain conversion rate for conversion TX");
 
+      bool r = false;
+      
       // Remove any slippage pre-conversion
       if (need_slippage) {
         r = cryptonote::get_slippage(tx_type, source_asset, dest_asset, dt.amount, dt.slippage, pricing_record, circ_amounts, hf_version);
@@ -10699,10 +10704,25 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         dt.amount -= dt.slippage;
         needed_slippage += dt.slippage;
       }
-      
-      // Get the destination amount
-      r = cryptonote::get_converted_amount(conversion_rate, dt.amount, dt.dest_amount);
-      THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain destination amount for conversion TX");
+
+      if (hf_version >= HF_VERSION_USE_CONVERSION_RATE ||
+          tx_type == tt::OFFSHORE ||
+          tx_type == tt::XUSD_TO_XASSET) {
+        // Get the destination amount
+        r = cryptonote::get_converted_amount(conversion_rate, dt.amount, dt.dest_amount);
+        THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to obtain destination amount for conversion TX");
+      } else {
+        // Destination amount already supplied - work out the source amount
+        dt.dest_amount = dt.amount;
+        if (tx_type == tt::ONSHORE) {
+          dt.amount = cryptonote::get_xusd_amount(dt.dest_amount, "XHV", pricing_record, tx_type, hf_version);
+          THROW_WALLET_EXCEPTION_IF(dt.amount == 0, error::wallet_internal_error, "Failed to convert needed_money back to xUSD");
+        } else if (tx_type == tt::XASSET_TO_XUSD) {
+          dt.amount = cryptonote::get_xasset_amount(dt.dest_amount, source_asset, pricing_record);
+          THROW_WALLET_EXCEPTION_IF(dt.amount == 0, error::wallet_internal_error, "Failed to convert needed_money back to xUSD");
+        } else {
+        }
+      }
 
       // Calculate the collateral
       if (need_collateral) {

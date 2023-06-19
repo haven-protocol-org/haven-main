@@ -482,6 +482,8 @@ private:
       cryptonote::transaction_prefix m_tx;
       uint64_t m_amount_in;
       uint64_t m_amount_out;
+      uint64_t m_amount_collateral_in;
+      uint64_t m_amount_collateral_out;
       uint64_t m_change;
       time_t m_sent_time;
       std::string m_source_asset;
@@ -509,6 +511,8 @@ private:
         VARINT_FIELD(m_subaddr_account)
         FIELD(m_subaddr_indices)
         FIELD(m_rings)
+        VARINT_FIELD(m_amount_collateral_in)
+        VARINT_FIELD(m_amount_collateral_out)
       END_SERIALIZE()
     };
 
@@ -1799,7 +1803,7 @@ private:
     bool prepare_file_names(const std::string& file_path);
     void process_unconfirmed(const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t height);
     void process_outgoing(const crypto::hash &txid, const cryptonote::transaction &tx, uint64_t height, uint64_t ts, uint64_t spent, const std::string& source_asset, uint64_t received, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
-    void add_unconfirmed_tx(const cryptonote::transaction& tx, const std::string& source_asset, uint64_t amount_in, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
+    void add_unconfirmed_tx(const cryptonote::transaction& tx, const std::string& source_asset, uint64_t amount_in, uint64_t amount_collateral, const std::vector<cryptonote::tx_destination_entry> &dests, const crypto::hash &payment_id, uint64_t change_amount, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
     void generate_genesis(cryptonote::block& b) const;
     void check_genesis(const crypto::hash& genesis_hash) const; //throws
     bool generate_chacha_key_from_secret_keys(crypto::chacha_key &key) const;
@@ -2023,7 +2027,7 @@ BOOST_CLASS_VERSION(tools::wallet2::multisig_info::LR, 0)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_tx_set, 1)
 BOOST_CLASS_VERSION(tools::wallet2::payment_details, 5)
 BOOST_CLASS_VERSION(tools::wallet2::pool_payment_details, 1)
-BOOST_CLASS_VERSION(tools::wallet2::unconfirmed_transfer_details, 8)
+BOOST_CLASS_VERSION(tools::wallet2::unconfirmed_transfer_details, 9)
 BOOST_CLASS_VERSION(tools::wallet2::confirmed_transfer_details, 6)
 BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 18)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
@@ -2264,6 +2268,10 @@ namespace boost
       if (ver < 8)
         return;
       a & x.m_rings;
+      if (ver < 9)
+        return;
+      a & x.m_amount_collateral_in;
+      a & x.m_amount_collateral_out;
     }
 
     template <class Archive>

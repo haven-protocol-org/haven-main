@@ -3445,7 +3445,7 @@ bool Blockchain::check_unlock_time(const uint64_t output_unlock_time, const uint
   }
 
   // Start implementing per-HF overrides of this function, so the logic is clearer
-  if (hf_version >= HF_VERSION_SLIPPAGE) {
+  if (hf_version >= HF_VERSION_USE_COLLATERAL_V2) {
     return check_unlock_time_21(output_unlock_time, tx_height, tx_type, output_asset_type, is_collateral, is_collateral_change);
   }
   

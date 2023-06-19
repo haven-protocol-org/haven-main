@@ -226,10 +226,12 @@
 #define HF_PER_OUTPUT_UNLOCK_VERSION            19
 #define HF_VERSION_USE_COLLATERAL               20
 
-// Post-v0.18-rebase
+// Post-v0.18-rebase - Haven v3.2
+#define HF_VERSION_USE_CONVERSION_RATE          21
+#define HF_VERSION_USE_SOURCE_AMOUNTS           21
 #define HF_VERSION_USE_HAVEN_TYPES              21
 #define HF_VERSION_CONVERSION_FEES_IN_XHV       21
-#define HF_VERSION_SLIPPAGE                     21
+#define HF_VERSION_USE_COLLATERAL_V2            21
 #define HF_VERSION_MIN_MIXIN_15                 21
 #define HF_VERSION_EXACT_COINBASE               21
 #define HF_VERSION_DETERMINISTIC_UNLOCK_TIME    21
@@ -237,8 +239,12 @@
 #define HF_VERSION_VIEW_TAGS                    21
 #define HF_VERSION_2021_SCALING                 21
 
+// Haven v4.0 definitions
+#define HF_VERSION_SLIPPAGE                     22
+#define HF_VERSION_YIELD                        22
+
 #define STAGENET_VERSION                        0x0e
-#define TESTNET_VERSION                         0x15
+#define TESTNET_VERSION                         0x16
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
@@ -327,9 +333,9 @@ namespace config
     boost::uuids::uuid const NETWORK_ID = { {
         0x05 ,0x39, 0xF1, 0x70 , 0x61, 0x04 , 0x41, 0x60, 0x17, 0x32, 0x00, 0x81, 0x16, 0xA1, TESTNET_VERSION, 0x11
       } };
-    //std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
+    std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
     // 15M premine
-    std::string const GENESIS_TX = "023c01ff00018080f0f6ec90ad95d00102d12e955cf07c7569e9678afeb9c879c04f5e5850987c83feaea7afdb462b8f832101f352146306f0d841fed393dda5ad977cb009430442394c72f1fae952af0bb24700";
+    //std::string const GENESIS_TX = "023c01ff00018080f0f6ec90ad95d00102d12e955cf07c7569e9678afeb9c879c04f5e5850987c83feaea7afdb462b8f832101f352146306f0d841fed393dda5ad977cb009430442394c72f1fae952af0bb24700";
     // 18.4M premine
     //std::string const GENESIS_TX = "023c01ff00018cffffffffffffffff0102fa999deaf77e7666b1ce36a81107ee39ad51cd70eb5f99d3ce9d0afc40fb4ac821016f8a067f6f8b2988fa71c665f05521616f309a49b345af21633718507b73e83a00";
     uint32_t const GENESIS_NONCE = 10001;

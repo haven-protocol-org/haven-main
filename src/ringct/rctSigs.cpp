@@ -1392,7 +1392,7 @@ namespace rct {
               // HERE BE DRAGONS!!!
               // Unfortunately, because we already had an implementation that used the rate going the wrong way previously,
               // we need to continue supporting that implementation ad-infinitum
-              if (hf_version >= HF_VERSION_SLIPPAGE) {
+              if (hf_version >= HF_VERSION_USE_SOURCE_AMOUNTS) {
                 key inverse_rate = invert(d2h(conversion_rate));
                 sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
                 sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
@@ -1410,7 +1410,7 @@ namespace rct {
               // HERE BE DRAGONS!!!
               // Unfortunately, because we already had an implementation that used the rate going the wrong way previously,
               // we need to continue supporting that implementation ad-infinitum
-              if (hf_version >= HF_VERSION_SLIPPAGE) {
+              if (hf_version >= HF_VERSION_USE_SOURCE_AMOUNTS) {
                 key inverse_rate = invert(d2h(conversion_rate));
                 sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
                 sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
@@ -2519,7 +2519,7 @@ namespace rct {
 
   bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const uint64_t& conversion_rate, const std::string& source, const std::string& destination, const uint8_t version) {
 
-    if (version >= HF_VERSION_SLIPPAGE) {
+    if (version >= HF_VERSION_USE_CONVERSION_RATE) {
       boost::multiprecision::uint128_t burnt_128 = amount_burnt;
       boost::multiprecision::uint128_t conversion_rate_128 = conversion_rate;
       burnt_128 *= conversion_rate_128;

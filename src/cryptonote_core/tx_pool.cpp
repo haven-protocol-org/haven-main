@@ -413,11 +413,9 @@ namespace cryptonote
         // Flat 1.5% fee IN XHV!!!
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
 
-          // Include the slippage to get back to the original amount used in the fee calculation
-          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt;//+slippage;
-
-          // Calculate 1.5% (0.5% for onshores, cos the Econ Workgroup love to fiddle with sh1t just to annoy me)
-          if (tx_type != tt::ONSHORE) conversion_fee_amount_128 *= 3;
+          // Calculate 1.5% of amount_burnt
+          boost::multiprecision::uint128_t conversion_fee_amount_128 = tx.amount_burnt;
+          conversion_fee_amount_128 *= 3;
           conversion_fee_amount_128 /= 200;
 
           // Convert to XHV for fee comparison
