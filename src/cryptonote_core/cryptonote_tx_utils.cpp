@@ -817,9 +817,9 @@ namespace cryptonote
         collateral = 0;
       } else {
         // VBS multiplier changes between onshore and offshore TXs
-        double vbs_scale = (tx_type == tt::ONSHORE) ? 12.0 : 5.0;
+        double vbs_scale = (tx_type == tt::ONSHORE) ? 9.0 : 4.0;
         double vbs = std::floor(sqrt(ratio_mcap) * vbs_scale);
-        vbs = std::min(15.0, std::max(vbs, 1.0));
+        vbs = std::min(10.0, std::max(vbs, 1.0));
 
         // Convert amount to 128 bit
         boost::multiprecision::uint128_t amount_128 = amount;

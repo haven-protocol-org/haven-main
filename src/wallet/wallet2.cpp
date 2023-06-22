@@ -2151,7 +2151,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
 
       // put a bufer for the tx fee
       if (unlocked_xusd_balance < 2 * COIN) {
-        err = "unlocked balance too small for max. enter amount manualy";
+        err = "Unlocked balance too small for max. Please enter amount manually";
         return false;
       }
       unlocked_xusd_balance -= 2 * COIN;
@@ -2192,9 +2192,17 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
         }
       }
       if (found) {
-        amount = cryptonote::get_xhv_amount(last_amount, pr, tx_type, hf_version);
-        amount -= (amount % 100000000);
+        if (hf_version < HF_VERSION_USE_CONVERSION_RATE) {
+          // Onshore uses DEST amount on command line - convert to XHV
+          amount = cryptonote::get_xhv_amount(last_amount, pr, tx_type, hf_version);
+          amount -= (amount % 100000000);
 	      LOG_PRINT_L2("Found max amount = " << last_amount << " xUSD (" << amount << " XHV), and requires " << collateral << " XHV as collateral");
+        } else {
+          // Onshore uses SOURCE amount on command line
+          amount = last_amount;
+          amount -= (amount % 100000000);
+	      LOG_PRINT_L2("Found max amount = " << amount << " xUSD, and requires " << collateral << " XHV as collateral");
+        }
         return true;
       }
     } else if (tx_type == tt::XUSD_TO_XASSET) {
@@ -2207,7 +2215,7 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
 
       // put a bufer for the tx fee
       if (unlocked_xusd_balance < 2 * COIN) {
-        err = "unlocked balance too small for max. enter amount manualy";
+        err = "Unlocked balance too small for max. Please enter amount manually.";
         return false;
       }
       unlocked_xusd_balance -= 2 * COIN;
@@ -2226,16 +2234,23 @@ bool wallet2::get_max_destination_amount(const cryptonote::transaction_type tx_t
 
       // put a bufer for the tx fee
       if (unlocked_xasset_balance < xasset_amount) {
-        err = "unlocked balance too small for max. enter amount manualy";
+        err = "Unlocked balance too small for max. Please enter amount manually.";
         return false;
       }
       unlocked_xasset_balance -= xasset_amount;
 
-      amount = cryptonote::get_xusd_amount(unlocked_xasset_balance, source_asset, pr, tx_type, hf_version);
-      amount -= (amount % 100000000);
+      if (hf_version < HF_VERSION_USE_CONVERSION_RATE) {
+        // xasset_to_xusd used to use DEST amount on command line - convert to XHV
+        amount = cryptonote::get_xusd_amount(unlocked_xasset_balance, source_asset, pr, tx_type, hf_version);
+        amount -= (amount % 100000000);
+      } else {
+        // xasset_to_xusd now uses SOURCE amount on command line"
+        amount = unlocked_xasset_balance;
+        amount -= (amount % 100000000);
+      }
       return true;
     } else {
-      err = "unkniown tx type for max function.";
+      err = "unknown tx type for max function.";
       return false;
     }
 

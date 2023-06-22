@@ -6856,6 +6856,7 @@ bool simple_wallet::transfer_main(
             fail_msg_writer() << tr("failed to get max destination amount: ") << err;
             return false;
           }
+          de.amount = amount;
         } else {
           fail_msg_writer() << tr("amount is wrong: ") << local_args[i] << ' ' << local_args[i + 1] <<
             ", " << tr("expected number from 0 to ") << print_money(std::numeric_limits<uint64_t>::max());

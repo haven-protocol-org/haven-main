@@ -424,7 +424,7 @@ namespace offshore
         return false;
       }
       if (this->timestamp <= last_bl_timestamp) {
-        LOG_ERROR("Pricing record timestamp is too old.");
+        LOG_ERROR("Pricing record timestamp is too old (PR = " << this->timestamp << ", block timestamp = " << bl_timestamp << ", timestamp of last block = " << last_bl_timestamp << ").");
         return false;
       }
     }

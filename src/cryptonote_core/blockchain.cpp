@@ -218,9 +218,11 @@ bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx
     // Check for known invalid output IDs
     if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
       std::vector<uint64_t> invalid_output_ids = {
-        6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872743, 6872660, 6872661,
-        6872554, 6872555, 6872556, 6872557, 6872558, 6872559, 6872560, 6872561, 6872562, 6872563,
-        6872564, 6872565, 6872566, 6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
+        /* // KuCoin outputs
+           6872743, 6872555, 6872560, 6872563, 6872565, */
+        6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872660, 6872661,
+        6872554, 6872556, 6872557, 6872558, 6872559, 6872561, 6872562, 6872564, 6872566, 
+        6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
       };
       if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
