@@ -1774,15 +1774,36 @@ namespace rct {
           // All transfer types and offshores have fees in source asset type = C colour
           subKeys(sumC, sumC, txnFeeKey);
           subKeys(sumC, sumC, txnOffshoreFeeKey);
-        } else if (tx_type == tt::ONSHORE) {
-          // Onshores have fees in XHV = D colour
-          boost::multiprecision::uint128_t tx_fee_128 = rv.txnFee;
-          boost::multiprecision::uint128_t exchange_128 = tx_fee_conversion_rate;
+        } else {//if (tx_type == tt::ONSHORE) {
+
+          // Calculate what the transaction fee is in C terms
+          boost::multiprecision::uint128_t tx_fee_128 = rv.txnFee; // Fee stored in XHV
           tx_fee_128 *= tx_fee_conversion_rate;
           tx_fee_128 /= COIN;
           key txnFeeKeyInC = scalarmultH(d2h(tx_fee_128.convert_to<uint64_t>()));
+
+          // Deduct the transaction fee from our sum of C terms
           subKeys(sumC, sumC, txnFeeKeyInC);
-          subKeys(sumD, sumD, txnOffshoreFeeKey);
+
+          // HERE BE DRAGONS!!!
+          // Verify the amount of the conversion fee, starting with amount_burnt
+          boost::multiprecision::uint128_t fee_128 = amount_burnt;
+          fee_128 *= 3;
+          fee_128 /= 200; // This is the correct fee in xUSD
+          boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
+          conversion_fee_128 *= fee_conversion_rate;
+          conversion_fee_128 /= COIN;
+          if (conversion_fee_128 != rv.txnOffshoreFee) {
+            LOG_ERROR("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
+            return false;
+          }
+
+          // Deduct the conversion fee from our C terms
+          key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
+          subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
+          //subKeys(sumD, sumD, txnOffshoreFeeKey);
+          // LAND AHOY!!!
+          /*          
         } else if (tx_type == tt::XUSD_TO_XASSET) {
 
           // Onshores have fees in XHV = D colour
@@ -1832,6 +1853,7 @@ namespace rct {
           // Deduct the fee from our C terms
           key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
           subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
+          */
         }
         // LAND AHOY!!!
       } else {
@@ -1909,21 +1931,6 @@ namespace rct {
           amount_burnt -= amount_slippage;
         }
 
-        key txnOffshoreFeeKeyInC = zerokey;
-        if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
-          if (tx_type == tt::ONSHORE) {
-            // Need to convert the offshore fee to xUSD and deduct from the sumC
-            boost::multiprecision::uint128_t fee_128 = rv.txnOffshoreFee;
-            boost::multiprecision::uint128_t exchange_128 = conversion_rate;
-            fee_128 *= COIN;
-            fee_128 /= exchange_128;
-            txnOffshoreFeeKeyInC = scalarmultH(d2h((uint64_t)fee_128));
-
-            // To verify the amount_burnt amount, we need to deduct the conversion fee in C, which isn't done prior (except for offshore) from our C summand
-            subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
-          }
-        }
-        
         if ((version < HF_VERSION_USE_COLLATERAL) && (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET)) {
           // Wallets must append the burnt fee for xAsset conversions to the amount_burnt.
           // So we subtract that from amount_burnt and validate only the actual coversion amount because
