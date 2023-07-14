@@ -1,6 +1,8 @@
 // Copyright (c) 2016, Monero Research Labs
+// Portions Copyright (c) 2019-2023, Haven Protocol
 //
 // Author: Shen Noether <shen.noether@gmx.com>
+// Authors: neac <neac@havenprotocol.org>, dweab <dweab@havenprotocol.org>, akil <akil@havenprotocol.org>
 // 
 // All rights reserved.
 // 

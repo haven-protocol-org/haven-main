@@ -1,4 +1,5 @@
 // Copyright (c) 2014-2022, The Monero Project
+// Portions Copyright (c) 2019-2023, Haven Protocol
 //
 // All rights reserved.
 //
@@ -520,6 +521,12 @@ namespace cryptonote
       return false;
     }
 
+    if (m_nettype == STAGENET) {
+      folder /= std::to_string(STAGENET_VERSION);
+    } else if (m_nettype == TESTNET) {
+      folder /= std::to_string(TESTNET_VERSION);
+    }
+    
     folder /= db->get_db_name();
     MGINFO("Loading blockchain from folder " << folder.string() << " ...");
 

@@ -1,4 +1,5 @@
 // Copyright (c) 2014-2022, The Monero Project
+// Portions Copyright (c) 2019-2023, Haven Protocol
 // 
 // All rights reserved.
 // 
@@ -390,7 +391,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeBulletproofPlus)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2 && x.type != rct::RCTTypeHaven3 && x.type != rct::RCTTypeBulletproofPlus)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -398,7 +399,41 @@ namespace boost
       a & x.pseudoOuts;
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
+    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN))
+      serializeOutPk(a, x.outPk_usd, ver);
+    if (x.type == rct::RCTTypeCLSAGN)
+      serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
+    if (ver >= 5u) {
+      if (x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      }
+      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+        a & x.txnOffshoreFee;
+        a & x.txnFee_usd;
+        a & x.txnOffshoreFee_usd;
+        if (x.type == rct::RCTTypeCLSAGN) {
+          a & x.txnFee_xasset;
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    } else {
+      if (ver >= 4u) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      } else if (ver >= 1u) {
+        a & x.txnFee_usd;
+        if (ver >= 2u) {
+          a & x.txnFee_xasset;
+        }
+        a & x.txnOffshoreFee;        
+        a & x.txnOffshoreFee_usd;
+        if (ver >= 2u) {
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    }
   }
 
   template <class Archive>
@@ -408,7 +443,7 @@ namespace boost
     if (x.rangeSigs.empty())
     {
       a & x.bulletproofs;
-      if (ver >= 2u)
+      if (ver >= 6u)
         a & x.bulletproofs_plus;
     }
     a & x.MGs;
@@ -424,7 +459,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeBulletproofPlus)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2 && x.type != rct::RCTTypeHaven3 && x.type != rct::RCTTypeBulletproofPlus)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -433,18 +468,53 @@ namespace boost
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
     a & x.txnFee;
+    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN))
+      serializeOutPk(a, x.outPk_usd, ver);
+    if (x.type == rct::RCTTypeCLSAGN)
+      serializeOutPk(a, x.outPk_xasset, ver);
+    a & x.txnFee;
+    if (ver >= 5u) {
+      if (x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      }
+      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+        a & x.txnOffshoreFee;
+        a & x.txnFee_usd;
+        a & x.txnOffshoreFee_usd;
+        if (x.type == rct::RCTTypeCLSAGN) {
+          a & x.txnFee_xasset;
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    } else {
+      if (ver >= 4u) {
+        a & x.txnOffshoreFee;
+        a & x.maskSums;
+      } else if (ver >= 1u) {
+        a & x.txnFee_usd;
+        if (ver >= 2u) {
+          a & x.txnFee_xasset;
+        }
+        a & x.txnOffshoreFee;        
+        a & x.txnOffshoreFee_usd;
+        if (ver >= 2u) {
+          a & x.txnOffshoreFee_xasset;
+        }
+      }
+    }
     //--------------
     a & x.p.rangeSigs;
     if (x.p.rangeSigs.empty())
     {
       a & x.p.bulletproofs;
-      if (ver >= 2u)
+      if (ver >= 6u)
         a & x.p.bulletproofs_plus;
     }
     a & x.p.MGs;
     if (ver >= 1u)
       a & x.p.CLSAGs;
-    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeBulletproofPlus)
+    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN || x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus)
       a & x.p.pseudoOuts;
   }
 
@@ -726,6 +796,6 @@ namespace boost
 }
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 2)
-BOOST_CLASS_VERSION(rct::rctSigBase, 5)
-BOOST_CLASS_VERSION(rct::rctSig, 5)
+BOOST_CLASS_VERSION(rct::rctSigBase, 6)
+BOOST_CLASS_VERSION(rct::rctSig, 6)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)

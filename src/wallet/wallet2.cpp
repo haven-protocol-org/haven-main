@@ -2705,7 +2705,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
         LOG_PRINT_L0("Spent money: " << print_money(amount) << ", with tx: " << txid);
         set_spent(it->second, height);
         if (0 != m_callback)
-          m_callback->on_money_spent(height, txid, tx, amount, tx, td.m_subaddr_index);
+          m_callback->on_money_spent(height, txid, tx, amount, tx, td.m_subaddr_index, td.asset_type);
       }
     }
 
@@ -14021,7 +14021,7 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
           LOG_PRINT_L0("Spent money: " << print_money(amount) << ", with tx: " << *spent_txid);
           set_spent(it->second, e.block_height);
           if (m_callback)
-            m_callback->on_money_spent(e.block_height, *spent_txid, spent_tx, amount, spent_tx, td.m_subaddr_index);
+            m_callback->on_money_spent(e.block_height, *spent_txid, spent_tx, amount, spent_tx, td.m_subaddr_index, td.asset_type);
           if (subaddr_account != (uint32_t)-1 && subaddr_account != td.m_subaddr_index.major)
             LOG_PRINT_L0("WARNING: This tx spends outputs received by different subaddress accounts, which isn't supposed to happen");
           subaddr_account = td.m_subaddr_index.major;
