@@ -474,11 +474,14 @@ namespace boost
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
     if (ver >= 5u) {
-      if (x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+      if (x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+        a & x.txnOffshoreFee;
+        if (x.txnOffshoreFee)
+          a & x.maskSums;
+      } else if (x.type == rct::RCTTypeHaven2) {
         a & x.txnOffshoreFee;
         a & x.maskSums;
-      }
-      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+      } else if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
         a & x.txnOffshoreFee;
         a & x.txnFee_usd;
         a & x.txnOffshoreFee_usd;

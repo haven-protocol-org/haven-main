@@ -547,6 +547,8 @@ namespace rct {
           FIELD(ecdhInfo)
           FIELD(outPk)
           VARINT_FIELD(txnFee)
+          VARINT_FIELD(txnOffshoreFee)
+          FIELD(maskSums)
         END_SERIALIZE()
 
     };
