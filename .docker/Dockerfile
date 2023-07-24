@@ -32,7 +32,7 @@ if [ "$TARGETARCH" = "arm" ]; then export build=${TARGETARCH}${TARGETVARIANT}; f
 if [ "$TARGETARCH" = "arm64" ]; then export build=armv8; fi; \
 make release-static-${TARGETOS}-${build} -j $(($(nproc) + 1))
 
-RUN build/release/bin/havend --version
+
 
 RUN zip /lib.zip $(ldd build/release/bin/* | grep -E '/[^\ ]*' -o)
 
@@ -41,11 +41,9 @@ FROM alpine:3.16 as runner
 COPY --from=builder /lib.zip .
 RUN unzip -o lib.zip && rm -rf lib.zip
 
-
 #RUN apk update
 RUN apk --no-cache add \
 #  libexecinfo \
-#  libzmq \
 #  boost-system \
 #  boost-thread \
 #  boost-chrono \
@@ -55,6 +53,7 @@ RUN apk --no-cache add \
 #  boost-date_time \
 #  boost-program_options \
 #  boost-filesystem \
+  libzmq \
   bash \
   su-exec \
   zip
@@ -66,6 +65,8 @@ RUN addgroup haven && \
 COPY --from=builder /haven-main/build/release/bin/* /usr/local/bin/
 COPY .docker/network/* /etc/haven/conf.d/
 COPY .docker/docker-entrypoint.sh /docker-entrypoint.sh
+
+RUN build/release/bin/havend --version
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["havend", "--config-file","/etc/haven/conf.d/mainnet.conf"]
