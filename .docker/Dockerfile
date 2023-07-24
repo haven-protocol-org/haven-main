@@ -66,7 +66,7 @@ COPY --from=builder /haven-main/build/release/bin/* /usr/local/bin/
 COPY .docker/network/* /etc/haven/conf.d/
 COPY .docker/docker-entrypoint.sh /docker-entrypoint.sh
 
-RUN build/release/bin/havend --version
+RUN havend --version
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["havend", "--config-file","/etc/haven/conf.d/mainnet.conf"]
