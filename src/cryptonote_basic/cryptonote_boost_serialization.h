@@ -443,7 +443,7 @@ namespace boost
     if (x.rangeSigs.empty())
     {
       a & x.bulletproofs;
-      if (ver >= 6u)
+      if (ver >= 2u)
         a & x.bulletproofs_plus;
     }
     a & x.MGs;
