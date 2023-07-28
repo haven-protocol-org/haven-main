@@ -5715,8 +5715,11 @@ bool wallet2::multisig(bool *ready, uint32_t *threshold, uint32_t *total) const
     *total = m_multisig_signers.size();
   if (ready)
   {
-    *ready = !(get_account().get_keys().m_account_address.m_spend_public_key == rct::rct2pk(rct::identity())) &&
-      (m_multisig_rounds_passed == multisig::multisig_setup_rounds_required(m_multisig_signers.size(), m_multisig_threshold));
+    crypto::public_key mspk = get_account().get_keys().m_account_address.m_spend_public_key;
+    crypto::public_key identitypk = rct::rct2pk(rct::identity());
+    uint32_t rounds_required = multisig::multisig_setup_rounds_required(m_multisig_signers.size(), m_multisig_threshold);
+    *ready = !(mspk == identitypk) &&
+      (m_multisig_rounds_passed == rounds_required);
   }
   return true;
 }
@@ -7747,6 +7750,19 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
     LOG_PRINT_L1(" " << (n+1) << ": " << sd.sources.size() << " inputs, ring size " << (sd.sources[0].outputs.size()) <<
         ", signed by " << exported_txs.m_signers.size() << "/" << m_multisig_threshold);
 
+    // Get all of the asset_type information we need in case it is a conversion
+    std::string source_asset;
+    std::string dest_asset;
+    cryptonote::transaction_type tx_type;
+    crypto::hash txid = get_transaction_hash(ptx.tx);
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_tx_asset_types(ptx.tx, txid, source_asset, dest_asset, false), error::wallet_internal_error, "sign_multisig_tx : Failed to get asset types");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_tx_type(source_asset, dest_asset, tx_type), error::wallet_internal_error, "sign_multisig_tx : Failed to get TX type");
+
+    // Get the PR
+    offshore::pricing_record pr;
+    const uint64_t current_height = get_blockchain_current_height()-1;
+    THROW_WALLET_EXCEPTION_IF(!get_pricing_record(pr, current_height), error::wallet_internal_error, "Failed to get pricing record");
+    
     // reconstruct the partially-signed transaction attempt to verify we are signing something that at least looks like a transaction
     // note: the caller should further verify that the tx details are acceptable (inputs/outputs/memos/tx type)
     multisig::signing::tx_builder_ringct_t multisig_tx_builder;
@@ -7766,7 +7782,11 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
         ptx.tx_key,
         ptx.additional_tx_keys,
         ptx.multisig_tx_key_entropy,
-        ptx.tx
+        ptx.tx,
+        source_asset,
+        dest_asset,
+        pr,
+        ptx.tx.rct_signatures.txnFee
       ),
       error::wallet_internal_error,
       "error: multisig::signing::tx_builder_ringct_t::init"
@@ -9766,20 +9786,24 @@ void wallet2::transfer_selected_rct(
     }
     THROW_WALLET_EXCEPTION_IF(
       not multisig_tx_builder.init(m_account.get_keys(),
-        extra,
-        unlock_time,
-        subaddr_account,
-        subaddr_minor_indices,
-        sources,
-        splitted_dsts,
-        change_dts,
-        rct_config,
-        true,
-        false,
-        tx_key,
-        additional_tx_keys,
-        multisig_tx_key_entropy,
-        tx
+                                   extra,
+                                   unlock_time,
+                                   subaddr_account,
+                                   subaddr_minor_indices,
+                                   sources,
+                                   splitted_dsts,
+                                   change_dts,
+                                   rct_config,
+                                   true,
+                                   false,
+                                   tx_key,
+                                   additional_tx_keys,
+                                   multisig_tx_key_entropy,
+                                   tx,
+                                   source_asset,
+                                   dest_asset,
+                                   pr,
+                                   xhv_fee
       ),
       error::wallet_internal_error,
       "error: multisig::signing::tx_builder_ringct_t::init"

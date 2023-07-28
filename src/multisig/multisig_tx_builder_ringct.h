@@ -30,6 +30,7 @@
 #pragma once
 
 #include "ringct/rctTypes.h"
+#include "offshore/pricing_record.h"
 
 #include <set>
 #include <vector>
@@ -83,7 +84,11 @@ public:
     crypto::secret_key& tx_secret_key,
     std::vector<crypto::secret_key>& tx_aux_secret_keys,
     crypto::secret_key& tx_secret_key_entropy,
-    cryptonote::transaction& unsigned_tx
+    cryptonote::transaction& unsigned_tx,
+    const std::string& source_asset,
+    const std::string& dest_asset,
+    const offshore::pricing_record& pr,
+    const uint64_t xhv_fee
   );
 
   // get the first partial signature for the specified input ('source')

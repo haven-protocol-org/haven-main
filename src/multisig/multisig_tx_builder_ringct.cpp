@@ -538,10 +538,17 @@ static void make_new_range_proofs(const int bp_version,
   sigs.bulletproofs.clear();
   sigs.bulletproofs_plus.clear();
 
-  if (bp_version == 3)
+  switch (bp_version) {
+  case 3:
+  case 4:
+  case 5:
+  case 6:
     sigs.bulletproofs.push_back(rct::bulletproof_PROVE(output_amounts, output_amount_masks));
-  else if (bp_version == 4)
+    break;
+  case 7:
     sigs.bulletproofs_plus.push_back(rct::bulletproof_plus_PROVE(output_amounts, output_amount_masks));
+    break;
+  }
 }
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -565,17 +572,20 @@ static bool try_reconstruct_range_proofs(const int bp_version,
       return true;
     };
 
-  if (bp_version == 3)
-  {
+  switch (bp_version) {
+  case 3:
+  case 4:
+  case 5:
+  case 6:
     if (not try_reconstruct_range_proofs(original_sigs.bulletproofs, reconstructed_sigs.bulletproofs))
       return false;
     return rct::bulletproof_VERIFY(reconstructed_sigs.bulletproofs);
-  }
-  else if (bp_version == 4)
-  {
+    break;
+  case 7:
     if (not try_reconstruct_range_proofs(original_sigs.bulletproofs_plus, reconstructed_sigs.bulletproofs_plus))
       return false;
     return rct::bulletproof_plus_VERIFY(reconstructed_sigs.bulletproofs_plus);
+    break;
   }
 
   return false;
@@ -584,6 +594,7 @@ static bool try_reconstruct_range_proofs(const int bp_version,
 //----------------------------------------------------------------------------------------------------------------------
 static bool set_tx_rct_signatures(
   const std::uint64_t fee,
+  const std::uint64_t conversion_fee,
   const std::vector<cryptonote::tx_source_entry>& sources,
   const std::vector<cryptonote::tx_destination_entry>& destinations,
   const rct::keyV& input_secret_keys,
@@ -596,12 +607,13 @@ static bool set_tx_rct_signatures(
   rct::keyV& cached_w
 )
 {
+  /*
   if (rct_config.bp_version != 3 &&
       rct_config.bp_version != 4)
     return false;
   if (rct_config.range_proof_type != rct::RangeProofPaddedBulletproof)
     return false;
-
+  */
   const std::size_t num_destinations = destinations.size();
   const std::size_t num_sources = sources.size();
 
@@ -609,12 +621,34 @@ static bool set_tx_rct_signatures(
   rct::rctSig rv{};
 
   // set misc. fields
-  if (rct_config.bp_version == 3)
-    rv.type = rct::RCTTypeCLSAG;
-  else if (rct_config.bp_version == 4)
+  switch (rct_config.bp_version)
+  {
+  case 0:
+  case 7:
     rv.type = rct::RCTTypeBulletproofPlus;
-  else
+    break;
+  case 6:
+    rv.type = rct::RCTTypeHaven3;
+    break;
+  case 5:
+    rv.type = rct::RCTTypeHaven2;
+    break;
+  case 4:
+    rv.type = rct::RCTTypeCLSAGN;
+    break;
+  case 3:
+    rv.type = rct::RCTTypeCLSAG;
+    break;
+  case 2:
+    rv.type = rct::RCTTypeBulletproof2;
+    break;
+  case 1:
+    rv.type = rct::RCTTypeBulletproof;
+    break;
+  default:
+    ASSERT_MES_AND_THROW("Unsupported BP version: " << rct_config.bp_version);
     return false;
+  }
   rv.txnFee = fee;
   rv.message = rct::hash2rct(cryptonote::get_transaction_prefix_hash(unsigned_tx));
 
@@ -789,7 +823,8 @@ static bool set_tx_rct_signatures(
 static bool compute_tx_fee(
   const std::vector<cryptonote::tx_source_entry>& sources,
   const std::vector<cryptonote::tx_destination_entry>& destinations,
-  std::uint64_t& fee
+  std::uint64_t& fee,
+  std::uint64_t& conversion_fee
 )
 {
   boost::multiprecision::uint128_t in_amount = 0;
@@ -832,7 +867,11 @@ bool tx_builder_ringct_t::init(
   crypto::secret_key& tx_secret_key,
   std::vector<crypto::secret_key>& tx_aux_secret_keys,
   crypto::secret_key& tx_secret_key_entropy,
-  cryptonote::transaction& unsigned_tx
+  cryptonote::transaction& unsigned_tx,
+  const std::string& source_asset,
+  const std::string& dest_asset,
+  const offshore::pricing_record& pr,
+  const uint64_t xhv_fee
 )
 {
   initialized = false;
@@ -846,7 +885,8 @@ bool tx_builder_ringct_t::init(
     unsigned_tx.set_null();
 
   std::uint64_t fee;
-  if (not compute_tx_fee(sources, destinations, fee))
+  std::uint64_t conversion_fee;
+  if (not compute_tx_fee(sources, destinations, fee, conversion_fee))
     return false;
 
   // decide if view tags are needed
@@ -925,7 +965,7 @@ bool tx_builder_ringct_t::init(
     return false;
 
   // prepare input signatures
-  if (not set_tx_rct_signatures(fee, sources, destinations, input_secret_keys, output_public_keys, output_amount_secret_keys,
+  if (not set_tx_rct_signatures(fee, conversion_fee, sources, destinations, input_secret_keys, output_public_keys, output_amount_secret_keys,
       rct_config, reconstruction, unsigned_tx, CLSAG_contexts, cached_w))
     return false;
 

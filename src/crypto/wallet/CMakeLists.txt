@@ -30,7 +30,7 @@
 #
 # Possibly user defined values.
 #
-set(MONERO_WALLET_CRYPTO_LIBRARY "auto" CACHE STRING "Select a wallet crypto library")
+set(MONERO_WALLET_CRYPTO_LIBRARY "cn" CACHE STRING "Select a wallet crypto library")
 
 #
 # If the user specified "auto", detect best library defaulting to internal.

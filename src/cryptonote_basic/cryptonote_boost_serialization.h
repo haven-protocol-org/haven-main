@@ -405,7 +405,12 @@ namespace boost
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
     if (ver >= 5u) {
-      if (x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+      if (x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+        a & x.txnOffshoreFee;
+        if (x.txnOffshoreFee)
+          a & x.maskSums;
+      }
+      if (x.type == rct::RCTTypeHaven2) {
         a & x.txnOffshoreFee;
         a & x.maskSums;
       }
@@ -467,7 +472,6 @@ namespace boost
       a & x.pseudoOuts;
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
-    a & x.txnFee;
     if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN))
       serializeOutPk(a, x.outPk_usd, ver);
     if (x.type == rct::RCTTypeCLSAGN)
