@@ -150,7 +150,8 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rapidjson::Va
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, boost::string_ref i);
 inline void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const std::string& i)
 {
-  toJsonValue(dest, boost::string_ref{i});
+  dest.String(i.data(), i.size());
+  //toJsonValue(dest, boost::string_ref{i});
 }
 void fromJsonValue(const rapidjson::Value& val, std::string& str);
 

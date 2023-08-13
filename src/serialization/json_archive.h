@@ -138,9 +138,18 @@ struct json_archive<true> : public json_archive_base<std::ostream, true>
 
   void serialize_blob(void *buf, size_t len, const char *delimiter="\"") {
     begin_string(delimiter);
+    bool is_printable = true;
     for (size_t i = 0; i < len; i++) {
       unsigned char c = ((unsigned char *)buf)[i];
-      stream_ << std::hex << std::setw(2) << std::setfill('0') << (int)c;
+      is_printable &= (std::isprint(c) != 0);
+    }
+    for (size_t i = 0; i < len; i++) {
+      unsigned char c = ((unsigned char *)buf)[i];
+      if (is_printable) {
+        stream_ << c;
+      } else {
+        stream_ << std::hex << std::setw(2) << std::setfill('0') << (int)c;
+      }
     }
     end_string(delimiter);
   }

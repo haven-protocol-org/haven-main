@@ -55,7 +55,11 @@ template <template <bool> class Archive>
 inline bool do_serialize(Archive<true>& ar, std::string& str)
 {
   size_t size = str.size();
-  ar.serialize_varint(size);
+  // Check to see if the string is fully printable
+  size_t printable_size = std::count_if(str.begin(), str.end(),[](unsigned char c){ return std::isprint(c); });
+  if (printable_size != size) {
+    ar.serialize_varint(size);
+  }
   ar.serialize_blob(const_cast<std::string::value_type*>(str.c_str()), size);
   return true;
 }
