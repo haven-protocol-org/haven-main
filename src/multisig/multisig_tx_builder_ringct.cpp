@@ -471,8 +471,9 @@ static void set_tx_inputs(
     offsets.reserve(sources[i].outputs.size());
     for (const auto& e: sources[i].outputs)
       offsets.emplace_back(e.first);
-    unsigned_tx.vin[i] = cryptonote::txin_to_key{
+    unsigned_tx.vin[i] = cryptonote::txin_haven_key{
       .amount = 0,
+      .asset_type = sources[i].asset_type,
       .key_offsets = cryptonote::absolute_output_offsets_to_relative(offsets),
       .k_image = rct::rct2ki(sources[i].multisig_kLRki.ki),
     };
@@ -492,7 +493,7 @@ static bool onetime_addresses_are_unique(const rct::keyV& output_public_keys)
 }
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
-static bool set_tx_outputs(const rct::keyV& output_public_keys, cryptonote::transaction& unsigned_tx)
+static bool set_tx_outputs(const rct::keyV& output_public_keys, const std::vector<cryptonote::tx_destination_entry>& destinations, cryptonote::transaction& unsigned_tx)
 {
   // sanity check: all onetime addresses should be unique
   if (not onetime_addresses_are_unique(output_public_keys))
@@ -502,7 +503,7 @@ static bool set_tx_outputs(const rct::keyV& output_public_keys, cryptonote::tran
   const std::size_t num_destinations = output_public_keys.size();
   unsigned_tx.vout.resize(num_destinations);
   for (std::size_t i = 0; i < num_destinations; ++i)
-    cryptonote::set_tx_out(0, "XHV", 0, false, false, rct::rct2pk(output_public_keys[i]), false, crypto::view_tag{}, unsigned_tx.vout[i]);
+    cryptonote::set_tx_out(0, destinations[i].dest_asset_type, 0, false, false, rct::rct2pk(output_public_keys[i]), false, crypto::view_tag{}, unsigned_tx.vout[i]);
 
   return true;
 }
@@ -511,6 +512,7 @@ static bool set_tx_outputs(const rct::keyV& output_public_keys, cryptonote::tran
 static bool set_tx_outputs_with_view_tags(
   const rct::keyV& output_public_keys,
   const std::vector<crypto::view_tag>& view_tags,
+  const std::vector<cryptonote::tx_destination_entry>& destinations,
   cryptonote::transaction& unsigned_tx
 )
 {
@@ -524,7 +526,7 @@ static bool set_tx_outputs_with_view_tags(
     "multisig signing protocol: internal error, view tag size mismatch.");
   unsigned_tx.vout.resize(num_destinations);
   for (std::size_t i = 0; i < num_destinations; ++i)
-    cryptonote::set_tx_out(0, "XHV", 0, false, false, rct::rct2pk(output_public_keys[i]), true, view_tags[i], unsigned_tx.vout[i]);
+    cryptonote::set_tx_out(0, destinations[i].dest_asset_type, 0, false, false, rct::rct2pk(output_public_keys[i]), true, view_tags[i], unsigned_tx.vout[i]);
 
   return true;
 }
@@ -957,9 +959,9 @@ bool tx_builder_ringct_t::init(
   // add output one-time addresses to tx
   bool set_tx_outputs_result{false};
   if (use_view_tags)
-    set_tx_outputs_result = set_tx_outputs_with_view_tags(output_public_keys, view_tags, unsigned_tx);
+    set_tx_outputs_result = set_tx_outputs_with_view_tags(output_public_keys, view_tags, destinations, unsigned_tx);
   else
-    set_tx_outputs_result = set_tx_outputs(output_public_keys, unsigned_tx);
+    set_tx_outputs_result = set_tx_outputs(output_public_keys, destinations, unsigned_tx);
 
   if (not set_tx_outputs_result)
     return false;

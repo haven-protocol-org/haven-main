@@ -133,7 +133,7 @@ struct binary_archive<false> : public binary_archive_base<false>
     good_ &= (len == actual);
     std::memcpy(buf, bytes_.data() - actual, actual);
   }
-  
+
   template <class T>
   void serialize_varint(T &v)
   {
@@ -206,6 +206,10 @@ struct binary_archive<true> : public binary_archive_base<true>
     stream_.write((char *)buf, len);
   }
 
+  void serialize_readable_string(const char *buf, size_t len, const char *delimiter="\"") {
+    stream_.write(buf, len);
+  }
+  
   template <class T>
   void serialize_varint(T &v)
   {

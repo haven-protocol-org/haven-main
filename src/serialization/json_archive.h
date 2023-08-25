@@ -138,22 +138,21 @@ struct json_archive<true> : public json_archive_base<std::ostream, true>
 
   void serialize_blob(void *buf, size_t len, const char *delimiter="\"") {
     begin_string(delimiter);
-    bool is_printable = true;
     for (size_t i = 0; i < len; i++) {
       unsigned char c = ((unsigned char *)buf)[i];
-      is_printable &= (std::isprint(c) != 0);
-    }
-    for (size_t i = 0; i < len; i++) {
-      unsigned char c = ((unsigned char *)buf)[i];
-      if (is_printable) {
-        stream_ << c;
-      } else {
-        stream_ << std::hex << std::setw(2) << std::setfill('0') << (int)c;
-      }
+      stream_ << std::hex << std::setw(2) << std::setfill('0') << (int)c;
     }
     end_string(delimiter);
   }
 
+  void serialize_readable_string(const char *buf, size_t len, const char *delimiter="\"") {
+    begin_string(delimiter);
+    for (size_t i = 0; i < len; i++) {
+      stream_ << buf[i];
+    }
+    end_string(delimiter);
+  }
+  
   template <class T>
   void serialize_varint(T &v)
   {

@@ -1,4 +1,5 @@
-// Copyright (c) 2014-2022, The Monero Project
+// Copyright (c) 2019-2023, Haven Protocol
+// Portions copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -31,6 +32,7 @@
 #pragma once
 #include <memory>
 #include "serialization.h"
+#include "json_archive.h"
 
 template <template <bool> class Archive>
 inline bool do_serialize(Archive<false>& ar, std::string& str)
@@ -50,16 +52,16 @@ inline bool do_serialize(Archive<false>& ar, std::string& str)
   return true;
 }
 
-
 template <template <bool> class Archive>
 inline bool do_serialize(Archive<true>& ar, std::string& str)
 {
-  size_t size = str.size();
-  // Check to see if the string is fully printable
-  size_t printable_size = std::count_if(str.begin(), str.end(),[](unsigned char c){ return std::isprint(c); });
-  if (printable_size != size) {
+  if (typeid(ar) == typeid(json_archive<true>)) {
+    size_t size = str.size();
+    ar.serialize_readable_string(const_cast<std::string::value_type*>(str.c_str()), size);
+  } else {
+    size_t size = str.size();
     ar.serialize_varint(size);
+    ar.serialize_blob(const_cast<std::string::value_type*>(str.c_str()), size);
   }
-  ar.serialize_blob(const_cast<std::string::value_type*>(str.c_str()), size);
   return true;
 }
