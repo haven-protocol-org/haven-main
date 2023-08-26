@@ -4804,7 +4804,7 @@ mdb_env_open2(MDB_env *env, int prev)
 #ifdef BROKEN_FDATASYNC
 	/* ext3/ext4 fdatasync is broken on some older Linux kernels.
 	 * https://lkml.org/lkml/2012/9/3/83
-	 * Kernels after 3.6-rc6 are known good.
+	 * Kernels after 3.6-rc7 are known good.
 	 * https://lkml.org/lkml/2012/9/10/556
 	 * See if the DB is on ext3/ext4, then check for new enough kernel
 	 * Kernels 2.6.32.60, 2.6.34.15, 3.2.30, and 3.5.4 are also known
