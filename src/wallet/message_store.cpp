@@ -215,7 +215,7 @@ void message_store::unpack_signer_config(const multisig_wallet_state &state, con
 void message_store::process_signer_config(const multisig_wallet_state &state, const std::string &signer_config)
 {
   // The signers in "signer_config" and the resident wallet signers are matched not by label, but
-  // by Monero address, and ALL labels will be set from "signer_config", even the "me" label.
+  // by Haven address, and ALL labels will be set from "signer_config", even the "me" label.
   // In the auto-config process as implemented now the auto-config manager is responsible for defining
   // the labels, and right at the end of the process ALL wallets use the SAME labels. The idea behind this
   // is preventing problems like duplicate labels and confusion (Bob choosing a label "IamAliceHonest").
@@ -487,7 +487,7 @@ bool message_store::get_signer_index_by_monero_address(const cryptonote::account
       return true;
     }
   }
-  MWARNING("No authorized signer with Monero address " << account_address_to_string(monero_address));
+  MWARNING("No authorized signer with Haven address " << account_address_to_string(monero_address));
   return false;
 }
 
@@ -1296,7 +1296,7 @@ void message_store::send_message(const multisig_wallet_state &state, uint32_t id
     // transport address likewise derived from that token
     public_key = me.auto_config_public_key;
     dm.destination_transport_address = me.auto_config_transport_address;
-    // The destination Monero address is not yet known
+    // The destination Haven address is not yet known
     memset(&dm.destination_monero_address, 0, sizeof(cryptonote::account_public_address));
   }
   else
