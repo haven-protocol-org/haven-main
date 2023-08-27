@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019, The Monero Project
+# Copyright (c) 2014-2022, The Monero Project
 #
 # All rights reserved.
 #
@@ -45,35 +45,22 @@ set(crypto_sources
   oaes_lib.c
   random.c
   skein.c
+  slow-hash.c
   rx-slow-hash.c
+  CryptonightR_JIT.c
   tree-hash.c
   cn_slow_hash_soft.cpp
   cn_slow_hash_hard_intel.cpp)
+
+if(ARCH_ID STREQUAL "i386" OR ARCH_ID STREQUAL "x86_64" OR ARCH_ID STREQUAL "x86-64" OR ARCH_ID STREQUAL "amd64")
+list(APPEND crypto_sources CryptonightR_template.S)
+endif()
 
 include_directories(${RANDOMX_INCLUDE})
 
 set(crypto_headers)
 
-set(crypto_private_headers
-  blake256.h
-  chacha.h
-  crypto-ops.h
-  crypto.h
-  generic-ops.h
-  groestl.h
-  groestl_tables.h
-  hash-ops.h
-  hash.h
-  hmac-keccak.h
-  initializer.h
-  jh.h
-  keccak.h
-  oaes_config.h
-  oaes_lib.h
-  random.h
-  skein.h
-  skein_port.h
-  cn_slow_hash.hpp)
+monero_find_all_headers(crypto_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
 monero_private_headers(cncrypto
   ${crypto_private_headers})
@@ -109,3 +96,9 @@ if (ANDROID OR IOS)
   endif()
 endif()
 
+# cheat because cmake and ccache hate each other
+set_property(SOURCE CryptonightR_template.S PROPERTY LANGUAGE C)
+set_property(SOURCE CryptonightR_template.S PROPERTY XCODE_EXPLICIT_FILE_TYPE sourcecode.asm)
+
+# Must be done last, because it references libraries in this directory
+add_subdirectory(wallet)

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -101,6 +101,9 @@ namespace trezor {
       messages::MessageType m_last_msg_type;
 
       cryptonote::network_type network_type;
+      bool m_reply_with_empty_passphrase;
+      bool m_always_use_empty_passphrase;
+      bool m_seen_passphrase_entry_message;
 
 #ifdef WITH_TREZOR_DEBUGGING
       std::shared_ptr<trezor_debug_callback> m_debug_callback;
@@ -165,7 +168,7 @@ namespace trezor {
 
         // Scoped session closer
         BOOST_SCOPE_EXIT_ALL(&, this) {
-          if (open_session){
+          if (open_session && this->get_transport()){
             this->get_transport()->close();
           }
         };

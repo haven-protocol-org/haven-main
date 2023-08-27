@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2019 The Monero Project
+# Copyright (c) 2019-2022, The Monero Project
 # 
 # All rights reserved.
 # 
@@ -39,40 +39,40 @@ from framework.wallet import Wallet
 class MultisigTest():
     def run_test(self):
         self.reset()
-        self.mine('493DsrfJPqiN3Suv9RcRDoZEbQtKZX1sNcGPA3GhkKYEEmivk8kjQrTdRdVc4ZbmzWJuE157z9NNUKmF2VDfdYDR3CziGMk', 5)
-        self.mine('42jSRGmmKN96V2j3B8X2DbiNThBXW1tSi1rW1uwkqbyURenq3eC3yosNm8HEMdHuWwKMFGzMUB3RCTvcTaW9kHpdRPP7p5y', 5)
-        self.mine('47fF32AdrmXG84FcPY697uZdd42pMMGiH5UpiTRTt3YX2pZC7t7wkzEMStEicxbQGRfrYvAAYxH6Fe8rnD56EaNwUgxRd53', 5)
-        self.mine('44SKxxLQw929wRF6BA9paQ1EWFshNnKhXM3qz6Mo3JGDE2YG3xyzVutMStEicxbQGRfrYvAAYxH6Fe8rnD56EaNwUiqhcwR', 5)
-        self.mine('4ADHswEU3XBUee8pudBkZQd9beJainqNo1BQKkHJujAEPJyQrLj9U4dNm8HEMdHuWwKMFGzMUB3RCTvcTaW9kHpdRUDxgjW', 5)
-        self.mine('42ey1afDFnn4886T7196doS9GPMzexD9gXpsZJDwVjeRVdFCSoHnv7KPbBeGpzJBzHRCAs9UxqeoyFQMYbqSWYTfJJQAWDm', 60)
+        self.mine('45J58b7PmKJFSiNPFFrTdtfMcFGnruP7V4CMuRpX7NsH4j3jGHKAjo3YJP2RePX6HMaSkbvTbrWUFhDNcNcHgtNmQ3gr7sG', 5)
+        self.mine('44G2TQNfsiURKkvxp7gbgaJY8WynZvANnhmyMAwv6WeEbAvyAWMfKXRhh3uBXT2UAKhAsUJ7Fg5zjjF2U1iGciFk5duN94i', 5)
+        self.mine('41mro238grj56GnrWkakAKTkBy2yDcXYsUZ2iXCM9pe5Ueajd2RRc6Fhh3uBXT2UAKhAsUJ7Fg5zjjF2U1iGciFk5ief4ZP', 5)
+        self.mine('44vZSprQKJQRFe6t1VHgU4ESvq2dv7TjBLVGE7QscKxMdFSiyyPCEV64NnKUQssFPyWxc2meyt7j63F2S2qtCTRL6dakeff', 5)
+        self.mine('47puypSwsV1gvUDratmX4y58fSwikXVehEiBhVLxJA1gRCxHyrRgTDr4NnKUQssFPyWxc2meyt7j63F2S2qtCTRL6aRPj5U', 5)
+        self.mine('42ey1afDFnn4886T7196doS9GPMzexD9gXpsZJDwVjeRVdFCSoHnv7KPbBeGpzJBzHRCAs9UxqeoyFQMYbqSWYTfJJQAWDm', 80)
 
         self.test_states()
 
-        self.create_multisig_wallets(2, 2, '493DsrfJPqiN3Suv9RcRDoZEbQtKZX1sNcGPA3GhkKYEEmivk8kjQrTdRdVc4ZbmzWJuE157z9NNUKmF2VDfdYDR3CziGMk')
+        self.create_multisig_wallets(2, 2, '45J58b7PmKJFSiNPFFrTdtfMcFGnruP7V4CMuRpX7NsH4j3jGHKAjo3YJP2RePX6HMaSkbvTbrWUFhDNcNcHgtNmQ3gr7sG')
         self.import_multisig_info([1, 0], 5)
         txid = self.transfer([1, 0])
         self.import_multisig_info([0, 1], 6)
         self.check_transaction(txid)
 
-        self.create_multisig_wallets(2, 3, '42jSRGmmKN96V2j3B8X2DbiNThBXW1tSi1rW1uwkqbyURenq3eC3yosNm8HEMdHuWwKMFGzMUB3RCTvcTaW9kHpdRPP7p5y')
+        self.create_multisig_wallets(2, 3, '44G2TQNfsiURKkvxp7gbgaJY8WynZvANnhmyMAwv6WeEbAvyAWMfKXRhh3uBXT2UAKhAsUJ7Fg5zjjF2U1iGciFk5duN94i')
         self.import_multisig_info([0, 2], 5)
         txid = self.transfer([0, 2])
         self.import_multisig_info([0, 1, 2], 6)
         self.check_transaction(txid)
 
-        self.create_multisig_wallets(3, 3, '4ADHswEU3XBUee8pudBkZQd9beJainqNo1BQKkHJujAEPJyQrLj9U4dNm8HEMdHuWwKMFGzMUB3RCTvcTaW9kHpdRUDxgjW')
+        self.create_multisig_wallets(3, 3, '41mro238grj56GnrWkakAKTkBy2yDcXYsUZ2iXCM9pe5Ueajd2RRc6Fhh3uBXT2UAKhAsUJ7Fg5zjjF2U1iGciFk5ief4ZP')
         self.import_multisig_info([2, 0, 1], 5)
         txid = self.transfer([2, 1, 0])
         self.import_multisig_info([0, 2, 1], 6)
         self.check_transaction(txid)
 
-        self.create_multisig_wallets(3, 4, '47fF32AdrmXG84FcPY697uZdd42pMMGiH5UpiTRTt3YX2pZC7t7wkzEMStEicxbQGRfrYvAAYxH6Fe8rnD56EaNwUgxRd53')
+        self.create_multisig_wallets(3, 4, '44vZSprQKJQRFe6t1VHgU4ESvq2dv7TjBLVGE7QscKxMdFSiyyPCEV64NnKUQssFPyWxc2meyt7j63F2S2qtCTRL6dakeff')
         self.import_multisig_info([0, 2, 3], 5)
         txid = self.transfer([0, 2, 3])
         self.import_multisig_info([0, 1, 2, 3], 6)
         self.check_transaction(txid)
 
-        self.create_multisig_wallets(2, 4, '44SKxxLQw929wRF6BA9paQ1EWFshNnKhXM3qz6Mo3JGDE2YG3xyzVutMStEicxbQGRfrYvAAYxH6Fe8rnD56EaNwUiqhcwR')
+        self.create_multisig_wallets(2, 4, '47puypSwsV1gvUDratmX4y58fSwikXVehEiBhVLxJA1gRCxHyrRgTDr4NnKUQssFPyWxc2meyt7j63F2S2qtCTRL6aRPj5U')
         self.import_multisig_info([1, 2], 5)
         txid = self.transfer([1, 2])
         self.import_multisig_info([0, 1, 2, 3], 6)
@@ -107,7 +107,7 @@ class MultisigTest():
         try: self.wallet[i].close_wallet()
         except: pass
         res = self.wallet[i].restore_deterministic_wallet(seed = seeds[i])
-        res = self.wallet[i].prepare_multisig()
+        res = self.wallet[i].prepare_multisig(enable_multisig_experimental = True)
         assert len(res.multisig_info) > 0
         info.append(res.multisig_info)
 
@@ -125,17 +125,18 @@ class MultisigTest():
       for i in range(N_total):
         res = self.wallet[i].is_multisig()
         assert res.multisig == True
-        assert res.ready == (M_threshold == N_total)
+        assert not res.ready
         assert res.threshold == M_threshold
         assert res.total == N_total
 
       while True:
-        n_empty = 0
-        for i in range(len(next_stage)):
-          if len(next_stage[i]) == 0:
-            n_empty += 1
-        assert n_empty == 0 or n_empty == len(next_stage)
-        if n_empty == len(next_stage):
+        n_ready = 0
+        for i in range(N_total):
+          res = self.wallet[i].is_multisig()
+          if res.ready == True:
+            n_ready += 1
+        assert n_ready == 0 or n_ready == N_total
+        if n_ready == N_total:
           break
         info = next_stage
         next_stage = []
@@ -162,63 +163,72 @@ class MultisigTest():
             'peeled mixture ionic radar utopia puddle buying illness nuns gadget river spout cavernous bounced paradise drunk looking cottage jump tequila melting went winter adjust spout',
             'dilute gutter certain antics pamphlet macro enjoy left slid guarded bogeys upload nineteen bomb jubilee enhanced irritate turnip eggs swung jukebox loudly reduce sedan slid',
         ]
-        info = []
-        wallet = [None, None, None]
-        for i in range(3):
-            wallet[i] = Wallet(idx = i)
-            try: wallet[i].close_wallet()
+        info2of2 = []
+        wallet2of2 = [None, None]
+        for i in range(2):
+            wallet2of2[i] = Wallet(idx = i)
+            try: wallet2of2[i].close_wallet()
             except: pass
-            res = wallet[i].restore_deterministic_wallet(seed = seeds[i])
-            res = wallet[i].is_multisig()
+            res = wallet2of2[i].restore_deterministic_wallet(seed = seeds[i])
+            res = wallet2of2[i].is_multisig()
             assert not res.multisig
-            res = wallet[i].prepare_multisig()
+            res = wallet2of2[i].prepare_multisig(enable_multisig_experimental = True)
             assert len(res.multisig_info) > 0
-            info.append(res.multisig_info)
+            info2of2.append(res.multisig_info)
 
-        for i in range(3):
-            ok = False
-            try: res = wallet[i].finalize_multisig(info)
-            except: ok = True
-            assert ok
-            ok = False
-            try: res = wallet[i].exchange_multisig_keys(info)
-            except: ok = True
-            assert ok
-            res = wallet[i].is_multisig()
-            assert not res.multisig
-
-        res = wallet[0].make_multisig(info[0:2], 2)
-        res = wallet[0].is_multisig()
+        kex_info = []
+        res = wallet2of2[0].make_multisig(info2of2, 2)
+        kex_info.append(res.multisig_info)
+        res = wallet2of2[1].make_multisig(info2of2, 2)
+        kex_info.append(res.multisig_info)
+        res = wallet2of2[0].exchange_multisig_keys(kex_info)
+        res = wallet2of2[0].is_multisig()
         assert res.multisig
         assert res.ready
 
         ok = False
-        try: res = wallet[0].finalize_multisig(info)
+        try: res = wallet2of2[0].prepare_multisig(enable_multisig_experimental = True)
         except: ok = True
         assert ok
 
         ok = False
-        try: res = wallet[0].prepare_multisig()
+        try: res = wallet2of2[0].make_multisig(info2of2, 2)
         except: ok = True
         assert ok
 
-        ok = False
-        try: res = wallet[0].make_multisig(info[0:2], 2)
-        except: ok = True
-        assert ok
+        info2of3 = []
+        wallet2of3 = [None, None, None]
+        for i in range(3):
+            wallet2of3[i] = Wallet(idx = i)
+            try: wallet2of3[i].close_wallet()
+            except: pass
+            res = wallet2of3[i].restore_deterministic_wallet(seed = seeds[i])
+            res = wallet2of3[i].is_multisig()
+            assert not res.multisig
+            res = wallet2of3[i].prepare_multisig(enable_multisig_experimental = True)
+            assert len(res.multisig_info) > 0
+            info2of3.append(res.multisig_info)
 
-        res = wallet[1].make_multisig(info, 2)
-        res = wallet[1].is_multisig()
+        for i in range(3):
+            ok = False
+            try: res = wallet2of3[i].exchange_multisig_keys(info)
+            except: ok = True
+            assert ok
+            res = wallet2of3[i].is_multisig()
+            assert not res.multisig
+
+        res = wallet2of3[1].make_multisig(info2of3, 2)
+        res = wallet2of3[1].is_multisig()
         assert res.multisig
         assert not res.ready
 
         ok = False
-        try: res = wallet[1].prepare_multisig()
+        try: res = wallet2of3[1].prepare_multisig(enable_multisig_experimental = True)
         except: ok = True
         assert ok
 
         ok = False
-        try: res = wallet[1].make_multisig(info[0:2], 2)
+        try: res = wallet2of3[1].make_multisig(info2of3[0:2], 2)
         except: ok = True
         assert ok
 
@@ -270,7 +280,7 @@ class MultisigTest():
           desc = res.desc[0]
           assert desc.amount_in >= amount + fee
           assert desc.amount_out == desc.amount_in - fee
-          assert desc.ring_size == 11
+          assert desc.ring_size == 16
           assert desc.unlock_time == 0
           assert not 'payment_id' in desc or desc.payment_id in ['', '0000000000000000']
           assert desc.change_amount == desc.amount_in - 1000000000000 - fee

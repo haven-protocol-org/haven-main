@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -36,11 +36,10 @@ using namespace cryptonote;
 
 namespace
 {
-  // NEAC: this test only works for XHV amounts - should be extended to accommodate all xAssets and xUSD as well
   void split_miner_tx_outs(transaction& miner_tx, uint64_t amount_1)
   {
-    std::vector<std::string, uint64_t> total_amounts = get_outs_money_amount(miner_tx);
-    uint64_t amount_2 = total_amounts["XHV"] - amount_1;
+    uint64_t total_amount = get_outs_money_amount(miner_tx);
+    uint64_t amount_2 = total_amount - amount_1;
     txout_target_v target = miner_tx.vout[0].target;
 
     miner_tx.vout.clear();

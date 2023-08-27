@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -30,7 +30,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/asio/ip/address.hpp>
-#include <boost/bind.hpp>
+#include <functional>
 #include "common/command_line.h"
 #include "common/i18n.h"
 #include "hex.h"
@@ -91,6 +91,8 @@ namespace cryptonote
   rpc_args::descriptors::descriptors()
      : rpc_bind_ip({"rpc-bind-ip", rpc_args::tr("Specify IP to bind RPC server"), "127.0.0.1"})
      , rpc_bind_ipv6_address({"rpc-bind-ipv6-address", rpc_args::tr("Specify IPv6 address to bind RPC server"), "::1"})
+     , rpc_restricted_bind_ip({"rpc-restricted-bind-ip", rpc_args::tr("Specify IP to bind restricted RPC server"), "127.0.0.1"})
+     , rpc_restricted_bind_ipv6_address({"rpc-restricted-bind-ipv6-address", rpc_args::tr("Specify IPv6 address to bind restricted RPC server"), "::1"})
      , rpc_use_ipv6({"rpc-use-ipv6", rpc_args::tr("Allow IPv6 for RPC"), false})
      , rpc_ignore_ipv4({"rpc-ignore-ipv4", rpc_args::tr("Ignore unsuccessful IPv4 bind for RPC"), false})
      , rpc_login({"rpc-login", rpc_args::tr("Specify username[:password] required for RPC server"), "", true})
@@ -113,6 +115,8 @@ namespace cryptonote
     const descriptors arg{};
     command_line::add_arg(desc, arg.rpc_bind_ip);
     command_line::add_arg(desc, arg.rpc_bind_ipv6_address);
+    command_line::add_arg(desc, arg.rpc_restricted_bind_ip);
+    command_line::add_arg(desc, arg.rpc_restricted_bind_ipv6_address);
     command_line::add_arg(desc, arg.rpc_use_ipv6);
     command_line::add_arg(desc, arg.rpc_ignore_ipv4);
     command_line::add_arg(desc, arg.rpc_login);
@@ -136,6 +140,8 @@ namespace cryptonote
     
     config.bind_ip = command_line::get_arg(vm, arg.rpc_bind_ip);
     config.bind_ipv6_address = command_line::get_arg(vm, arg.rpc_bind_ipv6_address);
+    config.restricted_bind_ip = command_line::get_arg(vm, arg.rpc_restricted_bind_ip);
+    config.restricted_bind_ipv6_address = command_line::get_arg(vm, arg.rpc_restricted_bind_ipv6_address);
     config.use_ipv6 = command_line::get_arg(vm, arg.rpc_use_ipv6);
     config.require_ipv4 = !command_line::get_arg(vm, arg.rpc_ignore_ipv4);
     config.disable_rpc_ban = command_line::get_arg(vm, arg.disable_rpc_ban);
@@ -188,6 +194,34 @@ namespace cryptonote
         return boost::none;
       }
     }
+    if (!config.restricted_bind_ip.empty())
+    {
+      // always parse IP here for error consistency
+      boost::system::error_code ec{};
+      boost::asio::ip::address::from_string(config.restricted_bind_ip, ec);
+      if (ec)
+      {
+        LOG_ERROR(tr("Invalid IP address given for --") << arg.rpc_restricted_bind_ip.name);
+        return boost::none;
+      }
+    }
+    if (!config.restricted_bind_ipv6_address.empty())
+    {
+      // allow square braces, but remove them here if present
+      if (config.restricted_bind_ipv6_address.find('[') != std::string::npos)
+      {
+        config.restricted_bind_ipv6_address = config.restricted_bind_ipv6_address.substr(1, config.restricted_bind_ipv6_address.size() - 2);
+      }
+
+      // always parse IP here for error consistency
+      boost::system::error_code ec{};
+      boost::asio::ip::address::from_string(config.restricted_bind_ipv6_address, ec);
+      if (ec)
+      {
+        LOG_ERROR(tr("Invalid IP address given for --") << arg.rpc_restricted_bind_ipv6_address.name);
+        return boost::none;
+      }
+    }
 
     const char *env_rpc_login = nullptr;
     const bool has_rpc_arg = command_line::has_arg(vm, arg.rpc_login);
@@ -213,15 +247,9 @@ namespace cryptonote
     auto access_control_origins_input = command_line::get_arg(vm, arg.rpc_access_control_origins);
     if (!access_control_origins_input.empty())
     {
-      if (!config.login)
-      {
-        LOG_ERROR(arg.rpc_access_control_origins.name  << tr(" requires RPC server password --") << arg.rpc_login.name << tr(" cannot be empty"));
-        return boost::none;
-      }
-
       std::vector<std::string> access_control_origins;
       boost::split(access_control_origins, access_control_origins_input, boost::is_any_of(","));
-      std::for_each(access_control_origins.begin(), access_control_origins.end(), boost::bind(&boost::trim<std::string>, _1, std::locale::classic()));
+      std::for_each(access_control_origins.begin(), access_control_origins.end(), std::bind(&boost::trim<std::string>, std::placeholders::_1, std::locale::classic()));
       config.access_control_origins = std::move(access_control_origins);
     }
 

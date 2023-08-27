@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -47,7 +47,6 @@ public:
     std::string errorString() const override;
     bool commit(const std::string &filename = "", bool overwrite = false) override;
     uint64_t amount() const override;
-    std::string assetType () const override;
     uint64_t dust() const override;
     uint64_t fee() const override;
     std::vector<std::string> txid() const override;
@@ -66,14 +65,11 @@ private:
 
     int  m_status;
     std::string m_errorString;
-    std::string m_asset_type;
     std::vector<tools::wallet2::pending_tx> m_pending_tx;
     std::unordered_set<crypto::public_key> m_signers;
     std::vector<std::string> m_tx_device_aux;
-    std::map<std::string, std::vector<crypto::key_image>> m_key_images;
+    std::vector<crypto::key_image> m_key_images;
 };
 
 
 }
-
-namespace Bitmonero = Monero;

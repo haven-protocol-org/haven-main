@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -79,6 +79,10 @@ namespace wallet_args
   command_line::arg_descriptor<std::string> arg_rpc_client_secret_key()
   {
     return {"rpc-client-secret-key", wallet_args::tr("Set RPC client secret key for RPC payments"), ""};
+  }
+  command_line::arg_descriptor<std::string> arg_password_file()
+  {
+    return {"password-file", wallet_args::tr("Wallet password file"), ""};
   }
 
   const char* tr(const char* str)

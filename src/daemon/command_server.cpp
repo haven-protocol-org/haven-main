@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -56,6 +56,12 @@ t_command_server::t_command_server(
     , std::bind(&t_command_server::help, this, p::_1)
     , "help [<command>]"
     , "Show the help section or the documentation about a <command>."
+    );
+  m_command_lookup.set_handler(
+      "apropos"
+    , std::bind(&t_command_server::apropos, this, p::_1)
+    , "apropos <keyword> [<keyword> ...]"
+    , "Search all command descriptions for keyword(s)."
     );
   m_command_lookup.set_handler(
       "print_height"
@@ -217,7 +223,8 @@ t_command_server::t_command_server(
     m_command_lookup.set_handler(
       "hard_fork_info"
     , std::bind(&t_command_parser_executor::hard_fork_info, &m_parser, p::_1)
-    , "Print the hard fork voting information."
+    , "hard_fork_info <version>"
+    , "Print the hard fork voting information. If given a version, prints whether is this version enabled."
     );
     m_command_lookup.set_handler(
       "bans"
@@ -227,8 +234,8 @@ t_command_server::t_command_server(
     m_command_lookup.set_handler(
       "ban"
     , std::bind(&t_command_parser_executor::ban, &m_parser, p::_1)
-    , "ban <IP> [<seconds>]"
-    , "Ban a given <IP> for a given amount of <seconds>."
+    , "ban [<IP>|@<filename>] [<seconds>]"
+    , "Ban a given <IP> or list of IPs from a file for a given amount of <seconds>."
     );
     m_command_lookup.set_handler(
       "unban"
@@ -308,6 +315,7 @@ t_command_server::t_command_server(
     m_command_lookup.set_handler(
       "prune_blockchain"
     , std::bind(&t_command_parser_executor::prune_blockchain, &m_parser, p::_1)
+    , "prune_blockchain [confirm]"
     , "Prune the blockchain."
     );
     m_command_lookup.set_handler(
@@ -318,7 +326,7 @@ t_command_server::t_command_server(
     m_command_lookup.set_handler(
       "set_bootstrap_daemon"
     , std::bind(&t_command_parser_executor::set_bootstrap_daemon, &m_parser, p::_1)
-    , "set_bootstrap_daemon (auto | none | host[:port] [username] [password])"
+    , "set_bootstrap_daemon (auto | none | host[:port] [username] [password]) [proxy_ip:proxy_port]"
     , "URL of a 'bootstrap' remote daemon that the connected wallets can use while this daemon is still not fully synced.\n"
       "Use 'auto' to enable automatic public nodes discovering and bootstrap daemon switching"
     );
@@ -349,7 +357,7 @@ bool t_command_server::start_handling(std::function<void(void)> exit_handler)
 {
   if (m_is_rpc) return false;
 
-  m_command_lookup.start_handling("", get_commands_str(), exit_handler);
+  m_command_lookup.start_handling("", "Use \"help\" to list all commands and their usage\n", exit_handler);
 
   return true;
 }
@@ -374,15 +382,42 @@ bool t_command_server::help(const std::vector<std::string>& args)
   return true;
 }
 
+bool t_command_server::apropos(const std::vector<std::string>& args)
+{
+  if (args.empty())
+  {
+    std::cout << "Missing keyword" << std::endl;
+    return true;
+  }
+  const std::vector<std::string>& command_list = m_command_lookup.get_command_list(args);
+  if (command_list.empty())
+  {
+    std::cout << "Nothing found" << std::endl;
+    return true;
+  }
+
+  std::cout << std::endl;
+  for(auto const& command:command_list)
+  {
+    std::vector<std::string> cmd;
+    cmd.push_back(command);
+    std::pair<std::string, std::string> documentation = m_command_lookup.get_documentation(cmd);
+    std::cout << "  " << documentation.first << std::endl;
+  }
+  std::cout << std::endl;
+
+  return true;
+}
+
 std::string t_command_server::get_commands_str()
 {
   std::stringstream ss;
-  ss << "Haven '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << std::endl;
+  ss << "Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << std::endl;
   ss << "Commands: " << std::endl;
   std::string usage = m_command_lookup.get_usage();
   boost::replace_all(usage, "\n", "\n  ");
   usage.insert(0, "  ");
-  ss << usage << std::endl;
+  ss << usage;
   return ss.str();
 }
 

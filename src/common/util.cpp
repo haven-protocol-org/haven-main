@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -59,7 +59,7 @@
 #include "include_base_utils.h"
 #include "file_io_utils.h"
 #include "wipeable_string.h"
-#include "misc_os_dependent.h"
+#include "time_helper.h"
 using namespace epee;
 
 #include "crypto/crypto.h"
@@ -85,7 +85,7 @@ using namespace epee;
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
 #include <boost/format.hpp>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "util"
@@ -871,10 +871,19 @@ std::string get_nix_version_display_string()
     return max_concurrency;
   }
 
+  bool is_privacy_preserving_network(const std::string &address)
+  {
+    if (boost::ends_with(address, ".onion"))
+      return true;
+    if (boost::ends_with(address, ".i2p"))
+      return true;
+    return false;
+  }
+
   bool is_local_address(const std::string &address)
   {
     // always assume Tor/I2P addresses to be untrusted by default
-    if (boost::ends_with(address, ".onion") || boost::ends_with(address, ".i2p"))
+    if (is_privacy_preserving_network(address))
     {
       MDEBUG("Address '" << address << "' is Tor/I2P, non local");
       return false;
@@ -932,14 +941,7 @@ std::string get_nix_version_display_string()
 
   bool sha256sum(const uint8_t *data, size_t len, crypto::hash &hash)
   {
-    SHA256_CTX ctx;
-    if (!SHA256_Init(&ctx))
-      return false;
-    if (!SHA256_Update(&ctx, data, len))
-      return false;
-    if (!SHA256_Final((unsigned char*)hash.data, &ctx))
-      return false;
-    return true;
+    return EVP_Digest(data, len, (unsigned char*) hash.data, NULL, EVP_sha256(), NULL) != 0;
   }
 
   bool sha256sum(const std::string &filename, crypto::hash &hash)
@@ -952,8 +954,8 @@ std::string get_nix_version_display_string()
     if (!f)
       return false;
     std::ifstream::pos_type file_size = f.tellg();
-    SHA256_CTX ctx;
-    if (!SHA256_Init(&ctx))
+    std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(), &EVP_MD_CTX_free);
+    if (!EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr))
       return false;
     size_t size_left = file_size;
     f.seekg(0, std::ios::beg);
@@ -964,12 +966,12 @@ std::string get_nix_version_display_string()
       f.read(buf, read_size);
       if (!f || !f.good())
         return false;
-      if (!SHA256_Update(&ctx, buf, read_size))
+      if (!EVP_DigestUpdate(ctx.get(), buf, read_size))
         return false;
       size_left -= read_size;
     }
     f.close();
-    if (!SHA256_Final((unsigned char*)hash.data, &ctx))
+    if (!EVP_DigestFinal_ex(ctx.get(), (unsigned char*)hash.data, nullptr))
       return false;
     return true;
   }
@@ -1000,13 +1002,13 @@ std::string get_nix_version_display_string()
     for (char c: val)
     {
       if (c == '*')
-        newval += escape ? "*" : ".*";
+        newval += escape ? "*" : ".*", escape = false;
       else if (c == '?')
-        newval += escape ? "?" : ".";
+        newval += escape ? "?" : ".", escape = false;
       else if (c == '\\')
         newval += '\\', escape = !escape;
       else
-        newval += c;
+        newval += c, escape = false;
     }
     return newval;
   }
@@ -1116,7 +1118,7 @@ std::string get_nix_version_display_string()
     static constexpr const byte_map sizes[] =
     {
         {"%.0f B", 1024},
-        {"%.2f KB", 1024 * 1024},
+        {"%.2f kB", 1024 * 1024},
         {"%.2f MB", std::uint64_t(1024) * 1024 * 1024},
         {"%.2f GB", std::uint64_t(1024) * 1024 * 1024 * 1024},
         {"%.2f TB", std::uint64_t(1024) * 1024 * 1024 * 1024 * 1024}
@@ -1346,8 +1348,12 @@ std::string get_nix_version_display_string()
       100743, 92152, 57565, 22533, 37564, 21823, 19980, 18277, 18402, 14344,
       12142, 15842, 13677, 17631, 18294, 22270, 41422, 39296, 36688, 33512,
       33831, 27582, 22276, 27516, 27317, 25505, 24426, 20566, 23045, 26766,
-      28185, 26169, 27011,
-      28642    // Blocks 1,990,000 to 1,999,999 in December 2019
+      28185, 26169, 27011, 28642, 34994, 34442, 30682, 34357, 31640, 41167,
+      41301, 48616, 51075, 55061, 49909, 44606, 47091, 53828, 42520, 39023,
+      55245, 56145, 51119, 60398, 71821, 48142, 60310, 56041, 54176, 66220,
+      56336, 55248, 56656, 63305, 54029, 77136, 71902, 71618, 83587, 81068,
+      69062, 54848, 53681, 53555,
+      50616    // Blocks 2,400,000 to 2,409,999 in July 2021
     };
     const uint64_t block_range_size = 10000;
 

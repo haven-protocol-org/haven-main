@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -38,6 +38,7 @@
 #include "ringct/rctSigs.h"
 #include "ringct/rctOps.h"
 #include "device/device.hpp"
+#include "string_tools.h"
 
 using namespace std;
 using namespace crypto;
@@ -112,7 +113,7 @@ TEST(ringct, MG_sigs)
             sk[j] = xm[ind][j];
         }
         key message = identity();
-        mgSig IIccss = MLSAG_Gen(message, P, sk, NULL, NULL, ind, R, hw::get_device("default"));
+        mgSig IIccss = MLSAG_Gen(message, P, sk, ind, R, hw::get_device("default"));
         ASSERT_TRUE(MLSAG_Ver(message, P, IIccss, R));
 
         //#MG sig: false one
@@ -133,8 +134,169 @@ TEST(ringct, MG_sigs)
             sk[j] = xx[ind][j];
         }
         sk[2] = skGen();//assume we don't know one of the private keys..
-        IIccss = MLSAG_Gen(message, P, sk, NULL, NULL, ind, R, hw::get_device("default"));
+        IIccss = MLSAG_Gen(message, P, sk, ind, R, hw::get_device("default"));
         ASSERT_FALSE(MLSAG_Ver(message, P, IIccss, R));
+}
+
+TEST(ringct, CLSAG)
+{
+  const size_t N = 11;
+  const size_t idx = 5;
+  ctkeyV pubs;
+  key p, t, t2, u;
+  const key message = identity();
+  ctkey backup;
+  clsag clsag;
+
+  for (size_t i = 0; i < N; ++i)
+  {
+    key sk;
+    ctkey tmp;
+
+    skpkGen(sk, tmp.dest);
+    skpkGen(sk, tmp.mask);
+
+    pubs.push_back(tmp);
+  }
+
+  // Set P[idx]
+  skpkGen(p, pubs[idx].dest);
+
+  // Set C[idx]
+  t = skGen();
+  u = skGen();
+  addKeys2(pubs[idx].mask,t,u,H);
+
+  // Set commitment offset
+  key Cout;
+  t2 = skGen();
+  addKeys2(Cout,t2,u,H);
+
+  // Prepare generation inputs
+  ctkey insk;
+  insk.dest = p;
+  insk.mask = t;
+  
+  // bad message
+  clsag = rct::proveRctCLSAGSimple(zero(),pubs,insk,t2,Cout,idx,hw::get_device("default"));
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+
+  // bad index at creation
+  try
+  {
+    clsag = rct::proveRctCLSAGSimple(message,pubs,insk,t2,Cout,(idx + 1) % N,hw::get_device("default"));
+    ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  }
+  catch (...) { /* either exception, or failure to verify above */ }
+
+  // bad z at creation
+  try
+  {
+    ctkey insk2;
+    insk2.dest = insk.dest;
+    insk2.mask = skGen();
+    clsag = rct::proveRctCLSAGSimple(message,pubs,insk2,t2,Cout,idx,hw::get_device("default"));
+    ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  }
+  catch (...) { /* either exception, or failure to verify above */ }
+
+  // bad C at creation
+  backup = pubs[idx];
+  pubs[idx].mask = scalarmultBase(skGen());
+  try
+  {
+    clsag = rct::proveRctCLSAGSimple(message,pubs,insk,t2,Cout,idx,hw::get_device("default"));
+    ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  }
+  catch (...) { /* either exception, or failure to verify above */ }
+  pubs[idx] = backup;
+
+  // bad p at creation
+  try
+  {
+    ctkey insk2;
+    insk2.dest = skGen();
+    insk2.mask = insk.mask;
+    clsag = rct::proveRctCLSAGSimple(message,pubs,insk2,t2,Cout,idx,hw::get_device("default"));
+    ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  }
+  catch (...) { /* either exception, or failure to verify above */ }
+
+  // bad P at creation
+  backup = pubs[idx];
+  pubs[idx].dest = scalarmultBase(skGen());
+  try
+  {
+    clsag = rct::proveRctCLSAGSimple(message,pubs,insk,t2,Cout,idx,hw::get_device("default"));
+    ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  }
+  catch (...) { /* either exception, or failure to verify above */ }
+  pubs[idx] = backup;
+
+  // Test correct signature
+  clsag = rct::proveRctCLSAGSimple(message,pubs,insk,t2,Cout,idx,hw::get_device("default"));
+  ASSERT_TRUE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+
+  // empty s
+  auto sbackup = clsag.s;
+  clsag.s.clear();
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  clsag.s = sbackup;
+
+  // too few s elements
+  key backup_key;
+  backup_key = clsag.s.back();
+  clsag.s.pop_back();
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  clsag.s.push_back(backup_key);
+
+  // too many s elements
+  clsag.s.push_back(skGen());
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  clsag.s.pop_back();
+
+  // bad s in clsag at verification
+  for (auto &s: clsag.s)
+  {
+    backup_key = s;
+    s = skGen();
+    ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+    s = backup_key;
+  }
+
+  // bad c1 in clsag at verification
+  backup_key = clsag.c1;
+  clsag.c1 = skGen();
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  clsag.c1 = backup_key;
+
+  // bad I in clsag at verification
+  backup_key = clsag.I;
+  clsag.I = scalarmultBase(skGen());
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  clsag.I = backup_key;
+
+  // bad D in clsag at verification
+  backup_key = clsag.D;
+  clsag.D = scalarmultBase(skGen());
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  clsag.D = backup_key;
+
+  // D not in main subgroup in clsag at verification
+  backup_key = clsag.D;
+  rct::key x;
+  ASSERT_TRUE(epee::string_tools::hex_to_pod("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa", x));
+  clsag.D = rct::addKeys(clsag.D, x);
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  clsag.D = backup_key;
+
+  // swapped I and D in clsag at verification
+  std::swap(clsag.I, clsag.D);
+  ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
+  std::swap(clsag.I, clsag.D);
+
+  // check it's still good, in case we failed to restore
+  ASSERT_TRUE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
 }
 
 TEST(ringct, range_proofs)
@@ -178,12 +340,12 @@ TEST(ringct, range_proofs)
 
         //compute rct data with mixin 3 - should fail since full type with > 1 input
         bool ok = false;
-        try { genRct(rct::zero(), sc, pc, destinations, amounts, amount_keys, NULL, NULL, 3, rct_config, hw::get_device("default")); }
+        try { genRct(rct::zero(), sc, pc, destinations, amounts, amount_keys, 3, rct_config, hw::get_device("default")); }
         catch(...) { ok = true; }
         ASSERT_TRUE(ok);
 
         //compute rct data with mixin 3
-        rctSig s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
+        rctSig s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, 0, 3, rct_config, hw::get_device("default"));
 
         //verify rct data
         ASSERT_TRUE(verRctSimple(s));
@@ -200,7 +362,7 @@ TEST(ringct, range_proofs)
 
 
         //compute rct data with mixin 3
-        s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
+        s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, 0, 3, rct_config, hw::get_device("default"));
 
         //verify rct data
         ASSERT_FALSE(verRctSimple(s));
@@ -248,7 +410,7 @@ TEST(ringct, range_proofs_with_fee)
         const rct::RCTConfig rct_config { RangeProofBorromean, 0 };
 
         //compute rct data with mixin 3
-        rctSig s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 1, 3, rct_config, hw::get_device("default"));
+        rctSig s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, 1, 3, rct_config, hw::get_device("default"));
 
         //verify rct data
         ASSERT_TRUE(verRctSimple(s));
@@ -265,7 +427,7 @@ TEST(ringct, range_proofs_with_fee)
 
 
         //compute rct data with mixin 3
-        s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 500, 3, rct_config, hw::get_device("default"));
+        s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, 500, 3, rct_config, hw::get_device("default"));
 
         //verify rct data
         ASSERT_FALSE(verRctSimple(s));
@@ -324,7 +486,7 @@ TEST(ringct, simple)
         xmr_amount txnfee = 1;
 
         const rct::RCTConfig rct_config { RangeProofBorromean, 0 };
-        rctSig s = genRctSimple(message, sc, pc, destinations,inamounts, outamounts, amount_keys, NULL, NULL, txnfee, 2, rct_config, hw::get_device("default"));
+        rctSig s = genRctSimple(message, sc, pc, destinations,inamounts, outamounts, amount_keys, txnfee, 2, rct_config, hw::get_device("default"));
 
         //verify ring ct signature
         ASSERT_TRUE(verRctSimple(s));
@@ -359,7 +521,7 @@ static rct::rctSig make_sample_rct_sig(int n_inputs, const uint64_t input_amount
     }
 
     const rct::RCTConfig rct_config { RangeProofBorromean, 0 };
-    return genRct(rct::zero(), sc, pc, destinations, amounts, amount_keys, NULL, NULL, 3, rct_config, hw::get_device("default"));
+    return genRct(rct::zero(), sc, pc, destinations, amounts, amount_keys, 3, rct_config, hw::get_device("default"));
 }
 
 static rct::rctSig make_sample_simple_rct_sig(int n_inputs, const uint64_t input_amounts[], int n_outputs, const uint64_t output_amounts[], uint64_t fee)
@@ -386,7 +548,7 @@ static rct::rctSig make_sample_simple_rct_sig(int n_inputs, const uint64_t input
     }
 
     const rct::RCTConfig rct_config { RangeProofBorromean, 0 };
-    return genRctSimple(rct::zero(), sc, pc, destinations, inamounts, outamounts, amount_keys, NULL, NULL, fee, 3, rct_config, hw::get_device("default"));
+    return genRctSimple(rct::zero(), sc, pc, destinations, inamounts, outamounts, amount_keys, fee, 3, rct_config, hw::get_device("default"));
 }
 
 static bool range_proof_test(bool expected_valid,

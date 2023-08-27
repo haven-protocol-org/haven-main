@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -39,7 +39,7 @@
 namespace cryptonote
 {
 
-bool tx_sanity_check(const cryptonote::blobdata &tx_blob, uint64_t rct_outs_available, uint64_t current_height)
+bool tx_sanity_check(const cryptonote::blobdata &tx_blob, uint64_t rct_outs_available)
 {
   cryptonote::transaction tx;
 
@@ -54,47 +54,20 @@ bool tx_sanity_check(const cryptonote::blobdata &tx_blob, uint64_t rct_outs_avai
     MERROR("Transaction is coinbase");
     return false;
   }
-  
   std::set<uint64_t> rct_indices;
   size_t n_indices = 0;
 
   for (const auto &txin : tx.vin)
   {
-    if (txin.type() == typeid(cryptonote::txin_to_key)) {
-      const cryptonote::txin_to_key &in_to_key = boost::get<cryptonote::txin_to_key>(txin);
-      if (in_to_key.amount != 0)
-	      continue;
-      const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(in_to_key.key_offsets);
-      for (uint64_t offset: absolute)
-	      rct_indices.insert(offset);
-      n_indices += in_to_key.key_offsets.size();
-    } else if (txin.type() == typeid(cryptonote::txin_offshore)) {
-      const cryptonote::txin_offshore &in_to_key = boost::get<cryptonote::txin_offshore>(txin);
-      if (in_to_key.amount != 0)
-	      continue;
-      const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(in_to_key.key_offsets);
-      for (uint64_t offset: absolute)
-	      rct_indices.insert(offset);
-      n_indices += in_to_key.key_offsets.size();
-    } else if (txin.type() == typeid(cryptonote::txin_onshore)) {
-      const cryptonote::txin_onshore &in_to_key = boost::get<cryptonote::txin_onshore>(txin);
-      if (in_to_key.amount != 0)
-	      continue;
-      const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(in_to_key.key_offsets);
-      for (uint64_t offset: absolute)
-	      rct_indices.insert(offset);
-      n_indices += in_to_key.key_offsets.size();
-    } else if (txin.type() == typeid(cryptonote::txin_xasset)) {
-      const cryptonote::txin_xasset &in_to_key = boost::get<cryptonote::txin_xasset>(txin);
-      if (in_to_key.amount != 0)
-	      continue;
-      const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(in_to_key.key_offsets);
-      for (uint64_t offset: absolute)
-	      rct_indices.insert(offset);
-      n_indices += in_to_key.key_offsets.size();
-    } else {
+    if (txin.type() != typeid(cryptonote::txin_to_key))
       continue;
-    }
+    const cryptonote::txin_to_key &in_to_key = boost::get<cryptonote::txin_to_key>(txin);
+    if (in_to_key.amount != 0)
+      continue;
+    const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(in_to_key.key_offsets);
+    for (uint64_t offset: absolute)
+      rct_indices.insert(offset);
+    n_indices += in_to_key.key_offsets.size();
   }
 
   return tx_sanity_check(rct_indices, n_indices, rct_outs_available);
@@ -110,19 +83,12 @@ bool tx_sanity_check(const std::set<uint64_t> &rct_indices, size_t n_indices, ui
 
   if (rct_outs_available < 10000)
     return true;
-  /*
-    This check is failing regularly for offshore/xasset txs that uses too many inputs.
-    The reason for that is that, we still don't have enough outputs for non-xhv assets.
-    When the tx has too many inputs it has to construct too many rings. Which increases the probability
-    of 2 input using the same ring rember significantly giving that we don't have much outputs for those assets.
-    Therefore, the number of unique indices are usually < 80% of the total usable outputs.
-    We disable the check for now(to be actitaved later in the future), since there is no solution till we have enough outputs in the chain.
-  */
-  // if (rct_indices.size() < n_indices * 8 / 10)
-  // {
-  //   MERROR("amount of unique indices is too low (amount of rct indices is " << rct_indices.size() << ", out of total " << n_indices << "indices.");
-  //   return false;
-  // }
+
+  if (rct_indices.size() < n_indices * 8 / 10)
+  {
+    MERROR("amount of unique indices is too low (amount of rct indices is " << rct_indices.size() << ", out of total " << n_indices << "indices.");
+    return false;
+  }
 
   std::vector<uint64_t> offsets(rct_indices.begin(), rct_indices.end());
   uint64_t median = epee::misc_utils::median(offsets);

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019, The Monero Project
+# Copyright (c) 2014-2022, The Monero Project
 # 
 # All rights reserved.
 # 
@@ -28,7 +28,7 @@
 
 function (write_version tag)
   set(VERSIONTAG "${tag}" CACHE STRING "The tag portion of the Monero software version" FORCE)
-  configure_file("${CMAKE_SOURCE_DIR}/src/version.cpp.in" "${CMAKE_BINARY_DIR}/version.cpp")
+  configure_file("${CMAKE_CURRENT_LIST_DIR}/../src/version.cpp.in" "${CMAKE_BINARY_DIR}/version.cpp")
 endfunction ()
 
 find_package(Git QUIET)

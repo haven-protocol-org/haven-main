@@ -1,7 +1,7 @@
-# Haven Athena v3.0.8
+# Haven Athena v3.2.0-rc6
 
-Copyright (c) 2018-2022 Haven.   
-Portions Copyright (c) 2014-2019 The Monero Project.   
+Copyright (c) 2018-2023 Haven.
+Portions Copyright (c) 2014-2019 The Monero Project.
 Portions Copyright (c) 2012-2013 The Cryptonote developers.
 
 
@@ -98,7 +98,7 @@ invokes cmake commands as needed.
 
     ```bash
     cd haven-main
-    git checkout v3.0.8
+    git checkout v3.2.0-rc6
     make release
     ```
 
@@ -136,15 +136,15 @@ application.
 
 * Download and install the [MSYS2 installer](https://www.msys2.org), either the 64-bit or the 32-bit package, depending on your system.
 * Open the MSYS shell via the `MSYS2 Shell` shortcut
-* Update packages using pacman:  
+* Update packages using pacman:
 
     ```bash
     pacman -Syu
     ```
 
-* Exit the MSYS shell using Alt+F4  
+* Exit the MSYS shell using Alt+F4
 * Edit the properties for the `MSYS2 Shell` shortcut changing "msys2_shell.bat" to "msys2_shell.cmd -mingw64" for 64-bit builds or "msys2_shell.cmd -mingw32" for 32-bit builds
-* Restart MSYS shell via modified shortcut and update packages again using pacman:  
+* Restart MSYS shell via modified shortcut and update packages again using pacman:
 
     ```bash
     pacman -Syu
@@ -186,9 +186,9 @@ application.
     ```
 
 * If you would like a specific [version/tag](https://github.com/haven-protocol-org/haven-main/tags), do a git checkout for that version. eg. 'v1.3.5'. If you don't care about the version and just want binaries from master, skip this step:
-	
+
     ```bash
-    git checkout v3.0.8
+    git checkout v3.2.0-rc6
     ```
 
 * If you are on a 64-bit system, run:
@@ -218,4 +218,3 @@ application.
     ```
 
 * The resulting executables can be found in `build/debug/bin`
-

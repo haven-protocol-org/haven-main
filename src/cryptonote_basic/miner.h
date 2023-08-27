@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -47,12 +47,12 @@ namespace cryptonote
   struct i_miner_handler
   {
     virtual bool handle_block_found(block& b, block_verification_context &bvc) = 0;
-    virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce) = 0;
+    virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash) = 0;
   protected:
     ~i_miner_handler(){};
   };
 
-  typedef std::function<bool(const cryptonote::block&, uint64_t, unsigned int, crypto::hash&)> get_block_hash_t;
+  typedef std::function<bool(const cryptonote::block&, uint64_t, const crypto::hash*, unsigned int, crypto::hash&)> get_block_hash_t;
 
   /************************************************************************/
   /*                                                                      */
@@ -76,7 +76,7 @@ namespace cryptonote
     bool on_idle();
     void on_synchronized();
     //synchronous analog (for fast calls)
-    static bool find_nonce_for_given_block(const get_block_hash_t &gbh, block& bl, const difficulty_type& diffic, uint64_t height);
+    static bool find_nonce_for_given_block(const get_block_hash_t &gbh, block& bl, const difficulty_type& diffic, uint64_t height, const crypto::hash *seed_hash = NULL);
     void pause();
     void resume();
     void do_print_hashrate(bool do_hr);
@@ -91,17 +91,16 @@ namespace cryptonote
     uint64_t get_block_reward() const { return m_block_reward; }
 
     static constexpr uint8_t  BACKGROUND_MINING_DEFAULT_IDLE_THRESHOLD_PERCENTAGE       = 90;
-    static constexpr uint8_t  BACKGROUND_MINING_MIN_IDLE_THRESHOLD_PERCENTAGE           = 50;
+    static constexpr uint8_t  BACKGROUND_MINING_MIN_IDLE_THRESHOLD_PERCENTAGE           = 0;
     static constexpr uint8_t  BACKGROUND_MINING_MAX_IDLE_THRESHOLD_PERCENTAGE           = 99;
     static constexpr uint16_t BACKGROUND_MINING_DEFAULT_MIN_IDLE_INTERVAL_IN_SECONDS    = 10;
     static constexpr uint16_t BACKGROUND_MINING_MIN_MIN_IDLE_INTERVAL_IN_SECONDS        = 10;
     static constexpr uint16_t BACKGROUND_MINING_MAX_MIN_IDLE_INTERVAL_IN_SECONDS        = 3600;
     static constexpr uint8_t  BACKGROUND_MINING_DEFAULT_MINING_TARGET_PERCENTAGE        = 40;
-    static constexpr uint8_t  BACKGROUND_MINING_MIN_MINING_TARGET_PERCENTAGE            = 5;
-    static constexpr uint8_t  BACKGROUND_MINING_MAX_MINING_TARGET_PERCENTAGE            = 50;
+    static constexpr uint8_t  BACKGROUND_MINING_MIN_MINING_TARGET_PERCENTAGE            = 1;
+    static constexpr uint8_t  BACKGROUND_MINING_MAX_MINING_TARGET_PERCENTAGE            = 100;
     static constexpr uint8_t  BACKGROUND_MINING_MINER_MONITOR_INVERVAL_IN_SECONDS       = 10;
     static constexpr uint64_t BACKGROUND_MINING_DEFAULT_MINER_EXTRA_SLEEP_MILLIS        = 400; // ramp up 
-    static constexpr uint64_t BACKGROUND_MINING_MIN_MINER_EXTRA_SLEEP_MILLIS            = 5;
 
   private:
     bool worker_thread();
@@ -119,14 +118,14 @@ namespace cryptonote
     };
 
 
-    volatile uint32_t m_stop;
+    std::atomic<bool> m_stop;
     epee::critical_section m_template_lock;
     block m_template;
     std::atomic<uint32_t> m_template_no;
     std::atomic<uint32_t> m_starter_nonce;
     difficulty_type m_diffic;
     uint64_t m_height;
-    volatile uint32_t m_thread_index; 
+    std::atomic<uint32_t> m_thread_index;
     volatile uint32_t m_threads_total;
     std::atomic<uint32_t> m_threads_active;
     std::atomic<int32_t> m_pausers_count;

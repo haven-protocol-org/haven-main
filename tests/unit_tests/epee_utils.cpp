@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -31,6 +31,7 @@
 #include <boost/endian/conversion.hpp>
 #include <boost/range/algorithm/equal.hpp>
 #include <boost/range/algorithm_ext/iota.hpp>
+#include <boost/range/iterator_range.hpp>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <iterator>
@@ -886,8 +887,6 @@ TEST(ByteStream, Empty)
 {
   epee::byte_stream stream;
 
-  EXPECT_EQ(epee::byte_stream::default_increase(), stream.increase_size());
-
   EXPECT_EQ(nullptr, stream.data());
   EXPECT_EQ(nullptr, stream.tellp());
   EXPECT_EQ(0u, stream.available());
@@ -912,43 +911,55 @@ TEST(ByteStream, Write)
     {0xde, 0xad, 0xbe, 0xef, 0xef};
 
   std::vector<std::uint8_t> bytes;
-  epee::byte_stream stream{4};
-
-  EXPECT_EQ(4u, stream.increase_size());
+  epee::byte_stream stream{};
 
   stream.write({source, 3});
   bytes.insert(bytes.end(), source, source + 3);
   EXPECT_EQ(3u, stream.size());
-  EXPECT_EQ(1u, stream.available());
-  EXPECT_EQ(4u, stream.capacity());
+  EXPECT_LE(3u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
   EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
+
+  const std::size_t capacity = stream.capacity();
 
   stream.write({source, 2});
   bytes.insert(bytes.end(), source, source + 2);
   EXPECT_EQ(5u, stream.size());
-  EXPECT_EQ(3u, stream.available());
-  EXPECT_EQ(8u, stream.capacity());
+  EXPECT_LE(5u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
   EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
 
   stream.write({source, 5});
   bytes.insert(bytes.end(), source, source + 5);
   EXPECT_EQ(10u, stream.size());
-  EXPECT_EQ(2u, stream.available());
-  EXPECT_EQ(12u, stream.capacity());
+  EXPECT_LE(10u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
   EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
 
   stream.write({source, 2});
   bytes.insert(bytes.end(), source, source + 2);
   EXPECT_EQ(12u, stream.size());
-  EXPECT_EQ(0u, stream.available());
-  EXPECT_EQ(12u, stream.capacity());
+  EXPECT_LE(12u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
   EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
 
   stream.write({source, 5});
   bytes.insert(bytes.end(), source, source + 5);
   EXPECT_EQ(17u, stream.size());
-  EXPECT_EQ(0u, stream.available());
-  EXPECT_EQ(17u, stream.capacity());
+  EXPECT_LE(17u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
+  EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
+
+  // ensure it can overflow properly
+  while (capacity == stream.capacity())
+  {
+    stream.write({source, 5});
+    bytes.insert(bytes.end(), source, source + 5);
+  }
+
+  EXPECT_EQ(bytes.size(), stream.size());
+  EXPECT_LE(bytes.size(), stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
   EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
 }
 
@@ -967,8 +978,25 @@ TEST(ByteStream, Put)
   }
 
   EXPECT_EQ(200u, stream.size());
-  EXPECT_EQ(epee::byte_stream::default_increase() - 200, stream.available());
-  EXPECT_EQ(epee::byte_stream::default_increase(), stream.capacity());
+  EXPECT_LE(200u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
+  EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
+}
+
+TEST(ByteStream, PutN)
+{
+  using boost::range::equal;
+  using byte_span = epee::span<const std::uint8_t>;
+
+  std::vector<std::uint8_t> bytes;
+  bytes.resize(1000, 'f');
+
+  epee::byte_stream stream;
+  stream.put_n('f', 1000);
+
+  EXPECT_EQ(1000u, stream.size());
+  EXPECT_LE(1000u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
   EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
 }
 
@@ -981,14 +1009,12 @@ TEST(ByteStream, Reserve)
     {0xde, 0xad, 0xbe, 0xef, 0xef};
 
   std::vector<std::uint8_t> bytes;
-  epee::byte_stream stream{4};
-
-  EXPECT_EQ(4u, stream.increase_size());
+  epee::byte_stream stream{};
 
   stream.reserve(100);
-  EXPECT_EQ(100u, stream.capacity());
+  EXPECT_LE(100u, stream.capacity());
   EXPECT_EQ(0u, stream.size());
-  EXPECT_EQ(100u, stream.available());
+  EXPECT_EQ(stream.available(), stream.capacity());
 
   for (std::size_t i = 0; i < 100 / sizeof(source); ++i)
   {
@@ -997,8 +1023,8 @@ TEST(ByteStream, Reserve)
   }
 
   EXPECT_EQ(100u, stream.size());
-  EXPECT_EQ(0u, stream.available());
-  EXPECT_EQ(100u, stream.capacity());
+  EXPECT_LE(100u, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
   EXPECT_TRUE(equal(bytes, byte_span{stream.data(), stream.size()}));
 }
 
@@ -1033,29 +1059,31 @@ TEST(ByteStream, Move)
   static constexpr const std::uint8_t source[] =
     {0xde, 0xad, 0xbe, 0xef, 0xef};
 
-  epee::byte_stream stream{10};
+  epee::byte_stream stream{};
   stream.write(source);
+
+  const std::size_t capacity = stream.capacity();
+  std::uint8_t const* const data = stream.data();
+  EXPECT_LE(5u, capacity);
+  EXPECT_NE(nullptr, data);
 
   epee::byte_stream stream2{std::move(stream)};
 
-  EXPECT_EQ(10u, stream.increase_size());
   EXPECT_EQ(0u, stream.size());
   EXPECT_EQ(0u, stream.available());
   EXPECT_EQ(0u, stream.capacity());
   EXPECT_EQ(nullptr, stream.data());
   EXPECT_EQ(nullptr, stream.tellp());
 
-  EXPECT_EQ(10u, stream2.increase_size());
   EXPECT_EQ(5u, stream2.size());
-  EXPECT_EQ(5u, stream2.available());
-  EXPECT_EQ(10u, stream2.capacity());
-  EXPECT_NE(nullptr, stream2.data());
-  EXPECT_NE(nullptr, stream2.tellp());
+  EXPECT_EQ(capacity, stream2.capacity());
+  EXPECT_EQ(capacity - 5, stream2.available());
+  EXPECT_EQ(data, stream2.data());
+  EXPECT_EQ(data + 5u, stream2.tellp());
   EXPECT_TRUE(equal(source, byte_span{stream2.data(), stream2.size()}));
 
   stream = epee::byte_stream{};
 
-  EXPECT_EQ(epee::byte_stream::default_increase(), stream.increase_size());
   EXPECT_EQ(0u, stream.size());
   EXPECT_EQ(0u, stream.available());
   EXPECT_EQ(0u, stream.capacity());
@@ -1064,15 +1092,13 @@ TEST(ByteStream, Move)
 
   stream = std::move(stream2);
 
-  EXPECT_EQ(10u, stream.increase_size());
   EXPECT_EQ(5u, stream.size());
-  EXPECT_EQ(5u, stream.available());
-  EXPECT_EQ(10u, stream.capacity());
+  EXPECT_EQ(capacity, stream.capacity());
+  EXPECT_EQ(capacity - 5, stream.available());
   EXPECT_NE(nullptr, stream.data());
   EXPECT_NE(nullptr, stream.tellp());
   EXPECT_TRUE(equal(source, byte_span{stream.data(), stream.size()}));
 
-  EXPECT_EQ(10u, stream2.increase_size());
   EXPECT_EQ(0u, stream2.size());
   EXPECT_EQ(0u, stream2.available());
   EXPECT_EQ(0u, stream2.capacity());
@@ -1090,11 +1116,13 @@ TEST(ByteStream, ToByteSlice)
 
   epee::byte_stream stream;
 
+  stream.reserve(128*1024);
   stream.write(source);
   EXPECT_EQ(sizeof(source), stream.size());
+  EXPECT_EQ(128*1024, stream.capacity());
   EXPECT_TRUE(equal(source, byte_span{stream.data(), stream.size()}));
 
-  const epee::byte_slice slice{std::move(stream)};
+  const epee::byte_slice slice{std::move(stream), true};
   EXPECT_EQ(0u, stream.size());
   EXPECT_EQ(0u, stream.available());
   EXPECT_EQ(0u, stream.capacity());
@@ -1115,6 +1143,46 @@ TEST(ByteStream, ToByteSlice)
   EXPECT_EQ(nullptr, empty_slice.end());
   EXPECT_EQ(nullptr, empty_slice.cend());
   EXPECT_EQ(nullptr, empty_slice.data());
+}
+
+TEST(ByteStream, Clear)
+{
+  static constexpr const std::uint8_t source[] =
+    {0xde, 0xad, 0xbe, 0xef, 0xef};
+
+  epee::byte_stream stream{};
+
+  EXPECT_EQ(nullptr, stream.data());
+  EXPECT_EQ(nullptr, stream.tellp());
+  EXPECT_EQ(0u, stream.size());
+  EXPECT_EQ(0u, stream.available());
+  EXPECT_EQ(0u, stream.capacity());
+
+  stream.clear();
+
+  EXPECT_EQ(nullptr, stream.data());
+  EXPECT_EQ(nullptr, stream.tellp());
+  EXPECT_EQ(0u, stream.size());
+  EXPECT_EQ(0u, stream.available());
+  EXPECT_EQ(0u, stream.capacity());
+
+  stream.write({source, 3});
+  std::uint8_t const* const loc = stream.data();
+
+  EXPECT_EQ(loc, stream.data());
+  EXPECT_EQ(loc + 3, stream.tellp());
+  EXPECT_EQ(3u, stream.size());
+  EXPECT_LE(stream.size(), stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
+
+  const std::size_t capacity = stream.capacity();
+  stream.clear();
+
+  EXPECT_EQ(loc, stream.data());
+  EXPECT_EQ(loc, stream.tellp());
+  EXPECT_EQ(0u, stream.size());
+  EXPECT_EQ(capacity, stream.capacity());
+  EXPECT_EQ(stream.available(), stream.capacity() - stream.size());
 }
 
 TEST(ToHex, String)
@@ -1445,6 +1513,7 @@ TEST(NetUtils, NetworkAddress)
     constexpr static epee::net_utils::address_type get_type_id() noexcept { return epee::net_utils::address_type(-1); }
     constexpr static epee::net_utils::zone get_zone() noexcept { return epee::net_utils::zone::invalid; }
     constexpr static bool is_blockable() noexcept { return false; }
+    constexpr static uint16_t port() { return 0; }
   };
 
   const epee::net_utils::network_address empty;
@@ -1680,68 +1749,44 @@ TEST(parsing, isdigit)
 
 TEST(parsing, number)
 {
-  boost::string_ref val;
-  std::string s;
-  std::string::const_iterator i;
+  struct match_number_test_data {
+    std::string in_str;
+    std::string expect_out_str;
+    bool expect_is_float;
+    bool expect_is_signed;
+  };
+
+  // Add test cases as needed
+  struct match_number_test_data test_data[] = {
+    {         "0 ",         "0", false, false },
+    {       "000 ",       "000", false, false },
+    {        "10x",        "10", false, false },
+    {     "10.09/",     "10.09",  true, false },
+    {       "-1.r",       "-1.",  true,  true },
+    {      "-49.;",      "-49.",  true,  true },
+    {      "0.78/",      "0.78",  true, false },
+    {      "33E9$",      "33E9",  true, false },
+    {     ".34e2=",     ".34e2",  true, false },
+    {  "-9.34e-2=",  "-9.34e-2",  true,  true },
+    { "+9.34e+03=", "+9.34e+03",  true, false }
+  };
 
   // the parser expects another character to end the number, and accepts things
   // that aren't numbers, as it's meant as a pre-filter for strto* functions,
   // so we just check that numbers get accepted, but don't test non numbers
+  // We set is_float/signed_val to the opposite of what we expect the result to
+  // make sure that match_number2 is changing the bools as expected
 
-  s = "0 ";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "0");
-
-  s = "000 ";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "000");
-
-  s = "10x";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "10");
-
-  s = "10.09/";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "10.09");
-
-  s = "-1.r";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "-1.");
-
-  s = "-49.;";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "-49.");
-
-  s = "0.78/";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "0.78");
-
-  s = "33E9$";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "33E9");
-
-  s = ".34e2=";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, ".34e2");
-
-  s = "-9.34e-2=";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "-9.34e-2");
-
-  s = "+9.34e+03=";
-  i = s.begin();
-  epee::misc_utils::parse::match_number(i, s.end(), val);
-  ASSERT_EQ(val, "+9.34e+03");
+  for (const auto& tdata : test_data) {
+    std::string::const_iterator it = tdata.in_str.begin();
+    boost::string_ref out_val = "<unassigned>";
+    bool is_float_val = !tdata.expect_is_float;
+    bool is_signed_val = !tdata.expect_is_signed;
+    epee::misc_utils::parse::match_number2(it, tdata.in_str.end(), out_val, is_float_val, is_signed_val);
+    EXPECT_EQ(out_val, tdata.expect_out_str);
+    EXPECT_EQ(is_float_val, tdata.expect_is_float);
+    EXPECT_EQ(is_signed_val, tdata.expect_is_signed);
+  }
 }
 
 TEST(parsing, unicode)
@@ -1750,13 +1795,44 @@ TEST(parsing, unicode)
   std::string s;
   std::string::const_iterator si;
 
-  s = "\"\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "");
-  s = "\"\\u0000\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, std::string(1, '\0'));
-  s = "\"\\u0020\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, " ");
-  s = "\"\\u1\""; si = s.begin(); ASSERT_FALSE(epee::misc_utils::parse::match_string(si, s.end(), bs));
-  s = "\"\\u12\""; si = s.begin(); ASSERT_FALSE(epee::misc_utils::parse::match_string(si, s.end(), bs));
-  s = "\"\\u123\""; si = s.begin(); ASSERT_FALSE(epee::misc_utils::parse::match_string(si, s.end(), bs));
-  s = "\"\\u1234\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "ሴ");
-  s = "\"foo\\u1234bar\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "fooሴbar");
-  s = "\"\\u3042\\u307e\\u3084\\u304b\\u3059\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "あまやかす");
+  s = "\"\"";
+  si = s.begin();
+  epee::misc_utils::parse::match_string2(si, s.end(), bs);
+  EXPECT_EQ(bs, "");
+
+  s = "\"\\u0000\"";
+  si = s.begin();
+  epee::misc_utils::parse::match_string2(si, s.end(), bs);
+  EXPECT_EQ(bs, std::string(1, '\0'));
+
+  s = "\"\\u0020\"";
+  si = s.begin();
+  epee::misc_utils::parse::match_string2(si, s.end(), bs);
+  EXPECT_EQ(bs, " ");
+
+  s = "\"\\u1\"";
+  si = s.begin();
+  EXPECT_THROW(epee::misc_utils::parse::match_string2(si, s.end(), bs), std::runtime_error);
+
+  s = "\"\\u12\"";
+  si = s.begin();
+  EXPECT_THROW(epee::misc_utils::parse::match_string2(si, s.end(), bs), std::runtime_error);
+
+  s = "\"\\u123\"";
+  si = s.begin();
+  EXPECT_THROW(epee::misc_utils::parse::match_string2(si, s.end(), bs), std::runtime_error);
+
+  s = "\"\\u1234\"";
+  si = s.begin();
+  epee::misc_utils::parse::match_string2(si, s.end(), bs);
+  EXPECT_EQ(bs, "ሴ");
+
+  s = "\"foo\\u1234bar\""; si = s.begin();
+  epee::misc_utils::parse::match_string2(si, s.end(), bs);
+  EXPECT_EQ(bs, "fooሴbar");
+
+  s = "\"\\u3042\\u307e\\u3084\\u304b\\u3059\"";
+  si = s.begin();
+  epee::misc_utils::parse::match_string2(si, s.end(), bs);
+  EXPECT_EQ(bs, "あまやかす");
 }

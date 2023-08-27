@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -66,10 +66,12 @@ uint16_t parse_public_rpc_port(const po::variables_map &vm)
   }
 
   std::string rpc_port_str;
+  std::string rpc_bind_address = command_line::get_arg(vm, cryptonote::rpc_args::descriptors().rpc_bind_ip);
   const auto &restricted_rpc_port = cryptonote::core_rpc_server::arg_rpc_restricted_bind_port;
   if (!command_line::is_arg_defaulted(vm, restricted_rpc_port))
   {
     rpc_port_str = command_line::get_arg(vm, restricted_rpc_port);
+    rpc_bind_address = command_line::get_arg(vm, cryptonote::rpc_args::descriptors().rpc_restricted_bind_ip);
   }
   else if (command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc))
   {
@@ -86,7 +88,6 @@ uint16_t parse_public_rpc_port(const po::variables_map &vm)
     throw std::runtime_error("invalid RPC port " + rpc_port_str);
   }
 
-  const auto rpc_bind_address = command_line::get_arg(vm, cryptonote::rpc_args::descriptors().rpc_bind_ip);
   const auto address = net::get_network_address(rpc_bind_address, rpc_port);
   if (!address) {
     throw std::runtime_error("failed to parse RPC bind address");
@@ -105,6 +106,73 @@ uint16_t parse_public_rpc_port(const po::variables_map &vm)
   }
 
   return rpc_port;
+}
+
+#ifdef WIN32
+bool isFat32(const wchar_t* root_path)
+{
+  std::vector<wchar_t> fs(MAX_PATH + 1);
+  if (!::GetVolumeInformationW(root_path, nullptr, 0, nullptr, 0, nullptr, &fs[0], MAX_PATH))
+  {
+    MERROR("Failed to get '" << root_path << "' filesystem name. Error code: " << ::GetLastError());
+    return false;
+  }
+
+  return wcscmp(L"FAT32", &fs[0]) == 0;
+}
+#endif
+
+// Helper function to generate genesis transaction
+void print_genesis_tx_hex(const cryptonote::network_type nettype) {
+
+  using namespace cryptonote;
+
+  account_base miner_acc1;
+  miner_acc1.generate();
+
+  std::cout << "Gennerating miner wallet..." << std::endl;
+  std::cout << "Miner account address:" << std::endl;
+  std::cout << cryptonote::get_account_address_as_str((network_type)nettype, false, miner_acc1.get_keys().m_account_address);
+  std::cout << std::endl << "Miner spend secret key:"  << std::endl;
+  epee::to_hex::formatted(std::cout, epee::as_byte_span(miner_acc1.get_keys().m_spend_secret_key));
+  std::cout << std::endl << "Miner view secret key:" << std::endl;
+  epee::to_hex::formatted(std::cout, epee::as_byte_span(miner_acc1.get_keys().m_view_secret_key));
+  std::cout << std::endl << std::endl;
+
+  //Create file with miner keys information
+  auto t = std::time(nullptr);
+  auto tm = *std::localtime(&t);
+  std::stringstream key_fine_name_ss;
+  key_fine_name_ss << "./miner01_keys" << std::put_time(&tm, "%Y%m%d%H%M%S") << ".dat";
+  std::string key_file_name = key_fine_name_ss.str();
+  std::ofstream miner_key_file;
+  miner_key_file.open (key_file_name);
+  miner_key_file << "Miner account address:" << std::endl;
+  miner_key_file << cryptonote::get_account_address_as_str((network_type)nettype, false, miner_acc1.get_keys().m_account_address);
+  miner_key_file << std::endl<< "Miner spend secret key:"  << std::endl;
+  epee::to_hex::formatted(miner_key_file, epee::as_byte_span(miner_acc1.get_keys().m_spend_secret_key));
+  miner_key_file << std::endl << "Miner view secret key:" << std::endl;
+  epee::to_hex::formatted(miner_key_file, epee::as_byte_span(miner_acc1.get_keys().m_view_secret_key));
+  miner_key_file << std::endl << std::endl;
+  miner_key_file.close();
+
+
+  //Prepare genesis_tx
+  cryptonote::transaction tx_genesis;
+  std::map<std::string, uint64_t> fee_map, offshore_fee_map, xasset_fee_map;
+  cryptonote::construct_miner_tx(0, 0, 0, 10, fee_map, offshore_fee_map, xasset_fee_map, miner_acc1.get_keys().m_account_address, tx_genesis, blobdata(), 999, 1, nettype);
+  std::cout << "Object:" << std::endl;
+  std::cout << obj_to_json_str(tx_genesis) << std::endl << std::endl;
+
+
+  std::stringstream ss;
+  binary_archive<true> ba(ss);
+  ::serialization::serialize(ba, tx_genesis);
+  std::string tx_hex = ss.str();
+  std::cout << "Insert this line into your coin configuration file: " << std::endl;
+  std::cout << "std::string const GENESIS_TX = \"" << string_tools::buff_to_hex_nodelimer(tx_hex) << "\";" << std::endl;
+
+  return;
 }
 
 int main(int argc, char const * argv[])
@@ -137,9 +205,12 @@ int main(int argc, char const * argv[])
       command_line::add_arg(core_settings, daemon_args::arg_max_log_file_size);
       command_line::add_arg(core_settings, daemon_args::arg_max_log_files);
       command_line::add_arg(core_settings, daemon_args::arg_max_concurrency);
+      command_line::add_arg(core_settings, daemon_args::arg_proxy);
+      command_line::add_arg(core_settings, daemon_args::arg_proxy_allow_dns_leaks);
       command_line::add_arg(core_settings, daemon_args::arg_public_node);
       command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_bind_ip);
       command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_bind_port);
+      command_line::add_arg(core_settings, daemon_args::arg_zmq_pub);
       command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_disabled);
 
       daemonizer::init_options(hidden_options, visible_options);
@@ -232,6 +303,13 @@ int main(int argc, char const * argv[])
     // Create data dir if it doesn't exist
     boost::filesystem::path data_dir = boost::filesystem::absolute(
         command_line::get_arg(vm, cryptonote::arg_data_dir));
+
+#ifdef WIN32
+    if (isFat32(data_dir.root_path().c_str()))
+    {
+      MERROR("Data directory resides on FAT32 volume that has 4GiB file size limit, blockchain might get corrupted.");
+    }
+#endif
 
     // FIXME: not sure on windows implementation default, needs further review
     //bf::path relative_path_base = daemonizer::get_relative_path_base(vm);

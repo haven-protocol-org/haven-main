@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,6 +32,7 @@
 
 #ifdef __cplusplus
 #include <array>
+#include <cstddef>
 
 extern "C" {
 #endif

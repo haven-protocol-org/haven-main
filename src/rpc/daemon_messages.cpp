@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2019, The Monero Project
+// Copyright (c) 2016-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -72,7 +72,6 @@ void GetBlocksFast::Response::doToJson(rapidjson::Writer<epee::byte_stream>& des
   INSERT_INTO_JSON_OBJECT(dest, start_height, start_height);
   INSERT_INTO_JSON_OBJECT(dest, current_height, current_height);
   INSERT_INTO_JSON_OBJECT(dest, output_indices, output_indices);
-  INSERT_INTO_JSON_OBJECT(dest, asset_type_output_indices, asset_type_output_indices);
 }
 
 void GetBlocksFast::Response::fromJson(const rapidjson::Value& val)
@@ -81,7 +80,6 @@ void GetBlocksFast::Response::fromJson(const rapidjson::Value& val)
   GET_FROM_JSON_OBJECT(val, start_height, start_height);
   GET_FROM_JSON_OBJECT(val, current_height, current_height);
   GET_FROM_JSON_OBJECT(val, output_indices, output_indices);
-  GET_FROM_JSON_OBJECT(val, asset_type_output_indices, asset_type_output_indices);
 }
 
 
@@ -169,13 +167,11 @@ void GetTxGlobalOutputIndices::Request::fromJson(const rapidjson::Value& val)
 void GetTxGlobalOutputIndices::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
 {
   INSERT_INTO_JSON_OBJECT(dest, output_indices, output_indices);
-  INSERT_INTO_JSON_OBJECT(dest, asset_type_output_indices, asset_type_output_indices);
 }
 
 void GetTxGlobalOutputIndices::Response::fromJson(const rapidjson::Value& val)
 {
   GET_FROM_JSON_OBJECT(val, output_indices, output_indices);
-  GET_FROM_JSON_OBJECT(val, asset_type_output_indices, asset_type_output_indices);
 }
 
 void SendRawTx::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
@@ -590,8 +586,6 @@ void GetOutputDistribution::Request::doToJson(rapidjson::Writer<epee::byte_strea
   INSERT_INTO_JSON_OBJECT(dest, amounts, amounts);
   INSERT_INTO_JSON_OBJECT(dest, from_height, from_height);
   INSERT_INTO_JSON_OBJECT(dest, to_height, to_height);
-  INSERT_INTO_JSON_OBJECT(dest, rct_asset_type, rct_asset_type);
-  INSERT_INTO_JSON_OBJECT(dest, default_tx_spendable_age, default_tx_spendable_age);
   INSERT_INTO_JSON_OBJECT(dest, cumulative, cumulative);
 }
 
@@ -600,8 +594,6 @@ void GetOutputDistribution::Request::fromJson(const rapidjson::Value& val)
   GET_FROM_JSON_OBJECT(val, amounts, amounts);
   GET_FROM_JSON_OBJECT(val, from_height, from_height);
   GET_FROM_JSON_OBJECT(val, to_height, to_height);
-  GET_FROM_JSON_OBJECT(val, rct_asset_type, rct_asset_type);
-  GET_FROM_JSON_OBJECT(val, default_tx_spendable_age, default_tx_spendable_age);
   GET_FROM_JSON_OBJECT(val, cumulative, cumulative);
 }
 

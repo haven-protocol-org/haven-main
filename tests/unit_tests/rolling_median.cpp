@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -170,6 +170,17 @@ TEST(rolling_median, history_blind)
   }
 }
 
+TEST(rolling_median, overflow)
+{
+  epee::misc_utils::rolling_median_t<uint64_t> m(2);
+
+  uint64_t over_half = static_cast<uint64_t>(3) << static_cast<uint64_t>(62);
+  m.insert(over_half);
+  m.insert(over_half);
+  ASSERT_EQ((over_half + over_half) < over_half, true);
+  ASSERT_EQ(over_half, m.median());
+}
+
 TEST(rolling_median, size)
 {
   epee::misc_utils::rolling_median_t<uint64_t> m(10);
@@ -198,5 +209,23 @@ TEST(rolling_median, size)
   {
     m.insert(80 % (i + 1));
     ASSERT_EQ(m.size(), std::min<int>(10, i + 2));
+  }
+}
+
+TEST(rolling_median, copy)
+{
+  epee::misc_utils::rolling_median_t<uint64_t> m(100);
+
+  for (int i = 0; i < 100; ++i)
+    m.insert(rand());
+
+  epee::misc_utils::rolling_median_t<uint64_t> copy(m);
+
+  for (int i = 0; i < 5000; ++i)
+  {
+    uint64_t v = rand();
+    m.insert(v);
+    copy.insert(v);
+    ASSERT_EQ(m.median(), copy.median());
   }
 }

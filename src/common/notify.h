@@ -1,4 +1,5 @@
-// Copyright (c) 2018, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
+
 // 
 // All rights reserved.
 // 
@@ -38,8 +39,12 @@ class Notify
 {
 public:
   Notify(const char *spec);
+  Notify(const Notify&) = default;
+  Notify(Notify&&) = default;
+  Notify& operator=(const Notify&) = default;
+  Notify& operator=(Notify&&) = default;
 
-  int notify(const char *tag, const char *s, ...);
+  int notify(const char *tag, const char *s, ...) const;
 
 private:
   std::string filename;
@@ -47,3 +52,4 @@ private:
 };
 
 }
+

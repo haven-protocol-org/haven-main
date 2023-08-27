@@ -36,6 +36,7 @@
 #include <boost/utility/string_ref.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl.hpp>
+#include <boost/filesystem/path.hpp>
 #include <boost/system/error_code.hpp>
 
 #define SSL_FINGERPRINT_SIZE 32
@@ -103,12 +104,17 @@ namespace net_utils
     //! \return False iff ssl is disabled, otherwise true.
     explicit operator bool() const noexcept { return support != ssl_support_t::e_ssl_support_disabled; }
 
-    //! \retrurn True if `host` can be verified using `this` configuration WITHOUT system "root" CAs.
+    //! \return True if `host` can be verified using `this` configuration WITHOUT system "root" CAs.
     bool has_strong_verification(boost::string_ref host) const noexcept;
 
     //! Search against internal fingerprints. Always false if `behavior() != user_certificate_check`.
     bool has_fingerprint(boost::asio::ssl::verify_context &ctx) const;
 
+    //! configure ssl_stream handshake verification
+    void configure(
+      boost::asio::ssl::stream<boost::asio::ip::tcp::socket> &socket,
+      boost::asio::ssl::stream_base::handshake_type type,
+      const std::string& host = {}) const;
     boost::asio::ssl::context create_context() const;
 
     /*! \note If `this->support == autodetect && this->verification != none`,
@@ -132,6 +138,7 @@ namespace net_utils
     bool handshake(
       boost::asio::ssl::stream<boost::asio::ip::tcp::socket> &socket,
       boost::asio::ssl::stream_base::handshake_type type,
+      boost::asio::const_buffer buffer = {},
       const std::string& host = {},
       std::chrono::milliseconds timeout = std::chrono::seconds(15)) const;
   };
@@ -143,6 +150,9 @@ namespace net_utils
 
 	bool create_ec_ssl_certificate(EVP_PKEY *&pkey, X509 *&cert);
 	bool create_rsa_ssl_certificate(EVP_PKEY *&pkey, X509 *&cert);
+
+  //! Store private key for `ssl` at `base + ".key"` unencrypted and certificate for `ssl` at `base + ".crt"`.
+  boost::system::error_code store_ssl_keys(boost::asio::ssl::context& ssl, const boost::filesystem::path& base);
 }
 }
 

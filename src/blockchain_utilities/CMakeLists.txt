@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019, The Monero Project
+# Copyright (c) 2014-2022, The Monero Project
 #
 # All rights reserved.
 #
@@ -131,15 +131,6 @@ set(blockchain_stats_private_headers)
 
 monero_private_headers(blockchain_stats
 	  ${blockchain_stats_private_headers})
-
-set(blockchain_scanner_sources
-  blockchain_scanner.cpp
-  )
-
-set(blockchain_scanner_private_headers)
-
-monero_private_headers(blockchain_scanner
-	  ${blockchain_scanner_private_headers})
 
 
 monero_add_executable(blockchain_import
@@ -297,27 +288,6 @@ set_property(TARGET blockchain_stats
 	OUTPUT_NAME "haven-blockchain-stats")
 install(TARGETS blockchain_stats DESTINATION bin)
 
-monero_add_executable(blockchain_scanner
-  ${blockchain_scanner_sources}
-  ${blockchain_scanner_private_headers})
-
-target_link_libraries(blockchain_scanner
-  PRIVATE
-    cryptonote_core
-    blockchain_db
-    version
-    epee
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${EXTRA_LIBRARIES})
-
-set_property(TARGET blockchain_scanner
-	PROPERTY
-	OUTPUT_NAME "haven-blockchain-scanner")
-install(TARGETS blockchain_scanner DESTINATION bin)
-
 monero_add_executable(blockchain_prune_known_spent_data
   ${blockchain_prune_known_spent_data_sources}
   ${blockchain_prune_known_spent_data_private_headers})
@@ -361,3 +331,4 @@ target_link_libraries(blockchain_prune
     ${Boost_THREAD_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
     ${EXTRA_LIBRARIES})
+

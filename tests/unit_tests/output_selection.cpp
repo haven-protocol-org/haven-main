@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -172,7 +172,7 @@ TEST(select_outputs, density)
     float chain_ratio = count_chain / (float)n_outs;
     MDEBUG(count_selected << "/" << NPICKS << " outputs selected in blocks of density " << d << ", " << 100.0f * selected_ratio << "%");
     MDEBUG(count_chain << "/" << offsets.size() << " outputs in blocks of density " << d << ", " << 100.0f * chain_ratio << "%");
-    ASSERT_LT(fabsf(selected_ratio - chain_ratio), 0.026f); // was originally 0.025f
+    ASSERT_LT(fabsf(selected_ratio - chain_ratio), 0.025f);
   }
 }
 
@@ -206,7 +206,7 @@ TEST(select_outputs, same_distribution)
   for (size_t i = 0; i < chain_picks.size(); ++i)
     chain_norm[i * 100 / chain_picks.size()] += chain_picks[i];
 
-  double max_dev = 0.0, avg_dev = 0.0;
+  double avg_dev = 0.0;
   for (size_t i = 0; i < 100; ++i)
   {
     const double diff = (double)output_norm[i] - (double)chain_norm[i];

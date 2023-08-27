@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -32,6 +32,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
+#include <boost/filesystem/path.hpp>
 #include "common/unordered_containers_boost_serialization.h"
 #include "common/command_line.h"
 #include "common/varint.h"
@@ -149,7 +150,7 @@ struct ancestry_state_t
     {
       std::unordered_map<crypto::hash, cryptonote::transaction> old_tx_cache;
       a & old_tx_cache;
-      for (const auto i: old_tx_cache)
+      for (const auto& i: old_tx_cache)
         tx_cache.insert(std::make_pair(i.first, ::tx_data_t(i.second)));
     }
     else
@@ -161,7 +162,7 @@ struct ancestry_state_t
       std::unordered_map<uint64_t, cryptonote::block> old_block_cache;
       a & old_block_cache;
       block_cache.resize(old_block_cache.size());
-      for (const auto i: old_block_cache)
+      for (const auto& i: old_block_cache)
         block_cache[i.first] = i.second;
     }
     else
@@ -390,7 +391,7 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  mlog_configure(mlog_get_default_log_path("monero-blockchain-ancestry.log"), true);
+  mlog_configure(mlog_get_default_log_path("haven-blockchain-ancestry.log"), true);
   if (!command_line::is_arg_defaulted(vm, arg_log_level))
     mlog_set_log(command_line::get_arg(vm, arg_log_level).c_str());
   else
@@ -575,7 +576,6 @@ int main(int argc, char* argv[])
             {
               add_ancestry(state.ancestry, txid, ancestor{amount, offset});
               // find the tx which created this output
-              bool found = false;
               crypto::hash output_txid;
               if (!get_output_txid(state, db, amount, offset, output_txid))
               {
@@ -693,7 +693,6 @@ int main(int argc, char* argv[])
             add_ancestor(ancestry, amount, offset);
 
             // find the tx which created this output
-            bool found = false;
             crypto::hash output_txid;
             if (!get_output_txid(state, db, amount, offset, output_txid))
             {

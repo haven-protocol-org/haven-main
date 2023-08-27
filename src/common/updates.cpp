@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -48,7 +48,10 @@ namespace tools
     static const std::vector<std::string> dns_urls = {
         "updates.moneropulse.org",
         "updates.moneropulse.net",
-        "updates.moneropulse.co",
+        "updates.moneropulse.fr",
+        "updates.moneropulse.de",
+        "updates.moneropulse.no",
+        "updates.moneropulse.ch",
         "updates.moneropulse.se"
     };
 

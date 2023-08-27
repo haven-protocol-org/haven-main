@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -42,6 +42,7 @@
 #include "cn_slow_hash.h"
 #include "derive_public_key.h"
 #include "derive_secret_key.h"
+#include "derive_view_tag.h"
 #include "ge_frombytes_vartime.h"
 #include "ge_tobytes.h"
 #include "generate_key_derivation.h"
@@ -50,6 +51,7 @@
 #include "generate_keypair.h"
 #include "signature.h"
 #include "is_out_to_acc.h"
+#include "out_can_be_to_acc.h"
 #include "subaddress_expand.h"
 #include "sc_reduce32.h"
 #include "sc_check.h"
@@ -58,8 +60,11 @@
 #include "equality.h"
 #include "range_proof.h"
 #include "bulletproof.h"
+#include "bulletproof_plus.h"
 #include "crypto_ops.h"
 #include "multiexp.h"
+#include "sig_mlsag.h"
+#include "sig_clsag.h"
 
 namespace po = boost::program_options;
 
@@ -191,6 +196,9 @@ int main(int argc, char** argv)
 
   TEST_PERFORMANCE0(filter, p, test_is_out_to_acc);
   TEST_PERFORMANCE0(filter, p, test_is_out_to_acc_precomp);
+  TEST_PERFORMANCE2(filter, p, test_out_can_be_to_acc, false, true); // no view tag, owned
+  TEST_PERFORMANCE2(filter, p, test_out_can_be_to_acc, true, false); // use view tag, not owned
+  TEST_PERFORMANCE2(filter, p, test_out_can_be_to_acc, true, true); // use view tag, owned
   TEST_PERFORMANCE0(filter, p, test_generate_key_image_helper);
   TEST_PERFORMANCE0(filter, p, test_generate_key_derivation);
   TEST_PERFORMANCE0(filter, p, test_generate_key_image);
@@ -203,6 +211,7 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE0(filter, p, test_sc_check);
   TEST_PERFORMANCE1(filter, p, test_signature, false);
   TEST_PERFORMANCE1(filter, p, test_signature, true);
+  TEST_PERFORMANCE0(filter, p, test_derive_view_tag);
 
   TEST_PERFORMANCE2(filter, p, test_wallet2_expand_subaddresses, 50, 200);
 
@@ -212,6 +221,21 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE1(filter, p, test_cn_slow_hash, 4);
   TEST_PERFORMANCE1(filter, p, test_cn_fast_hash, 32);
   TEST_PERFORMANCE1(filter, p, test_cn_fast_hash, 16384);
+
+  TEST_PERFORMANCE3(filter, p, test_sig_mlsag, 4, 2, 2); // MLSAG verification
+  TEST_PERFORMANCE3(filter, p, test_sig_mlsag, 8, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_mlsag, 16, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_mlsag, 32, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_mlsag, 64, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_mlsag, 128, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_mlsag, 256, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_clsag, 4, 2, 2); // CLSAG verification
+  TEST_PERFORMANCE3(filter, p, test_sig_clsag, 8, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_clsag, 16, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_clsag, 32, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_clsag, 64, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_clsag, 128, 2, 2);
+  TEST_PERFORMANCE3(filter, p, test_sig_clsag, 256, 2, 2);
 
   TEST_PERFORMANCE2(filter, p, test_ringct_mlsag, 11, false);
   TEST_PERFORMANCE2(filter, p, test_ringct_mlsag, 11, true);
@@ -223,6 +247,26 @@ int main(int argc, char** argv)
 
   TEST_PERFORMANCE1(filter, p, test_range_proof, true);
   TEST_PERFORMANCE1(filter, p, test_range_proof, false);
+
+  TEST_PERFORMANCE2(filter, p, test_bulletproof_plus, true, 1); // 1 bulletproof_plus with 1 amount
+  TEST_PERFORMANCE2(filter, p, test_bulletproof_plus, false, 1);
+
+  TEST_PERFORMANCE2(filter, p, test_bulletproof_plus, true, 2); // 1 bulletproof_plus with 2 amounts
+  TEST_PERFORMANCE2(filter, p, test_bulletproof_plus, false, 2);
+
+  TEST_PERFORMANCE2(filter, p, test_bulletproof_plus, true, 15); // 1 bulletproof_plus with 15 amounts
+  TEST_PERFORMANCE2(filter, p, test_bulletproof_plus, false, 15);
+
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, false, 2, 1, 1, 0, 4);
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, true, 2, 1, 1, 0, 4); // 4 proofs, each with 2 amounts
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, false, 8, 1, 1, 0, 4);
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, true, 8, 1, 1, 0, 4); // 4 proofs, each with 8 amounts
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, false, 1, 1, 2, 0, 4);
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, true, 1, 1, 2, 0, 4); // 4 proofs with 1, 2, 4, 8 amounts
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, false, 1, 8, 1, 1, 4);
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, true, 1, 8, 1, 1, 4); // 32 proofs, with 1, 2, 3, 4 amounts, 8 of each
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, false, 2, 1, 1, 0, 64);
+  TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof_plus, true, 2, 1, 1, 0, 64); // 64 proof, each with 2 amounts
 
   TEST_PERFORMANCE2(filter, p, test_bulletproof, true, 1); // 1 bulletproof with 1 amount
   TEST_PERFORMANCE2(filter, p, test_bulletproof, false, 1);
@@ -257,11 +301,15 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_scalarmult8_p3);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_dsm_precomp);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_double_scalarmult_base_vartime);
+  TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_triple_scalarmult_base_vartime);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_double_scalarmult_precomp_vartime);
+  TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_triple_scalarmult_precomp_vartime);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_double_scalarmult_precomp_vartime2);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_addKeys2);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_addKeys3);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_addKeys3_2);
+  TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_addKeys_aGbBcC);
+  TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_addKeys_aAbBcC);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_isInMainSubgroup);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_zeroCommitUncached);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_zeroCommitCached);

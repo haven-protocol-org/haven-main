@@ -29,10 +29,10 @@
 #pragma once 
 
 #include <boost/variant.hpp>
-#include <boost/any.hpp>
 #include <string>
 #include <vector>
 #include <deque>
+#include <map>
 
 #define PORTABLE_STORAGE_SIGNATUREA 0x01011101
 #define PORTABLE_STORAGE_SIGNATUREB 0x01020101 // bender's nightmare 
@@ -57,7 +57,7 @@
 #define SERIALIZE_TYPE_UINT32               6
 #define SERIALIZE_TYPE_UINT16               7
 #define SERIALIZE_TYPE_UINT8                8
-#define SERIALIZE_TYPE_DUOBLE               9
+#define SERIALIZE_TYPE_DOUBLE               9
 #define SERIALIZE_TYPE_STRING               10
 #define SERIALIZE_TYPE_BOOL                 11
 #define SERIALIZE_TYPE_OBJECT               12

@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -63,6 +63,7 @@ static rx_state rx_s[2] = {{CTHR_MUTEX_INIT,{0},0,0},{CTHR_MUTEX_INIT,{0},0,0}};
 
 static randomx_dataset *rx_dataset;
 static int rx_dataset_nomem;
+static int rx_dataset_nolp;
 static uint64_t rx_dataset_height;
 static THREADV randomx_vm *rx_vm = NULL;
 
@@ -116,6 +117,46 @@ static inline int enabled_flags(void) {
 #define SEEDHASH_EPOCH_BLOCKS	2048	/* Must be same as BLOCKS_SYNCHRONIZING_MAX_COUNT in cryptonote_config.h */
 #define SEEDHASH_EPOCH_LAG		64
 
+static inline int is_power_of_2(uint64_t n) { return n && (n & (n-1)) == 0; }
+
+static int get_seedhash_epoch_lag(void)
+{
+  static unsigned int lag = (unsigned int)-1;
+  if (lag != (unsigned int)-1)
+    return lag;
+  const char *e = getenv("SEEDHASH_EPOCH_LAG");
+  if (e)
+  {
+    lag = atoi(e);
+    if (lag > SEEDHASH_EPOCH_LAG || !is_power_of_2(lag))
+      lag = SEEDHASH_EPOCH_LAG;
+  }
+  else
+  {
+    lag = SEEDHASH_EPOCH_LAG;
+  }
+  return lag;
+}
+
+static unsigned int get_seedhash_epoch_blocks(void)
+{
+  static unsigned int blocks = (unsigned int)-1;
+  if (blocks != (unsigned int)-1)
+    return blocks;
+  const char *e = getenv("SEEDHASH_EPOCH_BLOCKS");
+  if (e)
+  {
+    blocks = atoi(e);
+    if (blocks < 2 || blocks > SEEDHASH_EPOCH_BLOCKS || !is_power_of_2(blocks))
+      blocks = SEEDHASH_EPOCH_BLOCKS;
+  }
+  else
+  {
+    blocks = SEEDHASH_EPOCH_BLOCKS;
+  }
+  return blocks;
+}
+
 void rx_reorg(const uint64_t split_height) {
   int i;
   CTHR_MUTEX_LOCK(rx_mutex);
@@ -130,14 +171,16 @@ void rx_reorg(const uint64_t split_height) {
 }
 
 uint64_t rx_seedheight(const uint64_t height) {
-  uint64_t s_height =  (height <= SEEDHASH_EPOCH_BLOCKS+SEEDHASH_EPOCH_LAG) ? 0 :
-                       (height - SEEDHASH_EPOCH_LAG - 1) & ~(SEEDHASH_EPOCH_BLOCKS-1);
+  const uint64_t seedhash_epoch_lag = get_seedhash_epoch_lag();
+  const uint64_t seedhash_epoch_blocks = get_seedhash_epoch_blocks();
+  uint64_t s_height =  (height <= seedhash_epoch_blocks+seedhash_epoch_lag) ? 0 :
+                       (height - seedhash_epoch_lag - 1) & ~(seedhash_epoch_blocks-1);
   return s_height;
 }
 
 void rx_seedheights(const uint64_t height, uint64_t *seedheight, uint64_t *nextheight) {
   *seedheight = rx_seedheight(height);
-  *nextheight = rx_seedheight(height + SEEDHASH_EPOCH_LAG);
+  *nextheight = rx_seedheight(height + get_seedhash_epoch_lag());
 }
 
 typedef struct seedinfo {
@@ -194,7 +237,7 @@ static void rx_initdata(randomx_cache *rs_cache, const int miners, const uint64_
 void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length,
   char *hash, int miners, int is_alt) {
   uint64_t s_height = rx_seedheight(mainheight);
-  int toggle = (s_height & SEEDHASH_EPOCH_BLOCKS) != 0;
+  int toggle = (s_height & get_seedhash_epoch_blocks()) != 0;
   randomx_flags flags = enabled_flags() & ~disabled_flags();
   rx_state *rx_sp;
   randomx_cache *cache;
@@ -222,12 +265,14 @@ void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const ch
 
   cache = rx_sp->rs_cache;
   if (cache == NULL) {
-    if (cache == NULL) {
+    if (!(disabled_flags() & RANDOMX_FLAG_LARGE_PAGES)) {
       cache = randomx_alloc_cache(flags | RANDOMX_FLAG_LARGE_PAGES);
       if (cache == NULL) {
         mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX cache");
-        cache = randomx_alloc_cache(flags);
       }
+    }
+    if (cache == NULL) {
+      cache = randomx_alloc_cache(flags);
       if (cache == NULL)
         local_abort("Couldn't allocate RandomX cache");
     }
@@ -249,11 +294,14 @@ void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const ch
       CTHR_MUTEX_LOCK(rx_dataset_mutex);
       if (!rx_dataset_nomem) {
         if (rx_dataset == NULL) {
-          rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_LARGE_PAGES);
-          if (rx_dataset == NULL) {
-            mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX dataset");
-            rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_DEFAULT);
+          if (!(disabled_flags() & RANDOMX_FLAG_LARGE_PAGES)) {
+            rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_LARGE_PAGES);
+            if (rx_dataset == NULL) {
+              mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX dataset");
+            }
           }
+          if (rx_dataset == NULL)
+            rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_DEFAULT);
           if (rx_dataset != NULL)
             rx_initdata(rx_sp->rs_cache, miners, seedheight);
         }
@@ -269,11 +317,15 @@ void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const ch
       }
       CTHR_MUTEX_UNLOCK(rx_dataset_mutex);
     }
-    rx_vm = randomx_create_vm(flags | RANDOMX_FLAG_LARGE_PAGES, rx_sp->rs_cache, rx_dataset);
-    if(rx_vm == NULL) { //large pages failed
-      mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX VM");
-      rx_vm = randomx_create_vm(flags, rx_sp->rs_cache, rx_dataset);
+    if (!(disabled_flags() & RANDOMX_FLAG_LARGE_PAGES) && !rx_dataset_nolp) {
+      rx_vm = randomx_create_vm(flags | RANDOMX_FLAG_LARGE_PAGES, rx_sp->rs_cache, rx_dataset);
+      if(rx_vm == NULL) { //large pages failed
+        mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX VM");
+        rx_dataset_nolp = 1;
+      }
     }
+    if (rx_vm == NULL)
+      rx_vm = randomx_create_vm(flags, rx_sp->rs_cache, rx_dataset);
     if(rx_vm == NULL) {//fallback if everything fails
       flags = RANDOMX_FLAG_DEFAULT | (miners ? RANDOMX_FLAG_FULL_MEM : 0);
       rx_vm = randomx_create_vm(flags, rx_sp->rs_cache, rx_dataset);
@@ -320,5 +372,6 @@ void rx_stop_mining(void) {
     randomx_release_dataset(rd);
   }
   rx_dataset_nomem = 0;
+  rx_dataset_nolp = 0;
   CTHR_MUTEX_UNLOCK(rx_dataset_mutex);
 }

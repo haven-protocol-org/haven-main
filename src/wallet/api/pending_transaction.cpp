@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -40,6 +40,7 @@
 #include <vector>
 #include <sstream>
 #include <boost/format.hpp>
+#include <boost/filesystem.hpp>
 
 using namespace std;
 
@@ -166,15 +167,10 @@ uint64_t PendingTransactionImpl::amount() const
     uint64_t result = 0;
     for (const auto &ptx : m_pending_tx)   {
         for (const auto &dest : ptx.dests) {
-            result += (m_asset_type == "XUSD" ? dest.amount_usd : m_asset_type == "XHV" ? dest.amount : dest.amount_xasset);
+            result += dest.amount;
         }
     }
     return result;
-}
-
-string PendingTransactionImpl::assetType() const
-{
-    return m_asset_type;
 }
 
 uint64_t PendingTransactionImpl::dust() const
@@ -268,6 +264,3 @@ std::vector<std::string> PendingTransactionImpl::signersKeys() const {
 }
 
 }
-
-namespace Bitmonero = Monero;
-

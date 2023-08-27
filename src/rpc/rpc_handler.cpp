@@ -28,7 +28,7 @@ namespace rpc
   boost::optional<output_distribution_data>
     RpcHandler::get_output_distribution(const std::function<bool(uint64_t, uint64_t, uint64_t, std::string, uint64_t, uint64_t&, std::vector<uint64_t>&, uint64_t&, uint64_t&)> &f, uint64_t amount, uint64_t from_height, uint64_t to_height, std::string asset_type, uint64_t default_tx_spendable_age, const std::function<crypto::hash(uint64_t)> &get_hash, bool cumulative, uint64_t blockchain_height)
   {
-      // HERE BE DRAGONS!!!
+       // HERE BE DRAGONS!!!
       // JB: the cache needs to be rewritten to account for asset types
       // static struct D
       // {
@@ -53,7 +53,7 @@ namespace rpc
       std::uint64_t start_height, base;
       uint64_t num_spendable_global_outs = 0;
 
-      // // see if we can extend the cache - a common case
+      // see if we can extend the cache - a common case
       // bool can_extend = d.cached && amount == 0 && d.cached_from == from_height && to_height > d.cached_to && top_hash == d.cached_top_hash;
       // if (!can_extend)
       // {

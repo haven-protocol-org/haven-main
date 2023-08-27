@@ -1,4 +1,5 @@
-// Copyright (c) 2018, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
+
 //
 // All rights reserved.
 //
@@ -28,6 +29,7 @@
 
 #pragma once
 
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/utility/string_ref.hpp>
 #include <cstdint>
 
@@ -65,5 +67,7 @@ namespace net
     */
     expect<epee::net_utils::ipv4_network_subnet>
         get_ipv4_subnet_address(boost::string_ref address, bool allow_implicit_32 = false);
+
+    expect<boost::asio::ip::tcp::endpoint> get_tcp_endpoint(const boost::string_ref address);
 }
 

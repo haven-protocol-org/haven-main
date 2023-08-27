@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -181,7 +181,6 @@ namespace hw {
       unsigned char padding_buffer[MAX_BLOCK+1];
       unsigned int  result;
                int  hid_ret;
-      unsigned int  sw_offset;
       unsigned int  remaining;
       unsigned int  offset = 0;
 

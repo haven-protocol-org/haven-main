@@ -1,4 +1,5 @@
-# Copyright (c) 2018 The Monero Project
+# Copyright (c) 2018-2022, The Monero Project
+
 # 
 # All rights reserved.
 # 
@@ -489,10 +490,11 @@ class Wallet(object):
         }
         return self.rpc.send_json_rpc_request(is_multisig)
 
-    def prepare_multisig(self):
+    def prepare_multisig(self, enable_multisig_experimental = False):
         prepare_multisig = {
             'method': 'prepare_multisig',
             'params' : {
+                'enable_multisig_experimental': enable_multisig_experimental,
             },
             'jsonrpc': '2.0', 
             'id': '0'
@@ -512,24 +514,23 @@ class Wallet(object):
         }
         return self.rpc.send_json_rpc_request(make_multisig)
 
-    def finalize_multisig(self, multisig_info, password = ''):
+    def finalize_multisig(self):
         finalize_multisig = {
             'method': 'finalize_multisig',
             'params' : {
-                'multisig_info': multisig_info,
-                'password': password,
             },
-            'jsonrpc': '2.0',
+            'jsonrpc': '2.0', 
             'id': '0'
         }
         return self.rpc.send_json_rpc_request(finalize_multisig)
 
-    def exchange_multisig_keys(self, multisig_info, password = ''):
+    def exchange_multisig_keys(self, multisig_info, password = '', force_update_use_with_caution = False):
         exchange_multisig_keys = {
             'method': 'exchange_multisig_keys',
             'params' : {
                 'multisig_info': multisig_info,
                 'password': password,
+                'force_update_use_with_caution': force_update_use_with_caution,
             },
             'jsonrpc': '2.0', 
             'id': '0'
@@ -706,13 +707,14 @@ class Wallet(object):
         }
         return self.rpc.send_json_rpc_request(check_reserve_proof)
 
-    def sign(self, data, account_index = 0, address_index = 0):
+    def sign(self, data, account_index = 0, address_index = 0, signature_type = ""):
         sign = {
             'method': 'sign',
             'params' : {
                 'data': data,
                 'account_index': account_index,
                 'address_index': address_index,
+                'signature_type': signature_type,
             },
             'jsonrpc': '2.0', 
             'id': '0'
@@ -762,10 +764,13 @@ class Wallet(object):
         }
         return self.rpc.send_json_rpc_request(get_languages)
 
-    def export_outputs(self):
+    def export_outputs(self, all = False, start = 0, count = 0xffffffff):
         export_outputs = {
             'method': 'export_outputs',
             'params': {
+                'all': all,
+                'start': start,
+                'count': count,
             },
             'jsonrpc': '2.0', 
             'id': '0'
@@ -1087,3 +1092,47 @@ class Wallet(object):
             'id': '0'
         }
         return self.rpc.send_json_rpc_request(get_version)
+
+    def scan_tx(self, txids):
+        scan_tx = {
+            'method': 'scan_tx',
+            'jsonrpc': '2.0',
+            'params' : {
+                'txids': txids,
+            },
+            'id': '0'
+        }
+        return self.rpc.send_json_rpc_request(scan_tx)
+
+    def freeze(self, key_image):
+        freeze = {
+            'method': 'freeze',
+            'jsonrpc': '2.0',
+            'params' : {
+                'key_image': key_image,
+            },
+            'id': '0'
+        }
+        return self.rpc.send_json_rpc_request(freeze)
+
+    def thaw(self, key_image):
+        thaw = {
+            'method': 'thaw',
+            'jsonrpc': '2.0',
+            'params' : {
+                'key_image': key_image,
+            },
+            'id': '0'
+        }
+        return self.rpc.send_json_rpc_request(thaw)
+
+    def frozen(self, key_image):
+        frozen = {
+            'method': 'frozen',
+            'jsonrpc': '2.0',
+            'params' : {
+                'key_image': key_image,
+            },
+            'id': '0'
+        }
+        return self.rpc.send_json_rpc_request(frozen)

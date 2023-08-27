@@ -1,4 +1,5 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
+// Portions Copyright (c) 2019-2023, Haven Protocol
 // 
 // All rights reserved.
 // 
@@ -38,6 +39,7 @@
 namespace cryptonote
 {
   //---------------------------------------------------------------
+  //---------------------------------------------------------------
   bool construct_miner_tx(
     size_t height,
     size_t median_weight,
@@ -66,10 +68,10 @@ namespace cryptonote
     typedef std::pair<uint64_t, rct::ctkey> output_entry;
 
     std::vector<output_entry> outputs;  //index + key + optional ringct commitment
-    size_t real_output;                 //index in outputs vector of real output_entry
+    uint64_t real_output;               //index in outputs vector of real output_entry
     crypto::public_key real_out_tx_key; //incoming real tx public key
     std::vector<crypto::public_key> real_out_additional_tx_keys; //incoming real tx additional public keys
-    size_t real_output_in_tx_index;     //index in transaction outputs vector
+    uint64_t real_output_in_tx_index;   //index in transaction outputs vector
     uint64_t amount;                    //money
     bool rct;                           //true if the output is rct
     rct::key mask;                      //ringct amount mask
@@ -78,7 +80,7 @@ namespace cryptonote
     offshore::pricing_record pr;
     bool first_generation_input;
     std::string asset_type;
-    
+
     void push_output(uint64_t idx, const crypto::public_key &k, uint64_t amount) { outputs.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(k), rct::zeroCommit(amount)}))); }
 
     BEGIN_SERIALIZE_OBJECT()
@@ -91,41 +93,31 @@ namespace cryptonote
       FIELD(rct)
       FIELD(mask)
       FIELD(multisig_kLRki)
+      FIELD(asset_type)
 
       if (real_output >= outputs.size())
         return false;
-
-      FIELD(height)
-      FIELD(pr)
-      FIELD(asset_type)
-      
     END_SERIALIZE()
   };
 
   struct tx_destination_entry
   {
     std::string original;
-    uint64_t amount;                    //money
-    uint64_t amount_usd;                //money
-    uint64_t amount_xasset;             //money
-    std::string asset_type;
-    account_public_address addr;        //destination address
+    uint64_t amount;              // destination money in source asset
+    uint64_t dest_amount;         // destination money in dest asset
+    uint64_t slippage;            // destination money in source asset that will be burnt as slippage
+    std::string dest_asset_type;  // destination asset type
+    account_public_address addr;  // destination address
     bool is_subaddress;
     bool is_integrated;
     bool is_collateral;
+    bool is_collateral_change;
 
-    tx_destination_entry() : amount(0), amount_usd(0), amount_xasset(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : amount(a), amount_usd(0), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type(currency) { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral) : original(o), amount(a), amount_usd(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, uint64_t au, uint64_t ax, const account_public_address &ad, bool is_subaddress, std::string currency) : original(o), amount(a), amount_usd(au), amount_xasset(ax), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), asset_type(currency) { }
- 
+    tx_destination_entry() : amount(0), dest_amount(0), slippage(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral, bool is_collateral_change) : amount(a), dest_amount(a), slippage(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), is_collateral_change(is_collateral_change), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), slippage(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), slippage(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+
     std::string address(network_type nettype, const crypto::hash &payment_id) const
     {
       if (!original.empty())
@@ -144,19 +136,33 @@ namespace cryptonote
     BEGIN_SERIALIZE_OBJECT()
       FIELD(original)
       VARINT_FIELD(amount)
-      VARINT_FIELD(amount_usd)
-      VARINT_FIELD(amount_xasset)
-      FIELD(asset_type)
+      VARINT_FIELD(dest_amount)
+      VARINT_FIELD(slippage)
+      FIELD(dest_asset_type)
       FIELD(addr)
       FIELD(is_subaddress)
       FIELD(is_integrated)
       FIELD(is_collateral)
+      FIELD(is_collateral_change)
     END_SERIALIZE()
   };
 
   //---------------------------------------------------------------
+
+  struct tx_block_template_backlog_entry
+  {
+    crypto::hash id;
+    uint64_t weight;
+    uint64_t fee;
+  };
+
+  //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
+  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry> &sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time);
   bool construct_tx_with_tx_key(
+    const std::string& source_asset,
+    const std::string& dest_asset,
+    const offshore::pricing_record& pr,
     const account_keys& sender_account_keys,
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
     std::vector<tx_source_entry>& sources,
@@ -164,23 +170,22 @@ namespace cryptonote
     const boost::optional<cryptonote::account_public_address>& change_addr,
     const std::vector<uint8_t> &extra,
     transaction& tx,
-    transaction_type tx_type,
-    const std::string strSource,
-    const std::string strDest,
     uint64_t unlock_time,
+    const uint8_t hf_version,
+    const uint64_t current_height,
+    const uint64_t onshore_col_amount,
+    const uint64_t fee_xhv,
     const crypto::secret_key &tx_key,
     const std::vector<crypto::secret_key> &additional_tx_keys,
-    const uint64_t current_height,
-    const offshore::pricing_record& pr,
-    uint32_t hf_version,
-    const uint64_t onshore_col_amount = 0,
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
-    rct::multisig_out *msout = NULL,
-    bool shuffle_outs = true
+    bool shuffle_outs = true, 
+    bool use_view_tags = false
   );
-
   bool construct_tx_and_get_tx_key(
+    const std::string& source_asset,
+    const std::string& dest_asset,
+    const offshore::pricing_record& pr,
     const account_keys& sender_account_keys,
     const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
     std::vector<tx_source_entry>& sources,
@@ -188,31 +193,24 @@ namespace cryptonote
     const boost::optional<cryptonote::account_public_address>& change_addr,
     const std::vector<uint8_t> &extra,
     transaction& tx,
-    transaction_type tx_type,
-    const std::string strSource,
-    const std::string strDest,
     uint64_t unlock_time,
+    const uint8_t hf_version,
+    const uint64_t current_height,
+    const uint64_t onshore_col_amount,
+    const uint64_t fee_xhv,
     crypto::secret_key &tx_key,
     std::vector<crypto::secret_key> &additional_tx_keys,
-    const uint64_t current_height,
-    const offshore::pricing_record& pr,
-    uint32_t hf_version,
-    const uint64_t onshore_col_amount = 0,
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
-    rct::multisig_out *msout = NULL
+    bool use_view_tags = false
   );
-
-  /*
   bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
                                       const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,
                                       const bool &need_additional_txkeys, const std::vector<crypto::secret_key> &additional_tx_keys,
                                       std::vector<crypto::public_key> &additional_tx_public_keys,
                                       std::vector<rct::key> &amount_keys,
                                       crypto::public_key &out_eph_public_key,
-                                      bool &found_change,
-                                      std::vector<uint64_t> &output_unlock_times,
-                                      uint64_t unlock_time);
+                                      const bool use_view_tags, crypto::view_tag &view_tag) ;
 
   bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
                                       const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,
@@ -220,39 +218,43 @@ namespace cryptonote
                                       std::vector<crypto::public_key> &additional_tx_public_keys,
                                       std::vector<rct::key> &amount_keys,
                                       crypto::public_key &out_eph_public_key,
-                                      bool &found_change,
-                                      std::vector<uint64_t> &output_unlock_times,
-                                      uint64_t unlock_time);
-  */
+                                      const bool use_view_tags, crypto::view_tag &view_tag) ;
+
   bool generate_genesis_block(
       block& bl
     , std::string const & genesis_tx
     , uint32_t nonce
-    , cryptonote::network_type nettype = MAINNET
     );
 
   class Blockchain;
+  bool get_block_longhash(const Blockchain *pb, const blobdata& bd, crypto::hash& res, const uint64_t height,
+    const int major_version, const crypto::hash *seed_hash, const int miners);
   bool get_block_longhash(const Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const int miners);
+  bool get_block_longhash(const Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const crypto::hash *seed_hash, const int miners);
   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height,
     const uint64_t seed_height, const crypto::hash& seed_hash);
   crypto::hash get_block_longhash(const Blockchain *pb, const block& b, const uint64_t height, const int miners);
   void get_block_longhash_reorg(const uint64_t split_height);
 
-  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version);
-  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint32_t hf_version);
-  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version);
-  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t hf_version);
-  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx);
+  uint64_t get_offshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version);
+  uint64_t get_onshore_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint32_t unlock_time, const uint8_t hf_version);
+  uint64_t get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version);
+  uint64_t get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry>& dsts, const uint8_t hf_version);
   bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type);
-  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts);
-  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr);
+  bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version);
+  bool get_collateral_requirements(const transaction_type &tx_type, const uint64_t amount, uint64_t &collateral, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version);
+  uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint8_t hf_version);
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash);
+  // Get conversion rate for any conversion TX
+  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate);
+  // Get a converted amount, given the conversion rate and source amount
+  bool get_converted_amount(const uint64_t& conversion_rate, const uint64_t& source_amount, uint64_t& dest_amount);
   // Get offshore amount in xAsset
   uint64_t get_xasset_amount(const uint64_t xusd_amount, const std::string& to_asset_type, const offshore::pricing_record& pr);
   // Get offshore amount in XUSD, not XHV
-  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
+  uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
   // Get onshore amount in XHV, not XUSD
-  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint32_t hf_version);
+  uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
 }
 
 BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)
@@ -276,22 +278,6 @@ namespace boost
         return;
       a & x.multisig_kLRki;
       a & x.real_out_additional_tx_keys;
-      if (ver < 2) {
-	return;
-      }
-      if (ver < 3) {
-	return;
-      }
-      a & x.height;
-      a & x.pr;
-      if (ver < 4) {
-	return;
-      }
-      a & x.first_generation_input;
-      if (ver < 5) {
-	return;
-      }
-      a & x.asset_type;
     }
 
     template <class Archive>
@@ -310,15 +296,9 @@ namespace boost
       a & x.original;
       a & x.is_integrated;
       if (ver < 3)
-	      return;
-      a & x.amount_usd;
-      if (ver < 4) {
-	      return;
-      }
-      a & x.amount_xasset;
-      a & x.asset_type;
-      if (ver < 5)
         return;
+      a & x.dest_asset_type;
+      a & x.dest_amount;
       a & x.is_collateral;
     }
   }

@@ -6,7 +6,7 @@
 
 */
 
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -43,7 +43,6 @@
 #include "common/common_fwd.h"
 #include "common/rpc_client.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "net/net_fwd.h"
 #include "rpc/core_rpc_server.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -168,7 +167,8 @@ public:
   bool set_bootstrap_daemon(
     const std::string &address,
     const std::string &username,
-    const std::string &password);
+    const std::string &password,
+    const std::string &proxy);
 
   bool rpc_payments();
 

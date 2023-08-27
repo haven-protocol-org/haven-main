@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -200,6 +200,13 @@ namespace socks
         {
             std::shared_ptr<client> self_;
             void operator()(boost::system::error_code error = boost::system::error_code{});
+        };
+
+        //! Calls `async_close` on `self` at destruction. NOP if `nullptr`.
+        struct close_on_exit
+        {
+            std::shared_ptr<client> self;
+            ~close_on_exit() { async_close{std::move(self)}(); }
         };
     };
 

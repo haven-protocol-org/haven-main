@@ -30,7 +30,6 @@
 #include <ctype.h>
 #include <boost/shared_ptr.hpp>
 #include <boost/regex.hpp>
-#include <boost/lexical_cast.hpp>
 #include <boost/optional/optional.hpp>
 #include <boost/utility/string_ref.hpp>
 //#include <mbstring.h>
@@ -40,17 +39,12 @@
 
 #include "net_helper.h"
 #include "http_client_base.h"
-
-#ifdef HTTP_ENABLE_GZIP
-#include "gzip_encoding.h"
-#endif 
-
 #include "string_tools.h"
+#include "string_tools_lexical.h"
 #include "reg_exp_definer.h"
 #include "abstract_http_client.h"
 #include "http_base.h" 
 #include "http_auth.h"
-#include "to_nonconst_iterator.h"
 #include "net_parse_helpers.h"
 #include "syncobj.h"
 
@@ -233,7 +227,7 @@ namespace net_utils
 			}
 
 			//---------------------------------------------------------------------------
-			inline bool invoke(const boost::string_ref uri, const boost::string_ref method, const std::string& body, std::chrono::milliseconds timeout, const http_response_info** ppresponse_info = NULL, const fields_list& additional_params = fields_list()) override
+			inline bool invoke(const boost::string_ref uri, const boost::string_ref method, const boost::string_ref body, std::chrono::milliseconds timeout, const http_response_info** ppresponse_info = NULL, const fields_list& additional_params = fields_list()) override
 			{
 				CRITICAL_REGION_LOCAL(m_lock);
 				if(!is_connected())
@@ -758,13 +752,9 @@ namespace net_utils
 				boost::smatch result;						//   12      3
 				if(boost::regex_search( m_response_info.m_header_info.m_content_encoding, result, rexp_match_gzip, boost::match_default) && result[0].matched)
 				{
-#ifdef HTTP_ENABLE_GZIP
-					m_pcontent_encoding_handler.reset(new content_encoding_gzip(this, result[3].matched));
-#else
           m_pcontent_encoding_handler.reset(new do_nothing_sub_handler(this));
-          LOG_ERROR("GZIP encoding not supported in this build, please add zlib to your project and define HTTP_ENABLE_GZIP");
+          LOG_ERROR("GZIP encoding not supported");
           return false;
-#endif
 				}
 				else 
 				{
@@ -885,14 +875,6 @@ namespace net_utils
 			}
 		};
 		typedef http_simple_client_template<blocked_mode_client> http_simple_client;
-
-    class http_simple_client_factory : public http_client_factory
-    {
-    public:
-      std::unique_ptr<abstract_http_client> create() override {
-        return std::unique_ptr<epee::net_utils::http::abstract_http_client>(new epee::net_utils::http::http_simple_client());
-      }
-    };
 	}
 }
 }

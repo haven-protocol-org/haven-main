@@ -1,4 +1,5 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
+// Portions Copyright (c) 2019-2023, Haven Protocol
 //
 // All rights reserved.
 //
@@ -31,6 +32,7 @@
 #pragma once
 #include "include_base_utils.h"
 
+#include <atomic>
 #include <set>
 #include <tuple>
 #include <unordered_map>
@@ -112,6 +114,7 @@ namespace cryptonote
      * @param tx_weight the transaction's weight
      */
     bool add_tx(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version);
+
     // this function only made for readability purposes. It is being called after
     // haven2 fork. So it doesn't have the rules prior to this fork.
     bool add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version);
@@ -144,11 +147,8 @@ namespace cryptonote
      * @param txblob return-by-reference the transaction as a blob
      * @param tx_weight return-by-reference the transaction's weight
      * @param fee the transaction fee
-     * @param fee_usd return-by-reference the total of offshore TX fees from the included transactions
-     * @param fee_xasset return-by-reference the total of xAsset TX fees from the included transactions
      * @param offshore_fee return-by-reference the total of XHV offshore conversion fees from the included transactions
-     * @param offshore_fee_usd return-by-reference the total of xUSD offshore conversion fees from the included transactions
-     * @param offshore_fee_xasset return-by-reference the total of xAsset conversion fees from the included transactions
+     * @param fee_asset_type the currency that the fee is being paid in
      * @param relayed return-by-reference was transaction relayed to us by the network?
      * @param do_not_relay return-by-reference is transaction not to be relayed to the network?
      * @param double_spend_seen return-by-reference was a double spend seen for that transaction?
@@ -157,7 +157,7 @@ namespace cryptonote
      * @return true unless the transaction cannot be found in the pool
      */
     bool take_tx(const crypto::hash &id, transaction &tx, cryptonote::blobdata &txblob, size_t& tx_weight, uint64_t& fee, uint64_t& offshore_fee, std::string& fee_asset_type, bool &relayed, bool &do_not_relay, bool &double_spend_seen, bool &pruned);
- 
+
     /**
      * @brief checks if the pool has a transaction with the given hash
      *
@@ -276,6 +276,19 @@ namespace cryptonote
     void get_transaction_backlog(std::vector<tx_backlog_entry>& backlog, bool include_sensitive = false) const;
 
     /**
+     * @brief get (hash, weight, fee) for transactions in the pool - the minimum required information to create a block template
+     *
+     * Not all transactions in the pool will be returned for performance reasons
+     * If there are too many transactions in the pool, only the highest-paying transactions
+     * will be returned - but enough for the miner to create a full block
+     *
+     * @param backlog return-by-reference that data
+     * @param include_sensitive return stempool, anonymity-pool, and unrelayed txes
+     *
+     */
+    void get_block_template_backlog(std::vector<tx_block_template_backlog_entry>& backlog, bool include_sensitive = false) const;
+
+    /**
      * @brief get a summary statistics of all transaction hashes in the pool
      *
      * @param stats return-by-reference the pool statistics
@@ -340,19 +353,24 @@ namespace cryptonote
      *   isn't old enough that relaying it is considered harmful
      * Note a transaction can be "relayable" even if do_not_relay is true
      *
+     * This function will skip all DB checks if an insufficient amount of
+     * time since the last call.
+     *
      * @param txs return-by-reference the transactions and their hashes
      *
-     * @return true
+     * @return True if DB was checked, false if DB checks skipped.
      */
-    bool get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>>& txs) const;
+    bool get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>>& txs);
 
     /**
      * @brief tell the pool that certain transactions were just relayed
      *
      * @param hashes list of tx hashes that are about to be relayed
      * @param tx_relay update how the tx left this node
+     * @param just_broadcasted true if a tx was just broadcasted
+     *
      */
-    void set_relayed(epee::span<const crypto::hash> hashes, relay_method tx_relay);
+    void set_relayed(epee::span<const crypto::hash> hashes, relay_method tx_relay, std::vector<bool> &just_broadcasted);
 
     /**
      * @brief get the total number of transactions in the pool
@@ -403,6 +421,13 @@ namespace cryptonote
      * @param bytes the max cumulative txpool weight in bytes
      */
     void set_txpool_max_weight(size_t bytes);
+
+    /**
+     * @brief reduce the cumulative txpool weight by the weight provided
+     *
+     * @param weight the weight to reduce the total txpool weight by
+     */
+    void reduce_txpool_weight(size_t weight);
 
 #define CURRENT_MEMPOOL_ARCHIVE_VER    11
 #define CURRENT_MEMPOOL_TX_DETAILS_ARCHIVE_VER    13
@@ -547,6 +572,7 @@ namespace cryptonote
      *
      * @return true if the transaction is good to go, otherwise false
      */
+    bool is_transaction_ready_to_go(txpool_tx_meta_t& txd, const crypto::hash &txid, const cryptonote::blobdata_ref &txblob, transaction&tx) const;
     bool is_transaction_ready_to_go(txpool_tx_meta_t& txd, const crypto::hash &txid, const cryptonote::blobdata &txblob, transaction&tx) const;
 
     /**
@@ -620,6 +646,9 @@ private:
     mutable std::unordered_map<crypto::hash, std::tuple<bool, tx_verification_context, uint64_t, crypto::hash>> m_input_cache;
 
     std::unordered_map<crypto::hash, transaction> m_parsed_tx_cache;
+
+    //! Next timestamp that a DB check for relayable txes is allowed
+    std::atomic<time_t> m_next_check;
   };
 }
 

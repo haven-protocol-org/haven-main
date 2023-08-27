@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -165,9 +165,6 @@ bool txpool_double_spend_base::timestamp_change_pause(cryptonote::core& /*c*/, s
 
 bool txpool_double_spend_base::check_changed(cryptonote::core& c, const size_t ev_index, relay_test condition)
 {
-  const std::size_t public_hash_count = m_broadcasted_hashes.size();
-  const std::size_t all_hash_count = m_all_hashes.size();
-
   const std::size_t new_broadcasted_hash_count = m_broadcasted_hashes.size() + unsigned(condition == relay_test::broadcasted);
   const std::size_t new_all_hash_count = m_all_hashes.size() + unsigned(condition == relay_test::hidden) + unsigned(condition == relay_test::no_relay);
 
@@ -393,7 +390,7 @@ bool txpool_double_spend_base::check_changed(cryptonote::core& c, const size_t e
     }
   }
 
-  for (const std::pair<crypto::hash, uint64_t>& hash : m_all_hashes)
+  for (const std::pair<const crypto::hash, uint64_t>& hash : m_all_hashes)
   {
     cryptonote::blobdata tx_blob{};
     if (!c.get_pool_transaction(hash.first, tx_blob, cryptonote::relay_category::all))
@@ -411,7 +408,7 @@ bool txpool_double_spend_base::check_changed(cryptonote::core& c, const size_t e
     for (const crypto::hash& hash : m_no_relay_hashes)
       difference.erase(hash);
 
-    for (const std::pair<crypto::hash, uint64_t>& hash : difference)
+    for (const std::pair<const crypto::hash, uint64_t>& hash : difference)
     {
       if (c.pool_has_tx(hash.first))
       {

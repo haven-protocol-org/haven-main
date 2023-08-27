@@ -1,6 +1,8 @@
 // Copyright (c) 2016, Monero Research Labs
+// Portions Copyright (c) 2019-2023, Haven Protocol
 //
 // Author: Shen Noether <shen.noether@gmx.com>
+// Authors: neac <neac@havenprotocol.org>, dweab <dweab@havenprotocol.org>, akil <akil@havenprotocol.org>
 //
 // All rights reserved.
 //
@@ -54,6 +56,10 @@ extern "C" {
 #include "rctTypes.h"
 #include "rctOps.h"
 
+#include "offshore/pricing_record.h"
+#include "cryptonote_protocol/enums.h"
+
+
 //Define this flag when debugging to get additional info on the console
 #ifdef DBG
 #define DP(x) dp(x)
@@ -68,75 +74,80 @@ namespace hw {
 
 namespace rct {
 
-  bool verifyBorromean(const boroSig &bb, const key64 P1, const key64 P2);
+    boroSig genBorromean(const key64 x, const key64 P1, const key64 P2, const bits indices);
+    bool verifyBorromean(const boroSig &bb, const key64 P1, const key64 P2);
 
-  //Multilayered Spontaneous Anonymous Group Signatures (MLSAG signatures)
-  //These are aka MG signatutes in earlier drafts of the ring ct paper
-  // c.f. https://eprint.iacr.org/2015/1098 section 2.
-  // Gen creates a signature which proves that for some column in the keymatrix "pk"
-  //   the signer knows a secret key for each row in that column
-  // Ver verifies that the MG sig was created correctly
-  bool MLSAG_Ver(const key &message, const keyM &pk, const mgSig &sig, size_t dsRows);
+    //Multilayered Spontaneous Anonymous Group Signatures (MLSAG signatures)
+    //These are aka MG signatutes in earlier drafts of the ring ct paper
+    // c.f. https://eprint.iacr.org/2015/1098 section 2.
+    // Gen creates a signature which proves that for some column in the keymatrix "pk"
+    //   the signer knows a secret key for each row in that column
+    // Ver verifies that the MG sig was created correctly
+    mgSig MLSAG_Gen(const key &message, const keyM & pk, const keyV & xx, const unsigned int index, size_t dsRows, hw::device &hwdev);
+    bool MLSAG_Ver(const key &message, const keyM &pk, const mgSig &sig, size_t dsRows);
 
-  clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const keyV & C_nonzero, const key & C_offset, const key & z, const unsigned int l, const multisig_kLRki *kLRki, key *mscout, key *mspout);
-  clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const keyV & C_nonzero, const key & C_offset, const key & z, const unsigned int l);
-  clsag proveRctCLSAGSimple(const key &, const ctkeyV &, const ctkey &, const key &, const key &, const multisig_kLRki *, key *, key *, unsigned int, hw::device &);
-  bool verRctCLSAGSimple(const key &, const clsag &, const ctkeyV &, const key &);
+    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l, hw::device &hwdev);
+    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l);
+    clsag proveRctCLSAGSimple(const key &, const ctkeyV &, const ctkey &, const key &, const key &, unsigned int, hw::device &);
+    bool verRctCLSAGSimple(const key &, const clsag &, const ctkeyV &, const key &);
 
-  //proveRange and verRange
-  //proveRange gives C, and mask such that \sumCi = C
-  //   c.f. https://eprint.iacr.org/2015/1098 section 5.1
-  //   and Ci is a commitment to either 0 or 2^i, i=0,...,63
-  //   thus this proves that "amount" is in [0, 2^64]
-  //   mask is a such that C = aG + bH, and b = amount
-  //verRange verifies that \sum Ci = C and that each Ci is a commitment to 0 or 2^i
-  bool verRange(const key & C, const rangeSig & as);
+    //proveRange and verRange
+    //proveRange gives C, and mask such that \sumCi = C
+    //   c.f. https://eprint.iacr.org/2015/1098 section 5.1
+    //   and Ci is a commitment to either 0 or 2^i, i=0,...,63
+    //   thus this proves that "amount" is in [0, 2^64]
+    //   mask is a such that C = aG + bH, and b = amount
+    //verRange verifies that \sum Ci = C and that each Ci is a commitment to 0 or 2^i
+    rangeSig proveRange(key & C, key & mask, const xmr_amount & amount);
+    bool verRange(const key & C, const rangeSig & as);
 
-  //Ring-ct MG sigs
-  //Prove:
-  //   c.f. https://eprint.iacr.org/2015/1098 section 4. definition 10.
-  //   This does the MG sig on the "dest" part of the given key matrix, and
-  //   the last row is the sum of input commitments from that column - sum output commitments
-  //   this shows that sum inputs = sum outputs
-  //Ver:
-  //   verifies the above sig is created corretly
-  bool verRctMG(const mgSig &mg, const ctkeyM & pubs, const ctkeyV & outPk, const key &txnFee, const key &message);
-  bool verRctMGSimple(const key &message, const mgSig &mg, const ctkeyV & pubs, const key & C);
+    //Ring-ct MG sigs
+    //Prove:
+    //   c.f. https://eprint.iacr.org/2015/1098 section 4. definition 10.
+    //   This does the MG sig on the "dest" part of the given key matrix, and
+    //   the last row is the sum of input commitments from that column - sum output commitments
+    //   this shows that sum inputs = sum outputs
+    //Ver:
+    //   verifies the above sig is created corretly
+    mgSig proveRctMG(const ctkeyM & pubs, const ctkeyV & inSk, const keyV &outMasks, const ctkeyV & outPk, unsigned int index, const key &txnFee, const key &message, hw::device &hwdev);
+    mgSig proveRctMGSimple(const key & message, const ctkeyV & pubs, const ctkey & inSk, const key &a , const key &Cout, unsigned int index, hw::device &hwdev);
+    bool verRctMG(const mgSig &mg, const ctkeyM & pubs, const ctkeyV & outPk, const key &txnFee, const key &message);
+    bool verRctMGSimple(const key &message, const mgSig &mg, const ctkeyV & pubs, const key & C);
 
-  //These functions get keys from blockchain
-  //replace these when connecting blockchain
-  //getKeyFromBlockchain grabs a key from the blockchain at "reference_index" to mix with
-  //populateFromBlockchain creates a keymatrix with "mixin" columns and one of the columns is inPk
-  //   the return value are the key matrix, and the index where inPk was put (random).
-  void getKeyFromBlockchain(ctkey & a, size_t reference_index);
-  std::tuple<ctkeyM, xmr_amount> populateFromBlockchain(ctkeyV inPk, int mixin);
+    //These functions get keys from blockchain
+    //replace these when connecting blockchain
+    //getKeyFromBlockchain grabs a key from the blockchain at "reference_index" to mix with
+    //populateFromBlockchain creates a keymatrix with "mixin" columns and one of the columns is inPk
+    //   the return value are the key matrix, and the index where inPk was put (random).
+    void getKeyFromBlockchain(ctkey & a, size_t reference_index);
+    std::tuple<ctkeyM, xmr_amount> populateFromBlockchain(ctkeyV inPk, int mixin);
 
-  //RingCT protocol
-  //genRct:
-  //   creates an rctSig with all data necessary to verify the rangeProofs and that the signer owns one of the
-  //   columns that are claimed as inputs, and that the sum of inputs  = sum of outputs.
-  //   Also contains masked "amount" and "mask" so the receiver can see how much they received
-  //verRct:
-  //   verifies that all signatures (rangeProogs, MG sig, sum inputs = outputs) are correct
-  //decodeRct: (c.f. https://eprint.iacr.org/2015/1098 section 5.1.1)
-  //   uses the attached ecdh info to find the amounts represented by each output commitment
-  //   must know the destination private key to find the correct amount, else will return a random number
-  rctSig genRctSimple(const key & message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<size_t>& inamounts_col_indices, const uint64_t onshore_col_amount, const std::string in_asset_type, const std::vector<std::pair<std::string,std::pair<xmr_amount,bool>>> & outamounts, const keyV &amount_keys, const std::vector<multisig_kLRki> *kLRki, multisig_out *msout, xmr_amount txnFee, xmr_amount txnOffshoreFee, unsigned int mixin, const RCTConfig &rct_config, hw::device &hwdev, const offshore::pricing_record& pr, uint8_t tx_version);
-  rctSig genRctSimple(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<size_t>& inamounts_col_indices, const uint64_t onshore_col_amount, const std::string in_asset_type, const std::vector<std::pair<std::string,std::pair<xmr_amount,bool>>> & outamounts, xmr_amount txnFee, xmr_amount txnOffshoreFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<multisig_kLRki> *kLRki, multisig_out *msout, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev, const offshore::pricing_record& pr, uint8_t tx_version);
-  bool verRct(const rctSig & rv, bool semantics);
-  static inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
-  bool verRctSemanticsSimple2(const rctSig & rv, const offshore::pricing_record& pr, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest, uint64_t amount_burnt, const std::vector<cryptonote::tx_out> &vout, const std::vector<cryptonote::txin_v> &vin, const uint8_t version, const std::vector<uint32_t>& collateral_indices, const uint64_t amount_collateral);
+    //RingCT protocol
+    //genRct:
+    //   creates an rctSig with all data necessary to verify the rangeProofs and that the signer owns one of the
+    //   columns that are claimed as inputs, and that the sum of inputs  = sum of outputs.
+    //   Also contains masked "amount" and "mask" so the receiver can see how much they received
+    //verRct:
+    //   verifies that all signatures (rangeProogs, MG sig, sum inputs = outputs) are correct
+    //decodeRct: (c.f. https://eprint.iacr.org/2015/1098 section 5.1.1)
+    //   uses the attached ecdh info to find the amounts represented by each output commitment
+    //   must know the destination private key to find the correct amount, else will return a random number
+    rctSig genRct(const key &message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & amounts, const ctkeyM &mixRing, const keyV &amount_keys, unsigned int index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev);
+    rctSig genRct(const key &message, const ctkeyV & inSk, const ctkeyV  & inPk, const keyV & destinations, const std::vector<xmr_amount> & amounts, const keyV &amount_keys, const int mixin, const RCTConfig &rct_config, hw::device &hwdev);
+  rctSig genRctSimple(const key &message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const cryptonote::transaction_type tx_type, const std::string& in_asset_type, const std::vector<xmr_amount> &inamounts, const std::vector<size_t>& inamounts_col_indices, const std::vector<xmr_amount> &outamounts, const std::map<size_t, std::pair<std::string, std::pair<bool,bool>>>& outamounts_features, const keyV &amount_keys, const xmr_amount txnFee, const xmr_amount txnOffshoreFee, const xmr_amount onshore_col_amount, unsigned int mixin, uint8_t tx_version, const offshore::pricing_record& pr, const uint64_t& conversion_rate, const uint32_t hf_version, const RCTConfig &rct_config, hw::device &hwdev);
+  rctSig genRctSimple(const key &message, const ctkeyV & inSk, const keyV & destinations, const cryptonote::transaction_type tx_type, const std::string& in_asset_type, const std::vector<xmr_amount> &inamounts, const std::vector<size_t>& inamounts_col_indices, const std::vector<xmr_amount> &outamounts, const std::map<size_t, std::pair<std::string, std::pair<bool,bool>>>& outamounts_features, const xmr_amount txnFee, const xmr_amount txnOffshoreFee, const xmr_amount onshore_col_amount, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, uint8_t tx_version, const offshore::pricing_record& pr, const uint64_t& conversion_rate, const uint32_t hf_version, const RCTConfig &rct_config, hw::device &hwdev);
+    bool verRct(const rctSig & rv, bool semantics);
+    static inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
+  bool verRctSemanticsSimple2(const rctSig & rv, const offshore::pricing_record& pr, const uint64_t& conversion_rate, const uint64_t& fee_conversion_rate, const uint64_t& tx_fee_conversion_rate, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest, uint64_t amount_burnt, const std::vector<cryptonote::tx_out> &vout, const std::vector<cryptonote::txin_v> &vin, const uint8_t version, const uint64_t amount_collateral, const uint64_t amount_slippage);
   bool verRctSemanticsSimple(const rctSig & rv, const offshore::pricing_record& pr, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest);
-  bool verRctNonSemanticsSimple(const rctSig & rv);
-  xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
-  xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
-  xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
-  xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
-  key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
-  bool signMultisig(rctSig &rv, const std::vector<unsigned int> &indices, const keyV &k, const multisig_out &msout, const key &secret_key);
-  bool accMultisig(std::vector<rctSig> &rv,rctSig &recvRc,const std::vector<unsigned int> &indices);
+    bool verRctNonSemanticsSimple(const rctSig & rv);
+    xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
+    xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
+    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
+    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
+    key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
 
-  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const std::string& source, const std::string& destination, const uint8_t version);
+  bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const uint64_t& conversion_rate, const std::string& source, const std::string& destination, const uint8_t version);
 }
 #endif  /* RCTSIGS_H */
 

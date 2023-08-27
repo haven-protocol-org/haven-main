@@ -2,7 +2,7 @@
 /// @author rfree (current maintainer/user in monero.cc project - most of code is from CryptoNote)
 /// @brief This is the original cryptonote protocol network-events handler, modified by us
 
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -37,6 +37,7 @@
 #include <boost/program_options/variables_map.hpp>
 #include <string>
 
+#include "byte_slice.h"
 #include "math_helper.h"
 #include "storages/levin_abstract_invoke2.h"
 #include "warnings.h"
@@ -45,6 +46,8 @@
 #include "block_queue.h"
 #include "common/perf_timer.h"
 #include "cryptonote_basic/connection_context.h"
+#include "net/levin_base.h"
+#include "p2p/net_node_common.h"
 #include <boost/circular_buffer.hpp>
 
 PUSH_WARNINGS
@@ -100,22 +103,35 @@ namespace cryptonote
     void set_p2p_endpoint(nodetool::i_p2p_endpoint<connection_context>* p2p);
     //bool process_handshake_data(const blobdata& data, cryptonote_connection_context& context);
     bool process_payload_sync_data(const CORE_SYNC_DATA& hshd, cryptonote_connection_context& context, bool is_inital);
-    bool get_payload_sync_data(blobdata& data);
+    bool get_payload_sync_data(epee::byte_slice& data);
     bool get_payload_sync_data(CORE_SYNC_DATA& hshd);
     bool on_callback(cryptonote_connection_context& context);
     t_core& get_core(){return m_core;}
-    bool is_synchronized(){return m_synchronized;}
+    virtual bool is_synchronized() const final { return !no_sync() && m_synchronized; }
     void log_connections();
     std::list<connection_info> get_connections();
     const block_queue &get_block_queue() const { return m_block_queue; }
     void stop();
     void on_connection_close(cryptonote_connection_context &context);
-    void set_max_out_peers(unsigned int max) { m_max_out_peers = max; }
+    void set_max_out_peers(epee::net_utils::zone zone, unsigned int max) { CRITICAL_REGION_LOCAL(m_max_out_peers_lock); m_max_out_peers[zone] = max; }
+    unsigned int get_max_out_peers(epee::net_utils::zone zone) const
+    {
+      CRITICAL_REGION_LOCAL(m_max_out_peers_lock);
+      const auto it = m_max_out_peers.find(zone);
+      if (it == m_max_out_peers.end())
+      {
+        MWARNING(epee::net_utils::zone_to_string(zone) << " max out peers not set, using default");
+        return P2P_DEFAULT_CONNECTIONS_COUNT;
+      }
+      return it->second;
+    }
     bool no_sync() const { return m_no_sync; }
     void set_no_sync(bool value) { m_no_sync = value; }
     std::string get_peers_overview() const;
     std::pair<uint32_t, uint32_t> get_next_needed_pruning_stripe() const;
-    bool needs_new_sync_connections() const;
+    bool needs_new_sync_connections(epee::net_utils::zone zone) const;
+    bool is_busy_syncing();
+
   private:
     //----------------- commands handlers ----------------------------------------------
     int handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_connection_context& context);
@@ -141,13 +157,15 @@ namespace cryptonote
     bool should_ask_for_pruned_data(cryptonote_connection_context& context, uint64_t first_block_height, uint64_t nblocks, bool check_block_weights) const;
     void drop_connection(cryptonote_connection_context &context, bool add_fail, bool flush_all_spans);
     void drop_connection_with_score(cryptonote_connection_context &context, unsigned int score, bool flush_all_spans);
+    void drop_connections(const epee::net_utils::network_address address);
     bool kick_idle_peers();
     bool check_standby_peers();
     bool update_sync_search();
     int try_add_next_blocks(cryptonote_connection_context &context);
     void notify_new_stripe(cryptonote_connection_context &context, uint32_t stripe);
-    void skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const;
+    size_t skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const;
     bool request_txpool_complement(cryptonote_connection_context &context);
+    void hit_score(cryptonote_connection_context &context, int32_t score);
 
     t_core& m_core;
 
@@ -160,10 +178,12 @@ namespace cryptonote
     std::atomic<bool> m_ask_for_txpool_complement;
     boost::mutex m_sync_lock;
     block_queue m_block_queue;
-    epee::math_helper::once_a_time_seconds<30> m_idle_peer_kicker;
+    epee::math_helper::once_a_time_seconds<8> m_idle_peer_kicker;
     epee::math_helper::once_a_time_milliseconds<100> m_standby_checker;
     epee::math_helper::once_a_time_seconds<101> m_sync_search_checker;
-    std::atomic<unsigned int> m_max_out_peers;
+    epee::math_helper::once_a_time_seconds<43> m_bad_peer_checker;
+    std::unordered_map<epee::net_utils::zone, unsigned int> m_max_out_peers;
+    mutable epee::critical_section m_max_out_peers_lock;
     tools::PerformanceTimer m_sync_timer, m_add_timer;
     uint64_t m_last_add_end_time;
     uint64_t m_sync_spans_downloaded, m_sync_old_spans_downloaded, m_sync_bad_spans_downloaded;
@@ -183,14 +203,17 @@ namespace cryptonote
     double get_avg_block_size();
     boost::circular_buffer<size_t> m_avg_buffer = boost::circular_buffer<size_t>(10);
 
+    boost::mutex m_bad_peer_check_lock;
+
     template<class t_parameter>
       bool post_notify(typename t_parameter::request& arg, cryptonote_connection_context& context)
       {
         LOG_PRINT_L2("[" << epee::net_utils::print_connection_context_short(context) << "] post " << typeid(t_parameter).name() << " -->");
-        std::string blob;
-        epee::serialization::store_t_to_binary(arg, blob);
+
+        epee::levin::message_writer out{256 * 1024}; // optimize for block responses
+        epee::serialization::store_t_to_binary(arg, out.buffer);
         //handler_response_blocks_now(blob.size()); // XXX
-        return m_p2p->invoke_notify_to_peer(t_parameter::ID, epee::strspan<uint8_t>(blob), context);
+        return m_p2p->invoke_notify_to_peer(t_parameter::ID, std::move(out), context);
       }
   };
 

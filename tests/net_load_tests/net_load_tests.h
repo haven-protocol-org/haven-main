@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -48,6 +48,9 @@ namespace net_load_tests
   struct test_connection_context : epee::net_utils::connection_context_base
   {
     test_connection_context(): epee::net_utils::connection_context_base(boost::uuids::nil_uuid(), {}, false, false), m_closed(false) {}
+    static constexpr int handshake_command() noexcept { return 1001; }
+    static constexpr bool handshake_complete() noexcept { return true; }
+    size_t get_max_bytes(int command) const { return LEVIN_DEFAULT_MAX_PACKET_SIZE; }
     volatile bool m_closed;
   };
 
@@ -64,7 +67,7 @@ namespace net_load_tests
     {
     }
 
-    virtual int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, test_connection_context& context)
+    virtual int invoke(int command, const epee::span<const uint8_t> in_buff, epee::byte_stream& buff_out, test_connection_context& context)
     {
       //m_invoke_counter.inc();
       //std::unique_lock<std::mutex> lock(m_mutex);

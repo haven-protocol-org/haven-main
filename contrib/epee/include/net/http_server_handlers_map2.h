@@ -74,7 +74,13 @@
       uint64_t ticks = misc_utils::get_tick_count(); \
       boost::value_initialized<command_type::request> req; \
       bool parse_res = epee::serialization::load_t_from_json(static_cast<command_type::request&>(req), query_info.m_body); \
-      CHECK_AND_ASSERT_MES(parse_res, false, "Failed to parse json: \r\n" << query_info.m_body); \
+      if (!parse_res) \
+      { \
+         MERROR("Failed to parse json: \r\n" << query_info.m_body); \
+         response_info.m_response_code = 400; \
+         response_info.m_response_comment = "Bad request"; \
+         return true; \
+      } \
       uint64_t ticks1 = epee::misc_utils::get_tick_count(); \
       boost::value_initialized<command_type::response> resp;\
       MINFO(m_conn_context << "calling " << s_pattern); \
@@ -104,7 +110,13 @@
       uint64_t ticks = misc_utils::get_tick_count(); \
       boost::value_initialized<command_type::request> req; \
       bool parse_res = epee::serialization::load_t_from_binary(static_cast<command_type::request&>(req), epee::strspan<uint8_t>(query_info.m_body)); \
-      CHECK_AND_ASSERT_MES(parse_res, false, "Failed to parse bin body data, body size=" << query_info.m_body.size()); \
+      if (!parse_res) \
+      { \
+         MERROR("Failed to parse bin body data, body size=" << query_info.m_body.size()); \
+         response_info.m_response_code = 400; \
+         response_info.m_response_comment = "Bad request"; \
+         return true; \
+      } \
       uint64_t ticks1 = misc_utils::get_tick_count(); \
       boost::value_initialized<command_type::response> resp;\
       MINFO(m_conn_context << "calling " << s_pattern); \
@@ -118,8 +130,10 @@
         return true; \
       } \
       uint64_t ticks2 = misc_utils::get_tick_count(); \
-      epee::serialization::store_t_to_binary(static_cast<command_type::response&>(resp), response_info.m_body); \
+      epee::byte_slice buffer; \
+      epee::serialization::store_t_to_binary(static_cast<command_type::response&>(resp), buffer, 64 * 1024); \
       uint64_t ticks3 = epee::misc_utils::get_tick_count(); \
+      response_info.m_body.assign(reinterpret_cast<const char*>(buffer.data()), buffer.size()); \
       response_info.m_mime_tipe = " application/octet-stream"; \
       response_info.m_header_info.m_content_type = " application/octet-stream"; \
       MDEBUG( s_pattern << "() processed with " << ticks1-ticks << "/"<< ticks2-ticks1 << "/" << ticks3-ticks2 << "ms"); \

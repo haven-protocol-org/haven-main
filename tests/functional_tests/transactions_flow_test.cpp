@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -41,7 +41,6 @@ using namespace cryptonote;
 namespace
 {
   uint64_t const TEST_FEE = 5000000000; // 5 * 10^9
-  uint64_t const TEST_DUST_THRESHOLD = 5000000000; // 5 * 10^9
 }
 
 std::string generate_random_wallet_name()

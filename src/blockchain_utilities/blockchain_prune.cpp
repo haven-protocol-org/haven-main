@@ -1,4 +1,5 @@
-// Copyright (c) 2018, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
+
 //
 // All rights reserved.
 //
@@ -29,6 +30,8 @@
 #include <array>
 #include <lmdb.h>
 #include <boost/algorithm/string.hpp>
+#include <boost/system/error_code.hpp>
+#include <boost/filesystem.hpp>
 #include "common/command_line.h"
 #include "common/pruning.h"
 #include "cryptonote_core/cryptonote_core.h"

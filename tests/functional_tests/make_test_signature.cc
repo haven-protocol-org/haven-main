@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -28,6 +28,7 @@
 
 #include <stdio.h>
 #include "misc_language.h"
+#include "misc_log_ex.h"
 #include "string_tools.h"
 #include "rpc/rpc_payment_signature.h"
 

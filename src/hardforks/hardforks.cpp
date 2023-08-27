@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -46,10 +46,11 @@ const hardfork_t mainnet_hard_forks[] = {
   { 17, 886575, 0, 1624833973 },  // Fork time is on or around 27th June 2021 at 22:26 GMT. Fork time finalised on 2021-07-12. Yes, this is a fork set in the past, because of a chain rollback.
   { 18, 973400, 0, 1636625720 },  // Fork time is on or around 18th November 2021 at 10:30 GMT. Fork time finalised on 2021-11-11.
   { 19, 1033025, 0, 1643968173 }, // Fork time is on or around 9th February 2022 at 11:00 GMT. Fork time finalised on 2022-02-04.
-  { 20, 1272875, 0, 1671618321 }  // Fork time is on or around 9th January 2023 at 10:00 GMT. Fork time finalised on 2022-12-21.
- };
+  { 20, 1272875, 0, 1671618321 }, // Fork time is on or around 9th January 2023 at 10:00 GMT. Fork time finalised on 2022-12-21.
+  { 21, 1439500, 0, 1690797000 }  // Fork time is on or around 29th August 2023 at 10:00 GMT. Fork time finalised on 2023-07-31.
+};
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
-const uint64_t mainnet_hard_fork_version_1_till = 38499;
+const uint64_t mainnet_hard_fork_version_1_till = 1009826;
 
 const hardfork_t testnet_hard_forks[] = {
   // version 1 from the start of the blockchain
@@ -66,10 +67,11 @@ const hardfork_t testnet_hard_forks[] = {
   { 17, 55, 0, 1593619255 },
   { 18, 60, 0, 1593919255 },
   { 19, 65, 0, 1641373507 },
-  { 20, 100, 0, 1657094479 }
+  { 20, 100, 0, 1657094479 },
+  { 21, 300, 0, 1680518049 }
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
-const uint64_t testnet_hard_fork_version_1_till = 24;
+const uint64_t testnet_hard_fork_version_1_till = 624633;
 
 const hardfork_t stagenet_hard_forks[] = {
   // version 1 from the start of the blockchain
@@ -89,4 +91,3 @@ const hardfork_t stagenet_hard_forks[] = {
   { 20, 256500, 0, 1669894250 } // Fork time is on or around 2st December 2022 at 12:30 GMT. Fork time finalised on 2022-12-01.
 };
 const size_t num_stagenet_hard_forks = sizeof(stagenet_hard_forks) / sizeof(stagenet_hard_forks[0]);
-const uint64_t stagenet_hard_fork_version_1_till = 24;

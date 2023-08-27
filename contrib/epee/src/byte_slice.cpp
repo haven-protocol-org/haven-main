@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -35,6 +35,11 @@
 
 #include "byte_slice.h"
 #include "byte_stream.h"
+
+namespace
+{
+  const std::size_t page_size = 4096;
+}
 
 namespace epee
 {
@@ -146,7 +151,7 @@ namespace epee
     : byte_slice()
   {
     std::size_t space_needed = 0;
-    for (const auto source : sources)
+    for (const auto& source : sources)
       space_needed += source.size();
 
     if (space_needed)
@@ -155,7 +160,7 @@ namespace epee
       span<std::uint8_t> out{reinterpret_cast<std::uint8_t*>(storage.get() + 1), space_needed};
       portion_ = {out.data(), out.size()};
 
-      for (const auto source : sources)
+      for (const auto& source : sources)
       {
         std::memcpy(out.data(), source.data(), source.size());
         if (out.remove_prefix(source.size()) < source.size())
@@ -173,16 +178,27 @@ namespace epee
     : byte_slice(adapt_buffer{}, std::move(buffer))
   {}
 
-  byte_slice::byte_slice(byte_stream&& stream) noexcept
+  byte_slice::byte_slice(byte_stream&& stream, const bool shrink)
     : storage_(nullptr), portion_(stream.data(), stream.size())
   {
-    if (stream.size())
+    if (portion_.size())
     {
-      std::uint8_t* const data = stream.take_buffer().release() - sizeof(raw_byte_slice);
+      byte_buffer buf;
+      if (shrink && page_size <= stream.available())
+      {
+          buf = byte_buffer_resize(stream.take_buffer(), portion_.size());
+          if (!buf)
+            throw std::bad_alloc{};
+          portion_ = {buf.get(), portion_.size()};
+      }
+      else // no need to shrink buffer
+        buf = stream.take_buffer();
+
+      std::uint8_t* const data = buf.release() - sizeof(raw_byte_slice);
       new (data) raw_byte_slice{};
       storage_.reset(reinterpret_cast<raw_byte_slice*>(data));
     }
-    else
+    else // empty stream
       portion_ = nullptr;
   }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -64,6 +64,7 @@ bool matches_category(relay_method method, relay_category category) noexcept
   {
     default:
     case relay_method::local:
+    case relay_method::forward:
     case relay_method::stem:
       return false;
     case relay_method::block:
@@ -80,6 +81,7 @@ void txpool_tx_meta_t::set_relay_method(relay_method method) noexcept
   kept_by_block = 0;
   do_not_relay = 0;
   is_local = 0;
+  is_forwarding = 0;
   dandelionpp_stem = 0;
 
   switch (method)
@@ -90,8 +92,8 @@ void txpool_tx_meta_t::set_relay_method(relay_method method) noexcept
     case relay_method::local:
       is_local = 1;
       break;
-    default:
-    case relay_method::fluff:
+    case relay_method::forward:
+      is_forwarding = 1;
       break;
     case relay_method::stem:
       dandelionpp_stem = 1;
@@ -99,26 +101,45 @@ void txpool_tx_meta_t::set_relay_method(relay_method method) noexcept
     case relay_method::block:
       kept_by_block = 1;
       break;
+    default:
+    case relay_method::fluff:
+      break;
   }
 }
 
 relay_method txpool_tx_meta_t::get_relay_method() const noexcept
 {
-  if (kept_by_block)
-    return relay_method::block;
-  if (do_not_relay)
-    return relay_method::none;
-  if (is_local)
-    return relay_method::local;
-  if (dandelionpp_stem)
-    return relay_method::stem;
+  const uint8_t state =
+    uint8_t(kept_by_block) +
+    (uint8_t(do_not_relay) << 1) +
+    (uint8_t(is_local) << 2) +
+    (uint8_t(is_forwarding) << 3) +
+    (uint8_t(dandelionpp_stem) << 4);
+
+  switch (state)
+  {
+    default: // error case
+    case 0:
+      break;
+    case 1:
+      return relay_method::block;
+    case 2:
+      return relay_method::none;
+    case 4:
+      return relay_method::local;
+    case 8:
+      return relay_method::forward;
+    case 16:
+      return relay_method::stem;
+  };
   return relay_method::fluff;
 }
 
 bool txpool_tx_meta_t::upgrade_relay_method(relay_method method) noexcept
 {
   static_assert(relay_method::none < relay_method::local, "bad relay_method value");
-  static_assert(relay_method::local < relay_method::stem, "bad relay_method value");
+  static_assert(relay_method::local < relay_method::forward, "bad relay_method value");
+  static_assert(relay_method::forward < relay_method::stem, "bad relay_method value");
   static_assert(relay_method::stem < relay_method::fluff, "bad relay_method value");
   static_assert(relay_method::fluff < relay_method::block, "bad relay_method value");
 
@@ -159,7 +180,7 @@ void BlockchainDB::pop_block()
   pop_block(blk, txs);
 }
 
-void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair<transaction, blobdata>& txp, const crypto::hash* tx_hash_ptr, const crypto::hash* tx_prunable_hash_ptr)
+void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& txp, const crypto::hash* tx_hash_ptr, const crypto::hash* tx_prunable_hash_ptr)
 {
   const transaction &tx = txp.first;
 
@@ -185,21 +206,9 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
 
   for (const txin_v& tx_input : tx.vin)
   {
-    if (tx_input.type() == typeid(txin_to_key))
+    if (tx_input.type() == typeid(txin_haven_key))
     {
-      add_spent_key(boost::get<txin_to_key>(tx_input).k_image);
-    }
-    else if (tx_input.type() == typeid(txin_onshore))
-    {
-      add_spent_key(boost::get<txin_onshore>(tx_input).k_image);
-    }
-    else if (tx_input.type() == typeid(txin_offshore))
-    {
-      add_spent_key(boost::get<txin_offshore>(tx_input).k_image);
-    }
-    else if (tx_input.type() == typeid(txin_xasset))
-    {
-      add_spent_key(boost::get<txin_xasset>(tx_input).k_image);
+      add_spent_key(boost::get<txin_haven_key>(tx_input).k_image);
     }
     else if (tx_input.type() == typeid(txin_gen))
     {
@@ -208,27 +217,8 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
     else
     {
-      LOG_PRINT_L1("Unsupported input type, removing key images and aborting transaction addition");
-      for (const txin_v& tx_input : tx.vin)
-      {
-        if (tx_input.type() == typeid(txin_to_key))
-        {
-          remove_spent_key(boost::get<txin_to_key>(tx_input).k_image);
-        }
-        else if (tx_input.type() == typeid(txin_onshore))
-        {
-          remove_spent_key(boost::get<txin_onshore>(tx_input).k_image);
-        }
-        else if (tx_input.type() == typeid(txin_offshore))
-        {
-          remove_spent_key(boost::get<txin_offshore>(tx_input).k_image);
-        }
-        else if (tx_input.type() == typeid(txin_xasset))
-        {
-          remove_spent_key(boost::get<txin_xasset>(tx_input).k_image);
-        }
-      }
-      return;
+      LOG_PRINT_L1("Unsupported input type, aborting transaction addition");
+      throw std::runtime_error("Unexpected input type, aborting");
     }
   }
 
@@ -238,10 +228,18 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
 
   // iterate tx.vout using indices instead of C++11 foreach syntax because
   // we need the index
-  for (size_t i = 0; i < tx.vout.size(); ++i)
+  for (uint64_t i = 0; i < tx.vout.size(); ++i)
   {
     uint64_t unlock_time = 0;
-    if (tx.version >= POU_TRANSACTION_VERSION)
+    if (tx.version >= HAVEN_TYPES_TRANSACTION_VERSION)
+    {
+      bool ok = cryptonote::get_output_unlock_time(tx.vout[i], unlock_time);
+      if (!ok) {
+        LOG_ERROR("Unsupported output type, failed to get unlock_time, aborting transaction addition");
+        throw std::runtime_error("Unexpected output unlock_time, aborting");
+      }
+    }
+    else if (tx.version >= POU_TRANSACTION_VERSION)
     {
       unlock_time = tx.output_unlock_times[i];
     }
@@ -249,7 +247,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     {
       unlock_time = tx.unlock_time;
     }
-
+    
     // miner v2 txes have their coinbase output in one single out to save space,
     // and we store them as rct outputs with an identity mask
     if (miner_tx && tx.version >= 2)
@@ -262,11 +260,19 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
     else
     {
-      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3) {
+      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3 || tx.rct_signatures.type == rct::RCTTypeBulletproofPlus) {
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
       } else {
+        std::string output_asset_type;
+        bool r = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);
+        if (!r) {
+          LOG_ERROR("Unsupported output type, failed to get asset type, aborting transaction addition");
+          throw std::runtime_error("Unexpected output asset type, aborting");
+        }
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time,
-                                              tx.version > 1 ? ((tx.vout[i].target.type() == typeid(txout_xasset)) ? &tx.rct_signatures.outPk_xasset[i].mask : (tx.vout[i].target.type() == typeid(txout_offshore)) ? &tx.rct_signatures.outPk_usd[i].mask : &tx.rct_signatures.outPk[i].mask) : NULL);
+                                              tx.version > 1 ? ((output_asset_type == "XHV") ? &tx.rct_signatures.outPk[i].mask :
+                                                                (output_asset_type == "XUSD") ? &tx.rct_signatures.outPk_usd[i].mask :
+                                                                &tx.rct_signatures.outPk_xasset[i].mask) : NULL);
       }
     }
   }
@@ -300,20 +306,18 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
 
   uint64_t num_rct_outs = 0;
   offshore::asset_type_counts num_rct_outs_by_asset_type;
-  add_transaction(blk_hash, std::make_pair(blk.miner_tx, tx_to_blob(blk.miner_tx)));
+  blobdata miner_bd = tx_to_blob(blk.miner_tx);
+  add_transaction(blk_hash, std::make_pair(blk.miner_tx, blobdata_ref(miner_bd)));
   if (blk.miner_tx.version >= 2)
   {
     num_rct_outs += blk.miner_tx.vout.size();
 
     // count the current block's rct outs by asset type
     for (auto& vout: blk.miner_tx.vout) {
-      if (vout.target.type() == typeid(txout_offshore)) {
-        num_rct_outs_by_asset_type.add("XUSD", 1);
-      } else if (vout.target.type() == typeid(txout_xasset)) {
-        num_rct_outs_by_asset_type.add(boost::get<cryptonote::txout_xasset>(vout.target).asset_type, 1);
-      } else if (vout.target.type() == typeid(txout_to_key)) {
-        num_rct_outs_by_asset_type.add("XHV", 1);
-      }
+      std::string asset_type;
+      if (!get_output_asset_type(vout, asset_type))
+        throw std::runtime_error("Failed to get output asset type");
+      num_rct_outs_by_asset_type.add(asset_type, 1);
     }
   }
   int tx_i = 0;
@@ -324,17 +328,12 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
     add_transaction(blk_hash, tx, &tx_hash);
     for (const auto &vout: tx.first.vout)
     {
-      if (vout.amount == 0)
-      {
+      if (vout.amount == 0) {
         ++num_rct_outs;
-
-        if (vout.target.type() == typeid(txout_offshore)) {
-          num_rct_outs_by_asset_type.add("XUSD", 1);
-        } else if (vout.target.type() == typeid(txout_xasset)) {
-          num_rct_outs_by_asset_type.add(boost::get<cryptonote::txout_xasset>(vout.target).asset_type, 1);
-        } else if (vout.target.type() == typeid(txout_to_key)) {
-          num_rct_outs_by_asset_type.add("XHV", 1);
-        }
+      std::string asset_type;
+      if (!get_output_asset_type(vout, asset_type))
+        throw std::runtime_error("Failed to get output asset type");
+      num_rct_outs_by_asset_type.add(asset_type, 1);
       }
     }
     ++tx_i;
@@ -374,7 +373,7 @@ void BlockchainDB::pop_block(block& blk, std::vector<transaction>& txs)
     txs.push_back(std::move(tx));
     remove_transaction(h, false/*miner_tx*/);
   }
-  remove_transaction(get_transaction_hash(blk.miner_tx), true /*miner_tx*/);
+  remove_transaction(get_transaction_hash(blk.miner_tx), true/*miner_tx*/);
 }
 
 bool BlockchainDB::is_open() const
@@ -388,21 +387,9 @@ void BlockchainDB::remove_transaction(const crypto::hash& tx_hash, bool miner_tx
 
   for (const txin_v& tx_input : tx.vin)
   {
-    if (tx_input.type() == typeid(txin_to_key))
+    if (tx_input.type() == typeid(txin_haven_key))
     {
-      remove_spent_key(boost::get<txin_to_key>(tx_input).k_image);
-    }
-    else if (tx_input.type() == typeid(txin_onshore))
-    {
-      remove_spent_key(boost::get<txin_onshore>(tx_input).k_image);
-    }
-    else if (tx_input.type() == typeid(txin_offshore))
-    {
-      remove_spent_key(boost::get<txin_offshore>(tx_input).k_image);
-    }
-    else if (tx_input.type() == typeid(txin_xasset))
-    {
-      remove_spent_key(boost::get<txin_xasset>(tx_input).k_image);
+      remove_spent_key(boost::get<txin_haven_key>(tx_input).k_image);
     }
   }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -46,32 +46,31 @@ namespace
     uint64_t m_block_reward;
   };
 
-  // this chain started at version 5
   #define TEST_ALREADY_GENERATED_COINS(already_generated_coins, expected_reward)                              \
-    m_block_not_too_big = get_block_reward(0, current_block_weight, already_generated_coins, m_block_reward, 5); \
+    m_block_not_too_big = get_block_reward(0, current_block_weight, already_generated_coins, m_block_reward,1); \
     ASSERT_TRUE(m_block_not_too_big);                                                                         \
     ASSERT_EQ(m_block_reward, expected_reward);
 
   TEST_F(block_reward_and_already_generated_coins, handles_first_values)
   {
-  	// 35184372088831 for th initial block
-    TEST_ALREADY_GENERATED_COINS(0, UINT64_C(35184372088831));
-    TEST_ALREADY_GENERATED_COINS(m_block_reward, UINT64_C(35184304979968));
-    TEST_ALREADY_GENERATED_COINS(UINT64_C(2756434948434199641), UINT64_C(29926889658499));
+  	// 17592186044415 from neozaru, confirmed by fluffypony
+    TEST_ALREADY_GENERATED_COINS(0, UINT64_C(17592186044415));
+    TEST_ALREADY_GENERATED_COINS(m_block_reward, UINT64_C(17592169267200));
+    TEST_ALREADY_GENERATED_COINS(UINT64_C(2756434948434199641), UINT64_C(14963444829249));
   }
 
   TEST_F(block_reward_and_already_generated_coins, correctly_steps_from_2_to_1)
   {
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((2 << 20) + 1), FINAL_SUBSIDY_PER_MINUTE * 2);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY -  (2 << 20)     , FINAL_SUBSIDY_PER_MINUTE * 2);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((2 << 20) - 1), FINAL_SUBSIDY_PER_MINUTE * 2);
+    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((2 << 20) + 1), FINAL_SUBSIDY_PER_MINUTE);
+    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY -  (2 << 20)     , FINAL_SUBSIDY_PER_MINUTE);
+    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((2 << 20) - 1), FINAL_SUBSIDY_PER_MINUTE);
   }
 
   TEST_F(block_reward_and_already_generated_coins, handles_max)
   {
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((1 << 20) + 1), FINAL_SUBSIDY_PER_MINUTE * 2);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY -  (1 << 20)     , FINAL_SUBSIDY_PER_MINUTE * 2);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((1 << 20) - 1), FINAL_SUBSIDY_PER_MINUTE * 2);
+    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((1 << 20) + 1), FINAL_SUBSIDY_PER_MINUTE);
+    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY -  (1 << 20)     , FINAL_SUBSIDY_PER_MINUTE);
+    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((1 << 20) - 1), FINAL_SUBSIDY_PER_MINUTE);
   }
 
   //--------------------------------------------------------------------------------------------------------------------
@@ -80,14 +79,14 @@ namespace
   protected:
     virtual void SetUp()
     {
-      m_block_not_too_big = get_block_reward(0, 0, already_generated_coins, m_standard_block_reward, 5);
+      m_block_not_too_big = get_block_reward(0, 0, already_generated_coins, m_standard_block_reward, 1);
       ASSERT_TRUE(m_block_not_too_big);
-      ASSERT_LT(CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5, m_standard_block_reward);
+      ASSERT_LT(CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1, m_standard_block_reward);
     }
 
     void do_test(size_t median_block_weight, size_t current_block_weight)
     {
-      m_block_not_too_big = get_block_reward(median_block_weight, current_block_weight, already_generated_coins, m_block_reward, 5);
+      m_block_not_too_big = get_block_reward(median_block_weight, current_block_weight, already_generated_coins, m_block_reward, 1);
     }
 
     static const uint64_t already_generated_coins = 0;
@@ -99,28 +98,28 @@ namespace
 
   TEST_F(block_reward_and_current_block_weight, handles_block_weight_less_relevance_level)
   {
-    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 - 1);
+    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 - 1);
     ASSERT_TRUE(m_block_not_too_big);
     ASSERT_EQ(m_block_reward, m_standard_block_reward);
   }
 
   TEST_F(block_reward_and_current_block_weight, handles_block_weight_eq_relevance_level)
   {
-    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5);
+    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
     ASSERT_TRUE(m_block_not_too_big);
     ASSERT_EQ(m_block_reward, m_standard_block_reward);
   }
 
   TEST_F(block_reward_and_current_block_weight, handles_block_weight_gt_relevance_level)
   {
-    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 + 1);
+    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 + 1);
     ASSERT_TRUE(m_block_not_too_big);
     ASSERT_LT(m_block_reward, m_standard_block_reward);
   }
 
   TEST_F(block_reward_and_current_block_weight, handles_block_weight_less_2_relevance_level)
   {
-    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 - 1);
+    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 - 1);
     ASSERT_TRUE(m_block_not_too_big);
     ASSERT_LT(m_block_reward, m_standard_block_reward);
     ASSERT_LT(0, m_block_reward);
@@ -128,34 +127,16 @@ namespace
 
   TEST_F(block_reward_and_current_block_weight, handles_block_weight_eq_2_relevance_level)
   {
-    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5);
+    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
     ASSERT_TRUE(m_block_not_too_big);
     ASSERT_EQ(0, m_block_reward);
   }
 
   TEST_F(block_reward_and_current_block_weight, handles_block_weight_gt_2_relevance_level)
   {
-    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 + 1);
+    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 + 1);
     ASSERT_FALSE(m_block_not_too_big);
   }
-
-#ifdef __x86_64__ // For 64-bit systems only, because block size is limited to size_t.
-  TEST_F(block_reward_and_current_block_weight, fails_on_huge_median_size)
-  {
-#if !defined(NDEBUG)
-    size_t huge_size = std::numeric_limits<uint32_t>::max() + UINT64_C(2);
-    ASSERT_DEATH(do_test(huge_size, huge_size + 1), "");
-#endif
-  }
-
-  TEST_F(block_reward_and_current_block_weight, fails_on_huge_block_weight)
-  {
-#if !defined(NDEBUG)
-    size_t huge_size = std::numeric_limits<uint32_t>::max() + UINT64_C(2);
-    ASSERT_DEATH(do_test(huge_size - 2, huge_size), "");
-#endif
-  }
-#endif // __x86_64__
 
   //--------------------------------------------------------------------------------------------------------------------
   class block_reward_and_last_block_weights : public ::testing::Test

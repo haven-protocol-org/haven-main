@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -46,10 +46,12 @@ public:
     //! true if hold
     virtual bool isPending() const override;
     virtual bool isFailed() const override;
+    virtual bool isCoinbase() const override;
     virtual uint64_t amount() const override;
     //! always 0 for incoming txes
     virtual uint64_t fee() const override;
     virtual uint64_t blockHeight() const override;
+    virtual std::string description() const override;
     virtual std::set<uint32_t> subaddrIndex() const override;
     virtual uint32_t subaddrAccount() const override;
     virtual std::string label() const override;
@@ -57,7 +59,6 @@ public:
     virtual std::string hash() const override;
     virtual std::time_t timestamp() const override;
     virtual std::string paymentId() const override;
-    virtual std::string assetType() const override;
     virtual const std::vector<Transfer> &transfers() const override;
     virtual uint64_t confirmations() const override;
     virtual uint64_t unlockTime() const override;
@@ -66,16 +67,17 @@ private:
     int         m_direction;
     bool        m_pending;
     bool        m_failed;
+    bool        m_coinbase;
     uint64_t    m_amount;
     uint64_t    m_fee;
     uint64_t    m_blockheight;
+    std::string m_description;
     std::set<uint32_t> m_subaddrIndex;        // always unique index for incoming transfers; can be multiple indices for outgoing transfers
     uint32_t m_subaddrAccount;
     std::string m_label;
     std::string m_hash;
     std::time_t m_timestamp;
     std::string m_paymentid;
-    std::string m_assettype;
     std::vector<Transfer> m_transfers;
     uint64_t    m_confirmations;
     uint64_t    m_unlock_time;
@@ -85,5 +87,3 @@ private:
 };
 
 } // namespace
-
-namespace Bitmonero = Monero;

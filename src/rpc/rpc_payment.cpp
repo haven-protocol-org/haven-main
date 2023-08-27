@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -27,14 +27,13 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <boost/archive/portable_binary_iarchive.hpp>
-#include <boost/archive/portable_binary_oarchive.hpp>
+#include <boost/filesystem.hpp>
 #include "cryptonote_config.h"
 #include "include_base_utils.h"
 #include "string_tools.h"
 #include "file_io_utils.h"
 #include "int-util.h"
 #include "common/util.h"
-#include "serialization/crypto.h"
 #include "common/unordered_containers_boost_serialization.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -244,10 +243,8 @@ namespace cryptonote
     }
     else
     {
-      //const int cn_variant = hashing_blob[0] >= 7 ? hashing_blob[0] - 6 : 0;
-      //crypto::cn_slow_hash(hashing_blob.data(), hashing_blob.size(), hash, cn_variant, cryptonote::get_block_height(block));
-      cn_pow_hash_v3 cph;
-      cph.hash(hashing_blob.data(), hashing_blob.size(), hash.data);
+      const int cn_variant = hashing_blob[0] >= 7 ? hashing_blob[0] - 6 : 0;
+      crypto::cn_slow_hash(hashing_blob.data(), hashing_blob.size(), hash, cn_variant, cryptonote::get_block_height(block));
     }
     if (!check_hash(hash, m_diff))
     {
@@ -296,16 +293,33 @@ namespace cryptonote
     MINFO("loading rpc payments data from " << state_file_path);
     std::ifstream data;
     data.open(state_file_path, std::ios_base::binary | std::ios_base::in);
+    std::string bytes(std::istream_iterator<char>{data}, std::istream_iterator<char>{});
     if (!data.fail())
     {
+      bool loaded = false;
       try
       {
-        boost::archive::portable_binary_iarchive a(data);
-        a >> *this;
+        binary_archive<false> ar{epee::strspan<std::uint8_t>(bytes)};
+        if (::serialization::serialize(ar, *this))
+          if (::serialization::check_stream_state(ar))
+            loaded = true;
       }
-      catch (const std::exception &e)
+      catch (...) {}
+      if (!loaded)
       {
-        MERROR("Failed to load RPC payments file: " << e.what());
+        bytes.clear();
+        bytes.shrink_to_fit();
+        try
+        {
+          boost::archive::portable_binary_iarchive a(data);
+          a >> *this;
+          loaded = true;
+        }
+        catch (...) {}
+      }
+      if (!loaded)
+      {
+        MERROR("Failed to load RPC payments file");
         m_client_info.clear();
       }
     }
@@ -346,8 +360,9 @@ namespace cryptonote
       MWARNING("Failed to save RPC payments to file " << state_file_path);
       return false;
     };
-    boost::archive::portable_binary_oarchive a(data);
-    a << *this;
+    binary_archive<true> ar(data);
+    if (!::serialization::serialize(ar, *const_cast<rpc_payment*>(this)))
+      return false;
     return true;
     CATCH_ENTRY_L0("rpc_payment::store", false);
   }

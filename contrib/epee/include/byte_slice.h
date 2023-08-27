@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -112,7 +112,7 @@ namespace epee
     explicit byte_slice(std::string&& buffer);
 
     //! Convert `stream` into a slice with zero allocations.
-    explicit byte_slice(byte_stream&& stream) noexcept;
+    explicit byte_slice(byte_stream&& stream, bool shrink = true);
 
     byte_slice(byte_slice&& source) noexcept;
     ~byte_slice() noexcept = default;

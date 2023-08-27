@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -28,6 +28,7 @@
 
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/filesystem/path.hpp>
 #include "common/command_line.h"
 #include "common/varint.h"
 #include "cryptonote_core/tx_pool.h"
@@ -124,7 +125,7 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  mlog_configure(mlog_get_default_log_path("monero-blockchain-usage.log"), true);
+  mlog_configure(mlog_get_default_log_path("haven-blockchain-usage.log"), true);
   if (!command_line::is_arg_defaulted(vm, arg_log_level))
     mlog_set_log(command_line::get_arg(vm, arg_log_level).c_str());
   else
@@ -180,7 +181,6 @@ int main(int argc, char* argv[])
 
   LOG_PRINT_L0("Building usage patterns...");
 
-  size_t done = 0;
   std::unordered_map<output_data, std::list<reference>> outputs;
   std::unordered_map<uint64_t,uint64_t> indices;
 
@@ -195,7 +195,7 @@ int main(int argc, char* argv[])
     {
       if (opt_rct_only && out.amount)
         continue;
-      uint64_t index = indices[out.amount]++;
+      indices[out.amount]++;
       output_data od(out.amount, indices[out.amount], coinbase, height);
       auto itb = outputs.emplace(od, std::list<reference>());
       itb.first->first.info(coinbase, height);

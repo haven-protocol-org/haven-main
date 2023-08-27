@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -30,6 +30,8 @@
 // check local first (in the event of static or in-source compilation of libunbound)
 #include "unbound.h"
 
+#include <deque>
+#include <set>
 #include <stdlib.h>
 #include "include_base_utils.h"
 #include "common/threadpool.h"
@@ -37,6 +39,7 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/optional.hpp>
+#include <boost/utility/string_ref.hpp>
 using namespace epee;
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -101,6 +104,9 @@ get_builtin_ds(void)
 {
   static const char * const ds[] =
   {
+    /*
+    ". IN DS 2371 13 2 F445719FF7944CEC584133E9D0273FFD534E1C9E21F1F7F5FF5DCEB4E5068051\n",
+    */
     ". IN DS 19036 8 2 49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5\n",
     ". IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D\n",
     NULL
@@ -124,6 +130,7 @@ static const char *get_record_name(int record_type)
     case DNS_TYPE_A: return "A";
     case DNS_TYPE_TXT: return "TXT";
     case DNS_TYPE_AAAA: return "AAAA";
+    case DNS_TYPE_TLSA: return "TLSA";
     default: return "unknown";
   }
 }
@@ -184,6 +191,13 @@ boost::optional<std::string> txt_to_string(const char* src, size_t len)
   if (len == 0)
     return boost::none;
   return std::string(src+1, len-1);
+}
+
+boost::optional<std::string> tlsa_to_string(const char* src, size_t len)
+{
+  if (len < 4)
+    return boost::none;
+  return std::string(src, len);
 }
 
 // custom smart pointer.
@@ -326,11 +340,15 @@ std::vector<std::string> DNSResolver::get_record(const std::string& url, int rec
   // destructor takes care of cleanup
   ub_result_ptr result;
 
+  MDEBUG("Performing DNSSEC " << get_record_name(record_type) << " record query for " << url);
+
   // call DNS resolver, blocking.  if return value not zero, something went wrong
   if (!ub_resolve(m_data->m_ub_context, string_copy(url.c_str()), record_type, DNS_CLASS_IN, &result))
   {
     dnssec_available = (result->secure || result->bogus);
     dnssec_valid = result->secure && !result->bogus;
+    if (dnssec_available && !dnssec_valid)
+      MWARNING("Invalid DNSSEC " << get_record_name(record_type) << " record signature for " << url << ": " << result->why_bogus);
     if (result->havedata)
     {
       for (size_t i=0; result->data[i] != NULL; i++)
@@ -338,8 +356,9 @@ std::vector<std::string> DNSResolver::get_record(const std::string& url, int rec
         boost::optional<std::string> res = (*reader)(result->data[i], result->len[i]);
         if (res)
         {
-          MINFO("Found \"" << *res << "\" in " << get_record_name(record_type) << " record for " << url);
-          addresses.push_back(*res);
+          // do not dump dns record directly from dns into log
+          MINFO("Found " << get_record_name(record_type) << " record for " << url);
+          addresses.push_back(std::move(*res));
         }
       }
     }
@@ -361,6 +380,17 @@ std::vector<std::string> DNSResolver::get_ipv6(const std::string& url, bool& dns
 std::vector<std::string> DNSResolver::get_txt_record(const std::string& url, bool& dnssec_available, bool& dnssec_valid)
 {
   return get_record(url, DNS_TYPE_TXT, txt_to_string, dnssec_available, dnssec_valid);
+}
+
+std::vector<std::string> DNSResolver::get_tlsa_tcp_record(const boost::string_ref url, const boost::string_ref port, bool& dnssec_available, bool& dnssec_valid)
+{
+  std::string service_addr;
+  service_addr.reserve(url.size() + port.size() + 7);
+  service_addr.push_back('_');
+  service_addr.append(port.data(), port.size());
+  service_addr.append("._tcp.");
+  service_addr.append(url.data(), url.size());
+  return get_record(service_addr, DNS_TYPE_TLSA, tlsa_to_string, dnssec_available, dnssec_valid);
 }
 
 std::string DNSResolver::get_dns_format_from_oa_address(const std::string& oa_addr)
@@ -484,51 +514,29 @@ std::string get_account_address_as_str_from_url(const std::string& url, bool& dn
   return dns_confirm(url, addresses, dnssec_valid);
 }
 
-namespace
-{
-  bool dns_records_match(const std::vector<std::string>& a, const std::vector<std::string>& b)
-  {
-    if (a.size() != b.size()) return false;
-
-    for (const auto& record_in_a : a)
-    {
-      bool ok = false;
-      for (const auto& record_in_b : b)
-      {
-	if (record_in_a == record_in_b)
-	{
-	  ok = true;
-	  break;
-	}
-      }
-      if (!ok) return false;
-    }
-
-    return true;
-  }
-}
-
 bool load_txt_records_from_dns(std::vector<std::string> &good_records, const std::vector<std::string> &dns_urls)
 {
   // Prevent infinite recursion when distributing
   if (dns_urls.empty()) return false;
 
-  std::vector<std::vector<std::string> > records;
+  std::vector<std::set<std::string> > records;
   records.resize(dns_urls.size());
 
   size_t first_index = crypto::rand_idx(dns_urls.size());
 
   // send all requests in parallel
   std::deque<bool> avail(dns_urls.size(), false), valid(dns_urls.size(), false);
-  tools::threadpool& tpool = tools::threadpool::getInstance();
-  tools::threadpool::waiter waiter;
+  tools::threadpool& tpool = tools::threadpool::getInstanceForIO();
+  tools::threadpool::waiter waiter(tpool);
   for (size_t n = 0; n < dns_urls.size(); ++n)
   {
     tpool.submit(&waiter,[n, dns_urls, &records, &avail, &valid](){
-      records[n] = tools::DNSResolver::instance().get_txt_record(dns_urls[n], avail[n], valid[n]); 
+       const auto res = tools::DNSResolver::instance().get_txt_record(dns_urls[n], avail[n], valid[n]);
+       for (const auto &s: res)
+         records[n].insert(s);
     });
   }
-  waiter.wait(&tpool);
+  waiter.wait();
 
   size_t cur_index = first_index;
   do
@@ -568,29 +576,31 @@ bool load_txt_records_from_dns(std::vector<std::string> &good_records, const std
     return false;
   }
 
-  int good_records_index = -1;
-  for (size_t i = 0; i < records.size() - 1; ++i)
+  typedef std::map<std::set<std::string>, uint32_t> map_t;
+  map_t record_count;
+  for (const auto &e: records)
   {
-    if (records[i].size() == 0) continue;
-
-    for (size_t j = i + 1; j < records.size(); ++j)
-    {
-      if (dns_records_match(records[i], records[j]))
-      {
-        good_records_index = i;
-        break;
-      }
-    }
-    if (good_records_index >= 0) break;
+    if (!e.empty())
+      ++record_count[e];
   }
 
-  if (good_records_index < 0)
+  map_t::const_iterator good_record = record_count.end();
+  for (map_t::const_iterator i = record_count.begin(); i != record_count.end(); ++i)
   {
-    LOG_PRINT_L0("WARNING: no two DNS TXT records matched");
+    if (good_record == record_count.end() || i->second > good_record->second)
+      good_record = i;
+  }
+
+  MDEBUG("Found " << (good_record == record_count.end() ? 0 : good_record->second) << "/" << dns_urls.size() << " matching records from " << num_valid_records << " valid records");
+  if (good_record == record_count.end() || good_record->second < dns_urls.size() / 2 + 1)
+  {
+    LOG_PRINT_L0("WARNING: no majority of DNS TXT records matched (only " << good_record->second << "/" << dns_urls.size() << ")");
     return false;
   }
 
-  good_records = records[good_records_index];
+  good_records = {};
+  for (const auto &s: good_record->first)
+    good_records.push_back(s);
   return true;
 }
 

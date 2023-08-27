@@ -1,4 +1,5 @@
-// Copyright (c) 2018, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
+
 //
 // All rights reserved.
 //
@@ -287,6 +288,11 @@ namespace nodetool
     copy_peers(peers.white, m_peers_white.get<by_addr>());
     copy_peers(peers.gray, m_peers_gray.get<by_addr>());
     copy_peers(peers.anchor, m_peers_anchor.get<by_addr>());
+  }
+
+  void peerlist_manager::evict_host_from_peerlist(bool use_white, const peerlist_entry& pr)
+  {
+    filter(use_white, [&pr](const peerlist_entry& pe){ return pe.adr.is_same_host(pr.adr); });
   }
 }
 

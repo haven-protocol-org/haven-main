@@ -1,4 +1,5 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2019-2023, Haven Protocol
+// Portions copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -40,7 +41,7 @@ inline bool do_serialize(Archive<false>& ar, std::string& str)
   ar.serialize_varint(size);
   if (ar.remaining_bytes() < size)
   {
-    ar.stream().setstate(std::ios::failbit);
+    ar.set_fail();
     return false;
   }
 
@@ -50,7 +51,6 @@ inline bool do_serialize(Archive<false>& ar, std::string& str)
   str.append(buf.get(), size);
   return true;
 }
-
 
 template <template <bool> class Archive>
 inline bool do_serialize(Archive<true>& ar, std::string& str)

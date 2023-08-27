@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -48,7 +48,6 @@ namespace socks
 {
     namespace
     {
-        constexpr const unsigned v4_reply_size = 8;
         constexpr const std::uint8_t v4_connect_command = 1;
         constexpr const std::uint8_t v4tor_resolve_command = 0xf0;
         constexpr const std::uint8_t v4_request_granted = 90;
@@ -322,8 +321,9 @@ namespace socks
             {
                 if (self && self->proxy_.is_open())
                 {
-                    self->proxy_.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-                    self->proxy_.close();
+                    boost::system::error_code ec;
+                    self->proxy_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+                    self->proxy_.close(ec);
                 }
             });
         }

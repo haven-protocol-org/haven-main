@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -47,7 +47,6 @@
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.inl"
 #include "core_proxy.h"
-#include "version.h"
 
 #if defined(WIN32)
 #include <crtdbg.h>
@@ -246,10 +245,15 @@ bool tests::proxy_core::init(const boost::program_options::variables_map& /*vm*/
     return true;
 }
 
-bool tests::proxy_core::have_block(const crypto::hash& id) {
+bool tests::proxy_core::have_block_unlocked(const crypto::hash& id, int *where) {
     if (m_hash2blkidx.end() == m_hash2blkidx.find(id))
         return false;
+    if (where) *where = HAVE_BLOCK_MAIN_CHAIN;
     return true;
+}
+
+bool tests::proxy_core::have_block(const crypto::hash& id, int *where) {
+    return have_block_unlocked(id, where);
 }
 
 void tests::proxy_core::build_short_history(std::list<crypto::hash> &m_history, const crypto::hash &m_start) {

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019, The Monero Project
+# Copyright (c) 2014-2022, The Monero Project
 #
 # All rights reserved.
 #
@@ -31,13 +31,12 @@ set(difficulty_sources
 
 set(difficulty_headers)
 
-add_executable(difficulty-tests
+monero_add_minimal_executable(difficulty-tests
   ${difficulty_sources}
   ${difficulty_headers})
 target_link_libraries(difficulty-tests
   PRIVATE
-  cryptonote_basic
-  offshore
+    cryptonote_basic
     ${EXTRA_LIBRARIES})
 set_property(TARGET difficulty-tests
   PROPERTY

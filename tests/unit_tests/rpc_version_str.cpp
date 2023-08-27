@@ -1,4 +1,4 @@
-// Copyright (c) 2019, The Monero Project
+// Copyright (c) 2019-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -31,20 +31,19 @@
 #include "rpc/rpc_version_str.h"
 #include "version.h"
 
-// those tests are invalid for haven version string
-// TEST(rpc, is_version_string_valid)
-// {
-//   using namespace cryptonote::rpc;
-//   ASSERT_TRUE(is_version_string_valid(MONERO_VERSION));
-//   ASSERT_TRUE(is_version_string_valid("0.14.1.2"));
-//   ASSERT_TRUE(is_version_string_valid("0.15.0.0-release"));
-//   ASSERT_TRUE(is_version_string_valid("0.15.0.0-fe3f6a3e6"));
+TEST(rpc, is_version_string_valid)
+{
+  using namespace cryptonote::rpc;
+  ASSERT_TRUE(is_version_string_valid(MONERO_VERSION));
+  ASSERT_TRUE(is_version_string_valid("0.14.1.2"));
+  ASSERT_TRUE(is_version_string_valid("0.15.0.0-release"));
+  ASSERT_TRUE(is_version_string_valid("0.15.0.0-fe3f6a3e6"));
 
-//   ASSERT_FALSE(is_version_string_valid(""));
-//   ASSERT_FALSE(is_version_string_valid("invalid"));
-//   ASSERT_FALSE(is_version_string_valid("0.15.0.0-invalid"));
-//   ASSERT_FALSE(is_version_string_valid("0.15.0.0-release0"));
-//   ASSERT_FALSE(is_version_string_valid("0.15.0.0-release "));
-//   ASSERT_FALSE(is_version_string_valid("0.15.0.0-fe3f6a3e60"));
-//   ASSERT_FALSE(is_version_string_valid("0.15.0.0-fe3f6a3e6 "));
-// }
+  ASSERT_FALSE(is_version_string_valid(""));
+  ASSERT_FALSE(is_version_string_valid("invalid"));
+  ASSERT_FALSE(is_version_string_valid("0.15.0.0-invalid"));
+  ASSERT_FALSE(is_version_string_valid("0.15.0.0-release0"));
+  ASSERT_FALSE(is_version_string_valid("0.15.0.0-release "));
+  ASSERT_FALSE(is_version_string_valid("0.15.0.0-fe3f6a3e60"));
+  ASSERT_FALSE(is_version_string_valid("0.15.0.0-fe3f6a3e6 "));
+}

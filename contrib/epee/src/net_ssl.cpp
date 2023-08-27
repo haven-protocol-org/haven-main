@@ -1,4 +1,5 @@
-// Copyright (c) 2018, The Monero Project
+// Copyright (c) 2018-2022, The Monero Project
+
 // 
 // All rights reserved.
 // 
@@ -29,12 +30,17 @@
 #include <string.h>
 #include <thread>
 #include <boost/asio/ssl.hpp>
+#include <boost/cerrno.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <boost/asio/strand.hpp>
+#include <condition_variable>
 #include <boost/lambda/lambda.hpp>
 #include <openssl/ssl.h>
 #include <openssl/pem.h>
 #include "misc_log_ex.h"
 #include "net/net_helper.h"
 #include "net/net_ssl.h"
+#include "file_io_utils.h" // to validate .crt and .key paths
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.ssl"
@@ -353,6 +359,15 @@ boost::asio::ssl::context ssl_options_t::create_context() const
   }
 
   CHECK_AND_ASSERT_THROW_MES(auth.private_key_path.empty() == auth.certificate_path.empty(), "private key and certificate must be either both given or both empty");
+
+  const bool private_key_exists = epee::file_io_utils::is_file_exist(auth.private_key_path);
+  const bool certificate_exists = epee::file_io_utils::is_file_exist(auth.certificate_path);
+  if (private_key_exists && !certificate_exists) {
+    ASSERT_MES_AND_THROW("private key is present, but certificate file '" << auth.certificate_path << "' is missing");
+  } else if (!private_key_exists && certificate_exists) {
+    ASSERT_MES_AND_THROW("certificate is present, but private key file '" << auth.private_key_path << "' is missing");
+  }
+
   if (auth.private_key_path.empty())
   {
     EVP_PKEY *pkey;
@@ -389,7 +404,12 @@ boost::asio::ssl::context ssl_options_t::create_context() const
 
 void ssl_authentication_t::use_ssl_certificate(boost::asio::ssl::context &ssl_context) const
 {
-  ssl_context.use_private_key_file(private_key_path, boost::asio::ssl::context::pem);
+  try {
+    ssl_context.use_private_key_file(private_key_path, boost::asio::ssl::context::pem);
+  } catch (const boost::system::system_error&) {
+    MERROR("Failed to load private key file '" << private_key_path << "' into SSL context");
+    throw;
+  }
   ssl_context.use_certificate_chain_file(certificate_path);
 }
 
@@ -470,11 +490,10 @@ bool ssl_options_t::has_fingerprint(boost::asio::ssl::verify_context &ctx) const
   return false;
 }
 
-bool ssl_options_t::handshake(
+void ssl_options_t::configure(
   boost::asio::ssl::stream<boost::asio::ip::tcp::socket> &socket,
   boost::asio::ssl::stream_base::handshake_type type,
-  const std::string& host,
-  std::chrono::milliseconds timeout) const
+  const std::string& host) const
 {
   socket.next_layer().set_option(boost::asio::ip::tcp::no_delay(true));
 
@@ -511,7 +530,7 @@ bool ssl_options_t::handshake(
         // autodetect will reconnect without SSL - warn and keep connection encrypted
         if (support != ssl_support_t::e_ssl_support_autodetect)
         {
-          MERROR("SSL certificate is not in the allowed list, connection droppped");
+          MERROR("SSL certificate is not in the allowed list, connection dropped");
           return false;
         }
         MWARNING("SSL peer has not been verified");
@@ -519,30 +538,98 @@ bool ssl_options_t::handshake(
       return true;
     });
   }
+}
 
-  auto& io_service = GET_IO_SERVICE(socket);
-  boost::asio::steady_timer deadline(io_service, timeout);
-  deadline.async_wait([&socket](const boost::system::error_code& error) {
-    if (error != boost::asio::error::operation_aborted)
+bool ssl_options_t::handshake(
+  boost::asio::ssl::stream<boost::asio::ip::tcp::socket> &socket,
+  boost::asio::ssl::stream_base::handshake_type type,
+  boost::asio::const_buffer buffer,
+  const std::string& host,
+  std::chrono::milliseconds timeout) const
+{
+  configure(socket, type, host);
+
+  auto start_handshake = [&]{
+    using ec_t = boost::system::error_code;
+    using timer_t = boost::asio::steady_timer;
+    using strand_t = boost::asio::io_service::strand;
+    using socket_t = boost::asio::ip::tcp::socket;
+
+    auto &io_context = GET_IO_SERVICE(socket);
+    if (io_context.stopped())
+      io_context.reset();
+    strand_t strand(io_context);
+    timer_t deadline(io_context, timeout);
+
+    struct state_t {
+      std::mutex lock;
+      std::condition_variable_any condition;
+      ec_t result;
+      bool wait_timer;
+      bool wait_handshake;
+      bool cancel_timer;
+      bool cancel_handshake;
+    };
+    state_t state{};
+
+    state.wait_timer = true;
+    auto on_timer = [&](const ec_t &ec){
+      std::lock_guard<std::mutex> guard(state.lock);
+      state.wait_timer = false;
+      state.condition.notify_all();
+      if (!state.cancel_timer) {
+        state.cancel_handshake = true;
+        ec_t ec;
+        socket.next_layer().cancel(ec);
+      }
+    };
+
+    state.wait_handshake = true;
+    auto on_handshake = [&](const ec_t &ec, size_t bytes_transferred){
+      std::lock_guard<std::mutex> guard(state.lock);
+      state.wait_handshake = false;
+      state.condition.notify_all();
+      state.result = ec;
+      if (!state.cancel_handshake) {
+        state.cancel_timer = true;
+        ec_t ec;
+        deadline.cancel(ec);
+      }
+    };
+
+    deadline.async_wait(on_timer);
+    strand.post(
+      [&]{
+        socket.async_handshake(
+          type,
+          boost::asio::buffer(buffer),
+          strand.wrap(on_handshake)
+        );
+      }
+    );
+
+    while (!io_context.stopped())
     {
-      socket.next_layer().close();
+      io_context.poll_one();
+      std::lock_guard<std::mutex> guard(state.lock);
+      state.condition.wait_for(
+        state.lock,
+        std::chrono::milliseconds(30),
+        [&]{
+          return !state.wait_timer && !state.wait_handshake;
+        }
+      );
+      if (!state.wait_timer && !state.wait_handshake)
+        break;
     }
-  });
-
-  boost::system::error_code ec = boost::asio::error::would_block;
-  socket.async_handshake(type, boost::lambda::var(ec) = boost::lambda::_1);
-  if (io_service.stopped())
-  {
-    io_service.reset();
-  }
-  while (ec == boost::asio::error::would_block && !io_service.stopped())
-  {
-    // should poll_one(), can't run_one() because it can block if there is
-    // another worker thread executing io_service's tasks
-    // TODO: once we get Boost 1.66+, replace with run_one_for/run_until
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    io_service.poll_one();
-  }
+    if (state.result.value()) {
+      ec_t ec;
+      socket.next_layer().shutdown(socket_t::shutdown_both, ec);
+      socket.next_layer().close(ec);
+    }
+    return state.result;
+  };
+  const auto ec = start_handshake();
 
   if (ec)
   {
@@ -564,6 +651,60 @@ bool ssl_support_from_string(ssl_support_t &ssl, boost::string_ref s)
   else
     return false;
   return true;
+}
+
+boost::system::error_code store_ssl_keys(boost::asio::ssl::context& ssl, const boost::filesystem::path& base)
+{
+  EVP_PKEY* ssl_key = nullptr;
+  X509* ssl_cert = nullptr;
+  const auto ctx = ssl.native_handle();
+  CHECK_AND_ASSERT_MES(ctx, boost::system::error_code(EINVAL, boost::system::system_category()), "Context is null");
+  CHECK_AND_ASSERT_MES(base.has_filename(), boost::system::error_code(EINVAL, boost::system::system_category()), "Need filename");
+  std::unique_ptr<SSL, decltype(&SSL_free)> dflt_SSL(SSL_new(ctx), SSL_free);
+  if (!dflt_SSL || !(ssl_key = SSL_get_privatekey(dflt_SSL.get())) || !(ssl_cert = SSL_get_certificate(dflt_SSL.get())))
+    return {EINVAL, boost::system::system_category()};
+
+  using file_closer = int(std::FILE*);
+  boost::system::error_code error{};
+  std::unique_ptr<std::FILE, file_closer*> file{nullptr, std::fclose};
+
+  // write key file unencrypted
+  {
+    const boost::filesystem::path key_file{base.string() + ".key"};
+    file.reset(std::fopen(key_file.string().c_str(), "wb"));
+    if (!file)
+    {
+      if (epee::file_io_utils::is_file_exist(key_file.string())) {
+        MERROR("Permission denied to overwrite SSL private key file: '" << key_file.string() << "'");
+      } else {
+        MERROR("Could not open SSL private key file for writing: '" << key_file.string() << "'");
+      }
+
+      return {errno, boost::system::system_category()};
+    }
+    boost::filesystem::permissions(key_file, boost::filesystem::owner_read, error);
+    if (error)
+      return error;
+    if (!PEM_write_PrivateKey(file.get(), ssl_key, nullptr, nullptr, 0, nullptr, nullptr))
+      return boost::asio::error::ssl_errors(ERR_get_error());
+    if (std::fclose(file.release()) != 0)
+      return {errno, boost::system::system_category()};
+  }
+
+  // write certificate file in standard SSL X.509 unencrypted
+  const boost::filesystem::path cert_file{base.string() + ".crt"};
+  file.reset(std::fopen(cert_file.string().c_str(), "wb"));
+  if (!file)
+    return {errno, boost::system::system_category()};
+  const auto cert_perms = (boost::filesystem::owner_read | boost::filesystem::group_read | boost::filesystem::others_read);
+  boost::filesystem::permissions(cert_file, cert_perms, error);
+  if (error)
+    return error;
+  if (!PEM_write_X509(file.get(), ssl_cert))
+    return boost::asio::error::ssl_errors(ERR_get_error());
+  if (std::fclose(file.release()) != 0)
+    return {errno, boost::system::system_category()};
+  return error;
 }
 
 } // namespace

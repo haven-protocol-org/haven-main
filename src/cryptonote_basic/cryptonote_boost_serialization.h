@@ -1,4 +1,5 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
+// Portions Copyright (c) 2019-2023, Haven Protocol
 // 
 // All rights reserved.
 // 
@@ -36,7 +37,6 @@
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/is_bitwise_serializable.hpp>
-#include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include "cryptonote_basic.h"
@@ -46,7 +46,6 @@
 #include "ringct/rctTypes.h"
 #include "ringct/rctOps.h"
 
-//namespace cryptonote {
 namespace boost
 {
   namespace serialization
@@ -73,7 +72,11 @@ namespace boost
   {
     a & reinterpret_cast<char (&)[sizeof(crypto::key_image)]>(x);
   }
-
+  template <class Archive>
+  inline void serialize(Archive &a, crypto::view_tag &x, const boost::serialization::version_type ver)
+  {
+    a & reinterpret_cast<char (&)[sizeof(crypto::view_tag)]>(x);
+  }
   template <class Archive>
   inline void serialize(Archive &a, crypto::signature &x, const boost::serialization::version_type ver)
   {
@@ -103,7 +106,7 @@ namespace boost
   {
     a & x.key;
   }
-    
+
   template <class Archive>
   inline void serialize(Archive &a, cryptonote::txout_offshore &x, const boost::serialization::version_type ver)
   {
@@ -115,6 +118,25 @@ namespace boost
   {
     a & x.key;
     a & x.asset_type;
+  }
+    
+  template <class Archive>
+  inline void serialize(Archive &a, cryptonote::txout_haven_key &x, const boost::serialization::version_type ver)
+  {
+    a & x.key;
+    a & x.asset_type;
+    a & x.unlock_time;
+    a & x.is_collateral;
+  }
+    
+  template <class Archive>
+  inline void serialize(Archive &a, cryptonote::txout_haven_tagged_key &x, const boost::serialization::version_type ver)
+  {
+    a & x.key;
+    a & x.asset_type;
+    a & x.unlock_time;
+    a & x.is_collateral;
+    a & x.view_tag;
   }
     
   template <class Archive>
@@ -180,64 +202,47 @@ namespace boost
   }
 
   template <class Archive>
+  inline void serialize(Archive &a, cryptonote::txin_haven_key &x, const boost::serialization::version_type ver)
+  {
+    a & x.amount;
+    a & x.asset_type;
+    a & x.key_offsets;
+    a & x.k_image;
+  }
+
+  template <class Archive>
   inline void serialize(Archive &a, cryptonote::tx_out &x, const boost::serialization::version_type ver)
   {
     a & x.amount;
     a & x.target;
   }
 
-
   template <class Archive>
   inline void serialize(Archive &a, cryptonote::transaction_prefix &x, const boost::serialization::version_type ver)
   {
     a & x.version;
-    if (x.version < POU_TRANSACTION_VERSION) {
-      a & x.unlock_time;
-    }
-    a & x.vin;
-    a & x.vout;
-    a & x.extra;
-    if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
+
+    // Only transactions prior to HAVEN_TYPES_TRANSACTION_VERSION are permitted to be anything other than txin_haven_key and txout_haven_key/txout_haven_tagged_key types, and thus need translation
+    if (x.version < HAVEN_TYPES_TRANSACTION_VERSION) {
+
+      serialize_old_tx_prefix(a, x, ver);
+
+    } else {
+
+      // txin_haven_key + txout_haven_key supported on the chain
+      a & x.vin;
+      a & x.vout;
+      a & x.extra;
       a & x.pricing_record_height;
       a & x.amount_burnt;
       a & x.amount_minted;
-      if (x.version < 5)
-        a & x.offshore_data;
-    }
-
-    if (x.version >= POU_TRANSACTION_VERSION) {
-      a & x.output_unlock_times;
-    }
-
-    if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
-      a & x.collateral_indices;
     }
   }
 
   template <class Archive>
   inline void serialize(Archive &a, cryptonote::transaction &x, const boost::serialization::version_type ver)
   {
-    a & x.version;
-    if (x.version < POU_TRANSACTION_VERSION) {
-      a & x.unlock_time;
-    }
-    a & x.vin;
-    a & x.vout;
-    a & x.extra;
-    if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
-      a & x.pricing_record_height;
-      a & x.amount_burnt;
-      a & x.amount_minted;
-      if (x.version < 5)
-        a & x.offshore_data;
-    }
-    if (x.version >= POU_TRANSACTION_VERSION) {
-      a & x.output_unlock_times;
-    }
-
-    if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
-      a & x.collateral_indices;
-    }
+    serialize(a, static_cast<cryptonote::transaction_prefix &>(x), ver);
 
     a & (rct::rctSigBase&)x.rct_signatures;
     if (x.rct_signatures.type != rct::RCTTypeNull)
@@ -252,9 +257,6 @@ namespace boost
     a & b.timestamp;
     a & b.prev_id;
     a & b.nonce;
-    if (b.major_version >= HF_VERSION_OFFSHORE_PRICING) {
-      a & b.pricing_record;
-    }
     //------------------
     a & b.miner_tx;
     a & b.tx_hashes;
@@ -295,6 +297,20 @@ namespace boost
     a & x.a;
     a & x.b;
     a & x.t;
+  }
+
+  template <class Archive>
+  inline void serialize(Archive &a, rct::BulletproofPlus &x, const boost::serialization::version_type ver)
+  {
+    a & x.V;
+    a & x.A;
+    a & x.A1;
+    a & x.B;
+    a & x.r1;
+    a & x.s1;
+    a & x.d1;
+    a & x.L;
+    a & x.R;
   }
 
   template <class Archive>
@@ -342,7 +358,7 @@ namespace boost
   inline void serialize(Archive &a, rct::multisig_out &x, const boost::serialization::version_type ver)
   {
     a & x.c;
-    if (ver < 1u)
+    if (ver < 1)
       return;
     a & x.mu_p;
   }
@@ -375,7 +391,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2 && x.type != rct::RCTTypeHaven3)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2 && x.type != rct::RCTTypeHaven3 && x.type != rct::RCTTypeBulletproofPlus)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -389,7 +405,12 @@ namespace boost
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
     if (ver >= 5u) {
-      if (x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3) {
+      if (x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+        a & x.txnOffshoreFee;
+        if (x.txnOffshoreFee)
+          a & x.maskSums;
+      }
+      if (x.type == rct::RCTTypeHaven2) {
         a & x.txnOffshoreFee;
         a & x.maskSums;
       }
@@ -425,7 +446,11 @@ namespace boost
   {
     a & x.rangeSigs;
     if (x.rangeSigs.empty())
+    {
       a & x.bulletproofs;
+      if (ver >= 2u)
+        a & x.bulletproofs_plus;
+    }
     a & x.MGs;
     if (ver >= 1u)
       a & x.CLSAGs;
@@ -439,7 +464,7 @@ namespace boost
     a & x.type;
     if (x.type == rct::RCTTypeNull)
       return;
-    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2 && x.type != rct::RCTTypeHaven3)
+    if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG && x.type != rct::RCTTypeCLSAGN && x.type != rct::RCTTypeHaven2 && x.type != rct::RCTTypeHaven3 && x.type != rct::RCTTypeBulletproofPlus)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
@@ -453,11 +478,14 @@ namespace boost
       serializeOutPk(a, x.outPk_xasset, ver);
     a & x.txnFee;
     if (ver >= 5u) {
-      if (x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3) {
+      if (x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus) {
+        a & x.txnOffshoreFee;
+        if (x.txnOffshoreFee)
+          a & x.maskSums;
+      } else if (x.type == rct::RCTTypeHaven2) {
         a & x.txnOffshoreFee;
         a & x.maskSums;
-      }
-      if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
+      } else if (x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN) {
         a & x.txnOffshoreFee;
         a & x.txnFee_usd;
         a & x.txnOffshoreFee_usd;
@@ -485,11 +513,15 @@ namespace boost
     //--------------
     a & x.p.rangeSigs;
     if (x.p.rangeSigs.empty())
+    {
       a & x.p.bulletproofs;
+      if (ver >= 6u)
+        a & x.p.bulletproofs_plus;
+    }
     a & x.p.MGs;
-    if ((x.type == rct::RCTTypeCLSAG) || (x.type == rct::RCTTypeCLSAGN) || (x.type == rct::RCTTypeHaven2) || (x.type == rct::RCTTypeHaven3))
+    if (ver >= 1u)
       a & x.p.CLSAGs;
-    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN || x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3)
+    if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeCLSAGN || x.type == rct::RCTTypeHaven2 || x.type == rct::RCTTypeHaven3 || x.type == rct::RCTTypeBulletproofPlus)
       a & x.p.pseudoOuts;
   }
 
@@ -550,13 +582,227 @@ namespace boost
     a & x.signature;
   }
 
-}
-}
+  template <class Archive>
+  inline void serialize_old_tx_prefix(Archive &a, cryptonote::transaction_prefix &x, const boost::serialization::version_type ver) {
 
+    // Support the old "output_unlock_times" vector
+    if (x.version < POU_TRANSACTION_VERSION) {
+      a & x.unlock_time;
+    }
+
+    if (Archive::is_loading::value) {
+      // Loading from archive
+      // Read the input and output vectors
+      a & x.vin;
+      a & x.vout;
+      a & x.extra;
+
+      if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
+        a & x.pricing_record_height;
+        if (x.version < 5)
+          a & x.offshore_data;
+
+        if (x.version >= POU_TRANSACTION_VERSION) {
+          a & x.output_unlock_times;
+        }
+        
+        a & x.amount_burnt;
+        a & x.amount_minted;
+        
+        // Support the old "collateral_indices" vector
+        if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+          a & x.collateral_indices;
+        }
+      }
+
+      // Process the inputs
+      std::vector<cryptonote::txin_v> vin_tmp(x.vin);
+      x.vin.clear();
+      for (auto &vin_entry: vin_tmp) {
+        if (vin_entry.type() == typeid(cryptonote::txin_gen)) {
+          x.vin.push_back(vin_entry);
+          continue;
+        }
+        cryptonote::txin_haven_key in;
+        if (vin_entry.type() == typeid(cryptonote::txin_to_key)) {
+          in.asset_type = "XHV";
+          in.amount = boost::get<cryptonote::txin_to_key>(vin_entry).amount;
+          in.key_offsets = boost::get<cryptonote::txin_to_key>(vin_entry).key_offsets;
+          in.k_image = boost::get<cryptonote::txin_to_key>(vin_entry).k_image;
+        } else if (vin_entry.type() == typeid(cryptonote::txin_offshore)) {
+          in.asset_type = "XUSD";
+          in.amount = boost::get<cryptonote::txin_offshore>(vin_entry).amount;
+          in.key_offsets = boost::get<cryptonote::txin_offshore>(vin_entry).key_offsets;
+          in.k_image = boost::get<cryptonote::txin_offshore>(vin_entry).k_image;
+        } else if (vin_entry.type() == typeid(cryptonote::txin_onshore)) {
+          in.asset_type = "XUSD";
+          in.amount = boost::get<cryptonote::txin_onshore>(vin_entry).amount;
+          in.key_offsets = boost::get<cryptonote::txin_onshore>(vin_entry).key_offsets;
+          in.k_image = boost::get<cryptonote::txin_onshore>(vin_entry).k_image;
+        } else if (vin_entry.type() == typeid(cryptonote::txin_xasset)) {
+          in.amount = boost::get<cryptonote::txin_xasset>(vin_entry).amount;
+          in.key_offsets = boost::get<cryptonote::txin_xasset>(vin_entry).key_offsets;
+          in.k_image = boost::get<cryptonote::txin_xasset>(vin_entry).k_image;
+          in.asset_type = boost::get<cryptonote::txin_xasset>(vin_entry).asset_type;
+        } else {
+          // ...
+        }
+        x.vin.push_back(in);
+      }
+        
+      // Process the outputs
+      std::vector<cryptonote::tx_out> vout_tmp(x.vout);
+      x.vout.clear();
+      for (size_t i=0; i<vout_tmp.size(); i++) {
+        cryptonote::txout_haven_key out;
+        if (vout_tmp[i].target.type() == typeid(cryptonote::txout_to_key)) {
+          out.asset_type = "XHV";
+          out.key = boost::get<cryptonote::txout_to_key>(vout_tmp[i].target).key;
+        } else if (vout_tmp[i].target.type() == typeid(cryptonote::txout_offshore)) {
+          out.asset_type = "XUSD";
+          out.key = boost::get<cryptonote::txout_offshore>(vout_tmp[i].target).key;
+        } else if (vout_tmp[i].target.type() == typeid(cryptonote::txout_xasset)) {
+          out.asset_type = boost::get<cryptonote::txout_xasset>(vout_tmp[i].target).asset_type;
+          out.key = boost::get<cryptonote::txout_xasset>(vout_tmp[i].target).key;
+        } else {
+          // ...
+        }
+        // Clone the output unlock time into the output itself
+        out.unlock_time = x.output_unlock_times[i];
+        // Set the is_collateral and is_collateral_change flags
+        out.is_collateral = false;
+        out.is_collateral_change = false;
+        if (x.version >= COLLATERAL_TRANSACTION_VERSION && x.amount_burnt) {
+          if (x.collateral_indices[0] == i) {
+            out.is_collateral = true;
+          } else if (x.collateral_indices[1] == i) {
+            out.is_collateral_change = true;
+          }
+        }
+
+        cryptonote::tx_out foo;
+        foo.amount = vout_tmp[i].amount;
+        foo.target = out;
+        x.vout.push_back(foo);
+      }
+
+      return;
+    }
+
+    // Saving to archive
+    // Process the inputs
+    std::vector<cryptonote::txin_v> vin_tmp;
+    vin_tmp.reserve(x.vin.size());
+    for (auto &vin_entry_v: x.vin) {
+      if (vin_entry_v.type() == typeid(cryptonote::txin_gen)) {
+        vin_tmp.push_back(vin_entry_v);
+        continue;
+      }
+      cryptonote::txin_haven_key vin_entry = boost::get<cryptonote::txin_haven_key>(vin_entry_v);
+      if (vin_entry.asset_type == "XHV") {
+        cryptonote::txin_to_key in;
+        in.amount = vin_entry.amount;
+        in.key_offsets = vin_entry.key_offsets;
+        in.k_image = vin_entry.k_image;
+        vin_tmp.push_back(in);
+      } else if (vin_entry.asset_type == "XUSD") {
+        int xhv_outputs = std::count_if(x.vout.begin(), x.vout.end(), [](cryptonote::tx_out &foo_v) {
+          if (foo_v.target.type() == typeid(cryptonote::txout_haven_key)) {
+            return boost::get<cryptonote::txout_haven_key>(foo_v.target).asset_type == "XHV";
+          } else if (foo_v.target.type() == typeid(cryptonote::txout_haven_tagged_key)) {
+            return boost::get<cryptonote::txout_haven_tagged_key>(foo_v.target).asset_type == "XHV";
+          } else {
+            return false;
+          }
+        });
+        if (xhv_outputs) {
+          cryptonote::txin_onshore in;
+          in.amount = vin_entry.amount;
+          in.key_offsets = vin_entry.key_offsets;
+          in.k_image = vin_entry.k_image;
+          vin_tmp.push_back(in);
+        } else {
+          cryptonote::txin_offshore in;
+          in.amount = vin_entry.amount;
+          in.key_offsets = vin_entry.key_offsets;
+          in.k_image = vin_entry.k_image;
+          vin_tmp.push_back(in);
+        }
+      } else {
+        cryptonote::txin_xasset in;
+        in.amount = vin_entry.amount;
+        in.asset_type = vin_entry.asset_type;
+        in.key_offsets = vin_entry.key_offsets;
+        in.k_image = vin_entry.k_image;
+        vin_tmp.push_back(in);
+      }
+    }
+      
+    // Process the outputs
+    std::vector<cryptonote::tx_out> vout_tmp;
+    vout_tmp.reserve(x.vout.size());
+    for (size_t i=0; i<x.vout.size(); i++) {
+      cryptonote::txout_haven_key out;
+      if (x.vout[i].target.type() == typeid(cryptonote::txout_to_key)) {
+        out.asset_type = "XHV";
+        out.key = boost::get<cryptonote::txout_to_key>(x.vout[i].target).key;
+      } else if (x.vout[i].target.type() == typeid(cryptonote::txout_offshore)) {
+        out.asset_type = "XUSD";
+        out.key = boost::get<cryptonote::txout_offshore>(x.vout[i].target).key;
+      } else if (x.vout[i].target.type() == typeid(cryptonote::txout_xasset)) {
+        out.asset_type = boost::get<cryptonote::txout_xasset>(x.vout[i].target).asset_type;
+        out.key = boost::get<cryptonote::txout_xasset>(x.vout[i].target).key;
+      } else {
+        // ...
+      }
+      // Clone the output unlock time into the output itself
+      out.unlock_time = (x.version >= POU_TRANSACTION_VERSION) ? x.output_unlock_times[i] : x.unlock_time;
+      // Set the is_collateral and is_collateral_change flags
+      out.is_collateral = false;
+      out.is_collateral_change = false;
+      if (x.version >= COLLATERAL_TRANSACTION_VERSION && x.amount_burnt) {
+        if (x.collateral_indices[0] == i) {
+          out.is_collateral = true;
+        } else if (x.collateral_indices[1] == i) {
+          out.is_collateral_change = true;
+        }
+      }
+
+      cryptonote::tx_out foo;
+      foo.amount = vout_tmp[i].amount;
+      foo.target = out;
+      vout_tmp.push_back(foo);
+    }
+
+    // Now that we have parsed the inputs & outputs into their original forms, we can serialize the rest of the transaction_prefix
+    a & vin_tmp;
+    a & vout_tmp;
+    a & x.extra;
+
+    if (x.version >= OFFSHORE_TRANSACTION_VERSION) {
+      a & x.pricing_record_height;
+      a & x.amount_burnt;
+      a & x.amount_minted;
+      if (x.version < 5)
+        a & x.offshore_data;
+
+      // Support the old "output_unlock_times" vector
+      if (x.version >= POU_TRANSACTION_VERSION) {
+        a & x.output_unlock_times;
+      }
+    
+      // Support the old "collateral_indices" vector
+      if (x.version >= COLLATERAL_TRANSACTION_VERSION) {
+        a & x.collateral_indices;
+      }
+    }
+    
+    return;
+  }
+}
+}
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 2)
-BOOST_CLASS_VERSION(rct::rctSigBase, 5)
-BOOST_CLASS_VERSION(rct::rctSig, 5)
+BOOST_CLASS_VERSION(rct::rctSigBase, 6)
+BOOST_CLASS_VERSION(rct::rctSig, 6)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)
-
-//}

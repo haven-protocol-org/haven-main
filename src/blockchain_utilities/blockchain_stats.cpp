@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <boost/algorithm/string.hpp>
+#include <boost/filesystem.hpp>
 #include "common/command_line.h"
 #include "common/varint.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
@@ -108,7 +109,7 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  mlog_configure(mlog_get_default_log_path("monero-blockchain-stats.log"), true);
+  mlog_configure(mlog_get_default_log_path("haven-blockchain-stats.log"), true);
   if (!command_line::is_arg_defaulted(vm, arg_log_level))
     mlog_set_log(command_line::get_arg(vm, arg_log_level).c_str());
   else
@@ -359,7 +360,7 @@ skip:
       totdiff += diff;
     }
     if (do_emission) {
-      coinbase_amount = get_outs_money_amount(blk.miner_tx)["XHV"];
+      coinbase_amount = get_outs_money_amount(blk.miner_tx);
       emission += coinbase_amount - tx_fee_amount;
     }
     if (do_fees) {

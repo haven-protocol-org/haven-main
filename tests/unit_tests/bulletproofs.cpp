@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -76,7 +76,7 @@ TEST(bulletproofs, valid_multi_random)
     ASSERT_TRUE(rct::bulletproof_VERIFY(proof));
   }
 }
-/*
+
 TEST(bulletproofs, multi_splitting)
 {
   rct::ctkeyV sc, pc;
@@ -131,9 +131,10 @@ TEST(bulletproofs, multi_splitting)
     }
 
     rct::ctkeyV outSk;
-    rct::RCTConfig rct_config { rct::RangeProofPaddedBulletproof, 0 };
-    rct::rctSig s = rct::genRctSimple(rct::zero(), sc, destinations, inamounts, outamounts, available, mixRing, amount_keys, NULL, NULL, index, outSk, rct_config, hw::get_device("default"));
-    ASSERT_TRUE(rct::verRctSemanticsSimple(&s));
+    rct::RCTConfig rct_config { rct::RangeProofPaddedBulletproof, 4 };
+
+    rct::rctSig s = rct::genRctSimple(rct::zero(), sc, destinations, inamounts, outamounts, available, mixRing, amount_keys, index, outSk, rct_config, hw::get_device("default"));
+    ASSERT_TRUE(rct::verRctSimple(s));
     for (size_t i = 0; i < n_outputs; ++i)
     {
       rct::key mask;
@@ -142,7 +143,7 @@ TEST(bulletproofs, multi_splitting)
     }
   }
 }
-*/
+
 TEST(bulletproofs, valid_aggregated)
 {
   static const size_t N_PROOFS = 8;
@@ -296,7 +297,6 @@ TEST(bulletproof, weight_pruned)
     ASSERT_TRUE(tx.version == 2);
     ASSERT_FALSE(tx.pruned);
     ASSERT_TRUE(rct::is_rct_bulletproof(tx.rct_signatures.type));
-    const uint64_t tx_size = bd.size();
     const uint64_t tx_weight = cryptonote::get_transaction_weight(tx);
     ASSERT_TRUE(parse_and_validate_tx_base_from_blob(bd, pruned_tx));
     ASSERT_TRUE(pruned_tx.version == 2);

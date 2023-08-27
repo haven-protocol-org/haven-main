@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -31,6 +31,7 @@
 #include "memwipe.h"
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/regex.hpp>
 
 namespace hw {
@@ -44,7 +45,10 @@ namespace trezor {
 
     const uint32_t device_trezor_base::DEFAULT_BIP44_PATH[] = {0x8000002c, 0x80000080};
 
-    device_trezor_base::device_trezor_base(): m_callback(nullptr), m_last_msg_type(messages::MessageType_Success) {
+    device_trezor_base::device_trezor_base(): m_callback(nullptr), m_last_msg_type(messages::MessageType_Success),
+                                              m_reply_with_empty_passphrase(false),
+                                              m_always_use_empty_passphrase(false),
+                                              m_seen_passphrase_entry_message(false) {
 #ifdef WITH_TREZOR_DEBUGGING
       m_debug = false;
 #endif
@@ -154,6 +158,9 @@ namespace trezor {
       TREZOR_AUTO_LOCK_DEVICE();
       m_device_session_id.clear();
       m_features.reset();
+      m_seen_passphrase_entry_message = false;
+      m_reply_with_empty_passphrase = false;
+      m_always_use_empty_passphrase = false;
 
       if (m_transport){
         try {
@@ -365,15 +372,14 @@ namespace trezor {
     void device_trezor_base::device_state_initialize_unsafe()
     {
       require_connected();
-      std::string tmp_session_id;
       auto initMsg = std::make_shared<messages::management::Initialize>();
       const auto data_cleaner = epee::misc_utils::create_scope_leave_handler([&]() {
-        memwipe(&tmp_session_id[0], tmp_session_id.size());
+        if (initMsg->has_session_id())
+          memwipe(&(*initMsg->mutable_session_id())[0], initMsg->mutable_session_id()->size());
       });
 
       if(!m_device_session_id.empty()) {
-        tmp_session_id.assign(m_device_session_id.data(), m_device_session_id.size());
-        initMsg->set_allocated_session_id(&tmp_session_id);
+        initMsg->set_allocated_session_id(new std::string(m_device_session_id.data(), m_device_session_id.size()));
       }
 
       m_features = this->client_exchange<messages::management::Features>(initMsg);
@@ -382,8 +388,6 @@ namespace trezor {
       } else {
         m_device_session_id.clear();
       }
-
-      initMsg->release_session_id();
     }
 
     void device_trezor_base::device_state_reset()
@@ -453,18 +457,14 @@ namespace trezor {
         pin = m_pin;
       }
 
-      std::string pin_field;
       messages::common::PinMatrixAck m;
       if (pin) {
-        pin_field.assign(pin->data(), pin->size());
-        m.set_allocated_pin(&pin_field);
+        m.set_allocated_pin(new std::string(pin->data(), pin->size()));
       }
 
       const auto data_cleaner = epee::misc_utils::create_scope_leave_handler([&]() {
-        m.release_pin();
-        if (!pin_field.empty()){
-          memwipe(&pin_field[0], pin_field.size());
-        }
+        if (m.has_pin())
+          memwipe(&(*m.mutable_pin())[0], m.mutable_pin()->size());
       });
 
       resp = call_raw(&m);
@@ -482,6 +482,7 @@ namespace trezor {
         return;
       }
 
+      m_seen_passphrase_entry_message = true;
       bool on_device = true;
       if (msg->has__on_device() && !msg->_on_device()){
         on_device = false;  // do not enter on device, old devices.
@@ -497,31 +498,29 @@ namespace trezor {
       }
 
       boost::optional<epee::wipeable_string> passphrase;
-      TREZOR_CALLBACK_GET(passphrase, on_passphrase_request, on_device);
+      if (m_reply_with_empty_passphrase || m_always_use_empty_passphrase) {
+        MDEBUG("Answering passphrase prompt with an empty passphrase, always use empty: " << m_always_use_empty_passphrase);
+        on_device = false;
+        passphrase = epee::wipeable_string("");
+      } else if (m_passphrase){
+        MWARNING("Answering passphrase prompt with a stored passphrase (do not use; passphrase can be seen by a potential malware / attacker)");
+        on_device = false;
+        passphrase = epee::wipeable_string(m_passphrase.get());
+      } else {
+        TREZOR_CALLBACK_GET(passphrase, on_passphrase_request, on_device);
+      }
 
-      std::string passphrase_field;
       messages::common::PassphraseAck m;
       m.set_on_device(on_device);
       if (!on_device) {
-        if (!passphrase && m_passphrase) {
-          passphrase = m_passphrase;
-        }
-
-        if (m_passphrase) {
-          m_passphrase = boost::none;
-        }
-
         if (passphrase) {
-          passphrase_field.assign(passphrase->data(), passphrase->size());
-          m.set_allocated_passphrase(&passphrase_field);
+          m.set_allocated_passphrase(new std::string(passphrase->data(), passphrase->size()));
         }
       }
 
       const auto data_cleaner = epee::misc_utils::create_scope_leave_handler([&]() {
-        m.release_passphrase();
-        if (!passphrase_field.empty()){
-          memwipe(&passphrase_field[0], passphrase_field.size());
-        }
+        if (m.has_passphrase())
+          memwipe(&(*m.mutable_passphrase())[0], m.mutable_passphrase()->size());
       });
 
       resp = call_raw(&m);

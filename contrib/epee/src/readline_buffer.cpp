@@ -6,6 +6,7 @@
 #include <boost/thread/lock_guard.hpp>
 #include <boost/algorithm/string.hpp>
 
+static bool same_as_last_line(const std::string&);
 static void install_line_handler();
 static void remove_line_handler();
 
@@ -51,6 +52,7 @@ rdln::readline_buffer::readline_buffer()
 
 void rdln::readline_buffer::start()
 {
+  boost::lock_guard<boost::mutex> lock(sync_mutex);
   if(m_cout_buf != NULL)
     return;
   m_cout_buf = std::cout.rdbuf();
@@ -60,6 +62,7 @@ void rdln::readline_buffer::start()
 
 void rdln::readline_buffer::stop()
 {
+  boost::lock_guard<boost::mutex> lock(sync_mutex);
   if(m_cout_buf == NULL)
     return;
   std::cout.rdbuf(m_cout_buf);
@@ -88,9 +91,9 @@ rdln::linestatus rdln::readline_buffer::get_line(std::string& line) const
 
 void rdln::readline_buffer::set_prompt(const std::string& prompt)
 {
+  boost::lock_guard<boost::mutex> lock(sync_mutex);
   if(m_cout_buf == NULL)
     return;
-  boost::lock_guard<boost::mutex> lock(sync_mutex);
   rl_set_prompt(std::string(m_prompt_length, ' ').c_str());
   rl_redisplay();
   rl_set_prompt(prompt.c_str());
@@ -113,6 +116,12 @@ const std::vector<std::string>& rdln::readline_buffer::get_completions()
 int rdln::readline_buffer::sync()
 {
   boost::lock_guard<boost::mutex> lock(sync_mutex);
+
+  if (m_cout_buf == nullptr)
+  {
+    return -1;
+  }
+
 #if RL_READLINE_VERSION < 0x0700
   char lbuf[2] = {0,0};
   char *line = NULL;
@@ -167,8 +176,11 @@ static void handle_line(char* line)
     boost::trim_right(test_line);
     if(!test_line.empty())
     {
-      add_history(test_line.c_str());
-      history_set_pos(history_length);
+      if (!same_as_last_line(test_line))
+      {
+        add_history(test_line.c_str());
+        history_set_pos(history_length);
+      }
       if (test_line == "exit" || test_line == "q")
         exit = true;
     }
@@ -182,6 +194,16 @@ static void handle_line(char* line)
   if (exit)
     rl_set_prompt("");
   return;
+}
+
+// same_as_last_line returns true, if the last line in the history is
+// equal to test_line.
+static bool same_as_last_line(const std::string& test_line)
+{
+  // Note that state->offset == state->length, when a new line was entered.
+  HISTORY_STATE* state = history_get_history_state();
+  return state->length > 0
+    && test_line.compare(state->entries[state->length-1]->line) == 0;
 }
 
 static char* completion_matches(const char* text, int state)

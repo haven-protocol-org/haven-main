@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019, The Monero Project
+# Copyright (c) 2014-2022, The Monero Project
 #
 # All rights reserved.
 #
@@ -37,7 +37,6 @@ set(wallet_api_sources
   transaction_history.cpp
   pending_transaction.cpp
   utils.cpp
-  assets.cpp
   address_book.cpp
   subaddress.cpp
   subaddress_account.cpp
@@ -68,15 +67,17 @@ target_link_libraries(wallet_api
   PUBLIC
     wallet
     common
-    offshore
     cryptonote_core
     mnemonics
     ${LMDB_LIBRARY}
     ${Boost_CHRONO_LIBRARY}
+    ${Boost_LOCALE_LIBRARY}
+    ${ICU_LIBRARIES}
     ${Boost_SERIALIZATION_LIBRARY}
     ${Boost_FILESYSTEM_LIBRARY}
     ${Boost_SYSTEM_LIBRARY}
     ${Boost_THREAD_LIBRARY}
+    ${CMAKE_THREAD_LIBS_INIT}
     ${Boost_REGEX_LIBRARY}
   PRIVATE
     ${EXTRA_LIBRARIES})

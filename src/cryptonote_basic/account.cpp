@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -68,7 +68,7 @@ DISABLE_VS_WARNINGS(4244 4345)
     epee::mlocked<tools::scrubbed_arr<char, sizeof(base_key)+1>> data;
     memcpy(data.data(), &base_key, sizeof(base_key));
     data[sizeof(base_key)] = config::HASH_KEY_MEMORY;
-    crypto::generate_chacha_key(data.data(), sizeof(data), key, HAVEN_CHACHA_ROUNDS);
+    crypto::generate_chacha_key(data.data(), sizeof(data), key, 1);
   }
   //-----------------------------------------------------------------
   static epee::wipeable_string get_key_stream(const crypto::chacha_key &base_key, const crypto::chacha_iv &iv, size_t bytes)
@@ -251,11 +251,6 @@ DISABLE_VS_WARNINGS(4244 4345)
     m_keys.m_spend_secret_key = spend_secret_key;
     m_keys.m_multisig_keys = multisig_keys;
     return crypto::secret_key_to_public_key(view_secret_key, m_keys.m_account_address.m_view_public_key);
-  }
-  //-----------------------------------------------------------------
-  void account_base::finalize_multisig(const crypto::public_key &spend_public_key)
-  {
-    m_keys.m_account_address.m_spend_public_key = spend_public_key;
   }
   //-----------------------------------------------------------------
   const account_keys& account_base::get_keys() const

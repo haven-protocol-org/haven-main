@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -32,11 +32,13 @@
 #endif
 
 #include <algorithm>
+#include <functional>
 #include <boost/endian/conversion.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/format.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include "common/apply_permutation.h"
 #include "transport.hpp"
 #include "messages/messages-common.pb.h"
@@ -155,7 +157,11 @@ namespace trezor{
 #define PROTO_HEADER_SIZE 6
 
   static size_t message_size(const google::protobuf::Message &req){
-    return static_cast<size_t>(req.ByteSize());
+#if GOOGLE_PROTOBUF_VERSION < 3006001
+    return size_t(req.ByteSize());
+#else
+    return req.ByteSizeLong();
+#endif
   }
 
   static size_t serialize_message_buffer_size(size_t msg_size) {
@@ -571,8 +577,13 @@ namespace trezor{
       std::string req = "PINGPING";
       char res[8];
 
-      m_socket->send_to(boost::asio::buffer(req.c_str(), req.size()), m_endpoint);
-      receive(res, 8, nullptr, false, timeout);
+      const auto written = m_socket->send_to(boost::asio::buffer(req.c_str(), req.size()), m_endpoint);
+      if (written != req.size())
+        return false;
+      memset(res, 0, sizeof(res));
+      const auto received = receive(res, 8, nullptr, false, timeout);
+      if (received != 8)
+        return false;
 
       return memcmp(res, "PONGPONG", 8) == 0;
 
@@ -711,7 +722,7 @@ namespace trezor{
     // Start the asynchronous operation itself. The handle_receive function
     // used as a callback will update the ec and length variables.
     m_socket->async_receive_from(boost::asio::buffer(buffer), m_endpoint,
-                                 boost::bind(&UdpTransport::handle_receive, boost::placeholders::_1, boost::placeholders::_2, &ec, &length));
+                                 std::bind(&UdpTransport::handle_receive, std::placeholders::_1, std::placeholders::_2, &ec, &length));
 
     // Block until the asynchronous operation has completed.
     do {

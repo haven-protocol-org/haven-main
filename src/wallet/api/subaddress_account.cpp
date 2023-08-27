@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -64,8 +64,8 @@ void SubaddressAccountImpl::refresh()
       i,
       m_wallet->m_wallet->get_subaddress_as_str({i,0}),
       m_wallet->m_wallet->get_subaddress_label({i,0}),
-      m_wallet->m_wallet->balance(i, false),
-      m_wallet->m_wallet->unlocked_balance(i, false)
+      cryptonote::print_money(m_wallet->m_wallet->balance(i, false)),
+      cryptonote::print_money(m_wallet->m_wallet->unlocked_balance(i, false))
     ));
   }
 }

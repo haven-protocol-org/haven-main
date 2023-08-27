@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2019, The Monero Project
+// Copyright (c) 2016-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -168,7 +168,6 @@ BEGIN_RPC_MESSAGE_CLASS(SendRawTx);
   BEGIN_RPC_MESSAGE_REQUEST;
     RPC_MESSAGE_MEMBER(cryptonote::transaction, tx);
     RPC_MESSAGE_MEMBER(bool, relay);
-    RPC_MESSAGE_MEMBER(uint64_t, tx_total_amount);
   END_RPC_MESSAGE_REQUEST;
   BEGIN_RPC_MESSAGE_RESPONSE;
     RPC_MESSAGE_MEMBER(bool, relayed);
@@ -179,7 +178,6 @@ BEGIN_RPC_MESSAGE_CLASS(SendRawTxHex);
   BEGIN_RPC_MESSAGE_REQUEST;
     RPC_MESSAGE_MEMBER(std::string, tx_as_hex);
     RPC_MESSAGE_MEMBER(bool, relay);
-    RPC_MESSAGE_MEMBER(uint64_t, tx_total_amount);
   END_RPC_MESSAGE_REQUEST;
   using Response = SendRawTx::Response;
 END_RPC_MESSAGE_CLASS;

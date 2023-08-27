@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2017-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,6 +32,8 @@
 #include "common/command_line.h"
 #include "common/util.h"
 #include "fuzzer.h"
+
+#ifndef OSSFUZZ
 
 #if (!defined(__clang__) || (__clang__ < 5))
 static int __AFL_LOOP(int)
@@ -74,3 +76,5 @@ int run_fuzzer(int argc, const char **argv, Fuzzer &fuzzer)
 
   CATCH_ENTRY_L0("run_fuzzer", 1);
 }
+
+#endif

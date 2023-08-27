@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2019, The Monero Project
+// Copyright (c) 2016-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -195,3 +195,23 @@ TEST(logging, multiline)
   cleanup();
 }
 
+// These operations might segfault
+TEST(logging, copy_ctor_segfault)
+{
+    const el::Logger log1("id1", nullptr);
+    const el::Logger log2(log1);
+}
+
+TEST(logging, operator_equals_segfault)
+{
+    const el::Logger log1("id1", nullptr);
+    el::Logger log2("id2", nullptr);
+    log2 = log1;
+}
+
+TEST(logging, empty_configurations_throws)
+{
+    el::Logger log1("id1", nullptr);
+    const el::Configurations cfg;
+    EXPECT_ANY_THROW(log1.configure(cfg));
+}

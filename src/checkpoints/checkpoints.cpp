@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2014-2022, The Monero Project
 //
 // All rights reserved.
 //
@@ -34,6 +34,9 @@
 #include "string_tools.h"
 #include "storages/portable_storage_template_helper.h" // epee json include
 #include "serialization/keyvalue_serialization.h"
+#include <boost/system/error_code.hpp>
+#include <boost/filesystem.hpp>
+#include <functional>
 #include <vector>
 
 using namespace epee;
@@ -71,7 +74,7 @@ namespace cryptonote
   {
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str)
+  bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str, const std::string& difficulty_str)
   {
     crypto::hash h = crypto::null_hash;
     bool r = epee::string_tools::hex_to_pod(hash_str, h);
@@ -83,6 +86,23 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(h == m_points[height], false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
     }
     m_points[height] = h;
+    if (!difficulty_str.empty())
+    {
+      try
+      {
+        difficulty_type difficulty(difficulty_str);
+        if (m_difficulty_points.count(height))
+        {
+          CHECK_AND_ASSERT_MES(difficulty == m_difficulty_points[height], false, "Difficulty checkpoint at given height already exists, and difficulty for new checkpoint was different!");
+        }
+        m_difficulty_points[height] = difficulty;
+      }
+      catch (...)
+      {
+        LOG_ERROR("Failed to parse difficulty checkpoint: " << difficulty_str);
+        return false;
+      }
+    }
     return true;
   }
   //---------------------------------------------------------------------------
@@ -133,16 +153,19 @@ namespace cryptonote
   //---------------------------------------------------------------------------
   uint64_t checkpoints::get_max_height() const
   {
-    std::map< uint64_t, crypto::hash >::const_iterator highest = 
-        std::max_element( m_points.begin(), m_points.end(),
-                         ( boost::bind(&std::map< uint64_t, crypto::hash >::value_type::first, boost::placeholders::_1) <
-                           boost::bind(&std::map< uint64_t, crypto::hash >::value_type::first, boost::placeholders::_2 ) ) );
-    return highest->first;
+    if (m_points.empty())
+      return 0;
+    return m_points.rbegin()->first;
   }
   //---------------------------------------------------------------------------
   const std::map<uint64_t, crypto::hash>& checkpoints::get_points() const
   {
     return m_points;
+  }
+  //---------------------------------------------------------------------------
+  const std::map<uint64_t, difficulty_type>& checkpoints::get_difficulty_points() const
+  {
+    return m_difficulty_points;
   }
 
   bool checkpoints::check_for_conflicts(const checkpoints& other) const
@@ -209,10 +232,10 @@ namespace cryptonote
     static const std::vector<std::string> dns_urls = {
     };
 
-    static const std::vector<std::string> testnet_dns_urls = { 
+    static const std::vector<std::string> testnet_dns_urls = {
     };
 
-    static const std::vector<std::string> stagenet_dns_urls = { 
+    static const std::vector<std::string> stagenet_dns_urls = {
     };
 
     if (!tools::dns_utils::load_txt_records_from_dns(records, nettype == TESTNET ? testnet_dns_urls : nettype == STAGENET ? stagenet_dns_urls : dns_urls))

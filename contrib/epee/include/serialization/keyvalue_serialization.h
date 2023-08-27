@@ -30,7 +30,6 @@
 #include <boost/utility/value_init.hpp>
 #include <boost/foreach.hpp>
 #include "misc_log_ex.h"
-#include "enableable.h"
 #include "keyvalue_serialization_overloads.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -73,7 +72,8 @@ public: \
   template<bool is_store, class t_storage> \
   bool serialize_map(t_storage& stg, typename t_storage::hsection hparent_section) \
   { \
-    decltype(*this) &this_ref = *this;
+    decltype(*this) &this_ref = *this; \
+    (void) this_ref; // Suppress unused var warnings. Sometimes this var is used, sometimes not.
 
 #define KV_SERIALIZE_N(varialble, val_name) \
   epee::serialization::selector<is_store>::serialize(this_ref.varialble, stg, hparent_section, val_name);

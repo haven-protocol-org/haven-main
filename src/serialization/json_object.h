@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2020, The Monero Project
+// Copyright (c) 2016-2022, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,6 +32,7 @@
 #include <cstring>
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
+#include <vector>
 
 #include "byte_stream.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -149,9 +150,13 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rapidjson::Va
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, boost::string_ref i);
 inline void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const std::string& i)
 {
-  toJsonValue(dest, boost::string_ref{i});
+  dest.String(i.data(), i.size());
+  //toJsonValue(dest, boost::string_ref{i});
 }
 void fromJsonValue(const rapidjson::Value& val, std::string& str);
+
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const std::vector<std::uint8_t>&);
+void fromJsonValue(const rapidjson::Value& src, std::vector<std::uint8_t>& i);
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, bool i);
 void fromJsonValue(const rapidjson::Value& val, bool& b);
@@ -226,6 +231,9 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::txin_onshore& txin);
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txin_xasset& txin);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::txin_xasset& txin);
 
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txin_haven_key& txin);
+void fromJsonValue(const rapidjson::Value& val, cryptonote::txin_haven_key& txin);
+
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txout_target_v& txout);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_target_v& txout);
 
@@ -243,6 +251,12 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_offshore& txou
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txout_xasset& txout);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_xasset& txout);
+
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txout_haven_key& txout);
+void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_haven_key& txout);
+
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txout_haven_tagged_key& txout);
+void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_haven_tagged_key& txout);
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::tx_out& txout);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::tx_out& txout);
@@ -295,6 +309,8 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::BlockHeaderResp
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rct::rctSig& i);
 void fromJsonValue(const rapidjson::Value& val, rct::rctSig& sig);
 
+void fromJsonValue(const rapidjson::Value& val, rct::ctkey& key);
+
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rct::ecdhTuple& tuple);
 void fromJsonValue(const rapidjson::Value& val, rct::ecdhTuple& tuple);
 
@@ -303,6 +319,9 @@ void fromJsonValue(const rapidjson::Value& val, rct::rangeSig& sig);
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rct::Bulletproof& p);
 void fromJsonValue(const rapidjson::Value& val, rct::Bulletproof& p);
+
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rct::BulletproofPlus& p);
+void fromJsonValue(const rapidjson::Value& val, rct::BulletproofPlus& p);
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rct::boroSig& sig);
 void fromJsonValue(const rapidjson::Value& val, rct::boroSig& sig);
@@ -315,6 +334,9 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::DaemonInfo& inf
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::output_distribution& dist);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::output_distribution& dist);
+
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::tx_block_template_backlog_entry& entry);
+void fromJsonValue(const rapidjson::Value& val, cryptonote::tx_block_template_backlog_entry& entry);
 
 template <typename Map>
 typename std::enable_if<sfinae::is_map_like<Map>::value, void>::type toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const Map& map);
@@ -357,6 +379,7 @@ inline typename std::enable_if<sfinae::is_map_like<Map>::value, void>::type from
 
   auto itr = val.MemberBegin();
 
+  map.clear();
   while (itr != val.MemberEnd())
   {
     typename Map::key_type k;
@@ -371,25 +394,47 @@ inline typename std::enable_if<sfinae::is_map_like<Map>::value, void>::type from
 template <typename Vec>
 inline typename std::enable_if<sfinae::is_vector_like<Vec>::value, void>::type toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const Vec &vec)
 {
+  using value_type = typename Vec::value_type;
+  static_assert(!std::is_same<value_type, char>::value, "encoding an array of chars is faster as hex");
+  static_assert(!std::is_same<value_type, unsigned char>::value, "encoding an array of unsigned char is faster as hex");
+
   dest.StartArray();
-  for (const auto& t : vec)
+  for (auto t : vec)
     toJsonValue(dest, t);
-  dest.EndArray(vec.size());
+  dest.EndArray();
+}
+
+namespace traits
+{
+  template<typename T>
+  void reserve(const T&, std::size_t)
+  {}
+
+  template<typename T>
+  void reserve(std::vector<T>& vec, const std::size_t count)
+  {
+    vec.reserve(count);
+  }
 }
 
 template <typename Vec>
 inline typename std::enable_if<sfinae::is_vector_like<Vec>::value, void>::type fromJsonValue(const rapidjson::Value& val, Vec& vec)
 {
+  using value_type = typename Vec::value_type;
+  static_assert(!std::is_same<value_type, char>::value, "encoding a vector of chars is faster as hex");
+  static_assert(!std::is_same<value_type, unsigned char>::value, "encoding a vector of unsigned char is faster as hex");
+
   if (!val.IsArray())
   {
     throw WRONG_TYPE("json array");
   }
 
+  vec.clear();
+  traits::reserve(vec, val.Size());
   for (rapidjson::SizeType i=0; i < val.Size(); i++)
   {
-    typename Vec::value_type v;
-    fromJsonValue(val[i], v);
-    vec.push_back(v);
+    vec.emplace_back();
+    fromJsonValue(val[i], vec.back());
   }
 }
 
