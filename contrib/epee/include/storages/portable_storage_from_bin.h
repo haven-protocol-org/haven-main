@@ -227,6 +227,7 @@ namespace epee
       case SERIALIZE_TYPE_ARRAY:  return read_ae<array_entry>();
       default: 
         CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = " << type);
+        return epee::serialization::storage_entry(0);
       }
     }
 
@@ -318,6 +319,7 @@ namespace epee
       case SERIALIZE_TYPE_ARRAY:  return read_se<array_entry>();
       default: 
         CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = " << ent_type);
+        return epee::serialization::storage_entry(0);
       }
     }
     inline 
