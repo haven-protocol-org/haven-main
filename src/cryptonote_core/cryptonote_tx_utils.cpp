@@ -1396,7 +1396,9 @@ namespace cryptonote
 
       // dont lock the change dests
       uint64_t u_time = tx.unlock_time;
-      if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral_change) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL_V2 && dst_entr.is_collateral) {
+        u_time = HF21_COLLATERAL_LOCK_BLOCKS + current_height + 1;
+      } else if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral_change) {
         u_time = 0;
       } else {
         if (dst_entr.dest_asset_type == source_asset) {

@@ -5626,7 +5626,25 @@ bool simple_wallet::check_daemon_rpc_prices(const std::string &daemon_url, uint3
 //----------------------------------------------------------------------------------------------------
 uint64_t simple_wallet::get_locked_blocks(cryptonote::transaction_type tx_type, uint32_t priority) {
   using tt = cryptonote::transaction_type;
-  if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
+  if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL_V2, 0)) {
+    switch (tx_type)
+    {
+      case tt::OFFSHORE:
+      case tt::ONSHORE:
+        if (m_wallet->nettype() == cryptonote::TESTNET || m_wallet->nettype() == cryptonote::STAGENET) {
+          return HF21_SHORING_LOCK_BLOCKS_TESTNET;
+        }
+        return HF21_SHORING_LOCK_BLOCKS; // ~21 days
+      case tt::XUSD_TO_XASSET:
+      case tt::XASSET_TO_XUSD:
+        if (m_wallet->nettype() == cryptonote::TESTNET || m_wallet->nettype() == cryptonote::STAGENET) {
+          return HF21_XASSET_LOCK_BLOCKS_TESTNET;
+        }
+        return HF21_XASSET_LOCK_BLOCKS;
+      default:
+        return 0;
+    }
+  } else if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
     switch (tx_type)
     {
       case tt::OFFSHORE:
