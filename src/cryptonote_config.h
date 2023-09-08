@@ -238,9 +238,13 @@
 #define HF_VERSION_VIEW_TAGS                    21
 #define HF_VERSION_2021_SCALING                 21
 
+// Haven v3.3 definitions
+#define HF_VERSION_USE_CHECKPOINTS              22
+#define HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS 22
+
 // Haven v4.0 definitions
-#define HF_VERSION_SLIPPAGE                     22
-#define HF_VERSION_YIELD                        22
+#define HF_VERSION_SLIPPAGE                     23
+#define HF_VERSION_YIELD                        23
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x18

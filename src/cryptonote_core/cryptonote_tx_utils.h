@@ -59,7 +59,7 @@ namespace cryptonote
   keypair get_deterministic_keypair_from_height(uint64_t height);
 
   uint64_t get_governance_reward(uint64_t height, uint64_t base_reward);
-  bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key);
+  bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key, crypto::view_tag &view_tag);
   bool validate_governance_reward_key(uint64_t height, const std::string& governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, cryptonote::network_type nettype = MAINNET);
   std::string get_governance_address(uint32_t version, network_type nettype);
 
@@ -180,7 +180,8 @@ namespace cryptonote
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
     bool shuffle_outs = true, 
-    bool use_view_tags = false
+    bool use_view_tags = false,
+    network_type nettype = cryptonote::MAINNET
   );
   bool construct_tx_and_get_tx_key(
     const std::string& source_asset,
@@ -202,7 +203,8 @@ namespace cryptonote
     std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct = false,
     const rct::RCTConfig &rct_config = { rct::RangeProofBorromean, 0 },
-    bool use_view_tags = false
+    bool use_view_tags = false,
+    network_type nettype = cryptonote::MAINNET
   );
   bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
                                       const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,

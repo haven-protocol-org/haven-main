@@ -364,6 +364,8 @@ namespace cryptonote
       }
 
       // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
+      bool found_collateral_output = false;
+      bool found_collateral_change_output = false;
       for (size_t i = 0; i < tx.vout.size(); ++i) {
 
         // Check if the output is collateral or collateral_change
@@ -375,7 +377,25 @@ namespace cryptonote
           tvc.m_verifivation_failed = true;
           return false;
         }
-          
+        if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS) {
+          if (is_collateral) {
+            if (found_collateral_output) {
+              LOG_ERROR("Too many collateral outputs present in TX at output index " << i);
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+            found_collateral_output = true;
+          }
+          if (is_collateral_change) {
+            if (found_collateral_change_output) {
+              LOG_ERROR("Too many collateral change outputs present in TX at output index " << i);
+              tvc.m_verifivation_failed = true;
+              return false;
+            }
+            found_collateral_change_output = true;
+          }
+        }
+        
         // Check if the output asset type is the same as the source
         std::string output_asset_type;
         ok = cryptonote::get_output_asset_type(tx.vout[i], output_asset_type);

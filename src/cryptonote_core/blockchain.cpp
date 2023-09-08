@@ -223,7 +223,10 @@ bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx
         6872743, 6872555, 6872560, 6872563, 6872565, 
         6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872660, 6872661,
         6872554, 6872556, 6872557, 6872558, 6872559, 6872561, 6872562, 6872564, 6872566, 
-        6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326
+        6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326,
+        // 3.2.1 collateral exploit outputs
+        9613698, 9613699, 9613700, 9613701, 9613702, 9613703, 9613704, 9613705, 9613706,
+        9613707, 9613708, 9613709
       };
       if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), i) != invalid_output_ids.end()) {
         MERROR_VER("Known invalid output id " << i << " detected - rejecting");
@@ -1568,7 +1571,13 @@ bool Blockchain::validate_miner_transaction(
       
       // get the governance wallet address and validate xhv reward
       std::string governance_wallet_address_str = cryptonote::get_governance_address(version, m_nettype);
-      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, 1, boost::get<txout_haven_key>(b.miner_tx.vout[1].target).key, m_nettype))
+      crypto::public_key output_public_key;
+      ok = cryptonote::get_output_public_key(b.miner_tx.vout[1], output_public_key);
+      if (!ok) {
+        MERROR("Failed to get Governance reward public key (vout[1]).");
+        return false;
+      }
+      if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, 1, output_public_key, m_nettype))
       {
         MERROR("Governance reward public key incorrect (vout[1]).");
         return false;
