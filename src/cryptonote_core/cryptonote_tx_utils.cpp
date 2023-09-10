@@ -80,7 +80,7 @@ namespace cryptonote
     LOG_PRINT_L2("destinations include " << num_stdaddresses << " standard addresses and " << num_subaddresses << " subaddresses");
   }
   //---------------------------------------------------------------
-  bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key)
+  bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key, crypto::view_tag &view_tag)
   {
 
     crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
@@ -90,6 +90,8 @@ namespace cryptonote
     r = crypto::derive_public_key(derivation, output_index, address.m_spend_public_key, output_key);
     CHECK_AND_ASSERT_MES(r, false, "failed to derive_public_key(" << derivation << ", "<< address.m_spend_public_key << ")");
 
+    crypto::derive_view_tag(derivation, output_index, view_tag);
+    
     return true;
   }
   //---------------------------------------------------------------
@@ -168,18 +170,38 @@ namespace cryptonote
     r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
     CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << "0" << ", "<< miner_address.m_spend_public_key << ")");
 
-    txout_haven_key tk;
-    tk.asset_type = "XHV";
-    tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-    tk.is_collateral = false;
-    tk.is_collateral_change = false;
-    tk.key = out_eph_public_key;
+    if (hard_fork_version >= HF_VERSION_VIEW_TAGS) {
+      // Enforce the use of view_tags
+      crypto::view_tag view_tag;
+      crypto::derive_view_tag(derivation, 0, view_tag);
+      txout_haven_tagged_key ttk;
+      ttk.asset_type = "XHV";
+      ttk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+      ttk.is_collateral = false;
+      ttk.is_collateral_change = false;
+      ttk.key = out_eph_public_key;
+      ttk.view_tag = view_tag;
 
-    tx_out out;
-    summary_amounts += out.amount = block_reward;
-    out.target = tk;
-    tx.vout.push_back(out);
+      tx_out out;
+      summary_amounts += out.amount = block_reward;
+      out.target = ttk;
+      tx.vout.push_back(out);
 
+    } else {
+      // Allow outputs without view_tags
+      txout_haven_key tk;
+      tk.asset_type = "XHV";
+      tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+      tk.is_collateral = false;
+      tk.is_collateral_change = false;
+      tk.key = out_eph_public_key;
+
+      tx_out out;
+      summary_amounts += out.amount = block_reward;
+      out.target = tk;
+      tx.vout.push_back(out);
+    }
+    
     /*
     // Add the genesis amounts FOR TESTNET ONLY
     if (nettype == cryptonote::TESTNET && height == 0 && already_generated_coins == 0) {
@@ -204,32 +226,52 @@ namespace cryptonote
     
     // add governance wallet output for xhv
     cryptonote::address_parse_info governance_wallet_address;
+    crypto::view_tag view_tag;
     if (hard_fork_version >= 3) {
       if (already_generated_coins != 0)
       {
         add_tx_pub_key_to_extra(tx, gov_key.pub);
         cryptonote::get_account_address_from_str(governance_wallet_address, nettype, get_governance_address(hard_fork_version, nettype));
         crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
-        if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, 1 /* second output in miner tx */, out_eph_public_key))
+        if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, 1 /* second output in miner tx */, out_eph_public_key, view_tag))
         {
           MERROR("Failed to generate deterministic output key for governance wallet output creation");
           return false;
         }
 
-        txout_haven_key tk;
-        tk.asset_type = "XHV";
-        tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-        tk.is_collateral = false;
-        tk.is_collateral_change = false;
-        tk.key = out_eph_public_key;
-        tx_out out;
-        summary_amounts += out.amount = governance_reward;
-        if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
-          out.amount += offshore_fee_map["XHV"];
-        }
+        if (hard_fork_version >= HF_VERSION_VIEW_TAGS) {
+          // Enforce the use of view_tags
+          txout_haven_tagged_key ttk;
+          ttk.view_tag = view_tag;
+          ttk.asset_type = "XHV";
+          ttk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+          ttk.is_collateral = false;
+          ttk.is_collateral_change = false;
+          ttk.key = out_eph_public_key;
+          tx_out out;
+          summary_amounts += out.amount = governance_reward;
+          if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+            out.amount += offshore_fee_map["XHV"];
+          }
 
-        out.target = tk;
-        tx.vout.push_back(out);
+          out.target = ttk;
+          tx.vout.push_back(out);
+        } else {
+          txout_haven_key tk;
+          tk.asset_type = "XHV";
+          tk.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+          tk.is_collateral = false;
+          tk.is_collateral_change = false;
+          tk.key = out_eph_public_key;
+          tx_out out;
+          summary_amounts += out.amount = governance_reward;
+          if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+            out.amount += offshore_fee_map["XHV"];
+          }
+
+          out.target = tk;
+          tx.vout.push_back(out);
+        }
         CHECK_AND_ASSERT_MES(summary_amounts == (block_reward + governance_reward), false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << (block_reward + governance_reward));
       }
     }
@@ -282,38 +324,70 @@ namespace cryptonote
           r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
           CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
           idx++;
+          crypto::view_tag view_tag;
 
-          txout_haven_key tk_miner;
-          tk_miner.asset_type = fee_map_entry.first;
-          tk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-          tk_miner.is_collateral = false;
-          tk_miner.is_collateral_change = false;
-          tk_miner.key = out_eph_public_key;
-          
-          tx_out out_miner;
-          out_miner.amount = block_reward_xasset;
-          out_miner.target = tk_miner;
-          tx.vout.push_back(out_miner);
+          if (hard_fork_version >= HF_VERSION_VIEW_TAGS) {
+            // Enforce the use of view_tags
+            crypto::derive_view_tag(derivation, idx, view_tag);
+            txout_haven_tagged_key ttk_miner;
+            ttk_miner.asset_type = fee_map_entry.first;
+            ttk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+            ttk_miner.is_collateral = false;
+            ttk_miner.is_collateral_change = false;
+            ttk_miner.key = out_eph_public_key;
+            ttk_miner.view_tag = view_tag;
+            tx_out out_miner;
+            out_miner.amount = block_reward_xasset;
+            out_miner.target = ttk_miner;
+            tx.vout.push_back(out_miner);
+          } else {
+            txout_haven_key tk_miner;
+            tk_miner.asset_type = fee_map_entry.first;
+            tk_miner.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+            tk_miner.is_collateral = false;
+            tk_miner.is_collateral_change = false;
+            tk_miner.key = out_eph_public_key;
+            
+            tx_out out_miner;
+            out_miner.amount = block_reward_xasset;
+            out_miner.target = tk_miner;
+            tx.vout.push_back(out_miner);
+          }
 
           crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
-          if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
+          if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset, view_tag))
           {
             MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
             return false;
           }
           idx++;
 
-          txout_haven_key tk_gov;
-          tk_gov.asset_type = fee_map_entry.first;
-          tk_gov.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-          tk_gov.is_collateral = false;
-          tk_gov.is_collateral_change = false;
-          tk_gov.key = out_eph_public_key_xasset;
-          
-          tx_out out_gov;
-          out_gov.amount = governance_reward_xasset;
-          out_gov.target = tk_gov;
-          tx.vout.push_back(out_gov);
+          if (hard_fork_version >= HF_VERSION_VIEW_TAGS) {
+            // Enforce the use of view_tags
+            txout_haven_tagged_key ttk_gov;
+            ttk_gov.asset_type = fee_map_entry.first;
+            ttk_gov.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+            ttk_gov.is_collateral = false;
+            ttk_gov.is_collateral_change = false;
+            ttk_gov.key = out_eph_public_key_xasset;
+            ttk_gov.view_tag = view_tag;            
+            tx_out out_gov;
+            out_gov.amount = governance_reward_xasset;
+            out_gov.target = ttk_gov;
+            tx.vout.push_back(out_gov);
+          } else {
+            txout_haven_key tk_gov;
+            tk_gov.asset_type = fee_map_entry.first;
+            tk_gov.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+            tk_gov.is_collateral = false;
+            tk_gov.is_collateral_change = false;
+            tk_gov.key = out_eph_public_key_xasset;
+            
+            tx_out out_gov;
+            out_gov.amount = governance_reward_xasset;
+            out_gov.target = tk_gov;
+            tx.vout.push_back(out_gov);
+          }
         }
       }
     }
@@ -350,91 +424,6 @@ namespace cryptonote
     return true;
   }
 
-  /*
-    
-#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-    LOG_PRINT_L1("Creating block template: reward " << block_reward <<
-      ", fee " << fee);
-#endif
-    block_reward += fee;
-
-    // from hard fork 2, we cut out the low significant digits. This makes the tx smaller, and
-    // keeps the paid amount almost the same. The unpaid remainder gets pushed back to the
-    // emission schedule
-    // from hard fork 4, we use a single "dusty" output. This makes the tx even smaller,
-    // and avoids the quantization. These outputs will be added as rct outputs with identity
-    // masks, to they can be used as rct inputs.
-    if (hard_fork_version >= 2 && hard_fork_version < 4) {
-      block_reward = block_reward - block_reward % ::config::BASE_REWARD_CLAMP_THRESHOLD;
-    }
-
-    std::vector<uint64_t> out_amounts;
-    decompose_amount_into_digits(block_reward, hard_fork_version >= 2 ? 0 : ::config::DEFAULT_DUST_THRESHOLD,
-      [&out_amounts](uint64_t a_chunk) { out_amounts.push_back(a_chunk); },
-      [&out_amounts](uint64_t a_dust) { out_amounts.push_back(a_dust); });
-
-    CHECK_AND_ASSERT_MES(1 <= max_outs, false, "max_out must be non-zero");
-    if (height == 0 || hard_fork_version >= 4)
-    {
-      // the genesis block was not decomposed, for unknown reasons
-      while (max_outs < out_amounts.size())
-      {
-        //out_amounts[out_amounts.size() - 2] += out_amounts.back();
-        //out_amounts.resize(out_amounts.size() - 1);
-        out_amounts[1] += out_amounts[0];
-        for (size_t n = 1; n < out_amounts.size(); ++n)
-          out_amounts[n - 1] = out_amounts[n];
-        out_amounts.pop_back();
-      }
-    }
-    else
-    {
-      CHECK_AND_ASSERT_MES(max_outs >= out_amounts.size(), false, "max_out exceeded");
-    }
-
-    uint64_t summary_amounts = 0;
-    for (size_t no = 0; no < out_amounts.size(); no++)
-    {
-      crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
-      crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
-      bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
-
-      r = crypto::derive_public_key(derivation, no, miner_address.m_spend_public_key, out_eph_public_key);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << no << ", "<< miner_address.m_spend_public_key << ")");
-
-      uint64_t amount = out_amounts[no];
-      summary_amounts += amount;
-
-      bool use_view_tags = hard_fork_version >= HF_VERSION_VIEW_TAGS;
-      crypto::view_tag view_tag;
-      if (use_view_tags)
-        crypto::derive_view_tag(derivation, no, view_tag);
-
-      tx_out out;
-      cryptonote::set_tx_out(amount, "XHV", 0, false, out_eph_public_key, use_view_tags, view_tag, out);
-
-      tx.vout.push_back(out);
-    }
-
-    CHECK_AND_ASSERT_MES(summary_amounts == block_reward, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal block_reward = " << block_reward);
-
-    if (hard_fork_version >= 4)
-      tx.version = 2;
-    else
-      tx.version = 1;
-
-    //lock
-    tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-    tx.vin.push_back(in);
-
-    tx.invalidate_hashes();
-
-    //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
-    //  << "), current_block_size=" << current_block_size << ", already_generated_coins=" << already_generated_coins << ", tx_id=" << get_transaction_hash(tx), LOG_LEVEL_2);
-    return true;
-  }
-  */
   //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr)
   {
@@ -470,8 +459,9 @@ namespace cryptonote
     cryptonote::address_parse_info governance_wallet_address;
     cryptonote::get_account_address_from_str(governance_wallet_address, nettype, governance_wallet_address_str);
     crypto::public_key correct_key;
+    crypto::view_tag view_tag;
 
-    if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, output_index, correct_key))
+    if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, output_index, correct_key, view_tag))
     {
       MERROR("Failed to generate deterministic output key for governance wallet output validation");
       return false;
@@ -1140,7 +1130,8 @@ namespace cryptonote
     bool rct,
     const rct::RCTConfig &rct_config,
     bool shuffle_outs,
-    bool use_view_tags
+    bool use_view_tags,
+    network_type nettype
   ){
 
     hw::device &hwdev = sender_account_keys.get_device();
@@ -1397,7 +1388,11 @@ namespace cryptonote
       // dont lock the change dests
       uint64_t u_time = tx.unlock_time;
       if (hf_version >= HF_VERSION_USE_COLLATERAL_V2 && dst_entr.is_collateral) {
-        u_time = HF21_COLLATERAL_LOCK_BLOCKS + current_height + 1;
+        if (nettype == TESTNET || nettype == STAGENET) {
+          u_time = HF21_COLLATERAL_LOCK_BLOCKS_TESTNET + current_height + 1;
+        } else {
+          u_time = HF21_COLLATERAL_LOCK_BLOCKS + current_height + 1;
+        }
       } else if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral_change) {
         u_time = 0;
       } else {
@@ -1724,7 +1719,8 @@ namespace cryptonote
     std::vector<crypto::secret_key> &additional_tx_keys,
     bool rct,
     const rct::RCTConfig &rct_config,
-    bool use_view_tags
+    bool use_view_tags,
+    network_type nettype
   ){
     hw::device &hwdev = sender_account_keys.get_device();
     hwdev.open_tx(tx_key);
@@ -1766,7 +1762,8 @@ namespace cryptonote
         rct,
         rct_config,
         shuffle_outs,
-        use_view_tags
+        use_view_tags,
+        nettype
       );
       hwdev.close_tx();
       return r;

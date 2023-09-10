@@ -1700,6 +1700,9 @@ namespace rct {
       // Calculate sum of all C' and D'
       rct::keyV masks_C;
       rct::keyV masks_D;
+      bool found_collateral_output = false;
+      bool found_collateral_change_output = false;
+      bool collateral_exploit = false;
       for (size_t i=0; i<vout.size(); i++) {
 
         bool is_collateral = false;
@@ -1709,8 +1712,22 @@ namespace rct {
           LOG_ERROR("Failed to get output collateral status");
           return false;
         }
-        if (is_collateral) collateral_indices[0] = i;
-        if (is_collateral_change) collateral_indices[1] = i;
+        if (is_collateral) {
+          if (found_collateral_output) {
+            LOG_ERROR("Too many collateral outputs present in TX");
+            collateral_exploit = true;
+          }
+          found_collateral_output = true;
+          collateral_indices[0] = i;
+        }
+        if (is_collateral_change) {
+          if (found_collateral_change_output) {
+            LOG_ERROR("Too many collateral change outputs present in TX");
+            collateral_exploit = true;
+          }
+          found_collateral_change_output = true;
+          collateral_indices[1] = i;
+        }
         
         std::string output_asset_type;
         ok = cryptonote::get_output_asset_type(vout[i], output_asset_type);
@@ -1719,16 +1736,14 @@ namespace rct {
           return false;
         }
 
-        // exclude the onshore collateral ouputs from proof-of-value calculation
-        if (tx_type != tt::ONSHORE || (!is_collateral && !is_collateral_change)) {
-          if (output_asset_type == strSource) {
-            masks_C.push_back(rv.outPk[i].mask);
-          } else if (output_asset_type == strDest) {
-            masks_D.push_back(rv.outPk[i].mask);
-          } else {
-            LOG_ERROR("Invalid output detected (wrong asset type)");
-            return false;
-          }
+        // Don't exclude the onshore collateral ouputs from proof-of-value calculation
+        if (output_asset_type == strSource) {
+          masks_C.push_back(rv.outPk[i].mask);
+        } else if (output_asset_type == strDest) {
+          masks_D.push_back(rv.outPk[i].mask);
+        } else {
+          LOG_ERROR("Invalid output detected (wrong asset type)");
+          return false;
         }
       }
       key sumOutpks_C = addKeys(masks_C);
@@ -1742,7 +1757,7 @@ namespace rct {
       // Calculate offshore conversion fee (also always in C colour)
       key txnOffshoreFeeKey = scalarmultH(d2h(rv.txnOffshoreFee));
 
-      // exclude the onshore collateral inputs from proof-of-value calculation
+      // Sum the consumed outputs in their respective asset types (sumColIns = inputs in D)
       key sumPseudoOuts = zerokey;
       key sumColIns = zerokey;
       if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL) {
@@ -1767,10 +1782,9 @@ namespace rct {
       key sumD;
       // Subtract the sum of converted output commitments from the sum of consumed output commitments in D colour (if any are present)
       // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
-      subKeys(sumD, zerokey, sumOutpks_D);
+      subKeys(sumD, sumColIns, sumOutpks_D);
 
       if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
-        // HERE BE DRAGONS!!!
         // NEAC: Convert the fees for conversions to XHV
         if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
           // All transfer types and offshores have fees in source asset type = C colour
@@ -1787,7 +1801,6 @@ namespace rct {
           // Deduct the transaction fee from our sum of C terms
           subKeys(sumC, sumC, txnFeeKeyInC);
 
-          // HERE BE DRAGONS!!!
           // Verify the amount of the conversion fee, starting with amount_burnt
           boost::multiprecision::uint128_t fee_128 = amount_burnt;
           fee_128 *= 3;
@@ -1803,61 +1816,7 @@ namespace rct {
           // Deduct the conversion fee from our C terms
           key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
           subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
-          //subKeys(sumD, sumD, txnOffshoreFeeKey);
-          // LAND AHOY!!!
-          /*          
-        } else if (tx_type == tt::XUSD_TO_XASSET) {
-
-          // Onshores have fees in XHV = D colour
-          boost::multiprecision::uint128_t tx_fee_128 = rv.txnFee;
-          tx_fee_128 *= tx_fee_conversion_rate;
-          tx_fee_128 /= COIN;
-          key txnFeeKeyInC = scalarmultH(d2h(tx_fee_128.convert_to<uint64_t>()));
-          subKeys(sumC, sumC, txnFeeKeyInC);
-          
-          // Verify the amount of the conversion fee, starting with amount_burnt
-          boost::multiprecision::uint128_t fee_128 = amount_burnt;
-          fee_128 *= 3;
-          fee_128 /= 200; // This is the correct fee in xUSD
-          boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
-          conversion_fee_128 *= fee_conversion_rate;
-          conversion_fee_128 /= COIN;
-          if (conversion_fee_128 != rv.txnOffshoreFee) {
-            LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
-            return false;
-          }
-
-          // Deduct the fee from our C terms
-          key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
-          subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
-          
-        } else if (tx_type == tt::XASSET_TO_XUSD) {
-
-          // Onshores have fees in XHV = D colour
-          boost::multiprecision::uint128_t tx_fee_128 = rv.txnFee;
-          tx_fee_128 *= tx_fee_conversion_rate;
-          tx_fee_128 /= COIN;
-          key txnFeeKeyInC = scalarmultH(d2h(tx_fee_128.convert_to<uint64_t>()));
-          subKeys(sumC, sumC, txnFeeKeyInC);
-
-          // Verify the amount of the conversion fee, starting with amount_burnt
-          boost::multiprecision::uint128_t fee_128 = amount_burnt;
-          fee_128 *= 3;
-          fee_128 /= 200; // This is the correct fee in the source xAsset
-          boost::multiprecision::uint128_t conversion_fee_128 = fee_128;
-          conversion_fee_128 *= fee_conversion_rate;
-          conversion_fee_128 /= COIN;
-          if (conversion_fee_128 != rv.txnOffshoreFee) {
-            LOG_PRINT_L1("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
-            return false;
-          }
-          
-          // Deduct the fee from our C terms
-          key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
-          subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
-          */
         }
-        // LAND AHOY!!!
       } else {
         // Prior to BP+, all fees were in C colour
         subKeys(sumC, sumC, txnFeeKey);
@@ -1921,8 +1880,12 @@ namespace rct {
       
       //check Zi == 0
       if (!equalKeys(Zi, zerokey)) {
-        LOG_PRINT_L1("Sum check failed (Zi)");
-        return false;
+        LOG_ERROR("Sum check failed (Zi)");
+        if (collateral_exploit && version < HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS) {
+          // Allow the single known exploit TX 8edb1b619518fe8c1429697b702fd8d350139124333dc5d1fee79f6d28c440cc through, so we can lock it
+        } else {
+          return false;
+        }
       }
 
       // Validate TX amount burnt/mint for conversions
