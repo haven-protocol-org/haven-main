@@ -1,9 +1,9 @@
 Gitian building
 ================
 
-*Setup instructions for a Gitian build of Monero.*
+*Setup instructions for a Gitian build of Haven.*
 
-Gitian is the deterministic build process that is used to build the Monero CLI
+Gitian is the deterministic build process that is used to build the Haven CLI
 executables. It provides a way to be reasonably sure that the
 executables are really built from the git source. It also makes sure that
 the same, tested dependencies are used and statically built into the executable.
@@ -122,7 +122,7 @@ Initial Gitian Setup
 The `gitian-build.py` script will checkout different release tags, so it's best to copy it to the top level directory:
 
 ```bash
-cp monero/contrib/gitian/gitian-build.py .
+cp haven-main/contrib/gitian/gitian-build.py .
 ```
 
 ### Setup the required environment
@@ -133,7 +133,7 @@ Common setup part:
 su - gitianuser
 
 GH_USER=YOUR_GITHUB_USER_NAME
-VERSION=v0.18.1.2
+VERSION=v0.18.2.2
 ```
 
 Where `GH_USER` is your GitHub user name and `VERSION` is the version tag you want to build. 
@@ -172,7 +172,7 @@ To build the most recent tag (pass in `--docker` if using docker):
 ./gitian-build.py --detach-sign --no-commit --build $GH_USER $VERSION
 ```
 
-To speed up the build, use `-j 5 --memory 10000` as the first arguments, where `5` is the number of CPU's you allocated to the VM plus one, and 10000 is a little bit less than then the MB's of RAM you allocated. If there is memory corruption on your machine, try to tweak these values. A good rule of thumb is, that Monero currently needs about 2 GB of RAM per core. 
+To speed up the build, use `-j 5 --memory 10000` as the first arguments, where `5` is the number of CPU's you allocated to the VM plus one, and 10000 is a little bit less than then the MB's of RAM you allocated. If there is memory corruption on your machine, try to tweak these values. A good rule of thumb is, that Haven currently needs about 2 GB of RAM per core. 
 
 A full example for `docker` would look like the following:
 

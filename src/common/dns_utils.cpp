@@ -104,9 +104,6 @@ get_builtin_ds(void)
 {
   static const char * const ds[] =
   {
-    /*
-    ". IN DS 2371 13 2 F445719FF7944CEC584133E9D0273FFD534E1C9E21F1F7F5FF5DCEB4E5068051\n",
-    */
     ". IN DS 19036 8 2 49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5\n",
     ". IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D\n",
     NULL
@@ -332,11 +329,6 @@ std::vector<std::string> DNSResolver::get_record(const std::string& url, int rec
   dnssec_available = false;
   dnssec_valid = false;
 
-  if (!check_address_syntax(url.c_str()))
-  {
-    return addresses;
-  }
-
   // destructor takes care of cleanup
   ub_result_ptr result;
 
@@ -417,16 +409,6 @@ DNSResolver& DNSResolver::instance()
 DNSResolver DNSResolver::create()
 {
   return DNSResolver();
-}
-
-bool DNSResolver::check_address_syntax(const char *addr) const
-{
-  // if string doesn't contain a dot, we won't consider it a url for now.
-  if (strchr(addr,'.') == NULL)
-  {
-    return false;
-  }
-  return true;
 }
 
 namespace dns_utils
