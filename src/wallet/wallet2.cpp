@@ -2041,7 +2041,7 @@ bool wallet2::get_circulating_supply(std::vector<std::pair<std::string, std::str
 bool wallet2::get_onshore_collateral_inputs(uint64_t col_amount, std::vector<size_t>& picked_inputs) {
   // go through the xhv inputs and pick the smallest amount of inputs >= col_amount
 
-  // get tranfers
+  // get transfers
   transfers_iterator_container specific_transfers = get_specific_transfers("XHV");
 
   // sort the copy array
@@ -10012,7 +10012,7 @@ std::vector<size_t> wallet2::pick_preferred_rct_inputs(uint64_t needed_money, co
         continue;
       }
       LOG_PRINT_L2("We can use " << i << " alone: " << print_money(td.amount()));
-      picks.push_back(INDEX_TO_M_TRANSFERS(i)); // store the index to the original m_tranfers
+      picks.push_back(INDEX_TO_M_TRANSFERS(i)); // store the index to the original m_transfers
       return picks;
     }
   }
@@ -11255,7 +11255,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
         tx.selected_transfers.size() << " inputs");
       if (use_rct) {
-        // get the inputs for collateral and append it to selected_tranfers
+        // get the inputs for collateral and append it to selected_transfers
         if (tx_type == tt::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL && needed_col > 0) {
           std::vector<size_t> col_ins;
           THROW_WALLET_EXCEPTION_IF(!get_onshore_collateral_inputs(needed_col, col_ins), error::wallet_internal_error, "Failed to find sufficient inputs for onshore collateral");
