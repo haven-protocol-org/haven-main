@@ -1661,7 +1661,8 @@ namespace rct {
       tools::threadpool::waiter waiter(tpool);
       std::deque<bool> results;
       std::vector<const Bulletproof*> proofs;
-      std::vector<uint32_t> collateral_indices = {0,0};
+      std::vector<uint32_t> collateral_indices = {};
+      std::vector<uint32_t> collateral_change_indices = {};
       //size_t max_non_bp_proofs = 0, offset = 0;
       using tt = cryptonote::transaction_type;
       CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
@@ -1700,9 +1701,6 @@ namespace rct {
       // Calculate sum of all C' and D'
       rct::keyV masks_C;
       rct::keyV masks_D;
-      bool found_collateral_output = false;
-      bool found_collateral_change_output = false;
-      bool collateral_exploit = false;
       for (size_t i=0; i<vout.size(); i++) {
 
         bool is_collateral = false;
@@ -1713,20 +1711,10 @@ namespace rct {
           return false;
         }
         if (is_collateral) {
-          if (found_collateral_output) {
-            LOG_ERROR("Too many collateral outputs present in TX");
-            collateral_exploit = true;
-          }
-          found_collateral_output = true;
-          collateral_indices[0] = i;
+          collateral_indices.push_back(i);
         }
         if (is_collateral_change) {
-          if (found_collateral_change_output) {
-            LOG_ERROR("Too many collateral change outputs present in TX");
-            collateral_exploit = true;
-          }
-          found_collateral_change_output = true;
-          collateral_indices[1] = i;
+          collateral_change_indices.push_back(i);
         }
         
         std::string output_asset_type;
@@ -1746,6 +1734,30 @@ namespace rct {
           return false;
         }
       }
+
+      // Sanity check the collateral
+      bool collateral_exploit = false;
+      if ((version >= HF_VERSION_USE_COLLATERAL) &&
+          (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+        if (collateral_indices.size() != 1) {
+          LOG_ERROR("Incorrect number of collateral outputs provided");
+          if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS)
+            return false;
+          else
+            collateral_exploit = true;
+        } else if ((tx_type == tt::OFFSHORE && collateral_change_indices.size() != 0)  ||
+                   (tx_type == tt::ONSHORE && collateral_change_indices.size() != 1)) {
+          LOG_ERROR("Incorrect number of collateral change outputs provided");
+          if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS)
+            return false;
+          else
+            collateral_exploit = true;
+        } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0]) {
+          LOG_ERROR("Collateral output cannot also be collateral_change output");
+          return false;
+        }
+      }
+      
       key sumOutpks_C = addKeys(masks_C);
       key sumOutpks_D = addKeys(masks_D);
       DP(sumOutpks_C);
@@ -1948,16 +1960,24 @@ namespace rct {
 
           if (!equalKeys(pseudoC_col, C_col)) {
             LOG_ERROR("Collateral commitment verification failed.");
-            return false;
+            if (collateral_exploit && version < HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS) {
+              // Allow the single known exploit TX 8edb1b619518fe8c1429697b702fd8d350139124333dc5d1fee79f6d28c440cc through, so we can lock it
+            } else {
+              return false;
+            }
           }
 
           if (tx_type == tt::ONSHORE) {
 
             // check collateral inputs == outputs
-            key sumColOut = addKeys(rv.outPk[collateral_indices[0]].mask, rv.outPk[collateral_indices[1]].mask);
+            key sumColOut = addKeys(rv.outPk[collateral_indices[0]].mask, rv.outPk[collateral_change_indices[0]].mask);
             if (!equalKeys(sumColOut, sumColIns)) {
-              LOG_PRINT_L1("Onshore collateral inputs != outputs");
-              return false;
+              LOG_ERROR("Onshore collateral inputs != outputs");
+              if (collateral_exploit && version < HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS) {
+                // Allow the single known exploit TX 8edb1b619518fe8c1429697b702fd8d350139124333dc5d1fee79f6d28c440cc through, so we can lock it
+              } else {
+                return false;
+              }
             }
           }
         }
