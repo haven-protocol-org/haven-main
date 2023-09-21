@@ -1745,13 +1745,14 @@ namespace rct {
             return false;
           else
             collateral_exploit = true;
-        } else if (collateral_change_indices.size() != 1) {
+        } else if ((tx_type == tt::OFFSHORE && collateral_change_indices.size() != 0)  ||
+                   (tx_type == tt::ONSHORE && collateral_change_indices.size() != 1)) {
           LOG_ERROR("Incorrect number of collateral change outputs provided");
           if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS)
             return false;
           else
             collateral_exploit = true;
-        } else if (collateral_indices[0] == collateral_change_indices[0]) {
+        } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0]) {
           LOG_ERROR("Collateral output cannot also be collateral_change output");
           return false;
         }
@@ -1959,7 +1960,11 @@ namespace rct {
 
           if (!equalKeys(pseudoC_col, C_col)) {
             LOG_ERROR("Collateral commitment verification failed.");
-            return false;
+            if (collateral_exploit && version < HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS) {
+              // Allow the single known exploit TX 8edb1b619518fe8c1429697b702fd8d350139124333dc5d1fee79f6d28c440cc through, so we can lock it
+            } else {
+              return false;
+            }
           }
 
           if (tx_type == tt::ONSHORE) {
