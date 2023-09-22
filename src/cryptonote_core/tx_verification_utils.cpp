@@ -130,7 +130,7 @@ bool ver_rct_non_semantics_simple_cached
     // mixring. Future versions of the protocol may differ in this regard, but if this assumptions
     // holds true in the future, enable the verification hash by modifying the `untested_tx`
     // condition below.
-    const bool untested_tx = tx.version > 2 || tx.rct_signatures.type > rct::RCTTypeBulletproofPlus;
+    const bool untested_tx = tx.version > HAVEN_TYPES_TRANSACTION_VERSION || tx.rct_signatures.type > rct::RCTTypeBulletproofPlus;
     VER_ASSERT(!untested_tx, "Unknown TX type. Make sure RCT cache works correctly with this type and then enable it in the code here.");
 
     // Don't cache older (or newer) rctSig types
