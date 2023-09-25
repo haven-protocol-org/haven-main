@@ -2041,7 +2041,7 @@ bool wallet2::get_circulating_supply(std::vector<std::pair<std::string, std::str
 bool wallet2::get_onshore_collateral_inputs(uint64_t col_amount, std::vector<size_t>& picked_inputs) {
   // go through the xhv inputs and pick the smallest amount of inputs >= col_amount
 
-  // get tranfers
+  // get transfers
   transfers_iterator_container specific_transfers = get_specific_transfers("XHV");
 
   // sort the copy array
@@ -8674,6 +8674,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
 
   if (fake_outputs_count > 0)
   {
+    uint8_t hf_version = get_current_hard_fork();
     uint64_t segregation_fork_height = get_segregation_fork_height();
     // check whether we're shortly after the fork
     uint64_t height;
@@ -9270,6 +9271,28 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       for (size_t o = 0; o < requested_outputs_count && outs.back().size() < fake_outputs_count + 1; ++o)
       {
         size_t i = base + order[o];
+
+        // HERE BE DRAGONS!!!
+        // NEAC: Filter out the invalid output IDs from being chosen as ring members
+        if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+          size_t output_id = (use_global_outs ? req.outputs[i].index : daemon_resp.outs[i].output_id);
+          std::vector<uint64_t> invalid_output_ids = {
+            // KuCoin outputs
+            6872743, 6872555, 6872560, 6872563, 6872565, 
+            6832483, 6832485, 6834093, 6834095, 6870840, 6870841, 6872742, 6872660, 6872661,
+            6872554, 6872556, 6872557, 6872558, 6872559, 6872561, 6872562, 6872564, 6872566, 
+            6872567, 6872568, 6872569, 6870373, 6870374, 6872656, 6872657, 6872325, 6872326,
+            // 3.2.1 collateral exploit outputs
+            9613698, 9613699, 9613700, 9613701, 9613702, 9613703, 9613704, 9613705, 9613706,
+            9613707, 9613708, 9613709
+          };
+          if (std::find(invalid_output_ids.begin(), invalid_output_ids.end(), output_id) != invalid_output_ids.end()) {
+            LOG_PRINT_L1("Known invalid output id " << output_id << " detected - rejecting");
+            continue;
+          }
+        }
+        // LAND AHOY!!!
+
         LOG_PRINT_L2("Index " << i << "/" << requested_outputs_count << ": idx " << (use_global_outs ? req.outputs[i].index : daemon_resp.outs[i].output_id) << " (real " << td.m_global_output_index << "), unlocked " << daemon_resp.outs[i].unlocked << ", key " << daemon_resp.outs[i].key);
         tx_add_fake_output(outs, (use_global_outs ? req.outputs[i].index : daemon_resp.outs[i].output_id), daemon_resp.outs[i].key, daemon_resp.outs[i].mask, td.m_global_output_index, daemon_resp.outs[i].unlocked, valid_public_keys_cache);
       }
@@ -9989,7 +10012,7 @@ std::vector<size_t> wallet2::pick_preferred_rct_inputs(uint64_t needed_money, co
         continue;
       }
       LOG_PRINT_L2("We can use " << i << " alone: " << print_money(td.amount()));
-      picks.push_back(INDEX_TO_M_TRANSFERS(i)); // store the index to the original m_tranfers
+      picks.push_back(INDEX_TO_M_TRANSFERS(i)); // store the index to the original m_transfers
       return picks;
     }
   }
@@ -11232,7 +11255,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " outputs and " <<
         tx.selected_transfers.size() << " inputs");
       if (use_rct) {
-        // get the inputs for collateral and append it to selected_tranfers
+        // get the inputs for collateral and append it to selected_transfers
         if (tx_type == tt::ONSHORE && hf_version >= HF_VERSION_USE_COLLATERAL && needed_col > 0) {
           std::vector<size_t> col_ins;
           THROW_WALLET_EXCEPTION_IF(!get_onshore_collateral_inputs(needed_col, col_ins), error::wallet_internal_error, "Failed to find sufficient inputs for onshore collateral");
