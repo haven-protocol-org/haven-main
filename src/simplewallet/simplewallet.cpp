@@ -7369,11 +7369,11 @@ bool simple_wallet::xasset_transfer(const std::vector<std::string> &args)
     return false;
   }
   if (asset == "XUSD") {
-    fail_msg_writer() << "xasset_tranfer command is only for xAssets. You have to use 'offhshore_transfer' command to transfer your xUSD to a different address.";
+    fail_msg_writer() << "xasset_transfer command is only for xAssets. You have to use 'offshore_transfer' command to transfer your xUSD to a different address.";
     return false;
   }
   if (asset == "XHV") {
-    fail_msg_writer() << "xasset_tranfer command is only for xAssets. You have to use 'transfer' command to transfer your XHV to a different address.";
+    fail_msg_writer() << "xasset_transfer command is only for xAssets. You have to use 'transfer' command to transfer your XHV to a different address.";
     return false;
   }
   local_args.erase(local_args.end() - 1);
