@@ -523,7 +523,11 @@ namespace cryptonote
   bool miner::worker_thread()
   {
     const uint32_t th_local_index = m_thread_index++; // atomically increment, getting value before increment
-    crypto::rx_set_miner_thread(th_local_index, tools::get_max_concurrency());
+
+    // HERE BE DRAGONS!!!
+    // NEAC: really wish we had access to the hard_fork_version here...RandomX needs to be disabled
+    //crypto::rx_set_miner_thread(th_local_index, tools::get_max_concurrency());
+    // LAND AHOY!!!
 
     MLOG_SET_THREAD_NAME(std::string("[miner ") + std::to_string(th_local_index) + "]");
     MGINFO("Miner thread was started ["<< th_local_index << "]");
