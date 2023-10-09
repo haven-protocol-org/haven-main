@@ -878,7 +878,7 @@ namespace cryptonote
     if (source != dest) {
 
       // Block all conversions as of fork 17 till HAVEN2
-      if (version >= HF_VERSION_XASSET_FEES_V2) {
+      if (version >= HF_VERSION_XASSET_FEES_V2 && version < HF_VERSION_HAVEN2) {
         LOG_ERROR("Conversion TXs are not permitted as of fork" << HF_VERSION_XASSET_FEES_V2);
         tvc.m_verifivation_failed = true;
         return false;
@@ -1229,7 +1229,11 @@ namespace cryptonote
     t_serializable_object_to_blob(tx, bl);
     if (bl.size() == 0 || !get_transaction_hash(tx, h))
       return false;
-    return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    if (version >= HF_VERSION_HAVEN2) {
+      return add_tx2(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    } else {
+      return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    }
   }
   //---------------------------------------------------------------------------------
   size_t tx_memory_pool::get_txpool_weight() const
