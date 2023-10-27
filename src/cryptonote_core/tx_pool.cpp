@@ -507,6 +507,7 @@ namespace cryptonote
       if (!fee || !m_blockchain.check_fee(tx_weight, fee, tvc.pr, source, dest, tx_type)){
         tvc.m_verifivation_failed = true;
         tvc.m_fee_too_low = true;
+        tvc.m_no_drop_offense = true;
         return false;
       }
     }
@@ -517,6 +518,16 @@ namespace cryptonote
       LOG_PRINT_L1("transaction is too heavy: " << tx_weight << " bytes, maximum weight: " << tx_weight_limit);
       tvc.m_verifivation_failed = true;
       tvc.m_too_big = true;
+      return false;
+    }
+
+    size_t tx_extra_size = tx.extra.size();
+    if (!kept_by_block && tx_extra_size > MAX_TX_EXTRA_SIZE)
+    {
+      LOG_PRINT_L1("transaction tx-extra is too big: " << tx_extra_size << " bytes, the limit is: " << MAX_TX_EXTRA_SIZE);
+      tvc.m_verifivation_failed = true;
+      tvc.m_tx_extra_too_big = true;
+      tvc.m_no_drop_offense = true;
       return false;
     }
 
@@ -867,7 +878,7 @@ namespace cryptonote
     if (source != dest) {
 
       // Block all conversions as of fork 17 till HAVEN2
-      if (version >= HF_VERSION_XASSET_FEES_V2) {
+      if (version >= HF_VERSION_XASSET_FEES_V2 && version < HF_VERSION_HAVEN2) {
         LOG_ERROR("Conversion TXs are not permitted as of fork" << HF_VERSION_XASSET_FEES_V2);
         tvc.m_verifivation_failed = true;
         return false;
@@ -1218,7 +1229,11 @@ namespace cryptonote
     t_serializable_object_to_blob(tx, bl);
     if (bl.size() == 0 || !get_transaction_hash(tx, h))
       return false;
-    return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    if (version >= HF_VERSION_HAVEN2) {
+      return add_tx2(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    } else {
+      return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, tx_relay, relayed, version);
+    }
   }
   //---------------------------------------------------------------------------------
   size_t tx_memory_pool::get_txpool_weight() const

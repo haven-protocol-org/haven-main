@@ -1,7 +1,7 @@
 Quick Gitian building with docker
 =================================
 
-*Setup instructions for a Gitian build of Monero using Docker.*
+*Setup instructions for a Gitian build of Haven using Docker.*
 
 Gitian supports other container mechanisms too but if you have a Debian or
 Ubuntu-based host the steps can be greatly simplified.
@@ -23,11 +23,11 @@ su $USER
 The final `su` command is needed to start a new shell with your new group membership,
 since the `usermod` command doesn't affect any existing sessions.
 
-You'll also need to clone the monero repository and navigate to the `contrib/gitian` directory:
+You'll also need to clone the Haven repository and navigate to the `contrib/gitian` directory:
 
 ```bash
-git clone https://github.com/monero-project/monero.git
-cd monero/contrib/gitian
+git clone https://github.com/haven-protocol-org/haven-main.git
+cd haven-main/contrib/gitian
 ```
 
 Other User Preparation
@@ -57,7 +57,7 @@ The dockrun.sh script will do everything to build the binaries. Just specify the
 version to build as its only argument, e.g.
 
 ```bash
-VERSION=v0.18.1.2
+VERSION=v0.18.2.2
 ./dockrun.sh $VERSION
 ```
 

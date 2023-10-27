@@ -58,6 +58,7 @@
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_tx_utils.h"
+#include "tx_verification_utils.h"
 #include "cryptonote_basic/verification_context.h"
 #include "crypto/hash.h"
 #include "checkpoints/checkpoints.h"
@@ -599,6 +600,15 @@ namespace cryptonote
      * @return true unless saving the blockchain fails
      */
     bool store_blockchain();
+
+    /**
+     * @brief expands v2 transaction data from blockchain
+     *
+     * RingCT transactions do not transmit some of their data if it
+     * can be reconstituted by the receiver. This function expands
+     * that implicit data.
+     */
+    static bool expand_transaction_2(transaction &tx, const uint8_t hf_version, const crypto::hash &tx_prefix_hash, const std::vector<std::vector<rct::ctkey>> &pubkeys);
 
     /**
      * @brief validates a transaction's inputs
@@ -1249,6 +1259,9 @@ namespace cryptonote
     uint64_t m_prepare_nblocks;
     std::vector<block> *m_prepare_blocks;
 
+    // cache for verifying transaction RCT non semantics
+    mutable rct_ver_cache_t m_rct_ver_cache;
+
     /**
      * @brief collects the keys for all outputs being "spent" as an input
      *
@@ -1605,15 +1618,6 @@ namespace cryptonote
     void load_compiled_in_block_hashes(const GetCheckpointsCallback& get_checkpoints);
 
     /**
-     * @brief expands v2 transaction data from blockchain
-     *
-     * RingCT transactions do not transmit some of their data if it
-     * can be reconstituted by the receiver. This function expands
-     * that implicit data.
-     */
-    bool expand_transaction_2(transaction &tx, const crypto::hash &tx_prefix_hash, const std::vector<std::vector<rct::ctkey>> &pubkeys) const;
-
-    /**
      * @brief invalidates any cached block template
      */
     void invalidate_block_template_cache();
@@ -1628,9 +1632,11 @@ namespace cryptonote
     /**
      * @brief sends new block notifications to ZMQ `miner_data` subscribers
      *
+     * @param height current blockchain height
+     * @param seed_hash seed hash to use for mining
      * @param prev_id hash of new blockchain tip
      * @param already_generated_coins total coins mined by the network so far
      */
-    void send_miner_notifications(const crypto::hash &prev_id, uint64_t already_generated_coins);
+    void send_miner_notifications(uint64_t height, const crypto::hash &seed_hash, const crypto::hash &prev_id, uint64_t already_generated_coins);
   };
 }  // namespace cryptonote

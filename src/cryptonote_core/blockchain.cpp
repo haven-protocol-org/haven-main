@@ -61,6 +61,7 @@
 #include "common/notify.h"
 #include "common/varint.h"
 #include "common/pruning.h"
+#include "common/data_cache.h"
 #include "time_helper.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -102,7 +103,8 @@ Blockchain::Blockchain(tx_memory_pool& tx_pool) :
   m_difficulty_for_next_block(1),
   m_btc_valid(false),
   m_batch_success(true),
-  m_prepare_height(0)
+  m_prepare_height(0),
+  m_rct_ver_cache()
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 }
@@ -501,6 +503,14 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
     if (!update_next_cumulative_weight_limit())
       return false;
   }
+
+  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+  {
+    const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(m_db->height()));
+    if (seedhash != crypto::null_hash)
+      rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+  }
+  
   return true;
 }
 //------------------------------------------------------------------
@@ -615,6 +625,12 @@ void Blockchain::pop_blocks(uint64_t nblocks)
 
   if (stop_batch)
     m_db->batch_stop();
+
+  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+  {
+    const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(m_db->height()));
+    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+  }
 }
 //------------------------------------------------------------------
 // This function tells BlockchainDB to remove the top block from the
@@ -1313,18 +1329,20 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
   }
 
   m_hardfork->reorganize_from_chain_height(split_height);
-  get_block_longhash_reorg(split_height);
 
   std::shared_ptr<tools::Notify> reorg_notify = m_reorg_notify;
   if (reorg_notify)
     reorg_notify->notify("%s", std::to_string(split_height).c_str(), "%h", std::to_string(m_db->height()).c_str(),
         "%n", std::to_string(m_db->height() - split_height).c_str(), "%d", std::to_string(discarded_blocks).c_str(), NULL);
 
+  const uint64_t new_height = m_db->height();
+  const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(new_height));
+  
   crypto::hash prev_id;
   if (!get_block_hash(alt_chain.back().bl, prev_id))
     MERROR("Failed to get block hash of an alternative chain's tip");
   else
-    send_miner_notifications(prev_id, alt_chain.back().already_generated_coins);
+    send_miner_notifications(new_height, seedhash, prev_id, alt_chain.back().already_generated_coins);
 
   for (const auto& notifier : m_block_notifiers)
   {
@@ -1335,6 +1353,9 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
       ++notify_height;
     }
   }
+
+  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
 
   MGINFO_GREEN("REORGANIZE SUCCESS! on height: " << split_height << ", new blockchain size: " << m_db->height());
   return true;
@@ -2291,7 +2312,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       {
         seedhash = get_block_id_by_height(seedheight);
       }
-      get_altblock_longhash(bei.bl, proof_of_work, get_current_blockchain_height(), bei.height, seedheight, seedhash);
+      get_altblock_longhash(bei.bl, proof_of_work, seedhash);
     } else
     {
       get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
@@ -3825,18 +3846,18 @@ bool Blockchain::have_tx_keyimges_as_spent(const transaction &tx) const
   }
   return false;
 }
-bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_prefix_hash, const std::vector<std::vector<rct::ctkey>> &pubkeys) const
+bool Blockchain::expand_transaction_2(transaction &tx, const uint8_t hf_version, const crypto::hash &tx_prefix_hash, const std::vector<std::vector<rct::ctkey>> &pubkeys)
 {
   PERF_TIMER(expand_transaction_2);
   // Get the current hard fork version
-  const uint8_t hf_version = m_hardfork->get_current_version();
+  //const uint8_t hf_version = m_hardfork->get_current_version();
   
   // If the HF version is at least 11, we require a TX version of 3, because we're using CLSAG and OFFSHORE functionality
   uint64_t tx_min_version = (hf_version >= HF_VERSION_OFFSHORE_FULL) ? OFFSHORE_TRANSACTION_VERSION : 2;
   CHECK_AND_ASSERT_MES(tx.version >= tx_min_version, false, "Transaction version is not at least " + boost::lexical_cast<std::string>(tx_min_version));
 
   rct::rctSig &rv = tx.rct_signatures;
-
+  
   // message - hash of the transaction prefix
   rv.message = rct::hash2rct(tx_prefix_hash);
 
@@ -4182,6 +4203,13 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         false, "Transaction spends at least one output which is too young");
   }
 
+  // Warn that new RCT types are present, and thus the cache is not being used effectively
+  static constexpr const std::uint8_t RCT_CACHE_TYPE = rct::RCTTypeBulletproofPlus;
+  if (tx.rct_signatures.type > RCT_CACHE_TYPE)
+  {
+    MWARNING("RCT cache is not caching new verification results. Please update RCT_CACHE_TYPE!");
+  }
+  
   if (tx.version == 1)
   {
     if (threads > 1)
@@ -4193,7 +4221,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         if(!failed && !results[i])
           failed = true;
       }
-
       if (failed)
       {
         MERROR_VER("Failed to check ring signatures!");
@@ -4203,12 +4230,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   }
   else
   {
-    if (!expand_transaction_2(tx, tx_prefix_hash, pubkeys))
-    {
-      MERROR_VER("Failed to expand rct signatures!");
-      return false;
-    }
-
     // from version 2, check ringct signatures
     // obviously, the original and simple rct APIs use a mixRing that's indexes
     // in opposite orders, because it'd be too simple otherwise...
@@ -4229,61 +4250,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     case rct::RCTTypeHaven3:
     case rct::RCTTypeBulletproofPlus:
     {
-      // check all this, either reconstructed (so should really pass), or not
-      {
-        if (pubkeys.size() != rv.mixRing.size())
-        {
-          MERROR_VER("Failed to check ringct signatures: mismatched pubkeys/mixRing size");
-          return false;
-        }
-        for (size_t i = 0; i < pubkeys.size(); ++i)
-        {
-          if (pubkeys[i].size() != rv.mixRing[i].size())
-          {
-            MERROR_VER("Failed to check ringct signatures: mismatched pubkeys/mixRing size");
-            return false;
-          }
-        }
-
-        for (size_t n = 0; n < pubkeys.size(); ++n)
-        {
-          for (size_t m = 0; m < pubkeys[n].size(); ++m)
-          {
-            if (pubkeys[n][m].dest != rct::rct2pk(rv.mixRing[n][m].dest))
-            {
-              MERROR_VER("Failed to check ringct signatures: mismatched pubkey at vin " << n << ", index " << m);
-              return false;
-            }
-            if (pubkeys[n][m].mask != rct::rct2pk(rv.mixRing[n][m].mask))
-            {
-              MERROR_VER("Failed to check ringct signatures: mismatched commitment at vin " << n << ", index " << m);
-              return false;
-            }
-          }
-        }
-      }
-
-      const size_t n_sigs = rct::is_rct_clsag(rv.type) ? rv.p.CLSAGs.size() : rv.p.MGs.size();
-      if (n_sigs != tx.vin.size())
-      {
-        MERROR_VER("Failed to check ringct signatures: mismatched MGs/vin sizes");
-        return false;
-      }
-      for (size_t n = 0; n < tx.vin.size(); ++n)
-      {
-        bool error;
-        if (rct::is_rct_clsag(rv.type))
-          error = memcmp(&boost::get<txin_haven_key>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32);
-        else
-          error = rv.p.MGs[n].II.empty() || memcmp(&boost::get<txin_haven_key>(tx.vin[n]).k_image, &rv.p.MGs[n].II[0], 32);
-        if (error)
-        {
-          MERROR_VER("Failed to check ringct signatures: mismatched key image");
-          return false;
-        }
-      }
-
-      if (!rct::verRctNonSemanticsSimple(rv))
+      if (!ver_rct_non_semantics_simple_cached(tx, hf_version, pubkeys, m_rct_ver_cache, RCT_CACHE_TYPE))
       {
         MERROR_VER("Failed to check ringct signatures!");
         return false;
@@ -4292,6 +4259,12 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
     case rct::RCTTypeFull:
     {
+      if (!expand_transaction_2(tx, hf_version, tx_prefix_hash, pubkeys))
+      {
+        MERROR_VER("Failed to expand rct signatures!");
+        return false;
+      }
+
       // check all this, either reconstructed (so should really pass), or not
       {
         bool size_matches = true;
@@ -5458,10 +5431,14 @@ leave:
     }
   }
 
-  send_miner_notifications(id, already_generated_coins);
+  const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(new_height));
+  send_miner_notifications(new_height, seedhash, id, already_generated_coins);
 
   for (const auto& notifier: m_block_notifiers)
     notifier(new_height - 1, {std::addressof(bl), 1});
+
+  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
+    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
 
   return true;
 }
@@ -6668,23 +6645,14 @@ void Blockchain::cache_block_template(const block &b, const cryptonote::account_
   m_btc_valid = true;
 }
 
-void Blockchain::send_miner_notifications(const crypto::hash &prev_id, uint64_t already_generated_coins)
+void Blockchain::send_miner_notifications(uint64_t height, const crypto::hash &seed_hash, const crypto::hash &prev_id, uint64_t already_generated_coins)
 {
   if (m_miner_notifiers.empty())
     return;
 
-  const uint64_t height = m_db->height();
   const uint8_t major_version = m_hardfork->get_ideal_version(height);
   const difficulty_type diff = get_difficulty_for_next_block();
   const uint64_t median_weight = m_current_block_cumul_weight_median;
-
-  crypto::hash seed_hash = crypto::null_hash;
-  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
-  {
-    uint64_t seed_height, next_height;
-    crypto::rx_seedheights(height, &seed_height, &next_height);
-    seed_hash = get_block_id_by_height(seed_height);
-  }
 
   std::vector<tx_block_template_backlog_entry> tx_backlog;
   m_tx_pool.get_block_template_backlog(tx_backlog);

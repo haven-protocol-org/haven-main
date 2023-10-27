@@ -54,7 +54,6 @@
 #include "cryptonote_basic/fwd.h"
 #include "offshore/pricing_record.h"
 
-
 #define SERIALIZE_OLD_TX_PREFIX(vin, vout, extra, offshore_data, output_unlock_times, collateral_indices, pricing_record_height, amount_burnt, amount_minted, version) \
 {                                                                                                               \
   if (version < POU_TRANSACTION_VERSION)                                                                        \
@@ -665,27 +664,47 @@ namespace cryptonote
         std::vector<uint32_t> collateral_indices_temp;
         collateral_indices_temp.resize(2);
         for (size_t i=0; i<vout.size(); i++) {
-          txout_haven_key outhk = boost::get<txout_haven_key>(vout[i].target);
+          bool is_collateral = false, is_collateral_change = false;
+          std::string output_asset_type;
+          crypto::public_key output_public_key;
+          uint64_t output_unlock_time;
+          if (vout[i].target.type() == typeid(txout_haven_key)) {
+            txout_haven_key outh = boost::get< txout_haven_key >(vout[i].target);
+            is_collateral = outh.is_collateral;
+            is_collateral_change = outh.is_collateral_change;
+            output_asset_type = outh.asset_type;
+            output_public_key = outh.key;
+            output_unlock_time = outh.unlock_time;
+          } else if (vout[i].target.type() == typeid(txout_haven_tagged_key)) {
+            txout_haven_tagged_key outh = boost::get< txout_haven_tagged_key >(vout[i].target);
+            is_collateral = outh.is_collateral;
+            is_collateral_change = outh.is_collateral_change;
+            output_asset_type = outh.asset_type;
+            output_public_key = outh.key;
+            output_unlock_time = outh.unlock_time;
+          } else {
+            return false;
+          }
           tx_out foo;
           foo.amount = vout[i].amount;
-          if (outhk.asset_type == "XHV") {
+          if (output_asset_type == "XHV") {
             txout_to_key out;
-            out.key = outhk.key;
+            out.key = output_public_key;
             foo.target = out;
-          } else if (outhk.asset_type == "XUSD") {
+          } else if (output_asset_type == "XUSD") {
             txout_offshore out;
-            out.key = outhk.key;
+            out.key = output_public_key;
             foo.target = out;
           } else {
             txout_xasset out;
-            out.asset_type = outhk.asset_type;
-            out.key = outhk.key;
+            out.asset_type = output_asset_type;
+            out.key = output_public_key;
             foo.target = out;
           }
-          output_unlock_times[i] = outhk.unlock_time;
-          if (outhk.is_collateral) {
+          output_unlock_times[i] = output_unlock_time;
+          if (is_collateral) {
             collateral_indices_temp[0] = i;
-          } else if (outhk.is_collateral_change) {
+          } else if (is_collateral_change) {
             collateral_indices_temp[1] = i;
           }
           vout_tmp.push_back(foo);
