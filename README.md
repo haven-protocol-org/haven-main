@@ -7,18 +7,11 @@ Portions Copyright (c) 2012-2013 The Cryptonote developers.
 ## Table of Contents
 
   - [Development resources](#development-resources)
-  - [Vulnerability response](#vulnerability-response)
-  - [Research](#research)
-  - [Announcements](#announcements)
-  - [Translations](#translations)
-  - [Coverage](#coverage)
   - [Introduction](#introduction)
   - [About this project](#about-this-project)
   - [Supporting the project](#supporting-the-project)
   - [License](#license)
   - [Contributing](#contributing)
-  - [Scheduled software upgrades](#scheduled-software-upgrades)
-  - [Release staging schedule and protocol](#release-staging-schedule-and-protocol)
   - [Compiling Haven from source](#compiling-haven-from-source)
     - [Dependencies](#dependencies)
   - [Internationalization](#Internationalization)
