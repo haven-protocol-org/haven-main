@@ -73,6 +73,7 @@ The Tether (USDT) address to donate to is:
 
 ERC-20 (Ethereum Network)
 `0xef2f306997e36d6a00685a9dae42ce023b6a6fad`
+
 TRC-20 (Tron Network)
 `TCGbmuc4Hg3jwNr5SPHyqtc2VyqTTXP8Gr`
 
@@ -404,7 +405,7 @@ application.
 * If you would like a specific [version/tag](https://github.com/haven-protocol-org/haven-main/tags), do a git checkout for that version. eg. 'v0.18.2.2'. If you don't care about the version and just want binaries from master, skip this step:
 
     ```bash
-    git checkout v0.18.2.2
+    git checkout master
     ```
 
 * If you are on a 64-bit system, run:
