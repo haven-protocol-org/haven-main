@@ -1,0 +1,20 @@
+[Unit]
+Description=Haven Full Node
+After=network.target
+
+[Service]
+User=haven
+Group=haven
+WorkingDirectory=~
+StateDirectory=haven
+LogsDirectory=haven
+
+Type=simple
+ExecStart=/usr/bin/havend --config-file /etc/havend.conf --non-interactive
+StandardOutput=null
+StandardError=null
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
