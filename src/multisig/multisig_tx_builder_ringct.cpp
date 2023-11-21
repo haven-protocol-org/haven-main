@@ -895,7 +895,7 @@ bool tx_builder_ringct_t::init(
   const bool use_view_tags{view_tag_required(rct_config.bp_version)};
 
   // misc. fields
-  unsigned_tx.version = 2;  //rct = 2
+  unsigned_tx.version = HAVEN_TYPES_TRANSACTION_VERSION;  //rct = 2
   unsigned_tx.unlock_time = unlock_time;
 
   // sort inputs
