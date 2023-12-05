@@ -373,7 +373,7 @@ namespace cryptonote
           std::vector<tx_out> vout_tmp(vout);
           vout.clear();
           for (size_t i=0; i<vout_tmp.size(); i++) {
-            txout_haven_tagged_key out;
+            txout_haven_key out;
             if (vout_tmp[i].target.type() == typeid(txout_to_key)) {
               out.asset_type = "XHV";
               out.key = boost::get<txout_to_key>(vout_tmp[i].target).key;
