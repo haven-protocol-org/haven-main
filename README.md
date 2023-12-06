@@ -1,4 +1,4 @@
-# Haven Athena v3.3.2
+# Haven Athena v3.3.3
 
 Copyright (c) 2018-2023 Haven.
 Portions Copyright (c) 2014-2022 The Monero Project.

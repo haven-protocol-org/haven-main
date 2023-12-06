@@ -494,8 +494,9 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   std::tie(difficulty_ok, difficulty_recalc_height) = check_difficulty_checkpoints();
   if (!difficulty_ok)
   {
-    MERROR("Difficulty drift detected!");
-    recalculate_difficulties(difficulty_recalc_height);
+    uint64_t difficulty_start_height_limit = std::max(difficulty_recalc_height, (uint64_t)1000000);
+    MERROR("Difficulty drift detected at height " << difficulty_recalc_height << ", resetting difficulties from " << difficulty_start_height_limit);
+    recalculate_difficulties(difficulty_start_height_limit);
   }
 
   {
