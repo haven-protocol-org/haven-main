@@ -2492,7 +2492,17 @@ namespace rct {
         hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
-        key C = rv.outPk[i].mask;
+        key C;
+        if (rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN) {
+          if (!equalKeys(rct::identity(),rv.outPk[i].mask)) C = rv.outPk[i].mask;
+          else if (!equalKeys(rct::identity(),rv.outPk_usd[i].mask)) C = rv.outPk_usd[i].mask;
+          else if ((rv.type == RCTTypeCLSAGN) && (!equalKeys(rct::identity(),rv.outPk_xasset[i].mask))) C = rv.outPk_xasset[i].mask;
+          CHECK_AND_ASSERT_THROW_MES(!equalKeys(rct::identity(),C), "warning, bad outPk mask");
+        } else {
+          CHECK_AND_ASSERT_THROW_MES(!equalKeys(rct::identity(),rv.outPk[i].mask), "warning, bad outPk mask");
+          C = rv.outPk[i].mask;
+        }
+        //key C = rv.outPk[i].mask;
         DP("C");
         DP(C);
         key Ctmp;
