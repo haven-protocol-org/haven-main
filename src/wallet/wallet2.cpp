@@ -48,6 +48,7 @@ using namespace epee;
 
 #include "cryptonote_config.h"
 #include "hardforks/hardforks.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "wallet_rpc_helpers.h"
 #include "wallet2.h"
@@ -11618,7 +11619,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypt
       break;
     }
   }
-  return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, asset_type, (asset_type == "XHV") ? cryptonote::transaction_type::TRANSFER : (asset_type == "XUSD") ? cryptonote::transaction_type::OFFSHORE_TRANSFER : cryptonote::transaction_type::XASSET_TRANSFER, fake_outs_count, unlock_time, priority, extra);
+  return create_transactions_from(address, is_subaddress, outputs, unused_transfers_indices, unused_dust_indices, asset_type, asset_type_to_tx_type(asset_type), fake_outs_count, unlock_time, priority, extra);
 }
 
 std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
