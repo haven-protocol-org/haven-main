@@ -747,3 +747,21 @@ TEST(get_tx_asset_types, fail_on_1_unknown_asset_type)
     std::string dest;
     EXPECT_FALSE(get_tx_asset_types(tx, tx.hash, source, dest, false));
 }
+
+TEST(tx_type, asset_type_to_tx_type)
+{
+
+  cryptonote::transaction_type asset_type_to_tx_type(std::string asset_type);
+
+  ASSERT_EQ(asset_type_to_tx_type("XHV"), cryptonote::transaction_type::TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XUSD"), cryptonote::transaction_type::OFFSHORE_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XAG"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XAU"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XAUD"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XBTC"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XCAD"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XCHF"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XCNY"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XEUR"), cryptonote::transaction_type::XASSET_TRANSFER);
+  ASSERT_EQ(asset_type_to_tx_type("XGBP"), cryptonote::transaction_type::XASSET_TRANSFER);
+}
