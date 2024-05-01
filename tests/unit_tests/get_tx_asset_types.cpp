@@ -572,7 +572,7 @@ TEST(get_tx_asset_types, none_of_output_matches_input)
 
 // pass on single input types & 2 output types & 1 of the outputs matches inputs, other ddesn't but not allowed. xhv -> xasset
 // This case will expected to be caught by get_tx_type()
-TEST(get_tx_asset_types, succesfull_on_logical_input_output_but_not_allowed)
+TEST(get_tx_asset_types, successful_on_logical_input_output_but_not_allowed)
 {
     cryptonote::transaction tx;
     tx.version = 7;
