@@ -74,6 +74,14 @@
 #define HF21_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
 #define HF21_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
 
+// HF23 Unlock times
+#define HF23_COLLATERAL_LOCK_BLOCKS                     720     // 1 day unlock time
+#define HF23_SHORING_LOCK_BLOCKS                        720     // 1 day unlock time
+#define HF23_XASSET_LOCK_BLOCKS                         1440    // 2 day unlock time
+#define HF23_COLLATERAL_LOCK_BLOCKS_TESTNET             30      // 1 hour unlock time - FOR TESTING ONLY
+#define HF23_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
+#define HF23_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
+
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 
 // MONEY_SUPPLY - total number coins to be generated
@@ -354,8 +362,8 @@ namespace config
 
     std::array<std::string, 3> const ORACLE_URLS = {{"oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443"}};
     std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
-      "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
+      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0SEnDpawVG7noWSCPT/Pky5Mzjny\n"
+      "tajdL6SGZPgGTyc3gYDRG4MMjV/zRFBKWKjs1kjDjafuAM6U3SihUvawCg==\n"
       "-----END PUBLIC KEY-----\n";
   }
 
@@ -370,16 +378,17 @@ namespace config
     boost::uuids::uuid const NETWORK_ID = { {
         0x05 ,0x39, 0xF1, 0x70 , 0x61, 0x04 , 0x41, 0x60, 0x17, 0x32, 0x00, 0x81, 0x16, 0xA1, STAGENET_VERSION, 0x12
       } };
-    std::string const GENESIS_TX = "013c01ff0001ffffffffffff0f029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd0880712101168d0c4ca86fb55a4cf6a36d31431be1c53a3bd7411bb24e8832410289fa6f3b";
+    std::string const GENESIS_TX = "023c01ff0001ffffffffffff07020bf6522f9152fa26cd1fc5c022b1a9e13dab697f3acf4b4d0ca6950a867a194321011d92826d0656958865a035264725799f39f6988faa97d532f972895de849496d00";
+    //std::string const GENESIS_TX = "013c01ff0001ffffffffffff0f029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd0880712101168d0c4ca86fb55a4cf6a36d31431be1c53a3bd7411bb24e8832410289fa6f3b";
 
     std::string const GOVERNANCE_WALLET_ADDRESS = "hvsaeLCg4ZkjLRQf8ciYSjHFX8y2CmrnibNBRDZiyyANTFtXQbxHy5PFD79MvmB9mtHeX8XLa36BJ33QoEDh8PH8hULLZnpdNx7";
     std::string const GOVERNANCE_WALLET_ADDRESS_MULTI = "hvsaeLCg4ZkjLRQf8ciYSjHFX8y2CmrnibNBRDZiyyANTFtXQbxHy5PFD79MvmB9mtHeX8XLa36BJ33QoEDh8PH8hULLZnpdNx7";
     uint32_t const GENESIS_NONCE = 10002;
 
-    std::array<std::string, 3> const ORACLE_URLS = {{"oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443"}};
+    std::array<std::string, 3> const ORACLE_URLS = {{"oracle-stagenet.havenprotocol.org:443", "oracle-stagenet.havenprotocol.org:443", "oracle-stagenet.havenprotocol.org:443"}};
     std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
-      "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
+      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0SEnDpawVG7noWSCPT/Pky5Mzjny\n"
+      "tajdL6SGZPgGTyc3gYDRG4MMjV/zRFBKWKjs1kjDjafuAM6U3SihUvawCg==\n"
       "-----END PUBLIC KEY-----\n";
   }
 }

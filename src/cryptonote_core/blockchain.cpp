@@ -2808,29 +2808,47 @@ bool Blockchain::get_pricing_record(offshore::pricing_record& pr, uint64_t times
 
   bool r = false;
 
+  const uint8_t hf_version = m_hardfork->get_current_version();
+
+  // Get the old-style PR
   epee::net_utils::http::http_simple_client http_client;
   COMMAND_RPC_GET_PRICING_RECORD::request req = AUTO_VAL_INIT(req);
   COMMAND_RPC_GET_PRICING_RECORD::response res = AUTO_VAL_INIT(res);
+
+  // HERE BE DRAGONS!!!
+  // NEAC: Initialise the pricing record to be the correct format
+  if (hf_version >= HF_VERSION_SLIPPAGE) {
+    res.pr.set_version(3);
+  } else if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
+    res.pr.set_version(2);
+  } else {
+    res.pr.set_version(1);
+  }
+  // LAND AHOY!!!
   
   std::array<std::string, 3> oracle_urls = get_config(m_nettype).ORACLE_URLS;
   std::shuffle(oracle_urls.begin(), oracle_urls.end(), std::default_random_engine(crypto::rand<unsigned>()));
   for (size_t n = 0; n < oracle_urls.size(); n++) {
     http_client.set_server(oracle_urls[n], boost::none, epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
-    std::string url = "/price/?timestamp=" + boost::lexical_cast<std::string>(timestamp) + "&version=" + std::to_string(m_hardfork->get_current_version());
-    r = epee::net_utils::invoke_http_json(url, req, res, http_client, std::chrono::seconds(10), "GET");
+    if (hf_version >= HF_VERSION_SLIPPAGE) {
+      std::string url = "/price2/?timestamp=" + boost::lexical_cast<std::string>(timestamp) + "&version=" + std::to_string(m_hardfork->get_current_version());
+      r = epee::net_utils::invoke_http_json(url, req, res, http_client, std::chrono::seconds(10), "GET");
+    } else {
+      std::string url = "/price/?timestamp=" + boost::lexical_cast<std::string>(timestamp) + "&version=" + std::to_string(m_hardfork->get_current_version());
+      r = epee::net_utils::invoke_http_json(url, req, res, http_client, std::chrono::seconds(10), "GET");
+    }
     if (r) {
       LOG_PRINT_L1("Obtained pricing record from Oracle : " << oracle_urls[n]);
       break;
     }
     LOG_PRINT_L1("Failed to obtain pricing record from Oracle : " << oracle_urls[n]);
   }
-    
+  
   if (!r) {
     LOG_PRINT_L0("Failed to get pricing record from Oracle - returning empty PR");
     res.pr = offshore::pricing_record();
   }
   
-  const uint8_t hf_version = m_hardfork->get_current_version();
   if (hf_version < HF_VERSION_XASSET_FEES_V2)
     res.pr.timestamp = 0;
 
@@ -4472,7 +4490,8 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
       needed_fee = needed_fee_in_C;
     } else {
       // convert fee to asset type value
-      if (pr.unused1 && pr.xUSD && pr[source]) {
+      //if (pr.unused1 && pr.xUSD && pr[source]) {
+      if (pr.ma("XHV") && pr.spot("XHV") && pr.spot(source)) {
         needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
         // xasset amount if fee is paid in xasset
         if (source != "XUSD") {

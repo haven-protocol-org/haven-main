@@ -42,6 +42,7 @@
 #include <cstdint>
 #include <string>
 #include <cstring>
+#include <serialization/containers.h>
 
 #include "cryptonote_config.h"
 #include "crypto/hash.h"
@@ -80,6 +81,30 @@ namespace offshore
   };
 #pragma pack(pop)
 
+  struct asset_data {
+    std::string asset_type;
+    uint64_t spot_price;
+    uint64_t ma_price;
+
+    //! Load from epee p2p format
+    bool _load(epee::serialization::portable_storage& src, epee::serialization::section* hparent);
+    //! Store in epee p2p format
+    bool store(epee::serialization::portable_storage& dest, epee::serialization::section* hparent) const;
+
+    BEGIN_SERIALIZE_OBJECT()
+      FIELD(asset_type)
+      VARINT_FIELD(spot_price)
+      VARINT_FIELD(ma_price)
+    END_SERIALIZE()
+  };
+  
+  inline bool operator==(const asset_data& a, const asset_data& b) noexcept
+  {
+    return (a.asset_type == b.asset_type &&
+            a.spot_price == b.spot_price &&
+            a.ma_price == b.ma_price);
+  }
+
   class pricing_record
   {
 
@@ -114,6 +139,7 @@ namespace offshore
       pricing_record(const pricing_record& orig) noexcept;
       ~pricing_record() = default;
       void set_for_height_821428();
+      void set_version(const uint8_t& version);
       bool equal(const pricing_record& other) const noexcept;
       bool empty() const noexcept;
       bool verifySignature(const std::string& public_key) const;
@@ -121,6 +147,11 @@ namespace offshore
 
       pricing_record& operator=(const pricing_record& orig) noexcept;
       uint64_t operator[](const std::string& asset_type) const;
+
+      uint64_t ma(const std::string& asset_type) const;
+      uint64_t max(const std::string& asset_type) const;
+      uint64_t min(const std::string& asset_type) const;
+      uint64_t spot(const std::string& asset_type) const;
   };
 
   inline bool operator==(const pricing_record& a, const pricing_record& b) noexcept

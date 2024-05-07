@@ -1387,7 +1387,8 @@ namespace rct {
             key tempkey = zero();
             // Convert commitment mask by exchange rate for equalKeys() testing
             if (tx_type == tt::OFFSHORE && outamounts_features.at(i).first == "XUSD") {
-              key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? std::min(pr.unused1, pr.xUSD) : pr.unused1)));
+              //key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? std::min(pr.unused1, pr.xUSD) : pr.unused1)));
+              key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? pr.min("XHV") : pr.ma("XHV"))));
               sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
               sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
             } else if (tx_type == tt::ONSHORE && outamounts_features.at(i).first == "XHV" && !outamounts_features.at(i).second.first && !outamounts_features.at(i).second.second) {
@@ -1399,7 +1400,8 @@ namespace rct {
                 sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
                 sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
               } else {
-                key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
+                //key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? std::max(pr.unused1, pr.xUSD) : pr.unused1);
+                key rate = d2h(tx_version >= POU_TRANSACTION_VERSION ? pr.max("XHV") : pr.ma("XHV"));
                 sc_mul(tempkey.bytes, outSk[i].mask.bytes, rate.bytes);
                 sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_atomic.bytes);
               }
@@ -1860,11 +1862,11 @@ namespace rct {
         // CALCULATE Zi
         if (tx_type == tt::OFFSHORE) {
           key D_scaled = scalarmultKey(sumD, d2h(COIN));
-          key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1));
+          key yC_invert = invert(d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? pr.min("XHV") : pr.ma("XHV")));
           key D_final = scalarmultKey(D_scaled, yC_invert);
           Zi = addKeys(sumC, D_final);
         } else if (tx_type == tt::ONSHORE) {
-          key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1));
+          key D_scaled = scalarmultKey(sumD, d2h((version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? pr.max("XHV") : pr.ma("XHV")));
           key yC_invert = invert(d2h(COIN));
           key D_final = scalarmultKey(D_scaled, yC_invert);
           Zi = addKeys(sumC, D_final);
@@ -2174,11 +2176,11 @@ namespace rct {
         // CALCULATE Zi
         if (type == tx_type::OFFSHORE) {
           key D_scaled = scalarmultKey(sumUSD, d2h(COIN));
-          key yC_invert = invert(d2h(pr.unused1));
+          key yC_invert = invert(d2h(pr.ma("XHV")));
           key D_final = scalarmultKey(D_scaled, yC_invert);
           Zi = addKeys(sumXHV, D_final);
         } else if (type == tx_type::ONSHORE) {
-          key C_scaled = scalarmultKey(sumXHV, d2h(pr.unused1));
+          key C_scaled = scalarmultKey(sumXHV, d2h(pr.ma("XHV")));
           key yD_invert = invert(d2h(COIN));
           key C_final = scalarmultKey(C_scaled, yD_invert);
           Zi = addKeys(C_final, sumUSD);
@@ -2539,7 +2541,7 @@ namespace rct {
     
     if (source == "XHV" && destination == "XUSD") {
       boost::multiprecision::uint128_t xhv_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::min(pr.unused1, pr.xUSD) : pr.unused1;
+      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? pr.min("XHV") : pr.ma("XHV");
       boost::multiprecision::uint128_t xusd_128 = xhv_128 * exchange_128;
       xusd_128 /= COIN;
       boost::multiprecision::uint128_t minted_128 = amount_minted;
@@ -2549,7 +2551,7 @@ namespace rct {
       }
     } else if (source == "XUSD" && destination == "XHV") {
       boost::multiprecision::uint128_t xusd_128 = amount_burnt;
-      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? std::max(pr.unused1, pr.xUSD) : pr.unused1;
+      boost::multiprecision::uint128_t exchange_128 = (version >= HF_PER_OUTPUT_UNLOCK_VERSION) ? pr.max("XHV") : pr.ma("XHV");
       boost::multiprecision::uint128_t xhv_128 = xusd_128 * COIN;
       xhv_128 /= exchange_128;
       boost::multiprecision::uint128_t minted_128 = amount_minted;

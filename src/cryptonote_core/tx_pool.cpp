@@ -153,7 +153,8 @@ namespace cryptonote
   uint64_t tx_memory_pool::get_xhv_fee_amount(const std::string& fee_asset, uint64_t fee_amount, const cryptonote::transaction_type tt, const offshore::pricing_record& pr, const uint16_t hf_version)
   {
     // Handle case where currency has been disabled in PR
-    if (fee_asset != "XHV" && (!pr.unused1 || !pr.xUSD || !pr[fee_asset])) {
+    //if (fee_asset != "XHV" && (!pr.unused1 || !pr.xUSD || !pr[fee_asset])) {
+    if (fee_asset != "XHV" && (!pr.ma("XHV") || !pr.spot("XHV") || !pr.spot(fee_asset))) {
       return fee_amount;
     } 
 
@@ -292,24 +293,24 @@ namespace cryptonote
 
       // check whether we have a valid exchange rate (some values in the pr might be 0)
       if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-        if (!tvc.pr.unused1) { // using 24 hr MA in unused1
+        if (!tvc.pr.ma("XHV")) { // using 24 hr MA in unused1
           LOG_ERROR("error: empty MA exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
         }
-        if (version >= HF_PER_OUTPUT_UNLOCK_VERSION && !tvc.pr.xUSD) { // could be using spot for xUSD
+        if (version >= HF_PER_OUTPUT_UNLOCK_VERSION && !tvc.pr.spot("XHV")) { // could be using spot for xUSD
           LOG_ERROR("error: empty spot exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
         }
       } else if (tx_type == tt::XUSD_TO_XASSET) {
-        if (!tvc.pr[dest]) {
+        if (!tvc.pr.spot(dest)) {
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
         }
       } else if (tx_type == tt::XASSET_TO_XUSD) {
-        if (!tvc.pr[source]) {
+        if (!tvc.pr.spot(source)) {
           LOG_ERROR("error: empty exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
@@ -319,7 +320,17 @@ namespace cryptonote
         tvc.m_verifivation_failed = true;
         return false;
       }
-    
+
+      // List of dead asset types
+      std::vector<std::string> dead_asset_types = {"XAUD", "XCHF", "XCNY", "XGBP", "XEUR"};
+
+      // Reject the dead asset types as destinations
+      if (version >= HF_VERSION_SLIPPAGE && tx_type == tt::XUSD_TO_XASSET && std::count(dead_asset_types.begin(), dead_asset_types.end(), dest)) {
+        LOG_ERROR("error: Invalid Tx found. Asset type '" << dest << "' cannot be minted after HF " << HF_VERSION_SLIPPAGE << " - rejecting TX");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+      
       // Get the circulating supply amounts
       const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain.get_db().get_circulating_supply();
 
@@ -916,19 +927,19 @@ namespace cryptonote
 
         // check whether we have a valid exchange rate (some values in the pr mioght be 0)
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
-          if (!tvc.pr.unused1) { // using 24 hr MA in unused1
+          if (!tvc.pr.ma("XHV")) { // using 24 hr MA in unused1
             LOG_ERROR("error: empty exchange rate. Conversion not possible.");
             tvc.m_verifivation_failed = true;
             return false;
           }
         } else if (tx_type == transaction_type::XUSD_TO_XASSET) {
-          if (!tvc.pr[dest]) {
+          if (!tvc.pr.spot(dest)) {
             LOG_ERROR("error: empty exchange rate. Conversion not possible.");
             tvc.m_verifivation_failed = true;
             return false;
           }
         } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
-          if (!tvc.pr[source]) {
+          if (!tvc.pr.spot(source)) {
             LOG_ERROR("error: empty exchange rate. Conversion not possible.");
             tvc.m_verifivation_failed = true;
             return false;

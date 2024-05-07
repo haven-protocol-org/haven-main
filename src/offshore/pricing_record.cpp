@@ -80,6 +80,55 @@ namespace offshore
         KV_SERIALIZE(signature)
       END_KV_SERIALIZE_MAP()
     };
+
+    struct asset_data_serialized
+    {
+      std::string name;
+      uint64_t spot;
+      uint64_t ma;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(name)
+        KV_SERIALIZE(spot)
+        KV_SERIALIZE(ma)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct pr_serialized_v3
+    {
+      uint8_t version;
+      std::vector<asset_data> assets;
+      uint64_t timestamp;
+      std::string signature;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(version)
+        KV_SERIALIZE(assets)
+        KV_SERIALIZE(timestamp)
+        KV_SERIALIZE(signature)
+      END_KV_SERIALIZE_MAP()
+    };
+  }
+  
+  bool asset_data::_load(epee::serialization::portable_storage& src, epee::serialization::section* hparent)
+  {
+    asset_data_serialized in{};
+    if (in._load(src, hparent))
+    {
+      // Copy everything into the local instance
+      asset_type = in.name;
+      spot_price = in.spot;
+      ma_price   = in.ma;
+      return true;
+    }
+    // Report error here?
+    return false;
+  }
+
+  bool asset_data::store(epee::serialization::portable_storage& dest, epee::serialization::section* hparent) const
+  {
+    const asset_data_serialized out{asset_type, spot_price, ma_price};
+    return out.store(dest, hparent);
   }
   
   pricing_record::pricing_record() noexcept
@@ -106,6 +155,49 @@ namespace offshore
 
   bool pricing_record::_load(epee::serialization::portable_storage& src, epee::serialization::section* hparent)
   {
+    // Check the version of the PR
+    if (xNZD == 3) {
+
+      // Use the new versioned format
+      pr_serialized_v3 in{};
+      if (in._load(src, hparent)) {
+
+        // Now transpose the tuple data
+        for (const auto& asset: in.assets) {
+          if (asset.asset_type == "xAG") xAG = asset.spot_price;
+          else if (asset.asset_type == "xAU") xAU = asset.spot_price;
+          else if (asset.asset_type == "xAUD") xAUD = asset.spot_price;
+          else if (asset.asset_type == "xBTC") xBTC = asset.spot_price;
+          else if (asset.asset_type == "xCAD") xCAD = asset.spot_price;
+          else if (asset.asset_type == "xCHF") xCHF = asset.spot_price;
+          else if (asset.asset_type == "xCNY") xCNY = asset.spot_price;
+          else if (asset.asset_type == "xEUR") xEUR = asset.spot_price;
+          else if (asset.asset_type == "xGBP") xGBP = asset.spot_price;
+          else if (asset.asset_type == "xJPY") xJPY = asset.spot_price;
+          else if (asset.asset_type == "xNOK") xNOK = asset.spot_price;
+          else if (asset.asset_type == "xNZD") xNZD = asset.spot_price;
+          else if (asset.asset_type == "xUSD") {
+            unused2 = asset.spot_price;
+            unused3 = asset.ma_price;
+          }
+          else if (asset.asset_type == "XHV") {
+            xUSD = asset.spot_price;
+            unused1 = asset.ma_price;
+          }
+          else {
+            return false;
+          }
+        }
+        timestamp = in.timestamp;
+        for (unsigned int i = 0; i < in.signature.length(); i += 2) {
+          std::string byteString = in.signature.substr(i, 2);
+          signature[i>>1] = (char) strtol(byteString.c_str(), NULL, 16);
+        }
+        return true;
+      }
+      return false;
+    }
+      
     pr_serialized in{};
     if (in._load(src, hparent))
     {
@@ -224,10 +316,58 @@ namespace offshore
     } else if (asset_type == "XNOK") {
       return xNOK;
     } else if (asset_type == "XNZD") {
-      return xNZD;
+      // NEAC: Special case - since the deprecation of xNZD as a supported asset, it has been repurposed as "pr_version"
+      if (xNZD > 255)
+        return xNZD;
+      return 0;
     } else {
      CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
     }
+  }
+
+  uint64_t pricing_record::ma(const std::string& asset_type) const
+  {
+    if (asset_type != "XHV" and asset_type != "xUSD") {
+      return operator[](asset_type);
+    }
+    if (asset_type == "XHV") return unused1;
+    if (asset_type == "xUSD") return unused3;
+    CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
+  }
+  
+  uint64_t pricing_record::max(const std::string& asset_type) const
+  {
+    if (asset_type != "XHV" and asset_type != "xUSD") {
+      return operator[](asset_type);
+    }
+    if (asset_type == "XHV") return std::max(unused1, xUSD);
+    if (asset_type == "xUSD") return std::max(unused2, unused3);
+    CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
+  }
+  
+  uint64_t pricing_record::min(const std::string& asset_type) const
+  {
+    if (asset_type != "XHV" and asset_type != "xUSD") {
+      return operator[](asset_type);
+    }
+    if (asset_type == "XHV") return std::min(unused1, xUSD);
+    if (asset_type == "xUSD") return std::min(unused2, unused3);
+    CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
+  }
+  
+  uint64_t pricing_record::spot(const std::string& asset_type) const
+  {
+    if (asset_type != "XHV" and asset_type != "xUSD") {
+      return operator[](asset_type);
+    }
+    if (asset_type == "XHV") return xUSD;
+    if (asset_type == "xUSD") return unused3;
+    CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
+  }
+
+  void pricing_record::set_version(const uint8_t& version)
+  {
+    xNZD = version;
   }
   
   bool pricing_record::equal(const pricing_record& other) const noexcept
@@ -311,25 +451,45 @@ namespace offshore
 
     // Build the JSON string, so that we can verify the signature
     std::ostringstream oss;
-    oss << "{\"xAG\":" << xAG;
-    oss << ",\"xAU\":" << xAU;
-    oss << ",\"xAUD\":" << xAUD;
-    oss << ",\"xBTC\":" << xBTC;
-    oss << ",\"xCAD\":" << xCAD;
-    oss << ",\"xCHF\":" << xCHF;
-    oss << ",\"xCNY\":" << xCNY;
-    oss << ",\"xEUR\":" << xEUR;
-    oss << ",\"xGBP\":" << xGBP;
-    oss << ",\"xJPY\":" << xJPY;
-    oss << ",\"xNOK\":" << xNOK;
-    oss << ",\"xNZD\":" << xNZD;
-    oss << ",\"xUSD\":" << xUSD;
-    oss << ",\"unused1\":" << unused1;
-    oss << ",\"unused2\":" << unused2;
-    oss << ",\"unused3\":" << unused3;
-    if (timestamp > 0)
-      oss << ",\"timestamp\":" << timestamp;
-    oss << "}";
+    switch (xNZD) {
+    case 3:
+      // Build the v3 format of the JSON string
+      oss << "[";
+      oss << "{'name': 'xAG', 'spot': " << xAG << ", 'ma': " << xAG << "}, ";
+      oss << "{'name': 'xAU', 'spot': " << xAU << ", 'ma': " << xAU << "}, ";
+      oss << "{'name': 'xAUD', 'spot': " << xAUD << ", 'ma': " << xAUD << "}, ";
+      oss << "{'name': 'xBTC', 'spot': " << xBTC << ", 'ma': " << xBTC << "}, ";
+      oss << "{'name': 'xCHF', 'spot': " << xCHF << ", 'ma': " << xCHF << "}, ";
+      oss << "{'name': 'xCNY', 'spot': " << xCNY << ", 'ma': " << xCNY << "}, ";
+      oss << "{'name': 'xEUR', 'spot': " << xEUR << ", 'ma': " << xEUR << "}, ";
+      oss << "{'name': 'xGBP', 'spot': " << xGBP << ", 'ma': " << xGBP << "}, ";
+      oss << "{'name': 'xJPY', 'spot': " << xJPY << ", 'ma': " << xJPY << "}, ";
+      oss << "{'name': 'xUSD', 'spot': " << unused2 << ", 'ma': " << unused3 << "}, ";
+      oss << "{'name': 'XHV', 'spot': " << xUSD << ", 'ma': " << unused1 << "}]";
+      break;
+    default:
+      // Build the v1/v2 format of the JSON string
+      oss << "{\"xAG\":" << xAG;
+      oss << ",\"xAU\":" << xAU;
+      oss << ",\"xAUD\":" << xAUD;
+      oss << ",\"xBTC\":" << xBTC;
+      oss << ",\"xCAD\":" << xCAD;
+      oss << ",\"xCHF\":" << xCHF;
+      oss << ",\"xCNY\":" << xCNY;
+      oss << ",\"xEUR\":" << xEUR;
+      oss << ",\"xGBP\":" << xGBP;
+      oss << ",\"xJPY\":" << xJPY;
+      oss << ",\"xNOK\":" << xNOK;
+      oss << ",\"xNZD\":" << xNZD;
+      oss << ",\"xUSD\":" << xUSD;
+      oss << ",\"unused1\":" << unused1;
+      oss << ",\"unused2\":" << unused2;
+      oss << ",\"unused3\":" << unused3;
+      if (timestamp > 0)
+        oss << ",\"timestamp\":" << timestamp;
+      oss << "}";
+      break;
+    }
     std::string message = oss.str();    
 
     // Convert signature from hex-encoded to binary
