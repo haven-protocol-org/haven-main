@@ -362,8 +362,8 @@ namespace config
 
     std::array<std::string, 3> const ORACLE_URLS = {{"oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443", "oracle-testnet.havenprotocol.org:443"}};
     std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0SEnDpawVG7noWSCPT/Pky5Mzjny\n"
-      "tajdL6SGZPgGTyc3gYDRG4MMjV/zRFBKWKjs1kjDjafuAM6U3SihUvawCg==\n"
+      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
+      "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
       "-----END PUBLIC KEY-----\n";
   }
 
@@ -387,8 +387,8 @@ namespace config
 
     std::array<std::string, 3> const ORACLE_URLS = {{"oracle-stagenet.havenprotocol.org:443", "oracle-stagenet.havenprotocol.org:443", "oracle-stagenet.havenprotocol.org:443"}};
     std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
-      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0SEnDpawVG7noWSCPT/Pky5Mzjny\n"
-      "tajdL6SGZPgGTyc3gYDRG4MMjV/zRFBKWKjs1kjDjafuAM6U3SihUvawCg==\n"
+      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtWqvQh7OdXrdgXcDeBMRVfLWTW3F\n"
+      "wByeoVJFBfZymScJIJl46j66xG6ngnyj4ai4/QPFnSZ1I9jjMRlTWC4EPA==\n"
       "-----END PUBLIC KEY-----\n";
   }
 }
