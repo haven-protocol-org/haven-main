@@ -704,7 +704,7 @@ namespace cryptonote
       uint128_t amount_xasset(i.second.c_str());
 
       // Skip scaling of xUSD, because price uses notional peg rather than actual value
-      if (i.first != "xUSD") {
+      if (i.first != "XUSD") {
         amount_xasset *= COIN;
         amount_xasset /= price_xasset;
       }      
@@ -749,13 +749,13 @@ namespace cryptonote
       dest_pool_multiplier = pow((sqrt(pow(dest_pool_ratio, 0.4)) + 1.0), 15.0);
     } else if (tx_type == tt::OFFSHORE) {
       //dest_pool_ratio = (convert_amount * std::max(pr.spot("XHV"), pr.ma("XHV")) / (map_amounts["xUSD"] * std::min(pr.spot("xUSD"), pr.ma("xUSD"))));
-      uint128_t dpr_numerator = convert_amount * std::max(pr.spot("XHV"), pr.ma("XHV"));
-      uint128_t dpr_denominator = map_amounts["xUSD"] * std::min(pr.spot("xUSD"), pr.ma("xUSD"));
+      uint128_t dpr_numerator = convert_amount * pr.max("XHV");
+      uint128_t dpr_denominator = map_amounts["XUSD"] * pr.min("xUSD");
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XASSET_TO_XUSD) {
-      //dest_pool_ratio = (convert_amount * COIN) / (map_amounts[dest_asset] * min(pr.spot("xUSD"), pr.ma("xUSD")));
+      //dest_pool_ratio = (convert_amount * COIN) / (map_amounts[dest_asset] * pr.min("xUSD"));
       uint128_t dpr_numerator = convert_amount * COIN;
-      uint128_t dpr_denominator = map_amounts[dest_asset] * std::min(pr.spot("xUSD"), pr.ma("xUSD"));
+      uint128_t dpr_denominator = map_amounts[dest_asset] * pr.min("xUSD");
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XUSD_TO_XASSET) {
       //dest_pool_ratio = (convert_amount * pr.spot(source_asset)) / (map_amounts[dest_asset] * pr.spot(dest_asset));
@@ -773,7 +773,8 @@ namespace cryptonote
 
     // Calculate basic_slippage
     cpp_bin_float_quad basic_slippage = src_pool_slippage + dest_pool_slippage;
-
+    LOG_PRINT_L2("*** basic_slippage = " << basic_slippage.convert_to<double>());
+    
     // Calculate Mcap ratio slippage
     cpp_bin_float_quad mcap_ratio_slippage = 0.0;
     if (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) {
@@ -789,12 +790,17 @@ namespace cryptonote
       
       // Calculate the Mcap ratio slippage
       mcap_ratio_slippage = std::sqrt(std::pow(mcr_max.convert_to<double>(), 1.2)) / 6.0;
+      LOG_PRINT_L2("*** mcap_ratio_slippage = " << mcap_ratio_slippage.convert_to<double>());
     }
 
     // Calculate xUSD Peg Slippage
     cpp_bin_float_quad xusd_peg_slippage = 0;
-    if (std::min(pr.spot("xUSD"), pr.ma("xUSD")) < 1.0) {
-      xusd_peg_slippage = std::sqrt(std::pow((1.0 - std::min(pr.spot("xUSD"), pr.ma("xUSD"))), 3.0)) / 1.3;
+    double xusd_peg_ratio = pr.min("xUSD");
+    xusd_peg_ratio /= COIN;
+    
+    if (xusd_peg_ratio < 1.0) {
+      xusd_peg_slippage = std::sqrt(std::pow((1.0 - xusd_peg_ratio), 3.0)) / 1.3;
+      LOG_PRINT_L2("*** xusd_peg_slippage = " << xusd_peg_slippage);
     }
 
     // Calculate the xBTC Mcap Ratio Slippage
@@ -809,18 +815,20 @@ namespace cryptonote
       // Calculate the xUSD Mcap
       cpp_bin_float_quad mcap_xusd = map_amounts["xUSD"].convert_to<cpp_bin_float_quad>();
       mcap_xusd *= COIN;
-      mcap_xusd /= std::min(pr.spot("xUSD"), pr.ma("xUSD"));
+      mcap_xusd /= pr.min("xUSD");
 
       // Update the xBTC Mcap Ratio Slippage
       xbtc_mcap_ratio_slippage = std::sqrt(std::pow((mcap_xbtc / mcap_xusd).convert_to<double>(), 1.4)) / 10.0;
+      LOG_PRINT_L2("*** xbtc_mcap_ratio_slippage = " << xbtc_mcap_ratio_slippage.convert_to<double>());
     }
-
+    
     // Calculate the total slippage
     cpp_bin_float_quad total_slippage =
       (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) ? basic_slippage + std::max(mcap_ratio_slippage, xusd_peg_slippage) :
       (tx_type == tt::XUSD_TO_XASSET && dest_asset == "xBTC") ? basic_slippage + std::max(xbtc_mcap_ratio_slippage, xusd_peg_slippage) :
       basic_slippage + xusd_peg_slippage;
-
+    LOG_ERROR("total_slippage = " << total_slippage.convert_to<double>());
+    
     // Limit total_slippage to 99% so that the code doesn't break
     if (total_slippage > 0.99) total_slippage = 0.99;
     total_slippage *= convert_amount.convert_to<cpp_bin_float_quad>();
