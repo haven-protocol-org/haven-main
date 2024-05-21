@@ -455,17 +455,17 @@ namespace offshore
     case 3:
       // Build the v3 format of the JSON string
       oss << "[";
-      oss << "{'name': 'xAG', 'spot': " << xAG << ", 'ma': " << xAG << "}, ";
-      oss << "{'name': 'xAU', 'spot': " << xAU << ", 'ma': " << xAU << "}, ";
-      oss << "{'name': 'xAUD', 'spot': " << xAUD << ", 'ma': " << xAUD << "}, ";
-      oss << "{'name': 'xBTC', 'spot': " << xBTC << ", 'ma': " << xBTC << "}, ";
-      oss << "{'name': 'xCHF', 'spot': " << xCHF << ", 'ma': " << xCHF << "}, ";
-      oss << "{'name': 'xCNY', 'spot': " << xCNY << ", 'ma': " << xCNY << "}, ";
-      oss << "{'name': 'xEUR', 'spot': " << xEUR << ", 'ma': " << xEUR << "}, ";
-      oss << "{'name': 'xGBP', 'spot': " << xGBP << ", 'ma': " << xGBP << "}, ";
-      oss << "{'name': 'xJPY', 'spot': " << xJPY << ", 'ma': " << xJPY << "}, ";
-      oss << "{'name': 'xUSD', 'spot': " << unused2 << ", 'ma': " << unused3 << "}, ";
-      oss << "{'name': 'XHV', 'spot': " << xUSD << ", 'ma': " << unused1 << "}]";
+      oss << "{\"name\":\"xAG\",\"spot\":" << xAG << ",\"ma\":" << xAG << "},";
+      oss << "{\"name\":\"xAU\",\"spot\":" << xAU << ",\"ma\":" << xAU << "},";
+      oss << "{\"name\":\"xAUD\",\"spot\":" << xAUD << ",\"ma\":" << xAUD << "},";
+      oss << "{\"name\":\"xBTC\",\"spot\":" << xBTC << ",\"ma\":" << xBTC << "},";
+      oss << "{\"name\":\"xCHF\",\"spot\":" << xCHF << ",\"ma\":" << xCHF << "},";
+      oss << "{\"name\":\"xCNY\",\"spot\":" << xCNY << ",\"ma\":" << xCNY << "},";
+      oss << "{\"name\":\"xEUR\",\"spot\":" << xEUR << ",\"ma\":" << xEUR << "},";
+      oss << "{\"name\":\"xGBP\",\"spot\":" << xGBP << ",\"ma\":" << xGBP << "},";
+      oss << "{\"name\":\"xJPY\",\"spot\":" << xJPY << ",\"ma\":" << xJPY << "},";
+      oss << "{\"name\":\"xUSD\",\"spot\":" << unused2 << ",\"ma\":" << unused3 << "},";
+      oss << "{\"name\":\"XHV\",\"spot\":" << xUSD << ",\"ma\":" << unused1 << "}]";
       break;
     default:
       // Build the v1/v2 format of the JSON string
