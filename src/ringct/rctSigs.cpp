@@ -1387,10 +1387,16 @@ namespace rct {
             key tempkey = zero();
             // Convert commitment mask by exchange rate for equalKeys() testing
             if (tx_type == tt::OFFSHORE && outamounts_features.at(i).first == "XUSD") {
-              //key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? std::min(pr.unused1, pr.xUSD) : pr.unused1)));
-              key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? pr.min("XHV") : pr.ma("XHV"))));
-              sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
-              sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+              if (hf_version >= HF_VERSION_USE_CONVERSION_RATE) {
+                key inverse_rate = invert(d2h(conversion_rate));
+                sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+                sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+              } else {
+                //key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? std::min(pr.unused1, pr.xUSD) : pr.unused1)));
+                key inverse_rate = invert(d2h((tx_version >= POU_TRANSACTION_VERSION ? pr.min("XHV") : pr.ma("XHV"))));
+                sc_mul(tempkey.bytes, outSk[i].mask.bytes, atomic.bytes);
+                sc_mul(outSk_scaled.bytes, tempkey.bytes, inverse_rate.bytes);
+              }
             } else if (tx_type == tt::ONSHORE && outamounts_features.at(i).first == "XHV" && !outamounts_features.at(i).second.first && !outamounts_features.at(i).second.second) {
               // HERE BE DRAGONS!!!
               // Unfortunately, because we already had an implementation that used the rate going the wrong way previously,

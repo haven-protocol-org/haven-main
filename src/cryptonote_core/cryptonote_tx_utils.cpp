@@ -833,7 +833,7 @@ namespace cryptonote
     if (total_slippage > 0.99) total_slippage = 0.99;
     total_slippage *= convert_amount.convert_to<cpp_bin_float_quad>();
     slippage = total_slippage.convert_to<uint64_t>();
-    slippage -= (slippage % 100000000);
+    slippage -= (slippage % 10000);
     return true;
   }
   //---------------------------------------------------------------
@@ -1083,7 +1083,6 @@ namespace cryptonote
         rate_128 *= pr.spot(to_asset);//pr[to_asset];
         rate_128 /= COIN;
         rate = rate_128.convert_to<uint64_t>();
-        rate -= (rate % 10000);
       }
     } else if (from_asset == "XUSD") {
       // xUSD as source
@@ -1098,7 +1097,6 @@ namespace cryptonote
         rate_128 *= COIN;
         rate_128 /= pr.max("XHV");//std::max(pr.xUSD, pr.unused1);
         rate = rate_128.convert_to<uint64_t>();
-        rate -= (rate % 10000);
         
       } else {
         // Scale directly to xAsset (xusd_to_xasset)
@@ -1126,8 +1124,8 @@ namespace cryptonote
       }
       // truncate and bail out
       rate = rate_128.convert_to<uint64_t>();
-      rate -= (rate % 10000);        
     }
+    rate -= (rate % 100000000);
     return true;
   }
   //---------------------------------------------------------------
