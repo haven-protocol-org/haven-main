@@ -1,6 +1,6 @@
-# Haven Athena v3.9.2
+# Haven Athena v3.9.3
 
-Copyright (c) 2018-2023 Haven.
+Copyright (c) 2018-2024 Haven.
 Portions Copyright (c) 2014-2022 The Monero Project.
 Portions Copyright (c) 2012-2013 The Cryptonote developers.
 

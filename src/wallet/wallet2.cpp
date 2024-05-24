@@ -10732,9 +10732,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   uint64_t inverse_fee_conversion_rate = COIN;
   if (source_asset != dest_asset) {
     THROW_WALLET_EXCEPTION_IF(!get_pricing_record(pricing_record, current_height), error::wallet_internal_error, "Failed to get pricing record");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate), error::wallet_internal_error, "Failed to get conversion rate");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, "XHV", source_asset, fee_conversion_rate), error::wallet_internal_error, "Failed to get fee conversion rate");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, "XHV", inverse_fee_conversion_rate), error::wallet_internal_error, "Failed to get inverse fee conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate, hf_version), error::wallet_internal_error, "Failed to get conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, "XHV", source_asset, fee_conversion_rate, hf_version), error::wallet_internal_error, "Failed to get fee conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, "XHV", inverse_fee_conversion_rate, hf_version), error::wallet_internal_error, "Failed to get inverse fee conversion rate");
   }
 
   // Get the circulating supply data

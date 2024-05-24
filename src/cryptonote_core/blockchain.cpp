@@ -4429,25 +4429,25 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
 bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest, const transaction_type tx_type) const
 //bool Blockchain::check_fee(size_t tx_weight, uint64_t fee) const
 {
-  const uint8_t version = get_current_hard_fork_version();
+  const uint8_t hf_version = get_current_hard_fork_version();
 
   uint64_t median = 0;
   uint64_t already_generated_coins = 0;
   uint64_t base_reward = 0;
-  if (version >= HF_VERSION_DYNAMIC_FEE)
+  if (hf_version >= HF_VERSION_DYNAMIC_FEE)
   {
     median = m_current_block_cumul_weight_limit / 2;
     const uint64_t blockchain_height = m_db->height();
     already_generated_coins = blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;
-    if (!get_block_reward(median, 1, already_generated_coins, base_reward, version))
+    if (!get_block_reward(median, 1, already_generated_coins, base_reward, hf_version))
       return false;
   }
 
   uint64_t needed_fee;
-  if (version >= HF_VERSION_PER_BYTE_FEE)
+  if (hf_version >= HF_VERSION_PER_BYTE_FEE)
   {
-    const bool use_long_term_median_in_fee = version >= HF_VERSION_LONG_TERM_BLOCK_WEIGHT;
-    uint64_t fee_per_byte = get_dynamic_base_fee(base_reward, use_long_term_median_in_fee ? std::min<uint64_t>(median, m_long_term_effective_median_block_weight) : median, version);
+    const bool use_long_term_median_in_fee = hf_version >= HF_VERSION_LONG_TERM_BLOCK_WEIGHT;
+    uint64_t fee_per_byte = get_dynamic_base_fee(base_reward, use_long_term_median_in_fee ? std::min<uint64_t>(median, m_long_term_effective_median_block_weight) : median, hf_version);
     MDEBUG("Using " << print_money(fee_per_byte) << "/byte fee");
     needed_fee = tx_weight * fee_per_byte;
     // quantize fee up to 8 decimals
@@ -4457,13 +4457,13 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   else
   {
     uint64_t fee_per_kb;
-    if (version < HF_VERSION_DYNAMIC_FEE)
+    if (hf_version < HF_VERSION_DYNAMIC_FEE)
     {
       fee_per_kb = FEE_PER_KB;
     }
     else
     {
-      fee_per_kb = get_dynamic_base_fee(base_reward, median, version);
+      fee_per_kb = get_dynamic_base_fee(base_reward, median, hf_version);
     }
     MDEBUG("Using " << print_money(fee_per_kb) << "/kB fee");
 
@@ -4475,11 +4475,11 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   // Does the fee need scaling?
   if (source != "XHV" && source != dest) {
     // HF21+ conversion TXs use XHV for all fees
-    if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
+    if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
       // Fee is in source_asset terms - need to convert our needed value
       uint64_t needed_fee_in_C = 0;
       uint64_t fee_conversion_rate = 0;
-      if (!cryptonote::get_conversion_rate(pr, "XHV", source, fee_conversion_rate)) {
+      if (!cryptonote::get_conversion_rate(pr, "XHV", source, fee_conversion_rate, hf_version)) {
         MERROR_VER("failed to get fee conversion rate for Blockchain::check_fee");
         return false;
       }
@@ -4492,7 +4492,7 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
       // convert fee to asset type value
       //if (pr.unused1 && pr.xUSD && pr[source]) {
       if (pr.ma("XHV") && pr.spot("XHV") && pr.spot(source)) {
-        needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
+        needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, hf_version);
         // xasset amount if fee is paid in xasset
         if (source != "XUSD") {
           needed_fee = get_xasset_amount(needed_fee, source, pr);
@@ -5266,7 +5266,7 @@ leave:
 
         // NEAC: Get conversion rate so we can avoid doing an invert() on a number with excessive precision
         uint64_t conversion_rate = COIN;
-        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, dest, conversion_rate)) {
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, dest, conversion_rate, hf_version)) {
           LOG_PRINT_L2("Failed to get conversion rate of tx " << tx.hash);
           bvc.m_verifivation_failed = true;
           goto leave;
@@ -5274,7 +5274,7 @@ leave:
 
         // Get the fee conversion rate used
         uint64_t fee_conversion_rate = COIN;
-        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, "XHV", fee_conversion_rate)) {
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, "XHV", fee_conversion_rate, hf_version)) {
           LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
           bvc.m_verifivation_failed = true;
           goto leave;
@@ -5282,7 +5282,7 @@ leave:
           
         // Get the TX fee conversion rate used
         uint64_t tx_fee_conversion_rate = COIN;
-        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, "XHV", source, tx_fee_conversion_rate)) {
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, "XHV", source, tx_fee_conversion_rate, hf_version)) {
           LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
           bvc.m_verifivation_failed = true;
           goto leave;

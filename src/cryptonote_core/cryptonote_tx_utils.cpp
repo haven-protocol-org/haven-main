@@ -1061,7 +1061,7 @@ namespace cryptonote
     return (pow(xhv_market_cap * 3000, 0.42) + ((xhv_supply * 5) / 1000)) * COIN;
   }
   //---------------------------------------------------------------
-  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate) {
+  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate, const uint8_t hf_version) {
     // Check for transfers
     if (from_asset == to_asset) {
       rate = COIN;
@@ -1083,6 +1083,7 @@ namespace cryptonote
         rate_128 *= pr.spot(to_asset);//pr[to_asset];
         rate_128 /= COIN;
         rate = rate_128.convert_to<uint64_t>();
+        if (hf_version < HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
       }
     } else if (from_asset == "XUSD") {
       // xUSD as source
@@ -1097,6 +1098,7 @@ namespace cryptonote
         rate_128 *= COIN;
         rate_128 /= pr.max("XHV");//std::max(pr.xUSD, pr.unused1);
         rate = rate_128.convert_to<uint64_t>();
+        if (hf_version < HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
         
       } else {
         // Scale directly to xAsset (xusd_to_xasset)
@@ -1124,8 +1126,9 @@ namespace cryptonote
       }
       // truncate and bail out
       rate = rate_128.convert_to<uint64_t>();
+      if (hf_version < HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
     }
-    rate -= (rate % 100000000);
+    if (hf_version >= HF_VERSION_SLIPPAGE) rate -= (rate % 100000000);
     return true;
   }
   //---------------------------------------------------------------
@@ -1761,7 +1764,7 @@ namespace cryptonote
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
           // Get a conversion rate to verify the TX fee
           uint64_t inverse_conversion_rate = COIN;
-          if (!cryptonote::get_conversion_rate(pr, "XHV", source_asset, inverse_conversion_rate)) {
+          if (!cryptonote::get_conversion_rate(pr, "XHV", source_asset, inverse_conversion_rate, hf_version)) {
             LOG_ERROR("Failed to get conversion rate for fees - aborting");
             return false;
           }
@@ -1777,7 +1780,7 @@ namespace cryptonote
 
           // Convert offshore fee to XHV
           uint64_t offshore_fee_xhv = 0;
-          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
+          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate, hf_version)) {
             LOG_ERROR("Failed to get conversion rate for fees - aborting");
             return false;
           }
@@ -1791,7 +1794,7 @@ namespace cryptonote
 
       // NEAC: get conversion rate - this replaces the direct use of the Pricing Record to avoid invert() scaling
       conversion_rate = COIN;
-      if (!cryptonote::get_conversion_rate(pr, source_asset, dest_asset, conversion_rate)) {
+      if (!cryptonote::get_conversion_rate(pr, source_asset, dest_asset, conversion_rate, hf_version)) {
         LOG_ERROR("Failed to get conversion rate for output - aborting");
         return false;
       }

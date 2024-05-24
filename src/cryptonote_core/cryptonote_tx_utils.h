@@ -244,7 +244,7 @@ namespace cryptonote
   uint64_t get_block_cap(const std::vector<std::pair<std::string, std::string>>& supply_amounts, const offshore::pricing_record& pr, const uint8_t hf_version);
   bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash);
   // Get conversion rate for any conversion TX
-  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate);
+  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate, const uint8_t hf_version);
   // Get a converted amount, given the conversion rate and source amount
   bool get_converted_amount(const uint64_t& conversion_rate, const uint64_t& source_amount, uint64_t& dest_amount);
   // Get offshore amount in xAsset
