@@ -255,7 +255,7 @@
 #define HF_VERSION_YIELD                        23
 
 #define STAGENET_VERSION                        0x0e
-#define TESTNET_VERSION                         0x18
+#define TESTNET_VERSION                         0x19
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
