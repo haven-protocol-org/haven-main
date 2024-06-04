@@ -8407,7 +8407,7 @@ bool simple_wallet::donate(const std::vector<std::string> &args_)
   }
   else
   {
-    address_str = ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+    address_str = cryptonote::get_governance_address(m_wallet->get_current_hard_fork(), m_wallet->nettype());//::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
   }
   local_args.push_back(address_str);
   local_args.push_back(amount_str);

@@ -253,6 +253,7 @@
 // Haven v4.0 definitions
 #define HF_VERSION_SLIPPAGE                     23
 #define HF_VERSION_YIELD                        23
+#define HF_VERSION_CONVERSION_FEES_NOT_BURNT    23
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x19
@@ -332,7 +333,8 @@ namespace config
   std::string const GOVERNANCE_WALLET_ADDRESS = "hvxy7YfeE8SdTrCmSqLB59WoQn3ZQun1aLX36X3eb1R7Fb26VuNpc235q4fguGUxfGKerywFPnweu15S8RB8DzTJ8Q4hGJCgvv";
   std::string const GOVERNANCE_WALLET_ADDRESS_MULTI = "hvxy3f2PhAhimkeLf617BsbVn6UTbofVcMzofXGsSNLoMFr2SrSxRJ9f52Am1QLVddKetXPKHoTLbBaLNT1kMU6Q3kYRc3t6pF";
   std::string const GOVERNANCE_WALLET_ADDRESS_MULTI_NEW = "hvxyAvVZaz19FzURQfXHHpVqoJF7baXVm4A6FvqFm7wq95vveSitDGWWaxdxR5MFW6BPJDBgkYjp9aUuYurQWZHx2pL5jPTXgH";
-
+  std::string const GOVERNANCE_WALLET_ADDRESS_MULTI_V23 = "hvxy6k7fN9k1cG8N5iabCu5Ts6pJ5E9fGDb9qw1b8zEvJECN5tAewry3TjKR3AqinZT9eDDYnXLVN1FZ65cQVAjq2BoBrRDErR";
+  
   std::array<std::string, 3> const ORACLE_URLS = {{"oracle.havenprotocol.org:443", "oracle2.havenprotocol.org:443", "oracle3.havenprotocol.org:443"}};
   std::string const ORACLE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5YBxWx1AZCA9jTUk8Pr2uZ9jpfRt\n"

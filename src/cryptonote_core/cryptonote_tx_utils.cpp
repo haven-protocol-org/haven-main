@@ -161,7 +161,7 @@ namespace cryptonote
       }
     }
 
-    block_reward += fee_map["XHV"];
+    //block_reward += fee_map["XHV"];
     uint64_t summary_amounts = 0;
     crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
     crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
@@ -250,9 +250,11 @@ namespace cryptonote
           ttk.key = out_eph_public_key;
           tx_out out;
           summary_amounts += out.amount = governance_reward;
-          if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+          /*
+          if ((hard_fork_version >= HF_VERSION_OFFSHORE_FULL) && (hard_fork_version < HF_VERSION_CONVERSION_FEES_NOT_BURNT)) {
             out.amount += offshore_fee_map["XHV"];
           }
+          */
 
           out.target = ttk;
           tx.vout.push_back(out);
@@ -265,9 +267,11 @@ namespace cryptonote
           tk.key = out_eph_public_key;
           tx_out out;
           summary_amounts += out.amount = governance_reward;
-          if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+          /*
+            if ((hard_fork_version >= HF_VERSION_OFFSHORE_FULL) && (hard_fork_version < HF_VERSION_CONVERSION_FEES_NOT_BURNT)) {
             out.amount += offshore_fee_map["XHV"];
           }
+          */
 
           out.target = tk;
           tx.vout.push_back(out);
@@ -280,10 +284,13 @@ namespace cryptonote
       // Add all of the outputs for all of the currencies in the contained TXs
       uint64_t idx = 2;
       for (auto &fee_map_entry: fee_map) {
+        /*
         // Skip XHV - we have already handled that above
-        if (fee_map_entry.first == "XHV")
-          continue;
-    
+        if (hard_fork_version < HF_VERSION_CONVERSION_FEES_NOT_BURNT)
+          if (fee_map_entry.first == "XHV")
+            continue;
+        */
+        
         if (fee_map_entry.second != 0) {
           uint64_t block_reward_xasset = fee_map_entry.second;
           uint64_t governance_reward_xasset = 0;
@@ -477,7 +484,10 @@ namespace cryptonote
       } else if (nettype == STAGENET) {
         return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
       } else {
-        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+        if (version >= HF_VERSION_SLIPPAGE)
+          return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_V23;
+        else 
+          return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
       }
     } else if (version >= 4) {
       if (nettype == TESTNET) {
