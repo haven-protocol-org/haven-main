@@ -1515,9 +1515,8 @@ bool Blockchain::validate_miner_transaction(
   // collect all unique assets from fees except xhv since it is handled separately.
   std::set<std::string> unique_assets;
   for (const auto& asset : fee_map) {
-    if (asset.first != "XHV") {
+    if ((version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) || (asset.first != "XHV"))
       unique_assets.insert(asset.first);
-    }
   }
   for (const auto& asset : offshore_fee_map) {
     if ((version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) || (asset.first != "XHV"))
@@ -1567,7 +1566,7 @@ bool Blockchain::validate_miner_transaction(
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
-
+  
   if (version >= 3) {
     if (already_generated_coins != 0)
     {
@@ -1582,7 +1581,11 @@ bool Blockchain::validate_miner_transaction(
 
       // Check that the governance reward for XHV is correct
       uint64_t governance_reward = get_governance_reward(m_db->height(), base_reward);
-      governance_reward += offshore_fee_map["XHV"];
+      if (version < HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
+        // Add the offshore fees to the _first_ governance payment
+        governance_reward += offshore_fee_map["XHV"];
+      }
+      
       if (b.miner_tx.vout[1].amount != governance_reward)
       {
         MERROR("Governance reward amount incorrect.  Should be: " << print_money(governance_reward) << ", is: " << print_money(b.miner_tx.vout[1].amount));
