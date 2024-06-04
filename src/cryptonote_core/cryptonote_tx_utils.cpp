@@ -827,13 +827,21 @@ namespace cryptonote
       (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) ? basic_slippage + std::max(mcap_ratio_slippage, xusd_peg_slippage) :
       (tx_type == tt::XUSD_TO_XASSET && dest_asset == "xBTC") ? basic_slippage + std::max(xbtc_mcap_ratio_slippage, xusd_peg_slippage) :
       basic_slippage + xusd_peg_slippage;
-    LOG_ERROR("total_slippage = " << total_slippage.convert_to<double>());
+    LOG_PRINT_L1("total_slippage = " << total_slippage.convert_to<double>());
     
     // Limit total_slippage to 99% so that the code doesn't break
     if (total_slippage > 0.99) total_slippage = 0.99;
     total_slippage *= convert_amount.convert_to<cpp_bin_float_quad>();
     slippage = total_slippage.convert_to<uint64_t>();
     slippage -= (slippage % 10000);
+
+    // SAnity check that there is _some_ slippage being applied
+    if (slippage == 0) {
+      // Not a valid slippage amount
+      LOG_ERROR("Invalid slippage amount (0) - aborting");
+      return false;
+    }
+    
     return true;
   }
   //---------------------------------------------------------------
@@ -1128,7 +1136,12 @@ namespace cryptonote
       rate = rate_128.convert_to<uint64_t>();
       if (hf_version < HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
     }
-    if (hf_version >= HF_VERSION_SLIPPAGE) rate -= (rate % 100000000);
+    if (hf_version >= HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
+    if (rate == 0) {
+      // Report an error and bail out
+      LOG_ERROR("Invalid exchange rate (0) for conversion (" << from_asset << "," << to_asset << ") - aborting");
+      return false;
+    }
     return true;
   }
   //---------------------------------------------------------------
