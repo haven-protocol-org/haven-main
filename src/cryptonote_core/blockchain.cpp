@@ -1715,10 +1715,10 @@ bool Blockchain::validate_miner_transaction(
         CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
       }
     } else {
-      CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - governance_reward  == base_reward, false, "base reward calculation bug");
-      if(base_reward + governance_reward + fee_map["XHV"] + offshore_fee_map["XHV"] != money_in_use_map["XHV"])
+      CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
+      if(base_reward + fee_map["XHV"] + offshore_fee_map["XHV"] != money_in_use_map["XHV"])
         partial_block_reward = true;
-      base_reward = money_in_use_map["XHV"] - governance_reward - fee_map["XHV"] - offshore_fee_map["XHV"];
+      base_reward = money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"];
     }
     
     if (version >= HF_VERSION_OFFSHORE_FULL) {
