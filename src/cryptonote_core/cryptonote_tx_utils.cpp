@@ -159,6 +159,13 @@ namespace cryptonote
         governance_reward = get_governance_reward(height, block_reward);
         block_reward -= governance_reward;
       }
+
+      // HERE BE DRAGONS!!!
+      // NEAC: mint the previously-burnt XHV conversion fees, and add to the governance wallet
+      if ((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
+        governance_reward += BURNT_CONVERSION_FEES_MINT_AMOUNT;
+      }
+      // LAND AHOY!!!
     }
 
     //block_reward += fee_map["XHV"];
@@ -843,7 +850,7 @@ namespace cryptonote
     if (total_slippage > 0.99) total_slippage = 0.99;
     total_slippage *= convert_amount.convert_to<cpp_bin_float_quad>();
     slippage = total_slippage.convert_to<uint64_t>();
-    slippage -= (slippage % 10000);
+    slippage -= (slippage % 100000000);
 
     // SAnity check that there is _some_ slippage being applied
     if (slippage == 0) {

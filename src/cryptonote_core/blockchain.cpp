@@ -1566,7 +1566,8 @@ bool Blockchain::validate_miner_transaction(
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
-  
+
+  uint64_t governance_reward = 0;
   if (version >= 3) {
     if (already_generated_coins != 0)
     {
@@ -1580,11 +1581,18 @@ bool Blockchain::validate_miner_transaction(
       }
 
       // Check that the governance reward for XHV is correct
-      uint64_t governance_reward = get_governance_reward(m_db->height(), base_reward);
+      governance_reward = get_governance_reward(m_db->height(), base_reward);
       if (version < HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
         // Add the offshore fees to the _first_ governance payment
         governance_reward += offshore_fee_map["XHV"];
       }
+      
+      // HERE BE DRAGONS!!!
+      // NEAC: mint the previously-burnt XHV conversion fees, and add to the governance wallet
+      if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
+        governance_reward += BURNT_CONVERSION_FEES_MINT_AMOUNT;
+      }
+      // LAND AHOY!!!
       
       if (b.miner_tx.vout[1].amount != governance_reward)
       {
@@ -1681,9 +1689,9 @@ bool Blockchain::validate_miner_transaction(
     }
   }
 
-  if(money_in_use_map["XHV"] > (base_reward + fee_map["XHV"] + offshore_fee_map["XHV"] + xasset_fee_map["XHV"]))
+  if(money_in_use_map["XHV"] > (base_reward + governance_reward + fee_map["XHV"] + offshore_fee_map["XHV"] + xasset_fee_map["XHV"]))
   {
-    MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use_map["XHV"]) << "). Block reward is " << print_money(base_reward + fee_map["XHV"]) << "(" << print_money(base_reward) << "+" << print_money(fee_map["XHV"]) << ") plus offshore fee (" << print_money(offshore_fee_map["XHV"]) << ") plus xAsset fee (" << print_money(xasset_fee_map["XHV"]) << ")");
+    MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use_map["XHV"]) << "). Block reward is " << print_money(base_reward + governance_reward + fee_map["XHV"]) << "(" << print_money(base_reward) << "+" << print_money(governance_reward) << "+" << print_money(fee_map["XHV"]) << ") plus offshore fee (" << print_money(offshore_fee_map["XHV"]) << ") plus xAsset fee (" << print_money(xasset_fee_map["XHV"]) << ")");
     return false;
   }
   // From hard fork 2 till 12, we allow a miner to claim less block reward than is allowed, in case a miner wants less dust
@@ -1701,12 +1709,16 @@ bool Blockchain::validate_miner_transaction(
     // to show the amount of coins that were actually generated, the remainder will be pushed back for later
     // emission. This modifies the emission curve very slightly.
     if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
-      CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
+      if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
+        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"] - BURNT_CONVERSION_FEES_MINT_AMOUNT  == base_reward, false, "base reward calculation bug");
+      } else {
+        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
+      }
     } else {
-      CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
-      if(base_reward + fee_map["XHV"] + offshore_fee_map["XHV"] != money_in_use_map["XHV"])
+      CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - governance_reward  == base_reward, false, "base reward calculation bug");
+      if(base_reward + governance_reward + fee_map["XHV"] + offshore_fee_map["XHV"] != money_in_use_map["XHV"])
         partial_block_reward = true;
-      base_reward = money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"];
+      base_reward = money_in_use_map["XHV"] - governance_reward - fee_map["XHV"] - offshore_fee_map["XHV"];
     }
     
     if (version >= HF_VERSION_OFFSHORE_FULL) {
