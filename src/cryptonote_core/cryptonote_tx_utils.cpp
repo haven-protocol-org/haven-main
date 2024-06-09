@@ -767,12 +767,12 @@ namespace cryptonote
     } else if (tx_type == tt::OFFSHORE) {
       //dest_pool_ratio = (convert_amount * std::max(pr.spot("XHV"), pr.ma("XHV")) / (map_amounts["xUSD"] * std::min(pr.spot("xUSD"), pr.ma("xUSD"))));
       uint128_t dpr_numerator = convert_amount * pr.max("XHV");
-      uint128_t dpr_denominator = map_amounts["XUSD"] * pr.min("xUSD");
+      uint128_t dpr_denominator = map_amounts["XUSD"] * pr.min("XUSD");
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XASSET_TO_XUSD) {
       //dest_pool_ratio = (convert_amount * COIN) / (map_amounts[dest_asset] * pr.min("xUSD"));
       uint128_t dpr_numerator = convert_amount * COIN;
-      uint128_t dpr_denominator = map_amounts[dest_asset] * pr.min("xUSD");
+      uint128_t dpr_denominator = map_amounts[dest_asset] * pr.min("XUSD");
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XUSD_TO_XASSET) {
       //dest_pool_ratio = (convert_amount * pr.spot(source_asset)) / (map_amounts[dest_asset] * pr.spot(dest_asset));
@@ -812,7 +812,7 @@ namespace cryptonote
 
     // Calculate xUSD Peg Slippage
     cpp_bin_float_quad xusd_peg_slippage = 0;
-    double xusd_peg_ratio = pr.min("xUSD");
+    double xusd_peg_ratio = pr.min("XUSD");
     xusd_peg_ratio /= COIN;
     
     if (xusd_peg_ratio < 1.0) {
@@ -825,14 +825,14 @@ namespace cryptonote
     if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
 
       // Calculate the xBTC Mcap
-      cpp_bin_float_quad mcap_xbtc = map_amounts["xBTC"].convert_to<cpp_bin_float_quad>();
+      cpp_bin_float_quad mcap_xbtc = map_amounts["XBTC"].convert_to<cpp_bin_float_quad>();
       mcap_xbtc *= COIN;
-      mcap_xbtc /= pr.spot("xBTC");
+      mcap_xbtc /= pr.spot("XBTC");
       
       // Calculate the xUSD Mcap
-      cpp_bin_float_quad mcap_xusd = map_amounts["xUSD"].convert_to<cpp_bin_float_quad>();
+      cpp_bin_float_quad mcap_xusd = map_amounts["XUSD"].convert_to<cpp_bin_float_quad>();
       mcap_xusd *= COIN;
-      mcap_xusd /= pr.min("xUSD");
+      mcap_xusd /= pr.min("XUSD");
 
       // Update the xBTC Mcap Ratio Slippage
       xbtc_mcap_ratio_slippage = std::sqrt(std::pow((mcap_xbtc / mcap_xusd).convert_to<double>(), 1.4)) / 10.0;
@@ -842,7 +842,7 @@ namespace cryptonote
     // Calculate the total slippage
     cpp_bin_float_quad total_slippage =
       (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) ? basic_slippage + std::max(mcap_ratio_slippage, xusd_peg_slippage) :
-      (tx_type == tt::XUSD_TO_XASSET && dest_asset == "xBTC") ? basic_slippage + std::max(xbtc_mcap_ratio_slippage, xusd_peg_slippage) :
+      (tx_type == tt::XUSD_TO_XASSET && dest_asset == "XBTC") ? basic_slippage + std::max(xbtc_mcap_ratio_slippage, xusd_peg_slippage) :
       basic_slippage + xusd_peg_slippage;
     LOG_PRINT_L1("total_slippage = " << total_slippage.convert_to<double>());
     

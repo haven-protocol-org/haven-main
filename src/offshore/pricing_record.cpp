@@ -327,7 +327,7 @@ namespace offshore
 
   uint64_t pricing_record::ma(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
     if (asset_type == "XHV") return unused1;
@@ -337,31 +337,31 @@ namespace offshore
   
   uint64_t pricing_record::max(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
     if (asset_type == "XHV") return std::max(unused1, xUSD);
-    if (asset_type == "xUSD") return std::max(unused2, unused3);
+    if (asset_type == "XUSD") return std::max(unused2, unused3);
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
   
   uint64_t pricing_record::min(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
     if (asset_type == "XHV") return std::min(unused1, xUSD);
-    if (asset_type == "xUSD") return std::min(unused2, unused3);
+    if (asset_type == "XUSD") return std::min(unused2, unused3);
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
   
   uint64_t pricing_record::spot(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
     if (asset_type == "XHV") return xUSD;
-    if (asset_type == "xUSD") return unused3;
+    if (asset_type == "XUSD") return unused3;
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
 
