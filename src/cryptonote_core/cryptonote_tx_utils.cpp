@@ -771,13 +771,13 @@ namespace cryptonote
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XASSET_TO_XUSD) {
       //dest_pool_ratio = (convert_amount * COIN) / (map_amounts[dest_asset] * pr.min("xUSD"));
-      uint128_t dpr_numerator = convert_amount * COIN;
-      uint128_t dpr_denominator = map_amounts[dest_asset] * pr.min("XUSD");
+      uint128_t dpr_numerator = (convert_amount * COIN) / pr.spot(source_asset);
+      uint128_t dpr_denominator = (map_amounts["XUSD"] * pr.min("XUSD")) / COIN;
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XUSD_TO_XASSET) {
       //dest_pool_ratio = (convert_amount * pr.spot(source_asset)) / (map_amounts[dest_asset] * pr.spot(dest_asset));
-      uint128_t dpr_numerator = convert_amount * pr.spot(source_asset);
-      uint128_t dpr_denominator = map_amounts[dest_asset] * pr.spot(dest_asset);
+      uint128_t dpr_numerator = convert_amount;
+      uint128_t dpr_denominator = (map_amounts[dest_asset] * COIN) / pr.spot(dest_asset);
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else {
       // Not a valid transaction type for slippage
