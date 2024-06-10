@@ -831,8 +831,8 @@ namespace cryptonote
       
       // Calculate the xUSD Mcap
       cpp_bin_float_quad mcap_xusd = map_amounts["XUSD"].convert_to<cpp_bin_float_quad>();
-      mcap_xusd *= COIN;
-      mcap_xusd /= pr.min("XUSD");
+      mcap_xusd *= pr.min("XUSD");
+      mcap_xusd /= COIN;
 
       // Update the xBTC Mcap Ratio Slippage
       xbtc_mcap_ratio_slippage = std::sqrt(std::pow((mcap_xbtc / mcap_xusd).convert_to<double>(), 1.4)) / 10.0;
