@@ -256,7 +256,7 @@
 #define HF_VERSION_CONVERSION_FEES_NOT_BURNT    23
 
 #define STAGENET_VERSION                        0x0e
-#define TESTNET_VERSION                         0x1a
+#define TESTNET_VERSION                         0x1b
 
 #define OFFSHORE_PRICING_BLOCKS_TO_AVERAGE      30
 
