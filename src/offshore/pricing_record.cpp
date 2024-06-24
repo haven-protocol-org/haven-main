@@ -361,7 +361,7 @@ namespace offshore
       return operator[](asset_type);
     }
     if (asset_type == "XHV") return xUSD;
-    if (asset_type == "XUSD") return unused3;
+    if (asset_type == "XUSD") return unused2;
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
 

@@ -879,7 +879,7 @@ namespace cryptonote
       if (i.first == "XHV") continue;
 
       // Get the pricing data for the xAsset
-      uint128_t price_xasset = pr.spot(i.first);
+      uint128_t price_xasset = (hf_version >= HF_VERSION_SLIPPAGE) ? pr.spot(i.first) : pr[i.first];
       
       // Multiply by the amount of coin in circulation
       uint128_t amount_xasset(i.second.c_str());
