@@ -1710,9 +1710,23 @@ bool Blockchain::validate_miner_transaction(
     // emission. This modifies the emission curve very slightly.
     if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
       if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
-        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"] - BURNT_CONVERSION_FEES_MINT_AMOUNT  == base_reward, false, "base reward calculation bug");
+        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"] - BURNT_CONVERSION_FEES_MINT_AMOUNT  == base_reward, false, "base reward calculation bug when minting previously-burnt fees");
       } else {
-        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
+        // Additional logging
+        bool err = (money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  != base_reward);
+        if (err) {
+          for (size_t idx=0; idx<b.miner_tx.vout.size(); ++idx)
+            MERROR("output " << idx << " has amount " << print_money(b.miner_tx.vout[idx].amount));
+          for (size_t idx=0; idx<b.tx_hashes.size(); ++idx)
+            MERROR("TX hash " << b.tx_hashes[idx] << " included in block");
+        }
+        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  == base_reward, false,
+                             "base reward calculation bug  : HF = " << version <<
+                             ", money_in_use = " << print_money(money_in_use_map["XHV"]) <<
+                             ", fee = " << print_money(fee_map["XHV"]) <<
+                             ", offshore_fee = " << print_money(offshore_fee_map["XHV"]) <<
+                             ", xasset_fee = " << print_money(xasset_fee_map["XHV"]) <<
+                             ", base_reward = " << print_money(base_reward));
       }
     } else {
       CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
