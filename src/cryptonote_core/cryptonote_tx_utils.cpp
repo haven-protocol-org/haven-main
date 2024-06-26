@@ -317,10 +317,12 @@ namespace cryptonote
                 // 80% of it(1.2% of the inital value) goes to governance wallet
                 // 20% of it(0.3% of the inital value) goes to miners
                 boost::multiprecision::uint128_t fee = xasset_fee_map[fee_map_entry.first];
+                boost::multiprecision::uint128_t fee_miner_xasset = fee / 5;
+                fee -= fee_miner_xasset;
                 // 80%
-                governance_reward_xasset += (uint64_t)((fee * 4) / 5);
+                governance_reward_xasset += fee.convert_to<uint64_t>();
                 // 20%
-                block_reward_xasset += (uint64_t)(fee /5);
+                block_reward_xasset += fee_miner_xasset.convert_to<uint64_t>();
               } else {
                 // we got 0.5% from xasset conversions. Here we wanna burn 80%(0.4% of the initial whole) of it and 
                 // spilit the rest between governance wallet and the miner

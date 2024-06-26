@@ -1659,11 +1659,13 @@ bool Blockchain::validate_miner_transaction(
           // xAsset fees change fork
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             if (version >= HF_VERSION_USE_COLLATERAL) {
-              boost::multiprecision::uint128_t fee =  xasset_fee_map[first_output_asset_type];
-              // 80% to governance wallet
-              governance_reward_xasset += (uint64_t)((fee * 4) / 5);
-              // 20% to miners
-              miner_reward_xasset += (uint64_t)(fee / 5);
+              boost::multiprecision::uint128_t fee = xasset_fee_map[first_output_asset_type];
+              boost::multiprecision::uint128_t fee_miner_xasset = fee / 5;
+              fee -= fee_miner_xasset;
+              // 80%
+              governance_reward_xasset += fee.convert_to<uint64_t>();
+              // 20%
+              miner_reward_xasset += fee_miner_xasset.convert_to<uint64_t>();
             } else {
               uint64_t fee =  xasset_fee_map[first_output_asset_type];
               // burn 80%
