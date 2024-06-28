@@ -330,8 +330,18 @@ namespace offshore
     if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
-    if (asset_type == "XHV") return unused1;
-    if (asset_type == "xUSD") return unused3;
+    if (asset_type == "XHV") {
+      if (!unused1 || !xUSD) {
+        return std::max(unused1, xUSD);
+      }
+      return unused1;
+    }
+    if (asset_type == "XUSD") {
+      if (!unused2 || !unused3) {
+        return std::max(unused2, unused3);
+      }
+      return unused3;
+    }
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
   
@@ -350,8 +360,18 @@ namespace offshore
     if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
-    if (asset_type == "XHV") return std::min(unused1, xUSD);
-    if (asset_type == "XUSD") return std::min(unused2, unused3);
+    if (asset_type == "XHV") {
+      if (!unused1 || !xUSD) {
+        return std::max(unused1, xUSD);
+      }
+      return std::min(unused1, xUSD);
+    }
+    if (asset_type == "XUSD") {
+      if (!unused2 || !unused3) {
+        return std::max(unused2, unused3);
+      }
+      return std::min(unused2, unused3);
+    }
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
   
@@ -360,8 +380,18 @@ namespace offshore
     if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
-    if (asset_type == "XHV") return xUSD;
-    if (asset_type == "XUSD") return unused2;
+    if (asset_type == "XHV") {
+      if (!unused1 || !xUSD) {
+        return std::max(unused1, xUSD);
+      }
+      return xUSD;
+    }
+    if (asset_type == "XUSD") {
+      if (!unused2 || !unused3) {
+        return std::max(unused2, unused3);
+      }
+      return unused2;
+    }
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
 

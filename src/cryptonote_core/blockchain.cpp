@@ -1661,7 +1661,11 @@ bool Blockchain::validate_miner_transaction(
             if (version >= HF_VERSION_USE_COLLATERAL) {
               boost::multiprecision::uint128_t fee = xasset_fee_map[first_output_asset_type];
               boost::multiprecision::uint128_t fee_miner_xasset = fee / 5;
-              fee -= fee_miner_xasset;
+              if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
+                fee -= fee_miner_xasset;
+              } else {
+                fee = (fee * 4) / 5;
+              }
               // 80%
               governance_reward_xasset += fee.convert_to<uint64_t>();
               // 20%
