@@ -1515,23 +1515,20 @@ bool Blockchain::validate_miner_transaction(
   // collect all unique assets from fees except xhv since it is handled separately.
   std::set<std::string> unique_assets;
   for (const auto& asset : fee_map) {
-    if (asset.first != "XHV") {
+    if ((version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) || (asset.first != "XHV"))
       unique_assets.insert(asset.first);
-    }
   }
   for (const auto& asset : offshore_fee_map) {
-    if (asset.first != "XHV") {
+    if ((version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) || (asset.first != "XHV"))
       unique_assets.insert(asset.first);
-    }
   }
   for (const auto& asset : xasset_fee_map) {
-    if (asset.first != "XHV") {
+    if ((version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) || (asset.first != "XHV"))
       unique_assets.insert(asset.first);
-    }
   }
 
   // check output size
-  // it must be number of unique assets times 2 and + 2 for xhv.
+  // it must be number of unique assets times 2 and + 2 for xhv (for governance / block reward).
   const size_t output_size = b.miner_tx.vout.size();
   if ((version >= HF_VERSION_XASSET_FEES_V2) && (output_size != (2 + (unique_assets.size() * 2)))  ) {
     MERROR("Miner tx has invalid output size!");
@@ -1570,6 +1567,7 @@ bool Blockchain::validate_miner_transaction(
     return false;
   }
 
+  uint64_t governance_reward = 0;
   if (version >= 3) {
     if (already_generated_coins != 0)
     {
@@ -1583,8 +1581,19 @@ bool Blockchain::validate_miner_transaction(
       }
 
       // Check that the governance reward for XHV is correct
-      uint64_t governance_reward = get_governance_reward(m_db->height(), base_reward);
-      governance_reward += offshore_fee_map["XHV"];
+      governance_reward = get_governance_reward(m_db->height(), base_reward);
+      if (version < HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
+        // Add the offshore fees to the _first_ governance payment
+        governance_reward += offshore_fee_map["XHV"];
+      }
+      
+      // HERE BE DRAGONS!!!
+      // NEAC: mint the previously-burnt XHV conversion fees, and add to the governance wallet
+      if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
+        governance_reward += BURNT_CONVERSION_FEES_MINT_AMOUNT;
+      }
+      // LAND AHOY!!!
+      
       if (b.miner_tx.vout[1].amount != governance_reward)
       {
         MERROR("Governance reward amount incorrect.  Should be: " << print_money(governance_reward) << ", is: " << print_money(b.miner_tx.vout[1].amount));
@@ -1621,12 +1630,14 @@ bool Blockchain::validate_miner_transaction(
             } else if (first_output_asset_type != second_output_asset_type) {
               MERROR("Mismatch in asset types for miner TX : tx.vout[" << idx << "] and tx.vout[" << idx + 1 << "]");
               return false;
+/*              
             } else if (first_output_asset_type == "XHV") {
               MERROR("XHV not allowed in additional asset types for miner TX : tx.vout[" << idx << "]");
               return false;
             } else if (second_output_asset_type == "XHV") {
               MERROR("XHV not allowed in additional asset types for miner TX : tx.vout[" << idx+1 << "]");
               return false;
+*/
             }
             crypto::public_key output_public_key;
             ok = cryptonote::get_output_public_key(b.miner_tx.vout[idx + 1], output_public_key);
@@ -1648,11 +1659,17 @@ bool Blockchain::validate_miner_transaction(
           // xAsset fees change fork
           if (version >= HF_VERSION_XASSET_FEES_V2) {
             if (version >= HF_VERSION_USE_COLLATERAL) {
-              boost::multiprecision::uint128_t fee =  xasset_fee_map[first_output_asset_type];
-              // 80% to governance wallet
-              governance_reward_xasset += (uint64_t)((fee * 4) / 5);
-              // 20% to miners
-              miner_reward_xasset += (uint64_t)(fee / 5);
+              boost::multiprecision::uint128_t fee = xasset_fee_map[first_output_asset_type];
+              boost::multiprecision::uint128_t fee_miner_xasset = fee / 5;
+              if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
+                fee -= fee_miner_xasset;
+              } else {
+                fee = (fee * 4) / 5;
+              }
+              // 80%
+              governance_reward_xasset += fee.convert_to<uint64_t>();
+              // 20%
+              miner_reward_xasset += fee_miner_xasset.convert_to<uint64_t>();
             } else {
               uint64_t fee =  xasset_fee_map[first_output_asset_type];
               // burn 80%
@@ -1678,9 +1695,9 @@ bool Blockchain::validate_miner_transaction(
     }
   }
 
-  if(money_in_use_map["XHV"] > (base_reward + fee_map["XHV"] + offshore_fee_map["XHV"]))
+  if(money_in_use_map["XHV"] > (base_reward + governance_reward + fee_map["XHV"] + offshore_fee_map["XHV"] + xasset_fee_map["XHV"]))
   {
-    MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use_map["XHV"]) << "). Block reward is " << print_money(base_reward + fee_map["XHV"]) << "(" << print_money(base_reward) << "+" << print_money(fee_map["XHV"]) << ") plus offshore fee (" << print_money(offshore_fee_map["XHV"]) << ")");
+    MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use_map["XHV"]) << "). Block reward is " << print_money(base_reward + governance_reward + fee_map["XHV"]) << "(" << print_money(base_reward) << "+" << print_money(governance_reward) << "+" << print_money(fee_map["XHV"]) << ") plus offshore fee (" << print_money(offshore_fee_map["XHV"]) << ") plus xAsset fee (" << print_money(xasset_fee_map["XHV"]) << ")");
     return false;
   }
   // From hard fork 2 till 12, we allow a miner to claim less block reward than is allowed, in case a miner wants less dust
@@ -1697,11 +1714,33 @@ bool Blockchain::validate_miner_transaction(
     // from hard fork 2, since a miner can claim less than the full block reward, we update the base_reward
     // to show the amount of coins that were actually generated, the remainder will be pushed back for later
     // emission. This modifies the emission curve very slightly.
-    CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] <= base_reward, false, "base reward calculation bug");
-    if(base_reward + fee_map["XHV"] + offshore_fee_map["XHV"] != money_in_use_map["XHV"])
-      partial_block_reward = true;
-    base_reward = money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"];
-
+    if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
+      if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
+        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"] - BURNT_CONVERSION_FEES_MINT_AMOUNT  == base_reward, false, "base reward calculation bug when minting previously-burnt fees");
+      } else {
+        // Additional logging
+        bool err = (money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  != base_reward);
+        if (err) {
+          for (size_t idx=0; idx<b.miner_tx.vout.size(); ++idx)
+            MERROR("output " << idx << " has amount " << print_money(b.miner_tx.vout[idx].amount));
+          for (size_t idx=0; idx<b.tx_hashes.size(); ++idx)
+            MERROR("TX hash " << b.tx_hashes[idx] << " included in block");
+        }
+        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  == base_reward, false,
+                             "base reward calculation bug  : HF = " << version <<
+                             ", money_in_use = " << print_money(money_in_use_map["XHV"]) <<
+                             ", fee = " << print_money(fee_map["XHV"]) <<
+                             ", offshore_fee = " << print_money(offshore_fee_map["XHV"]) <<
+                             ", xasset_fee = " << print_money(xasset_fee_map["XHV"]) <<
+                             ", base_reward = " << print_money(base_reward));
+      }
+    } else {
+      CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"]  == base_reward, false, "base reward calculation bug");
+      if(base_reward + fee_map["XHV"] + offshore_fee_map["XHV"] != money_in_use_map["XHV"])
+        partial_block_reward = true;
+      base_reward = money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"];
+    }
+    
     if (version >= HF_VERSION_OFFSHORE_FULL) {
       if (version >= HF_VERSION_XASSET_FEES_V2) {
         for (auto &money_in_use_map_entry: money_in_use_map) {
@@ -4429,25 +4468,25 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
 bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::pricing_record pr, const std::string& source, const std::string& dest, const transaction_type tx_type) const
 //bool Blockchain::check_fee(size_t tx_weight, uint64_t fee) const
 {
-  const uint8_t version = get_current_hard_fork_version();
+  const uint8_t hf_version = get_current_hard_fork_version();
 
   uint64_t median = 0;
   uint64_t already_generated_coins = 0;
   uint64_t base_reward = 0;
-  if (version >= HF_VERSION_DYNAMIC_FEE)
+  if (hf_version >= HF_VERSION_DYNAMIC_FEE)
   {
     median = m_current_block_cumul_weight_limit / 2;
     const uint64_t blockchain_height = m_db->height();
     already_generated_coins = blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;
-    if (!get_block_reward(median, 1, already_generated_coins, base_reward, version))
+    if (!get_block_reward(median, 1, already_generated_coins, base_reward, hf_version))
       return false;
   }
 
   uint64_t needed_fee;
-  if (version >= HF_VERSION_PER_BYTE_FEE)
+  if (hf_version >= HF_VERSION_PER_BYTE_FEE)
   {
-    const bool use_long_term_median_in_fee = version >= HF_VERSION_LONG_TERM_BLOCK_WEIGHT;
-    uint64_t fee_per_byte = get_dynamic_base_fee(base_reward, use_long_term_median_in_fee ? std::min<uint64_t>(median, m_long_term_effective_median_block_weight) : median, version);
+    const bool use_long_term_median_in_fee = hf_version >= HF_VERSION_LONG_TERM_BLOCK_WEIGHT;
+    uint64_t fee_per_byte = get_dynamic_base_fee(base_reward, use_long_term_median_in_fee ? std::min<uint64_t>(median, m_long_term_effective_median_block_weight) : median, hf_version);
     MDEBUG("Using " << print_money(fee_per_byte) << "/byte fee");
     needed_fee = tx_weight * fee_per_byte;
     // quantize fee up to 8 decimals
@@ -4457,13 +4496,13 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   else
   {
     uint64_t fee_per_kb;
-    if (version < HF_VERSION_DYNAMIC_FEE)
+    if (hf_version < HF_VERSION_DYNAMIC_FEE)
     {
       fee_per_kb = FEE_PER_KB;
     }
     else
     {
-      fee_per_kb = get_dynamic_base_fee(base_reward, median, version);
+      fee_per_kb = get_dynamic_base_fee(base_reward, median, hf_version);
     }
     MDEBUG("Using " << print_money(fee_per_kb) << "/kB fee");
 
@@ -4475,11 +4514,11 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   // Does the fee need scaling?
   if (source != "XHV" && source != dest) {
     // HF21+ conversion TXs use XHV for all fees
-    if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
+    if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
       // Fee is in source_asset terms - need to convert our needed value
       uint64_t needed_fee_in_C = 0;
       uint64_t fee_conversion_rate = 0;
-      if (!cryptonote::get_conversion_rate(pr, "XHV", source, fee_conversion_rate)) {
+      if (!cryptonote::get_conversion_rate(pr, "XHV", source, fee_conversion_rate, hf_version)) {
         MERROR_VER("failed to get fee conversion rate for Blockchain::check_fee");
         return false;
       }
@@ -4492,7 +4531,7 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
       // convert fee to asset type value
       //if (pr.unused1 && pr.xUSD && pr[source]) {
       if (pr.ma("XHV") && pr.spot("XHV") && pr.spot(source)) {
-        needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, version);
+        needed_fee = get_xusd_amount(needed_fee, "XHV", pr, tx_type, hf_version);
         // xasset amount if fee is paid in xasset
         if (source != "XUSD") {
           needed_fee = get_xasset_amount(needed_fee, source, pr);
@@ -5266,7 +5305,7 @@ leave:
 
         // NEAC: Get conversion rate so we can avoid doing an invert() on a number with excessive precision
         uint64_t conversion_rate = COIN;
-        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, dest, conversion_rate)) {
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, dest, conversion_rate, hf_version)) {
           LOG_PRINT_L2("Failed to get conversion rate of tx " << tx.hash);
           bvc.m_verifivation_failed = true;
           goto leave;
@@ -5274,7 +5313,7 @@ leave:
 
         // Get the fee conversion rate used
         uint64_t fee_conversion_rate = COIN;
-        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, "XHV", fee_conversion_rate)) {
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, source, "XHV", fee_conversion_rate, hf_version)) {
           LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
           bvc.m_verifivation_failed = true;
           goto leave;
@@ -5282,7 +5321,7 @@ leave:
           
         // Get the TX fee conversion rate used
         uint64_t tx_fee_conversion_rate = COIN;
-        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, "XHV", source, tx_fee_conversion_rate)) {
+        if (!cryptonote::get_conversion_rate(pr_bl.pricing_record, "XHV", source, tx_fee_conversion_rate, hf_version)) {
           LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
           bvc.m_verifivation_failed = true;
           goto leave;

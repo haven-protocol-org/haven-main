@@ -159,9 +159,16 @@ namespace cryptonote
         governance_reward = get_governance_reward(height, block_reward);
         block_reward -= governance_reward;
       }
+
+      // HERE BE DRAGONS!!!
+      // NEAC: mint the previously-burnt XHV conversion fees, and add to the governance wallet
+      if ((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
+        governance_reward += BURNT_CONVERSION_FEES_MINT_AMOUNT;
+      }
+      // LAND AHOY!!!
     }
 
-    block_reward += fee_map["XHV"];
+    //block_reward += fee_map["XHV"];
     uint64_t summary_amounts = 0;
     crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
     crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
@@ -250,9 +257,11 @@ namespace cryptonote
           ttk.key = out_eph_public_key;
           tx_out out;
           summary_amounts += out.amount = governance_reward;
-          if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+          /*
+          if ((hard_fork_version >= HF_VERSION_OFFSHORE_FULL) && (hard_fork_version < HF_VERSION_CONVERSION_FEES_NOT_BURNT)) {
             out.amount += offshore_fee_map["XHV"];
           }
+          */
 
           out.target = ttk;
           tx.vout.push_back(out);
@@ -265,9 +274,11 @@ namespace cryptonote
           tk.key = out_eph_public_key;
           tx_out out;
           summary_amounts += out.amount = governance_reward;
-          if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+          /*
+            if ((hard_fork_version >= HF_VERSION_OFFSHORE_FULL) && (hard_fork_version < HF_VERSION_CONVERSION_FEES_NOT_BURNT)) {
             out.amount += offshore_fee_map["XHV"];
           }
+          */
 
           out.target = tk;
           tx.vout.push_back(out);
@@ -280,10 +291,13 @@ namespace cryptonote
       // Add all of the outputs for all of the currencies in the contained TXs
       uint64_t idx = 2;
       for (auto &fee_map_entry: fee_map) {
+        /*
         // Skip XHV - we have already handled that above
-        if (fee_map_entry.first == "XHV")
-          continue;
-    
+        if (hard_fork_version < HF_VERSION_CONVERSION_FEES_NOT_BURNT)
+          if (fee_map_entry.first == "XHV")
+            continue;
+        */
+        
         if (fee_map_entry.second != 0) {
           uint64_t block_reward_xasset = fee_map_entry.second;
           uint64_t governance_reward_xasset = 0;
@@ -303,10 +317,12 @@ namespace cryptonote
                 // 80% of it(1.2% of the inital value) goes to governance wallet
                 // 20% of it(0.3% of the inital value) goes to miners
                 boost::multiprecision::uint128_t fee = xasset_fee_map[fee_map_entry.first];
+                boost::multiprecision::uint128_t fee_miner_xasset = fee / 5;
+                fee -= fee_miner_xasset;
                 // 80%
-                governance_reward_xasset += (uint64_t)((fee * 4) / 5);
+                governance_reward_xasset += fee.convert_to<uint64_t>();
                 // 20%
-                block_reward_xasset += (uint64_t)(fee /5);
+                block_reward_xasset += fee_miner_xasset.convert_to<uint64_t>();
               } else {
                 // we got 0.5% from xasset conversions. Here we wanna burn 80%(0.4% of the initial whole) of it and 
                 // spilit the rest between governance wallet and the miner
@@ -477,7 +493,10 @@ namespace cryptonote
       } else if (nettype == STAGENET) {
         return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
       } else {
-        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+        if (version >= HF_VERSION_SLIPPAGE)
+          return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_V23;
+        else 
+          return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
       }
     } else if (version >= 4) {
       if (nettype == TESTNET) {
@@ -704,7 +723,7 @@ namespace cryptonote
       uint128_t amount_xasset(i.second.c_str());
 
       // Skip scaling of xUSD, because price uses notional peg rather than actual value
-      if (i.first != "xUSD") {
+      if (i.first != "XUSD") {
         amount_xasset *= COIN;
         amount_xasset /= price_xasset;
       }      
@@ -749,18 +768,18 @@ namespace cryptonote
       dest_pool_multiplier = pow((sqrt(pow(dest_pool_ratio, 0.4)) + 1.0), 15.0);
     } else if (tx_type == tt::OFFSHORE) {
       //dest_pool_ratio = (convert_amount * std::max(pr.spot("XHV"), pr.ma("XHV")) / (map_amounts["xUSD"] * std::min(pr.spot("xUSD"), pr.ma("xUSD"))));
-      uint128_t dpr_numerator = convert_amount * std::max(pr.spot("XHV"), pr.ma("XHV"));
-      uint128_t dpr_denominator = map_amounts["xUSD"] * std::min(pr.spot("xUSD"), pr.ma("xUSD"));
+      uint128_t dpr_numerator = convert_amount * pr.max("XHV");
+      uint128_t dpr_denominator = map_amounts["XUSD"] * pr.min("XUSD");
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XASSET_TO_XUSD) {
-      //dest_pool_ratio = (convert_amount * COIN) / (map_amounts[dest_asset] * min(pr.spot("xUSD"), pr.ma("xUSD")));
-      uint128_t dpr_numerator = convert_amount * COIN;
-      uint128_t dpr_denominator = map_amounts[dest_asset] * std::min(pr.spot("xUSD"), pr.ma("xUSD"));
+      //dest_pool_ratio = (convert_amount * COIN) / (map_amounts[dest_asset] * pr.min("xUSD"));
+      uint128_t dpr_numerator = (convert_amount * COIN) / pr.spot(source_asset);
+      uint128_t dpr_denominator = (map_amounts["XUSD"] * pr.min("XUSD")) / COIN;
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else if (tx_type == tt::XUSD_TO_XASSET) {
       //dest_pool_ratio = (convert_amount * pr.spot(source_asset)) / (map_amounts[dest_asset] * pr.spot(dest_asset));
-      uint128_t dpr_numerator = convert_amount * pr.spot(source_asset);
-      uint128_t dpr_denominator = map_amounts[dest_asset] * pr.spot(dest_asset);
+      uint128_t dpr_numerator = convert_amount;
+      uint128_t dpr_denominator = (map_amounts[dest_asset] * COIN) / pr.spot(dest_asset);
       dest_pool_ratio = dpr_numerator.convert_to<cpp_bin_float_quad>() / dpr_denominator.convert_to<cpp_bin_float_quad>();
     } else {
       // Not a valid transaction type for slippage
@@ -773,7 +792,8 @@ namespace cryptonote
 
     // Calculate basic_slippage
     cpp_bin_float_quad basic_slippage = src_pool_slippage + dest_pool_slippage;
-
+    LOG_PRINT_L2("*** basic_slippage = " << basic_slippage.convert_to<double>());
+    
     // Calculate Mcap ratio slippage
     cpp_bin_float_quad mcap_ratio_slippage = 0.0;
     if (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) {
@@ -789,12 +809,17 @@ namespace cryptonote
       
       // Calculate the Mcap ratio slippage
       mcap_ratio_slippage = std::sqrt(std::pow(mcr_max.convert_to<double>(), 1.2)) / 6.0;
+      LOG_PRINT_L2("*** mcap_ratio_slippage = " << mcap_ratio_slippage.convert_to<double>());
     }
 
     // Calculate xUSD Peg Slippage
     cpp_bin_float_quad xusd_peg_slippage = 0;
-    if (std::min(pr.spot("xUSD"), pr.ma("xUSD")) < 1.0) {
-      xusd_peg_slippage = std::sqrt(std::pow((1.0 - std::min(pr.spot("xUSD"), pr.ma("xUSD"))), 3.0)) / 1.3;
+    double xusd_peg_ratio = pr.min("XUSD");
+    xusd_peg_ratio /= COIN;
+    
+    if (xusd_peg_ratio < 1.0) {
+      xusd_peg_slippage = std::sqrt(std::pow((1.0 - xusd_peg_ratio), 3.0)) / 1.3;
+      LOG_PRINT_L2("*** xusd_peg_slippage = " << xusd_peg_slippage);
     }
 
     // Calculate the xBTC Mcap Ratio Slippage
@@ -802,30 +827,40 @@ namespace cryptonote
     if (tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
 
       // Calculate the xBTC Mcap
-      cpp_bin_float_quad mcap_xbtc = map_amounts["xBTC"].convert_to<cpp_bin_float_quad>();
+      cpp_bin_float_quad mcap_xbtc = map_amounts["XBTC"].convert_to<cpp_bin_float_quad>();
       mcap_xbtc *= COIN;
-      mcap_xbtc /= pr.spot("xBTC");
+      mcap_xbtc /= pr.spot("XBTC");
       
       // Calculate the xUSD Mcap
-      cpp_bin_float_quad mcap_xusd = map_amounts["xUSD"].convert_to<cpp_bin_float_quad>();
-      mcap_xusd *= COIN;
-      mcap_xusd /= pr.spot("xUSD");
+      cpp_bin_float_quad mcap_xusd = map_amounts["XUSD"].convert_to<cpp_bin_float_quad>();
+      mcap_xusd *= pr.min("XUSD");
+      mcap_xusd /= COIN;
 
       // Update the xBTC Mcap Ratio Slippage
       xbtc_mcap_ratio_slippage = std::sqrt(std::pow((mcap_xbtc / mcap_xusd).convert_to<double>(), 1.4)) / 10.0;
+      LOG_PRINT_L2("*** xbtc_mcap_ratio_slippage = " << xbtc_mcap_ratio_slippage.convert_to<double>());
     }
-
+    
     // Calculate the total slippage
     cpp_bin_float_quad total_slippage =
       (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) ? basic_slippage + std::max(mcap_ratio_slippage, xusd_peg_slippage) :
-      (tx_type == tt::XUSD_TO_XASSET && dest_asset == "xBTC") ? basic_slippage + std::max(xbtc_mcap_ratio_slippage, xusd_peg_slippage) :
+      (tx_type == tt::XUSD_TO_XASSET && dest_asset == "XBTC") ? basic_slippage + std::max(xbtc_mcap_ratio_slippage, xusd_peg_slippage) :
       basic_slippage + xusd_peg_slippage;
-
+    LOG_PRINT_L1("total_slippage = " << total_slippage.convert_to<double>());
+    
     // Limit total_slippage to 99% so that the code doesn't break
     if (total_slippage > 0.99) total_slippage = 0.99;
     total_slippage *= convert_amount.convert_to<cpp_bin_float_quad>();
     slippage = total_slippage.convert_to<uint64_t>();
     slippage -= (slippage % 100000000);
+
+    // SAnity check that there is _some_ slippage being applied
+    if (slippage == 0) {
+      // Not a valid slippage amount
+      LOG_ERROR("Invalid slippage amount (0) - aborting");
+      return false;
+    }
+    
     return true;
   }
   //---------------------------------------------------------------
@@ -846,7 +881,7 @@ namespace cryptonote
       if (i.first == "XHV") continue;
 
       // Get the pricing data for the xAsset
-      uint128_t price_xasset = pr.spot(i.first);
+      uint128_t price_xasset = (hf_version >= HF_VERSION_SLIPPAGE) ? pr.spot(i.first) : pr[i.first];
       
       // Multiply by the amount of coin in circulation
       uint128_t amount_xasset(i.second.c_str());
@@ -1053,7 +1088,7 @@ namespace cryptonote
     return (pow(xhv_market_cap * 3000, 0.42) + ((xhv_supply * 5) / 1000)) * COIN;
   }
   //---------------------------------------------------------------
-  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate) {
+  bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate, const uint8_t hf_version) {
     // Check for transfers
     if (from_asset == to_asset) {
       rate = COIN;
@@ -1075,7 +1110,7 @@ namespace cryptonote
         rate_128 *= pr.spot(to_asset);//pr[to_asset];
         rate_128 /= COIN;
         rate = rate_128.convert_to<uint64_t>();
-        rate -= (rate % 10000);
+        if (hf_version < HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
       }
     } else if (from_asset == "XUSD") {
       // xUSD as source
@@ -1090,7 +1125,7 @@ namespace cryptonote
         rate_128 *= COIN;
         rate_128 /= pr.max("XHV");//std::max(pr.xUSD, pr.unused1);
         rate = rate_128.convert_to<uint64_t>();
-        rate -= (rate % 10000);
+        if (hf_version < HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
         
       } else {
         // Scale directly to xAsset (xusd_to_xasset)
@@ -1118,7 +1153,13 @@ namespace cryptonote
       }
       // truncate and bail out
       rate = rate_128.convert_to<uint64_t>();
-      rate -= (rate % 10000);        
+      if (hf_version < HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
+    }
+    if (hf_version >= HF_VERSION_SLIPPAGE) rate -= (rate % 10000);
+    if (rate == 0) {
+      // Report an error and bail out
+      LOG_ERROR("Invalid exchange rate (0) for conversion (" << from_asset << "," << to_asset << ") - aborting");
+      return false;
     }
     return true;
   }
@@ -1755,7 +1796,7 @@ namespace cryptonote
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET || tx_type == transaction_type::XASSET_TO_XUSD) {
           // Get a conversion rate to verify the TX fee
           uint64_t inverse_conversion_rate = COIN;
-          if (!cryptonote::get_conversion_rate(pr, "XHV", source_asset, inverse_conversion_rate)) {
+          if (!cryptonote::get_conversion_rate(pr, "XHV", source_asset, inverse_conversion_rate, hf_version)) {
             LOG_ERROR("Failed to get conversion rate for fees - aborting");
             return false;
           }
@@ -1771,7 +1812,7 @@ namespace cryptonote
 
           // Convert offshore fee to XHV
           uint64_t offshore_fee_xhv = 0;
-          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate)) {
+          if (!cryptonote::get_conversion_rate(pr, source_asset, "XHV", conversion_rate, hf_version)) {
             LOG_ERROR("Failed to get conversion rate for fees - aborting");
             return false;
           }
@@ -1785,7 +1826,7 @@ namespace cryptonote
 
       // NEAC: get conversion rate - this replaces the direct use of the Pricing Record to avoid invert() scaling
       conversion_rate = COIN;
-      if (!cryptonote::get_conversion_rate(pr, source_asset, dest_asset, conversion_rate)) {
+      if (!cryptonote::get_conversion_rate(pr, source_asset, dest_asset, conversion_rate, hf_version)) {
         LOG_ERROR("Failed to get conversion rate for output - aborting");
         return false;
       }

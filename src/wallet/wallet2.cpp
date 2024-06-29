@@ -6727,7 +6727,7 @@ bool wallet2::is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_heig
     catch(...) { adjusted_time = time(NULL); } // use local time if no daemon to report blockchain time
     // XXX: this needs to be fast, so we'd need to get the starting heights
     // from the daemon to be correct once voting kicks in
-    uint64_t v2height = m_nettype == TESTNET ? 624634 : m_nettype == STAGENET ? 32000  : 1009827;
+    uint64_t v2height = m_nettype == TESTNET ? 624634 : m_nettype == STAGENET ? 32000  : 38500;
     uint64_t leeway = block_height < v2height ? CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V1 : CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2;
     if(adjusted_time + leeway >= unlock_time)
       return true;
@@ -10732,9 +10732,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   uint64_t inverse_fee_conversion_rate = COIN;
   if (source_asset != dest_asset) {
     THROW_WALLET_EXCEPTION_IF(!get_pricing_record(pricing_record, current_height), error::wallet_internal_error, "Failed to get pricing record");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate), error::wallet_internal_error, "Failed to get conversion rate");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, "XHV", source_asset, fee_conversion_rate), error::wallet_internal_error, "Failed to get fee conversion rate");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, "XHV", inverse_fee_conversion_rate), error::wallet_internal_error, "Failed to get inverse fee conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, dest_asset, conversion_rate, hf_version), error::wallet_internal_error, "Failed to get conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, "XHV", source_asset, fee_conversion_rate, hf_version), error::wallet_internal_error, "Failed to get fee conversion rate");
+    THROW_WALLET_EXCEPTION_IF(!cryptonote::get_conversion_rate(pricing_record, source_asset, "XHV", inverse_fee_conversion_rate, hf_version), error::wallet_internal_error, "Failed to get inverse fee conversion rate");
   }
 
   // Get the circulating supply data
@@ -13368,9 +13368,9 @@ uint64_t wallet2::get_daemon_blockchain_target_height(string &err)
 uint64_t wallet2::get_approximate_blockchain_height() const
 {
   // time of v2 fork
-  const time_t fork_time = m_nettype == TESTNET ? 1448285909 : m_nettype == STAGENET ? 1520937818 : 1458748658;
+  const time_t fork_time = m_nettype == TESTNET ? 1448285909 : m_nettype == STAGENET ? 1520937818 : 1522818000;
   // v2 fork block
-  const uint64_t fork_block = m_nettype == TESTNET ? 624634 : m_nettype == STAGENET ? 32000 : 1009827;
+  const uint64_t fork_block = m_nettype == TESTNET ? 624634 : m_nettype == STAGENET ? 32000 : 38500;
   // avg seconds per block
   const int seconds_per_block = DIFFICULTY_TARGET_V2;
   // Calculated blockchain height

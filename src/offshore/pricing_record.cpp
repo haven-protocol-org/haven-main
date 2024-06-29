@@ -327,41 +327,71 @@ namespace offshore
 
   uint64_t pricing_record::ma(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
-    if (asset_type == "XHV") return unused1;
-    if (asset_type == "xUSD") return unused3;
+    if (asset_type == "XHV") {
+      if (!unused1 || !xUSD) {
+        return std::max(unused1, xUSD);
+      }
+      return unused1;
+    }
+    if (asset_type == "XUSD") {
+      if (!unused2 || !unused3) {
+        return std::max(unused2, unused3);
+      }
+      return unused3;
+    }
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
   
   uint64_t pricing_record::max(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
     if (asset_type == "XHV") return std::max(unused1, xUSD);
-    if (asset_type == "xUSD") return std::max(unused2, unused3);
+    if (asset_type == "XUSD") return std::max(unused2, unused3);
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
   
   uint64_t pricing_record::min(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
-    if (asset_type == "XHV") return std::min(unused1, xUSD);
-    if (asset_type == "xUSD") return std::min(unused2, unused3);
+    if (asset_type == "XHV") {
+      if (!unused1 || !xUSD) {
+        return std::max(unused1, xUSD);
+      }
+      return std::min(unused1, xUSD);
+    }
+    if (asset_type == "XUSD") {
+      if (!unused2 || !unused3) {
+        return std::max(unused2, unused3);
+      }
+      return std::min(unused2, unused3);
+    }
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
   
   uint64_t pricing_record::spot(const std::string& asset_type) const
   {
-    if (asset_type != "XHV" and asset_type != "xUSD") {
+    if (asset_type != "XHV" and asset_type != "XUSD") {
       return operator[](asset_type);
     }
-    if (asset_type == "XHV") return xUSD;
-    if (asset_type == "xUSD") return unused3;
+    if (asset_type == "XHV") {
+      if (!unused1 || !xUSD) {
+        return std::max(unused1, xUSD);
+      }
+      return xUSD;
+    }
+    if (asset_type == "XUSD") {
+      if (!unused2 || !unused3) {
+        return std::max(unused2, unused3);
+      }
+      return unused2;
+    }
     CHECK_AND_ASSERT_THROW_MES(false, "Asset type doesn't exist in pricing record!");
   }
 
@@ -455,17 +485,17 @@ namespace offshore
     case 3:
       // Build the v3 format of the JSON string
       oss << "[";
-      oss << "{'name': 'xAG', 'spot': " << xAG << ", 'ma': " << xAG << "}, ";
-      oss << "{'name': 'xAU', 'spot': " << xAU << ", 'ma': " << xAU << "}, ";
-      oss << "{'name': 'xAUD', 'spot': " << xAUD << ", 'ma': " << xAUD << "}, ";
-      oss << "{'name': 'xBTC', 'spot': " << xBTC << ", 'ma': " << xBTC << "}, ";
-      oss << "{'name': 'xCHF', 'spot': " << xCHF << ", 'ma': " << xCHF << "}, ";
-      oss << "{'name': 'xCNY', 'spot': " << xCNY << ", 'ma': " << xCNY << "}, ";
-      oss << "{'name': 'xEUR', 'spot': " << xEUR << ", 'ma': " << xEUR << "}, ";
-      oss << "{'name': 'xGBP', 'spot': " << xGBP << ", 'ma': " << xGBP << "}, ";
-      oss << "{'name': 'xJPY', 'spot': " << xJPY << ", 'ma': " << xJPY << "}, ";
-      oss << "{'name': 'xUSD', 'spot': " << unused2 << ", 'ma': " << unused3 << "}, ";
-      oss << "{'name': 'XHV', 'spot': " << xUSD << ", 'ma': " << unused1 << "}]";
+      oss << "{\"name\":\"xAG\",\"spot\":" << xAG << ",\"ma\":" << xAG << "},";
+      oss << "{\"name\":\"xAU\",\"spot\":" << xAU << ",\"ma\":" << xAU << "},";
+      oss << "{\"name\":\"xAUD\",\"spot\":" << xAUD << ",\"ma\":" << xAUD << "},";
+      oss << "{\"name\":\"xBTC\",\"spot\":" << xBTC << ",\"ma\":" << xBTC << "},";
+      oss << "{\"name\":\"xCHF\",\"spot\":" << xCHF << ",\"ma\":" << xCHF << "},";
+      oss << "{\"name\":\"xCNY\",\"spot\":" << xCNY << ",\"ma\":" << xCNY << "},";
+      oss << "{\"name\":\"xEUR\",\"spot\":" << xEUR << ",\"ma\":" << xEUR << "},";
+      oss << "{\"name\":\"xGBP\",\"spot\":" << xGBP << ",\"ma\":" << xGBP << "},";
+      oss << "{\"name\":\"xJPY\",\"spot\":" << xJPY << ",\"ma\":" << xJPY << "},";
+      oss << "{\"name\":\"xUSD\",\"spot\":" << unused2 << ",\"ma\":" << unused3 << "},";
+      oss << "{\"name\":\"XHV\",\"spot\":" << xUSD << ",\"ma\":" << unused1 << "}]";
       break;
     default:
       // Build the v1/v2 format of the JSON string

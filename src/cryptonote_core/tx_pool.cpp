@@ -173,7 +173,7 @@ namespace cryptonote
     return total_fee_xhv;
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
+  bool tx_memory_pool::add_tx2(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t hf_version)
   {
     using tt = cryptonote::transaction_type;
     const bool kept_by_block = (tx_relay == relay_method::block);
@@ -211,11 +211,11 @@ namespace cryptonote
       LOG_ERROR("Only 5+ transaction version are permitted after HAVEN2 hard fork(version 18)");
       tvc.m_verifivation_failed = true;
       return false;
-    } else if (version == HF_PER_OUTPUT_UNLOCK_VERSION && tx.version != POU_TRANSACTION_VERSION) {
+    } else if (hf_version == HF_PER_OUTPUT_UNLOCK_VERSION && tx.version != POU_TRANSACTION_VERSION) {
       LOG_ERROR("Only v6 transaction version are permitted after PER_OUTPUT_LOCK hard fork(version 19)");
       tvc.m_verifivation_failed = true;
       return false;
-    } else if (version == HF_VERSION_USE_COLLATERAL && tx.version != COLLATERAL_TRANSACTION_VERSION) {
+    } else if (hf_version == HF_VERSION_USE_COLLATERAL && tx.version != COLLATERAL_TRANSACTION_VERSION) {
       LOG_ERROR("Only v7 transaction version are permitted after Haven3 hard fork(v20)");
       tvc.m_verifivation_failed = true;
       return false;
@@ -298,7 +298,7 @@ namespace cryptonote
           tvc.m_verifivation_failed = true;
           return false;
         }
-        if (version >= HF_PER_OUTPUT_UNLOCK_VERSION && !tvc.pr.spot("XHV")) { // could be using spot for xUSD
+        if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && !tvc.pr.spot("XHV")) { // could be using spot for xUSD
           LOG_ERROR("error: empty spot exchange rate. Conversion not possible.");
           tvc.m_verifivation_failed = true;
           return false;
@@ -325,7 +325,7 @@ namespace cryptonote
       std::vector<std::string> dead_asset_types = {"XAUD", "XCHF", "XCNY", "XGBP", "XEUR"};
 
       // Reject the dead asset types as destinations
-      if (version >= HF_VERSION_SLIPPAGE && tx_type == tt::XUSD_TO_XASSET && std::count(dead_asset_types.begin(), dead_asset_types.end(), dest)) {
+      if (hf_version >= HF_VERSION_SLIPPAGE && tx_type == tt::XUSD_TO_XASSET && std::count(dead_asset_types.begin(), dead_asset_types.end(), dest)) {
         LOG_ERROR("error: Invalid Tx found. Asset type '" << dest << "' cannot be minted after HF " << HF_VERSION_SLIPPAGE << " - rejecting TX");
         tvc.m_verifivation_failed = true;
         return false;
@@ -336,8 +336,8 @@ namespace cryptonote
 
       // Get the slippage
       uint64_t slippage = 0;
-      if (version >= HF_VERSION_SLIPPAGE && source != dest) {
-        if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, tvc.pr, supply_amounts, version)) {
+      if (hf_version >= HF_VERSION_SLIPPAGE && source != dest) {
+        if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, tvc.pr, supply_amounts, hf_version)) {
           LOG_ERROR("error: Invalid Tx found. 0 burnt/minted for a conversion tx.");
           tvc.m_verifivation_failed = true;
           return false;
@@ -353,7 +353,7 @@ namespace cryptonote
 
       // Get the conversion rate used
       uint64_t conversion_rate = COIN;
-      if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate)) {
+      if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate, hf_version)) {
         LOG_ERROR("error: unable to obtain conversion rate.");
         tvc.m_verifivation_failed = true;
         return false;
@@ -361,14 +361,14 @@ namespace cryptonote
       
       // Get the fee conversion rate used
       uint64_t fee_conversion_rate = COIN;
-      if (!cryptonote::get_conversion_rate(tvc.pr, source, "XHV", fee_conversion_rate)) {
+      if (!cryptonote::get_conversion_rate(tvc.pr, source, "XHV", fee_conversion_rate, hf_version)) {
         LOG_ERROR("error: unable to obtain fee conversion rate.");
         tvc.m_verifivation_failed = true;
         return false;
       }
       
       // Check the amount burnt and minted
-      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt - slippage, tx.amount_minted, tvc.pr, conversion_rate, source, dest, version)) {
+      if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt - slippage, tx.amount_minted, tvc.pr, conversion_rate, source, dest, hf_version)) {
         LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
         tvc.m_verifivation_failed = true;
         return false;
@@ -388,7 +388,7 @@ namespace cryptonote
           tvc.m_verifivation_failed = true;
           return false;
         }
-        if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS) {
+        if (hf_version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS) {
           if (is_collateral) {
             if (found_collateral_output) {
               LOG_ERROR("Too many collateral outputs present in TX at output index " << i);
@@ -429,7 +429,7 @@ namespace cryptonote
         if (source != output_asset_type || is_collateral || is_collateral_change) {
 
           // Check the unlock time (use the PR height in case of TX being left in pool for >1 block - PR height validated as acceptable elsewhere)
-          ok = m_blockchain.check_unlock_time(output_unlock_time, tx.pricing_record_height, tx_type, output_asset_type, is_collateral, is_collateral_change, version);
+          ok = m_blockchain.check_unlock_time(output_unlock_time, tx.pricing_record_height, tx_type, output_asset_type, is_collateral, is_collateral_change, hf_version);
           if (!ok) {
             LOG_ERROR("incorrect output unlock time for output index " << i);
             tvc.m_verifivation_failed = true;
@@ -440,7 +440,7 @@ namespace cryptonote
       
       // validate conversion fees
       uint64_t conversion_fee_check = 0;
-      if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
+      if (hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         
         // Flat 1.5% fee IN XHV!!!
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
@@ -462,13 +462,13 @@ namespace cryptonote
         }
           
       } else if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-        if (version >= HF_VERSION_USE_COLLATERAL) {
+        if (hf_version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% fee
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
           amount_128 *= 3;
           amount_128 /= 200;
           conversion_fee_check = (uint64_t)amount_128;
-        } else if (version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+        } else if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
           // Flat 0.5% fee
           conversion_fee_check = tx.amount_burnt / 200;
         } else {
@@ -477,7 +477,7 @@ namespace cryptonote
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         }
       } else if (tx_type == tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET) {
-        if (version >= HF_VERSION_USE_COLLATERAL) {
+        if (hf_version >= HF_VERSION_USE_COLLATERAL) {
           // Flat 1.5% conversion fee for xAsset TXs after the collateral fork
           boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
           amount_128 *= 3;
@@ -523,8 +523,8 @@ namespace cryptonote
       }
     }
     
-    size_t tx_weight_limit = get_transaction_weight_limit(version);
-    if ((!kept_by_block || version >= HF_VERSION_PER_BYTE_FEE) && tx_weight > tx_weight_limit)
+    size_t tx_weight_limit = get_transaction_weight_limit(hf_version);
+    if ((!kept_by_block || hf_version >= HF_VERSION_PER_BYTE_FEE) && tx_weight > tx_weight_limit)
     {
       LOG_PRINT_L1("transaction is too heavy: " << tx_weight << " bytes, maximum weight: " << tx_weight_limit);
       tvc.m_verifivation_failed = true;
@@ -573,7 +573,7 @@ namespace cryptonote
     crypto::hash max_used_block_id = null_hash;
     uint64_t max_used_block_height = 0;
     cryptonote::txpool_tx_meta_t meta{};
-    if ((version >= HF_VERSION_CONVERSION_FEES_IN_XHV) && (source != dest)) {
+    if ((hf_version >= HF_VERSION_CONVERSION_FEES_IN_XHV) && (source != dest)) {
       // All fees are in XHV
       strcpy(meta.fee_asset_type, "XHV");
     } else {
@@ -621,7 +621,7 @@ namespace cryptonote
               total_fee = meta.fee + meta.offshore_fee;
             }
           }
-          total_fee = total_fee ? total_fee : get_xhv_fee_amount(meta.fee_asset_type, meta.fee + meta.offshore_fee,  tvc.m_type, tvc.pr, version);
+          total_fee = total_fee ? total_fee : get_xhv_fee_amount(meta.fee_asset_type, meta.fee + meta.offshore_fee,  tvc.m_type, tvc.pr, hf_version);
           m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(total_fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
           lock.commit();
         }
@@ -695,7 +695,7 @@ namespace cryptonote
               total_fee = meta.fee + meta.offshore_fee;
             }
           }
-          total_fee = total_fee ? total_fee : get_xhv_fee_amount(meta.fee_asset_type, meta.fee + meta.offshore_fee,  tvc.m_type, tvc.pr, version);
+          total_fee = total_fee ? total_fee : get_xhv_fee_amount(meta.fee_asset_type, meta.fee + meta.offshore_fee,  tvc.m_type, tvc.pr, hf_version);
           m_txs_by_fee_and_receive_time.emplace(std::pair<double, std::time_t>(total_fee / (double)(tx_weight ? tx_weight : 1), receive_time), id);
         }
         lock.commit();
@@ -725,7 +725,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::add_tx(transaction &tx, /*const crypto::hash& tx_prefix_hash,*/ const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
+  bool tx_memory_pool::add_tx(transaction &tx, /*const crypto::hash& tx_prefix_hash,*/ const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t hf_version)
   {
     const bool kept_by_block = (tx_relay == relay_method::block);
 
@@ -759,13 +759,13 @@ namespace cryptonote
     }
 
     // Block the use of timestamps for unlock_time
-    if(version >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
+    if(hf_version >= HF_VERSION_XASSET_FEES_V2 && tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER) {
       tvc.m_verifivation_failed = true;
       return false;
     }
 
     // From HF17, only allow TX version 4+
-    if(version >= HF_VERSION_XASSET_FEES_V2 && tx.version < 4) {
+    if(hf_version >= HF_VERSION_XASSET_FEES_V2 && tx.version < 4) {
       tvc.m_verifivation_failed = true;
       return false;
     }
@@ -785,7 +785,7 @@ namespace cryptonote
       bOffshoreTx = get_offshore_from_tx_extra(tx.extra, offshore_data);
     }
     if (bOffshoreTx) {
-      if (version >= HF_VERSION_XASSET_FULL) {
+      if (hf_version >= HF_VERSION_XASSET_FULL) {
         int pos = offshore_data.data.find("-");
         if (pos != std::string::npos) {
           std::string source = offshore_data.data.substr(0,pos);
@@ -806,7 +806,7 @@ namespace cryptonote
           tvc.m_verifivation_failed = true;
           return false;
         }
-      } else if (version >= HF_VERSION_OFFSHORE_FULL) {
+      } else if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
         if (offshore_data.data.size() != 2 ||
             (offshore_data.data.at(0) != 'A' && offshore_data.data.at(0) != 'N') || 
             (offshore_data.data.at(1) != 'A' && offshore_data.data.at(1) != 'N')
@@ -820,12 +820,12 @@ namespace cryptonote
 
       std::string tx_offshore_data(tx.offshore_data.begin(), tx.offshore_data.end());
       if(tx_offshore_data.empty()) {
-        if (version >= HF_VERSION_XASSET_FULL) {
+        if (hf_version >= HF_VERSION_XASSET_FULL) {
           // old offshore data format suplied to tx extra
           LOG_PRINT_L1("Empty tx_offshore_data." << id);
           tvc.m_verifivation_failed = true;
           return false;
-        } else if (version >= HF_VERSION_OFFSHORE_FULL) {
+        } else if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
           // offshore_data must be "NN"
           if (offshore_data.data != "NN") {
             // old offshore data format suplied to tx extra
@@ -889,7 +889,7 @@ namespace cryptonote
     if (source != dest) {
 
       // Block all conversions as of fork 17 till HAVEN2
-      if (version >= HF_VERSION_XASSET_FEES_V2 && version < HF_VERSION_HAVEN2) {
+      if (hf_version >= HF_VERSION_XASSET_FEES_V2 && hf_version < HF_VERSION_HAVEN2) {
         LOG_ERROR("Conversion TXs are not permitted as of fork" << HF_VERSION_XASSET_FEES_V2);
         tvc.m_verifivation_failed = true;
         return false;
@@ -959,14 +959,14 @@ namespace cryptonote
 
         // Get the conversion rate used
         uint64_t conversion_rate = COIN;
-        if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate)) {
+        if (!cryptonote::get_conversion_rate(tvc.pr, source, dest, conversion_rate, hf_version)) {
           LOG_ERROR("error: unable to obtain conversion rate.");
           tvc.m_verifivation_failed = true;
           return false;
         }
       
         // Check the amount burnt and minted
-        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, conversion_rate, source, dest, version)) {
+        if (!rct::checkBurntAndMinted(tx.rct_signatures, tx.amount_burnt, tx.amount_minted, tvc.pr, conversion_rate, source, dest, hf_version)) {
           LOG_PRINT_L1("amount burnt / minted is incorrect: burnt = " << tx.amount_burnt << ", minted = " << tx.amount_minted);
           tvc.m_verifivation_failed = true;
           return false;
@@ -981,7 +981,7 @@ namespace cryptonote
             return false;
           }
         } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-          if (version >= HF_VERSION_XASSET_FEES_V2) {
+          if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
             if (unlock_time < 1440) {
               LOG_PRINT_L1("unlock_time is too short: " << unlock_time << " blocks - rejecting (minimum permitted is 1440 blocks for xasset conversions.)");
               tvc.m_verifivation_failed = true;
@@ -996,7 +996,7 @@ namespace cryptonote
         if (tx_type == transaction_type::OFFSHORE || tx_type == transaction_type::ONSHORE) {
           conversion_fee_check = (priority == 1) ? tx.amount_burnt / 500 : (priority == 2) ? tx.amount_burnt / 20 : (priority == 3) ? tx.amount_burnt / 10 : tx.amount_burnt / 5;
         } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XUSD_TO_XASSET) {
-          if (version >= HF_VERSION_XASSET_FEES_V2) {
+          if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
             // Flat 0.5% conversion fee for xAsset TXs after that fork, plus an adjustment 
             // for the tx.amount_burnt containing the 80% burnt fee proportion as well
             boost::multiprecision::uint128_t amount_128 = tx.amount_burnt;
@@ -1034,7 +1034,7 @@ namespace cryptonote
         return false;
       }
       // make sure no pr heiht set
-      if (version >= HF_VERSION_OFFSHORE_FEES_V2 && tx.pricing_record_height) {
+      if (hf_version >= HF_VERSION_OFFSHORE_FEES_V2 && tx.pricing_record_height) {
         LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
@@ -1050,8 +1050,8 @@ namespace cryptonote
       }
     }
     
-    size_t tx_weight_limit = get_transaction_weight_limit(version);
-    if ((!kept_by_block || version >= HF_VERSION_PER_BYTE_FEE) && tx_weight > tx_weight_limit)
+    size_t tx_weight_limit = get_transaction_weight_limit(hf_version);
+    if ((!kept_by_block || hf_version >= HF_VERSION_PER_BYTE_FEE) && tx_weight > tx_weight_limit)
     {
       LOG_PRINT_L1("transaction is too heavy: " << tx_weight << " bytes, maximum weight: " << tx_weight_limit);
       tvc.m_verifivation_failed = true;
@@ -2349,7 +2349,7 @@ namespace cryptonote
     std::map<std::string, uint64_t> &offshore_fee_map,
     std::map<std::string, uint64_t> &xasset_fee_map,
     uint64_t &expected_reward,
-    uint8_t version
+    uint8_t hf_version
   ){
 
     CRITICAL_REGION_LOCAL(m_transactions_lock);
@@ -2365,7 +2365,7 @@ namespace cryptonote
     uint64_t total_fee_xhv = 0;
     
     //baseline empty block
-    if (!get_block_reward(median_weight, total_weight, already_generated_coins, best_coinbase, version))
+    if (!get_block_reward(median_weight, total_weight, already_generated_coins, best_coinbase, hf_version))
     {
       MERROR("Failed to get block reward for empty block");
       return false;
@@ -2373,7 +2373,7 @@ namespace cryptonote
 
     size_t max_total_weight_pre_v5 = (130 * median_weight) / 100 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
     size_t max_total_weight_v5 = 2 * median_weight - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
-    size_t max_total_weight = version >= 5 ? max_total_weight_v5 : max_total_weight_pre_v5;
+    size_t max_total_weight = hf_version >= 5 ? max_total_weight_v5 : max_total_weight_pre_v5;
     std::unordered_set<crypto::key_image> k_images;
 
     LOG_PRINT_L2("Filling block template, median weight " << median_weight << ", " << m_txs_by_fee_and_receive_time.size() << " txes in the pool");
@@ -2385,7 +2385,7 @@ namespace cryptonote
     bool have_valid_pr = true;
     offshore::pricing_record latest_pr;
     if (!m_blockchain.get_latest_acceptable_pr(latest_pr)) {
-      if (version >= HF_VERSION_USE_COLLATERAL) {
+      if (hf_version >= HF_VERSION_USE_COLLATERAL) {
         MWARNING("Failed to find a pricing record in last 10 block.");
         MWARNING("Tx/conversion fees wont be converted. Cant calculuate block cap. Conversion txs wont be included in the block.");
       }
@@ -2394,7 +2394,7 @@ namespace cryptonote
 
     // set the block cap
     const std::vector<std::pair<std::string, std::string>>& supply_amounts = m_blockchain.get_db().get_circulating_supply();
-    uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr, version);
+    uint64_t block_cap_xhv = get_block_cap(supply_amounts, latest_pr, hf_version);
     uint64_t total_conversion_xhv = 0; // only offshore/onshroe
     MINFO("Block cap limit for offshore/onshore " << block_cap_xhv << " XHV");
 
@@ -2431,12 +2431,12 @@ namespace cryptonote
 
       // start using the optimal filling algorithm from v5
       uint64_t total_fee_this_tx_xhv = 0;
-      if (version >= 5)
+      if (hf_version >= 5)
       {
         // If we're getting lower coinbase tx,
         // stop including more tx
         uint64_t block_reward;
-        if(!get_block_reward(median_weight, total_weight + meta.weight, already_generated_coins, block_reward, version))
+        if(!get_block_reward(median_weight, total_weight + meta.weight, already_generated_coins, block_reward, hf_version))
         {
           LOG_PRINT_L2("  would exceed maximum block weight");
           continue;
@@ -2447,7 +2447,7 @@ namespace cryptonote
         // when adding the tx into the pool in add_tx2(). if have_valid_pr is false,
         // there shouldnt be any conversion tx anyways, which then means sorting happened on the meta.fee only,
         // and small differences in the tx fee shouldnt matter much. so we can just assume they are all xhv.
-        if (version >= HF_VERSION_USE_COLLATERAL) {
+        if (hf_version >= HF_VERSION_USE_COLLATERAL) {
           if (have_valid_pr) {
             total_fee_this_tx_xhv = meta.weight * sorted_it->first.first; 
           } else {
@@ -2537,7 +2537,7 @@ namespace cryptonote
       if (source != dest)
       {
         // check for block cap limit
-        if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+        if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
 
           // dont include offshore/onshore txs if we cant calculate a valid block cap.
           if (!have_valid_pr) {
@@ -2563,7 +2563,7 @@ namespace cryptonote
         }
 
         // check for verRctSemantics2
-        if (version >= HF_VERSION_HAVEN2) {
+        if (hf_version >= HF_VERSION_HAVEN2) {
 
           // get pricing record
           block bl;
@@ -2574,8 +2574,8 @@ namespace cryptonote
 
           // Get the slippage
           uint64_t slippage = 0;
-          if (version >= HF_VERSION_SLIPPAGE && source != dest) {
-            if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, bl.pricing_record, supply_amounts, version)) {
+          if (hf_version >= HF_VERSION_SLIPPAGE && source != dest) {
+            if (!get_slippage(tx_type, source, dest, tx.amount_burnt, slippage, bl.pricing_record, supply_amounts, hf_version)) {
               LOG_PRINT_L2("error: failed to obtain slippage requirements for tx " << tx.hash);
               continue;
             }
@@ -2583,8 +2583,8 @@ namespace cryptonote
           
           // Get the collateral requirement for the tx
           uint64_t collateral = 0;
-          if (version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts, version)) {
+          if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
+            if (!get_collateral_requirements(tx_type, tx.amount_burnt, collateral, bl.pricing_record, supply_amounts, hf_version)) {
               LOG_PRINT_L2("error: failed to get collateral requirements");
               continue;
             }
@@ -2592,27 +2592,27 @@ namespace cryptonote
 
           // NEAC: Get conversion rate so we can avoid doing an invert() on a number with excessive precision
           uint64_t conversion_rate = COIN;
-          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, dest, conversion_rate)) {
+          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, dest, conversion_rate, hf_version)) {
             LOG_PRINT_L2("error: failed to get conversion rate - aborting");
             continue;
           }
           
           // Get the fee conversion rate used
           uint64_t fee_conversion_rate = COIN;
-          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, "XHV", fee_conversion_rate)) {
+          if (!cryptonote::get_conversion_rate(bl.pricing_record, source, "XHV", fee_conversion_rate, hf_version)) {
             LOG_PRINT_L2("error: unable to obtain fee conversion rate.");
             continue;
           }
           
           // Get the TX fee conversion rate used
           uint64_t tx_fee_conversion_rate = COIN;
-          if (!cryptonote::get_conversion_rate(bl.pricing_record, "XHV", source, tx_fee_conversion_rate)) {
+          if (!cryptonote::get_conversion_rate(bl.pricing_record, "XHV", source, tx_fee_conversion_rate, hf_version)) {
             LOG_PRINT_L2("error: unable to obtain TX fee conversion rate.");
             continue;
           }
           
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, version, collateral, slippage))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;
@@ -2626,7 +2626,7 @@ namespace cryptonote
       total_conversion_xhv += conversion_this_tx_xhv;
       fee_map[meta.fee_asset_type] += meta.fee;
       if (source != dest) {
-        if (version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
+        if (hf_version >= HF_VERSION_XASSET_FEES_V2 && source != "XHV" && dest != "XHV") {
           // xAsset converison
           xasset_fee_map[meta.fee_asset_type] += meta.offshore_fee;
         } else {

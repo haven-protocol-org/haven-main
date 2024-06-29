@@ -7019,6 +7019,7 @@ bool simple_wallet::transfer_main(
       }
     }
 
+    const uint8_t hf_version = m_wallet->get_current_hard_fork();
     if (!prompt_if_old(ptx_vector))
     {
       fail_msg_writer() << tr("transaction cancelled.");
@@ -7124,7 +7125,7 @@ bool simple_wallet::transfer_main(
               offshore::pricing_record pr;
               bool ok = m_wallet->get_pricing_record(pr, bc_height-1);
               if (ok)
-                ok = cryptonote::get_conversion_rate(pr, "XHV", source_asset, fee_rate);
+                ok = cryptonote::get_conversion_rate(pr, "XHV", source_asset, fee_rate, hf_version);
               if (ok)
                 ok = cryptonote::get_converted_amount(fee_rate, total_tx_fee, fee_in_C);
               if (ok) {
@@ -7485,7 +7486,8 @@ bool simple_wallet::get_price(const std::vector<std::string> &args)
       message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\txNZD %d")) % print_money(pr.xNZD * xusd);
     else if (lowercase == "xhv") {
       uint64_t conversion_rate = COIN;
-      bool ok = cryptonote::get_conversion_rate(pr, "XUSD", "XHV", conversion_rate);
+      const uint8_t hf_version = m_wallet->get_current_hard_fork();
+      bool ok = cryptonote::get_conversion_rate(pr, "XUSD", "XHV", conversion_rate, hf_version);
       message_writer(i%2 ? console_color_white : console_color_default, false) << boost::format(tr("\t XHV %d")) % print_money(conversion_rate * xusd);
     }
   }
@@ -8405,7 +8407,7 @@ bool simple_wallet::donate(const std::vector<std::string> &args_)
   }
   else
   {
-    address_str = ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+    address_str = cryptonote::get_governance_address(m_wallet->get_current_hard_fork(), m_wallet->nettype());//::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
   }
   local_args.push_back(address_str);
   local_args.push_back(amount_str);

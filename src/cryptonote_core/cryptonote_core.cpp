@@ -1120,7 +1120,7 @@ namespace cryptonote
           uint64_t tx_fee_conversion_rate = COIN;
           if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
 
-            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, conversion_rate)) {
+            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, conversion_rate, hf_version)) {
               MERROR_VER("Failed to get conversion rate - aborting");
               set_semantics_failed(tx_info[n].tx_hash);
               tx_info[n].tvc.m_verifivation_failed = true;
@@ -1128,7 +1128,7 @@ namespace cryptonote
               continue;
             }
 
-            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, tx_info[n].tvc.m_source_asset, "XHV", fee_conversion_rate)) {
+            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, tx_info[n].tvc.m_source_asset, "XHV", fee_conversion_rate, hf_version)) {
               MERROR_VER("Failed to get fee conversion rate - aborting");
               set_semantics_failed(tx_info[n].tx_hash);
               tx_info[n].tvc.m_verifivation_failed = true;
@@ -1136,7 +1136,7 @@ namespace cryptonote
               continue;
             }
 
-            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, "XHV", tx_info[n].tvc.m_source_asset, tx_fee_conversion_rate)) {
+            if (!cryptonote::get_conversion_rate(tx_info[n].tvc.pr, "XHV", tx_info[n].tvc.m_source_asset, tx_fee_conversion_rate, hf_version)) {
               MERROR_VER("Failed to get TX fee conversion rate - aborting");
               set_semantics_failed(tx_info[n].tx_hash);
               tx_info[n].tvc.m_verifivation_failed = true;
