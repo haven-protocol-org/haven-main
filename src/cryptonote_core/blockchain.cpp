@@ -1534,8 +1534,8 @@ bool Blockchain::validate_miner_transaction(
   }
 
   // check output size
-  /*
   const size_t output_size = b.miner_tx.vout.size();
+  /*
   if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
     if (output_size != ((unique_assets.size() + (xhv_converted_fees ? 1 : 0)) * 2)) {
       MERROR("Miner tx has invalid output size (" << output_size << ")");
