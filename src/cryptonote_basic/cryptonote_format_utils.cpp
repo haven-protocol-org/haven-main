@@ -1497,6 +1497,12 @@ namespace cryptonote
     return s;
   }
   //---------------------------------------------------------------
+  std::string print_pct(double pct, unsigned int significant_digits) {
+    std::ostringstream result;
+    result << std::fixed << std::setprecision(significant_digits) << pct << "%";
+    return result.str();
+  }
+  //---------------------------------------------------------------
   uint64_t round_money_up(uint64_t amount, unsigned significant_digits)
   {
     // round monetary amount up with the requested amount of significant digits

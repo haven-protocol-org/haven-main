@@ -7082,28 +7082,29 @@ bool simple_wallet::transfer_main(
         if (source_asset == dest_asset) {
           prompt << boost::format(tr("Sending %s %s.\n")) % print_money(total_sent) % source_asset;
         } else {
+          double total_slippage_pct = double(total_slippage) / double(total_sent) * 100;
           switch (tx_type)
           {
           case tt::OFFSHORE:
-            prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV (of which %s XHV is slippage).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_slippage);
+            prompt << boost::format(tr("Offshoring %s XUSD by burning %s XHV (of which %s XHV is slippage which is %s).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_slippage) % print_pct(total_slippage_pct, 2);
             if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
               prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
             }
             break;
           case tt::ONSHORE:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Onshoring %s XHV by burning %s XUSD (of which %s XUSD is slippage).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_slippage);
+            prompt << boost::format(tr("Onshoring %s XHV by burning %s XUSD (of which %s XUSD is slippage which is %s).\n")) % print_money(total_received) % print_money(total_sent) % print_money(total_slippage) % print_pct(total_slippage_pct, 2);
             if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL, 0)) {
               prompt << boost::format(tr("Transaction requires %s XHV as collateral.\n")) % print_money(total_col);
             }
             break;
           case tt::XUSD_TO_XASSET:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage) to %s %s.\n")) % print_money(total_sent) % print_money(total_slippage) % print_money(total_received) % dest_asset;
+            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage which is %s) to %s %s.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % print_money(total_slippage) % print_money(total_received) % dest_asset;
             break;
           case tt::XASSET_TO_XUSD:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage) to %s XUSD.\n")) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_money(total_received);
+            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage which is %s) to %s XUSD.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_money(total_received);
             break;
           default:
             break;
