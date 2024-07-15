@@ -162,6 +162,7 @@ bool PendingTransactionImpl::commit(const std::string &filename, bool overwrite)
     return m_status == Status_Ok;
 }
 
+//TO-DO
 uint64_t PendingTransactionImpl::amount() const
 {
     uint64_t result = 0;
@@ -171,6 +172,11 @@ uint64_t PendingTransactionImpl::amount() const
         }
     }
     return result;
+}
+
+string PendingTransactionImpl::assetType() const
+{
+    return m_asset_type;
 }
 
 uint64_t PendingTransactionImpl::dust() const

@@ -32,6 +32,13 @@
 #include "wallet/wallet2.h"
 #include "common_defines.h"
 
+
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
+#include <boost/format.hpp>
+
+
+
 #include <vector>
 
 namespace Monero {
@@ -64,8 +71,8 @@ void SubaddressAccountImpl::refresh()
       i,
       m_wallet->m_wallet->get_subaddress_as_str({i,0}),
       m_wallet->m_wallet->get_subaddress_label({i,0}),
-      cryptonote::print_money(m_wallet->m_wallet->balance(i, false)),
-      cryptonote::print_money(m_wallet->m_wallet->unlocked_balance(i, false))
+      m_wallet->m_wallet->balance(i, false),
+      m_wallet->m_wallet->unlocked_balance(i, false)
     ));
   }
 }

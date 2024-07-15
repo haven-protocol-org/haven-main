@@ -6418,6 +6418,35 @@ uint64_t wallet2::unlocked_balance(uint32_t index_major, const std::string& asse
   return amount;
 }
 //----------------------------------------------------------------------------------------------------
+std::map<uint32_t, std::map<std::string, uint64_t>> wallet2::balance(uint32_t index_major, bool strict)
+{
+  THROW_WALLET_EXCEPTION_IF(m_light_wallet, error::wallet_internal_error, "m_light_wallet mode is not supported");
+
+  std::map<uint32_t, std::map<std::string, uint64_t>> amounts;
+  for (const auto &asset_type : offshore::ASSET_TYPES) {
+    for (const auto& i : balance_per_subaddress(index_major, asset_type, strict)) {
+      amounts[i.first][asset_type] += i.second;
+    }
+  }
+  return amounts;
+}
+//----------------------------------------------------------------------------------------------------
+std::map<uint32_t, std::map<std::string, uint64_t>> wallet2::unlocked_balance(uint32_t index_major, bool strict, std::map<std::string, uint64_t> *blocks_to_unlock, std::map<std::string, uint64_t> *time_to_unlock)
+{
+  THROW_WALLET_EXCEPTION_IF(m_light_wallet, error::wallet_internal_error, "m_light_wallet mode is not supported");
+  std::map<uint32_t, std::map<string, uint64_t>> amounts;
+  for (const auto &asset_type : offshore::ASSET_TYPES) {
+    for (const auto& i : unlocked_balance_per_subaddress(index_major, asset_type, strict)) {
+      amounts[i.first][asset_type] += i.second.first;
+      if (blocks_to_unlock && i.second.second.first > (*blocks_to_unlock)[asset_type])
+	      (*blocks_to_unlock)[asset_type] = i.second.second.first;
+      if (time_to_unlock && i.second.second.second > (*time_to_unlock)[asset_type])
+	      (*time_to_unlock)[asset_type] = i.second.second.second;
+    }
+  }
+  return amounts;
+}
+//----------------------------------------------------------------------------------------------------
 std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_major, const std::string& asset, bool strict) const
 {
   std::map<uint32_t, uint64_t> amount_per_subaddr;
@@ -6517,6 +6546,16 @@ std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::
   return amount_per_subaddr;
 }
 //----------------------------------------------------------------------------------------------------
+std::map<std::string, uint64_t> wallet2::balance_all(bool strict)
+{
+  std::map<std::string, uint64_t> balances;
+  for (auto &asset_type: offshore::ASSET_TYPES) {
+    for (uint32_t index_major = 0; index_major < get_num_subaddress_accounts(); ++index_major)
+    balances[asset_type] += balance(index_major, asset_type, strict);
+  }
+  return balances;
+}
+//----------------------------------------------------------------------------------------------------
 uint64_t wallet2::balance_all(bool strict, const std::string& asset) const
 {
   uint64_t r = 0;
@@ -6543,6 +6582,24 @@ uint64_t wallet2::unlocked_balance_all(bool strict, const std::string& asset, ui
   }
   return r;
 }
+//----------------------------------------------------------------------------------------------------
+std::map<std::string, uint64_t> wallet2::unlocked_balance_all(bool strict, std::map<std::string, uint64_t> *blocks_to_unlock, std::map<std::string, uint64_t> *time_to_unlock)
+{
+  std::map<std::string, uint64_t> balances;
+  for (auto &asset_type: offshore::ASSET_TYPES) {
+    for (uint32_t index_major = 0; index_major < get_num_subaddress_accounts(); ++index_major)
+    {
+      uint64_t local_blocks_to_unlock = 0, local_time_to_unlock = 0;
+      balances[asset_type] += unlocked_balance(index_major, asset_type, strict, blocks_to_unlock ? &local_blocks_to_unlock : NULL, time_to_unlock ? &local_time_to_unlock : NULL);
+      if (blocks_to_unlock)
+      (*blocks_to_unlock)[asset_type] = std::max((*blocks_to_unlock)[asset_type], local_blocks_to_unlock);
+      if (time_to_unlock)
+      (*time_to_unlock)[asset_type] = std::max((*time_to_unlock)[asset_type], local_time_to_unlock);
+    }
+  }
+  return balances;
+}
+
 //----------------------------------------------------------------------------------------------------
 void wallet2::get_transfers(wallet2::transfer_container& incoming_transfers) const
 {
