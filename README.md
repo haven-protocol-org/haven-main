@@ -1,4 +1,4 @@
-# Haven Prometheus v4.0.1
+# Haven Prometheus v4.0.2
 
 Copyright (c) 2018-2024 Haven.
 Portions Copyright (c) 2014-2022 The Monero Project.
