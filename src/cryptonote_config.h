@@ -139,6 +139,7 @@
 #define BLOCKS_SYNCHRONIZING_MAX_COUNT                  2048   //must be a power of 2, greater than 128, equal to SEEDHASH_EPOCH_BLOCKS
 
 #define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    86400  //seconds, one day
+#define CRYPTONOTE_MEMPOOL_TX_CONVERSION_LIVETIME         3600   //seconds, one hour
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
 
 
