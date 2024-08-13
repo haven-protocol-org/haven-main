@@ -162,8 +162,10 @@ namespace cryptonote
 
       // HERE BE DRAGONS!!!
       // NEAC: mint the previously-burnt XHV conversion fees, and add to the governance wallet
-      if ((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
-        governance_reward += BURNT_CONVERSION_FEES_MINT_AMOUNT;
+
+      if (((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT)) || ((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL))){
+        uint64_t minted_due_to_burned_fees_bug = (hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) ? BURNT_CONVERSION_FEES_MINT_AMOUNT : BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL;
+        governance_reward += minted_due_to_burned_fees_bug;
       }
       // LAND AHOY!!!
     }
@@ -796,6 +798,7 @@ namespace cryptonote
     
     // Calculate Mcap ratio slippage
     cpp_bin_float_quad mcap_ratio_slippage = 0.0;
+    cpp_bin_float_quad mcap_ratio_onshore_addon_slippage = 0.0;
     if (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) {
     
       // Calculate Mcap Ratio for XHV spot
@@ -808,8 +811,24 @@ namespace cryptonote
       cpp_bin_float_quad mcr_max = (mcr_sp > mcr_ma) ? mcr_sp : mcr_ma;
       
       // Calculate the Mcap ratio slippage
-      mcap_ratio_slippage = std::sqrt(std::pow(mcr_max.convert_to<double>(), 1.2)) / 6.0;
-      LOG_PRINT_L2("*** mcap_ratio_slippage = " << mcap_ratio_slippage.convert_to<double>());
+      mcap_ratio_slippage = (hf_version < HF_VERSION_SLIPPAGE_V2) ? std::sqrt(std::pow(mcr_max.convert_to<double>(), 1.2)) / 6.0 : std::sqrt(std::pow(mcr_max.convert_to<double>(), 1.7)) / 3.0;
+      //add-on for onshores, based on XHV price
+      if ((hf_version < HF_VERSION_SLIPPAGE_V2) && (tx_type == tt::ONSHORE)) {
+
+        uint128_t mraon_numerator = map_amounts["XHV"];
+        uint128_t mraon_denominator = ((map_amounts["XUSD"] * pr.min("XHV"))/COIN)*100;
+        if ( mraon_denominator == 0 ){
+          LOG_ERROR("Invalid denominator (0) in calculation of mcap ratio onshore addon - aborting, XHV price is " << pr.min("XHV") << " XUSD supply is " << map_amounts["XUSD"] );
+          return false;  
+        }
+        mcap_ratio_onshore_addon_slippage = mraon_numerator.convert_to<cpp_bin_float_quad>() / mraon_denominator.convert_to<cpp_bin_float_quad>();
+      }
+      
+      LOG_PRINT_L2("*** original mcap_ratio_slippage = " << mcap_ratio_slippage.convert_to<double>());
+      LOG_PRINT_L2("*** mcap_ratio_onshore_addon_slippage = " << mcap_ratio_onshore_addon_slippage.convert_to<double>());
+      mcap_ratio_slippage+=mcap_ratio_onshore_addon_slippage;
+      LOG_PRINT_L2("*** final mcap_ratio_slippage (sum of original mcap_ratio_slippage and mcap_ratio_onshore_addon_slippage) = " << mcap_ratio_slippage.convert_to<double>());
+      
     }
 
     // Calculate xUSD Peg Slippage
@@ -818,7 +837,7 @@ namespace cryptonote
     xusd_peg_ratio /= COIN;
     
     if (xusd_peg_ratio < 1.0) {
-      xusd_peg_slippage = std::sqrt(std::pow((1.0 - xusd_peg_ratio), 3.0)) / 1.3;
+      xusd_peg_slippage = (hf_version < HF_VERSION_SLIPPAGE_V2) ? std::sqrt(std::pow((1.0 - xusd_peg_ratio), 3.0)) / 1.3 : std::sqrt(std::pow((1.0 - xusd_peg_ratio), 2.5)) / 0.5;
       LOG_PRINT_L2("*** xusd_peg_slippage = " << xusd_peg_slippage);
     }
 
@@ -846,13 +865,34 @@ namespace cryptonote
       (tx_type == tt::ONSHORE || tx_type == tt::OFFSHORE) ? basic_slippage + std::max(mcap_ratio_slippage, xusd_peg_slippage) :
       (tx_type == tt::XUSD_TO_XASSET && dest_asset == "XBTC") ? basic_slippage + std::max(xbtc_mcap_ratio_slippage, xusd_peg_slippage) :
       basic_slippage + xusd_peg_slippage;
-    LOG_PRINT_L1("total_slippage = " << total_slippage.convert_to<double>());
+    LOG_PRINT_L1("total_slippage (before rounding) = " << total_slippage.convert_to<double>());
     
     // Limit total_slippage to 99% so that the code doesn't break
-    if (total_slippage > 0.99) total_slippage = 0.99;
-    total_slippage *= convert_amount.convert_to<cpp_bin_float_quad>();
-    slippage = total_slippage.convert_to<uint64_t>();
-    slippage -= (slippage % 100000000);
+
+    if (hf_version < HF_VERSION_SLIPPAGE_V2) {
+      if (total_slippage > 0.99) total_slippage = 0.99;
+      LOG_PRINT_L1("total_slippage (after rounding) = " << total_slippage.convert_to<double>());
+      total_slippage *= convert_amount.convert_to<cpp_bin_float_quad>();
+      slippage = total_slippage.convert_to<uint64_t>();
+      slippage -= (slippage % 100000000);
+    } 
+    else {
+      if (total_slippage > 0.99) total_slippage = 1.0;
+      total_slippage=total_slippage*100.0;
+      uint128_t slippage_rounded_nominator=total_slippage.convert_to<uint128_t>();
+      slippage_rounded_nominator *=10;
+      if (slippage_rounded_nominator == 0) 
+        slippage_rounded_nominator=1;
+      if (slippage_rounded_nominator > 990) 
+        slippage_rounded_nominator=990;
+      uint128_t slippage_rounded_denominator = 1000;
+      LOG_PRINT_L1("total_slippage (after rounding) = " << slippage_rounded_nominator<< "/1000");
+      uint128_t slippage_final_128 = (convert_amount*slippage_rounded_nominator)/slippage_rounded_denominator;
+      slippage = slippage_final_128.convert_to<uint64_t>();
+      slippage -= (slippage % 100000000);
+    }
+
+    LOG_PRINT_L1("final slippage amount = " << slippage);
 
     // SAnity check that there is _some_ slippage being applied
     if (slippage == 0) {
@@ -1551,7 +1591,7 @@ namespace cryptonote
       }
 
       tx_out out;
-      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, dst_entr.is_collateral_change, out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(dst_entr.dest_amount*0, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, dst_entr.is_collateral_change, out_eph_public_key, use_view_tags, view_tag, out);
       
       tx.vout.push_back(out);
       output_index++;
@@ -1562,8 +1602,11 @@ namespace cryptonote
           tx.amount_minted += dst_entr.dest_amount;
           tx.amount_burnt += dst_entr.amount + dst_entr.slippage;
         }
-      }
+      }  
     }
+
+    tx.amount_burnt=summary_outs_money;
+
     CHECK_AND_ASSERT_MES(additional_tx_public_keys.size() == additional_tx_keys.size(), false, "Internal error creating additional public keys");
 
     remove_field_from_tx_extra(tx.extra, typeid(tx_extra_additional_pub_keys));
