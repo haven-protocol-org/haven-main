@@ -1747,6 +1747,11 @@ namespace rct {
           LOG_ERROR("Failed to get output type");
           return false;
         }
+        
+        if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS && (is_collateral || is_collateral_change) && output_asset_type != "XHV"){
+          LOG_ERROR("Collateral which is not XHV found");
+          return false;  
+        }
 
         // Don't exclude the onshore collateral ouputs from proof-of-value calculation
         if (output_asset_type == strSource) {
@@ -1934,6 +1939,11 @@ namespace rct {
 
         if (version >= HF_VERSION_SLIPPAGE) {
           // Subtract the slippage from the amount_burnt
+          // Check for potential underflow and fail
+          if (amount_burnt<amount_slippage) {
+            LOG_ERROR("Slippage exceeds burnt amount");
+            return false; 
+          }
           amount_burnt -= amount_slippage;
         }
 
