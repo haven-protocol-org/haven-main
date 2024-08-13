@@ -1105,8 +1105,10 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
     throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
   }
 
-  // NEAC : check for presence of offshore TX to see if we need to update circulating supply information
-  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (strSource != strDest)) {  
+  bool is_mint_and_burn_tx = (strSource != strDest);
+  bool is_burn_tx = (strSource == strDest) && tx.amount_burnt > 0;
+  // NEAC : check for presence of offshore TX or burn tx to see if we need to update circulating supply information
+  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (is_mint_and_burn_tx || is_burn_tx)) {  
     // Offshore TX - update our records
     circ_supply cs;
     cs.tx_hash = tx_hash;
@@ -1216,7 +1218,10 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
     throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
   }
 
-  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (strSource != strDest))
+  bool is_mint_and_burn_tx = (strSource != strDest);
+  bool is_burn_tx = (strSource == strDest) && tx.amount_burnt > 0;
+  
+  if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (is_mint_and_burn_tx || is_burn_tx))   
   {    
     // Update the tally table
     // Get the current tally value for the source currency type
