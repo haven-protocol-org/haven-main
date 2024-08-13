@@ -900,6 +900,12 @@ namespace cryptonote
       LOG_ERROR("Invalid slippage amount (0) - aborting");
       return false;
     }
+
+    if (slippage > convert_amount) {
+      // Not a valid slippage amount
+      LOG_ERROR("Slippage higher than converted amount - aborting");
+      return false;
+    }
     
     return true;
   }
