@@ -813,7 +813,7 @@ namespace cryptonote
       // Calculate the Mcap ratio slippage
       mcap_ratio_slippage = (hf_version < HF_VERSION_SLIPPAGE_V2) ? std::sqrt(std::pow(mcr_max.convert_to<double>(), 1.2)) / 6.0 : std::sqrt(std::pow(mcr_max.convert_to<double>(), 1.7)) / 3.0;
       //add-on for onshores, based on XHV price
-      if ((hf_version < HF_VERSION_SLIPPAGE_V2) && (tx_type == tt::ONSHORE)) {
+      if ((hf_version >= HF_VERSION_SLIPPAGE_V2) && (tx_type == tt::ONSHORE)) {
 
         uint128_t mraon_numerator = map_amounts["XHV"];
         uint128_t mraon_denominator = ((map_amounts["XUSD"] * pr.min("XHV"))/COIN)*100;
@@ -879,15 +879,15 @@ namespace cryptonote
     else {
       if (total_slippage > 0.99) total_slippage = 1.0;
       total_slippage=total_slippage*100.0;
-      uint128_t slippage_rounded_nominator=total_slippage.convert_to<uint128_t>();
-      slippage_rounded_nominator *=10;
-      if (slippage_rounded_nominator == 0) 
-        slippage_rounded_nominator=1;
-      if (slippage_rounded_nominator > 990) 
-        slippage_rounded_nominator=990;
+      uint128_t slippage_rounded_numerator=total_slippage.convert_to<uint128_t>();
+      slippage_rounded_numerator *=10;
+      if (slippage_rounded_numerator == 0) 
+        slippage_rounded_numerator=1;
+      if (slippage_rounded_numerator > 990) 
+        slippage_rounded_numerator=990;
       uint128_t slippage_rounded_denominator = 1000;
-      LOG_PRINT_L1("total_slippage (after rounding) = " << slippage_rounded_nominator<< "/1000");
-      uint128_t slippage_final_128 = (convert_amount*slippage_rounded_nominator)/slippage_rounded_denominator;
+      LOG_PRINT_L1("total_slippage (after rounding) = " << slippage_rounded_numerator<< "/1000");
+      uint128_t slippage_final_128 = (convert_amount*slippage_rounded_numerator)/slippage_rounded_denominator;
       slippage = slippage_final_128.convert_to<uint64_t>();
       slippage -= (slippage % 100000000);
     }
