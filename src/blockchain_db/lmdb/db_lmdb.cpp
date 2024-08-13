@@ -1107,7 +1107,8 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
 
   bool is_mint_and_burn_tx = (strSource != strDest);
   bool is_burn_tx = (strSource == strDest) && tx.amount_burnt > 0;
-  // NEAC : check for presence of offshore TX or burn tx to see if we need to update circulating supply information
+  // NEAC : check for presence of offshore TX to see if we need to update circulating supply information
+  // Tay8NWWFKpz9JT4NXU0w: Also burn transactions affect the supply
   if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (is_mint_and_burn_tx || is_burn_tx)) {  
     // Offshore TX - update our records
     circ_supply cs;

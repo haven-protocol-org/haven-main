@@ -162,9 +162,12 @@ namespace cryptonote
 
       // HERE BE DRAGONS!!!
       // NEAC: mint the previously-burnt XHV conversion fees, and add to the governance wallet
+      
+      bool is_burnt_fee_mint_block = ((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT));
+      bool is_burnt_fee_mint_block_final = ((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL));
 
-      if (((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT)) || ((hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL) && (height == BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL))){
-        uint64_t minted_due_to_burned_fees_bug = (hard_fork_version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) ? BURNT_CONVERSION_FEES_MINT_AMOUNT : BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL;
+      if (is_burnt_fee_mint_block || is_burnt_fee_mint_block_final ){
+        uint64_t minted_due_to_burned_fees_bug = is_burnt_fee_mint_block ? BURNT_CONVERSION_FEES_MINT_AMOUNT : BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL;
         governance_reward += minted_due_to_burned_fees_bug;
       }
       // LAND AHOY!!!

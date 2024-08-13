@@ -1728,9 +1728,12 @@ bool Blockchain::validate_miner_transaction(
     // from hard fork 2, since a miner can claim less than the full block reward, we update the base_reward
     // to show the amount of coins that were actually generated, the remainder will be pushed back for later
     // emission. This modifies the emission curve very slightly.
+    bool is_burnt_fee_mint_block = ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT));
+    bool is_burnt_fee_mint_block_final = ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL));
+
     if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
-      if (((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) || ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL))){
-        uint64_t minted_due_to_burned_fees_bug= (version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) ? BURNT_CONVERSION_FEES_MINT_AMOUNT : BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL;
+      if (is_burnt_fee_mint_block || is_burnt_fee_mint_block_final ){
+        uint64_t minted_due_to_burned_fees_bug = is_burnt_fee_mint_block ? BURNT_CONVERSION_FEES_MINT_AMOUNT : BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL;
         CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"] - minted_due_to_burned_fees_bug  == base_reward, false, "base reward calculation bug when minting previously-burnt fees");
       } else {        
         // Additional logging
@@ -5437,7 +5440,7 @@ leave:
         bvc.m_verifivation_failed = true;
         goto leave;
       }
-      if (hf_version >= HF_VERSION_BURN && tx.amount_minted) {
+      if ((hf_version >= HF_VERSION_BURN) && tx.amount_minted) {
         LOG_PRINT_L2("error: Invalid Tx found. Amount mint > 0 for a transfer tx.");
         bvc.m_verifivation_failed = true;
         goto leave;

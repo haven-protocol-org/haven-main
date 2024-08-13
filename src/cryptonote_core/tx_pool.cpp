@@ -506,7 +506,7 @@ namespace cryptonote
         tvc.m_verifivation_failed = true;
         return false;
       }
-      if (hf_version >= HF_VERSION_BURN && tx.amount_minted) {
+      if ((hf_version >= HF_VERSION_BURN) && tx.amount_minted) {
         LOG_ERROR("error: Invalid Tx found. Amount mint > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
