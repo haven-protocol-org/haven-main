@@ -1591,7 +1591,7 @@ namespace cryptonote
       }
 
       tx_out out;
-      cryptonote::set_tx_out(dst_entr.dest_amount*0, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, dst_entr.is_collateral_change, out_eph_public_key, use_view_tags, view_tag, out);
+      cryptonote::set_tx_out(dst_entr.dest_amount, dst_entr.dest_asset_type, u_time, dst_entr.is_collateral, dst_entr.is_collateral_change, out_eph_public_key, use_view_tags, view_tag, out);
       
       tx.vout.push_back(out);
       output_index++;
@@ -1602,10 +1602,8 @@ namespace cryptonote
           tx.amount_minted += dst_entr.dest_amount;
           tx.amount_burnt += dst_entr.amount + dst_entr.slippage;
         }
-      }  
+      }
     }
-
-    tx.amount_burnt=summary_outs_money;
 
     CHECK_AND_ASSERT_MES(additional_tx_public_keys.size() == additional_tx_keys.size(), false, "Internal error creating additional public keys");
 
