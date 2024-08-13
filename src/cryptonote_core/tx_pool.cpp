@@ -499,12 +499,20 @@ namespace cryptonote
         return false;
       }
     } else {
-      // make sure there is no burnt/mint set for transfers, since these numbers will affect circulating supply.
-      if (tx.amount_burnt || tx.amount_minted) {
+      // make sure there is no burnt/mint set for transfers, unless it is a burn, since these numbers will affect circulating supply.
+
+      if ((tx.amount_burnt && hf_version<HF_VERSION_BURN)|| tx.amount_minted) {
         LOG_ERROR("error: Invalid Tx found. Amount burnt/mint > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
       }
+      if (hf_version >= HF_VERSION_BURN && tx.amount_minted) {
+        LOG_ERROR("error: Invalid Tx found. Amount mint > 0 for a transfer tx.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+
+
       // make sure no pr height set
       if (tx.pricing_record_height) {
         LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
