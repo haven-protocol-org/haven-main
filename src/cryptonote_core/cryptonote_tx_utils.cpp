@@ -880,19 +880,33 @@ namespace cryptonote
       slippage -= (slippage % 100000000);
     } 
     else {
-      if (total_slippage > 0.99) total_slippage = 1.0;
+      if (total_slippage > 1) total_slippage = 1.00;
       total_slippage=total_slippage*100.0;
+      //Make slippage a number in an discrete set of values - integers between 0 and 100
       uint128_t slippage_rounded_numerator=total_slippage.convert_to<uint128_t>();
-      slippage_rounded_numerator *=10;
-      if (slippage_rounded_numerator == 0) 
-        slippage_rounded_numerator=1;
-      if (slippage_rounded_numerator > 990) 
-        slippage_rounded_numerator=990;
+      //Make slippage a number in an discrete set of values - integers multiples of 10 between 0 and 1000
+      slippage_rounded_numerator *= 10;
+      if (slippage_rounded_numerator == 0)
+      //Minimum slippage is 0.1%
+        slippage_rounded_numerator = 1;
+      if (slippage_rounded_numerator > 990)
+      //Maximum slippage is 99.9%
+        slippage_rounded_numerator = 999;
       uint128_t slippage_rounded_denominator = 1000;
       LOG_PRINT_L1("total_slippage (after rounding) = " << slippage_rounded_numerator<< "/1000");
-      uint128_t slippage_final_128 = (convert_amount*slippage_rounded_numerator)/slippage_rounded_denominator;
-      slippage = slippage_final_128.convert_to<uint64_t>();
-      slippage -= (slippage % 100000000);
+      uint128_t slippage_final_before_dust_rounding_128 = (convert_amount*slippage_rounded_numerator)/slippage_rounded_denominator;
+      uint64_t slippage_final_before_dust_rounding_64 = slippage_final_before_dust_rounding_128.convert_to<uint64_t>();
+      uint64_t amount_after_slippage_before_dust_rounding = 0;
+      if (slippage_final_before_dust_rounding_64 < amount)
+        amount_after_slippage_before_dust_rounding=amount-slippage_final_before_dust_rounding_64;
+      //If the amount after slippage is less than 0.0001, then fail
+      if (amount_after_slippage_before_dust_rounding<100000000) {
+        LOG_ERROR("The whole converted amount will be burnt through slippage - aborting");
+        return false;
+      }
+      //Round the slippage up, so that the remaining amount after slippage has only zeros after the 4 digit after the decimal point
+      //for example 1234.567800000000
+      slippage = slippage_final_before_dust_rounding_64+(amount_after_slippage_before_dust_rounding % 100000000);
     }
 
     LOG_PRINT_L1("final slippage amount = " << slippage);
@@ -904,9 +918,9 @@ namespace cryptonote
       return false;
     }
 
-    if (slippage > convert_amount) {
+    if (slippage >= amount) {
       // Not a valid slippage amount
-      LOG_ERROR("Slippage higher than converted amount - aborting");
+      LOG_ERROR("Slippage is not smaller than the converted amount - aborting");
       return false;
     }
     
