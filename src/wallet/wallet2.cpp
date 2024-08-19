@@ -1225,6 +1225,7 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_load_deprecated_formats(false),
   m_credits_target(0),
   m_enable_multisig(false),
+  m_enable_burn(false),
   m_has_ever_refreshed_from_node(false),
   m_allow_mismatched_daemon_version(false)
 {
@@ -4681,6 +4682,7 @@ bool wallet2::load_keys_buf(const std::string& keys_buf, const epee::wipeable_st
     m_auto_mine_for_rpc_payment_threshold = -1.0f;
     m_credits_target = 0;
     m_enable_multisig = false;
+    m_enable_burn = false;
     m_allow_mismatched_daemon_version = false;
   }
   else if(json.IsObject())
@@ -4916,6 +4918,9 @@ bool wallet2::load_keys_buf(const std::string& keys_buf, const epee::wipeable_st
     m_credits_target = field_credits_target;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, enable_multisig, int, Int, false, false);
     m_enable_multisig = field_enable_multisig;
+    
+    m_enable_burn = false;
+    
   }
   else
   {
@@ -9581,6 +9586,7 @@ void wallet2::transfer_selected_rct(
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   uint64_t needed_money = fee;
   uint64_t needed_slippage = 0;
+  uint64_t needed_supply_burnt = 0;
   uint64_t needed_col = 0;
   uint8_t hf_version = get_current_hard_fork();
   uint64_t current_height = get_blockchain_current_height()-1;
@@ -9593,12 +9599,17 @@ void wallet2::transfer_selected_rct(
   for(auto& dt: dsts)
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
+    if (dt.supply_burnt>0){
+      THROW_WALLET_EXCEPTION_IF(!m_enable_burn, error::wallet_internal_error, "Burn transaction is not enabled in the wallet");
+      THROW_WALLET_EXCEPTION_IF(hf_version < HF_VERSION_BURN, error::wallet_internal_error, "Burn transaction not enabled before Haven 4.1");
+    }
     // exclude the onshore collateral from needed money
     if (!using_onshore_collateral || !dt.is_collateral) {
-      needed_money += dt.amount + dt.slippage;
+      needed_money += dt.amount + dt.slippage + dt.supply_burnt;
       needed_slippage += dt.slippage;
+      needed_supply_burnt += dt.supply_burnt;
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
-      THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount + dt.slippage, error::tx_sum_overflow, dsts, fee, m_nettype);
+      THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount + dt.slippage + dt.supply_burnt, error::tx_sum_overflow, dsts, fee, m_nettype);
     }
   }
 
@@ -10675,6 +10686,24 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   std::set<uint32_t> subaddr_indices
 ){
 
+  bool is_supply_burnt = false;
+  bool is_burn_enabled = false;
+
+  is_burn_enabled = m_enable_burn && use_fork_rules(HF_VERSION_BURN, 0);
+
+  //Check if one of the destinations has a permanently burnt amount
+  for (const auto& dt: dsts) {
+    if (dt.supply_burnt > 0){
+      is_supply_burnt = true;
+    }
+  }
+  //We should only burn funds if the wallet has this feature enabled
+  if (!is_burn_enabled){
+    //TO-DO add proper error message
+    THROW_WALLET_EXCEPTION_IF(is_supply_burnt, error::not_enough_unlocked_money,
+                              0, 0, 0);  
+  }
+
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
   boost::unique_lock<hw::device> hwdev_lock (hwdev);
@@ -10706,7 +10735,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     /* Add an output to the transaction.
      * Returns True if the output was added, False if there are no more available output slots.
      */
-    bool add(const cryptonote::tx_destination_entry &de, uint64_t amount, uint64_t amount_slippage, unsigned int original_output_index, bool merge_destinations, size_t max_dsts) {
+    bool add(const cryptonote::tx_destination_entry &de, uint64_t amount, uint64_t amount_slippage, uint64_t amount_supply_burnt, unsigned int original_output_index, bool merge_destinations, size_t max_dsts, bool burn_enabled = false) {
+      if (!burn_enabled){
+      //TO-DO add proper error message
+      THROW_WALLET_EXCEPTION_IF(amount_supply_burnt>0, error::not_enough_unlocked_money,
+                              0, 0, 0);
+      }
       if (merge_destinations)
       {
         std::vector<cryptonote::tx_destination_entry>::iterator i;
@@ -10722,6 +10756,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         }
         i->amount += amount;
         i->slippage += amount_slippage;
+        i->supply_burnt += amount_supply_burnt;
       }
       else
       {
@@ -10734,10 +10769,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           dsts.push_back(de);
           dsts.back().amount = 0;
           dsts.back().slippage = 0;
+          dsts.back().supply_burnt = 0;
         }
         THROW_WALLET_EXCEPTION_IF(memcmp(&dsts[original_output_index].addr, &de.addr, sizeof(de.addr)), error::wallet_internal_error, "Mismatched destination address");
         dsts[original_output_index].amount += amount;
         dsts[original_output_index].slippage += amount_slippage;
+        dsts[original_output_index].supply_burnt += amount_supply_burnt;
       }
       return true;
     }
@@ -10803,6 +10840,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   needed_money = 0;
   uint64_t needed_col = 0;
   uint64_t needed_slippage = 0;
+  uint64_t needed_supply_burnt = 0;
   for(auto& dt: dsts)
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
@@ -10852,12 +10890,14 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         needed_col += collateral_amount;
       }
     }
-    needed_money += dt.amount + dt.slippage;
+    needed_money += dt.amount + dt.slippage + dt.supply_burnt;
     if (dt.slippage)
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << " with " << print_money(dt.slippage) << " slippage, for a total of " << print_money (needed_money));
+    else if (dt.supply_burnt)
+      LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << " with " << print_money(dt.supply_burnt) << " supply burnt, for a total of " << print_money (needed_money));  
     else
       LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));      
-    THROW_WALLET_EXCEPTION_IF(needed_money < (dt.amount + dt.slippage), error::tx_sum_overflow, dsts, 0, m_nettype);
+    THROW_WALLET_EXCEPTION_IF(needed_money < (dt.amount + dt.slippage+dt.supply_burnt), error::tx_sum_overflow, dsts, 0, m_nettype);
   }
 
   // throw if attempting a transaction with no money
@@ -11065,13 +11105,13 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   std::vector<size_t>* unused_dust_indices      = &unused_dust_indices_per_subaddr[0].second;
   
   hwdev.set_mode(hw::device::TRANSACTION_CREATE_FAKE);
-  while ((!dsts.empty() && (dsts[0].amount + dsts[0].slippage) > 0) || adding_fee || !preferred_inputs.empty() || should_pick_a_second_output(use_rct, txes.back().selected_transfers.size(), *unused_transfers_indices, *unused_dust_indices)) {
+  while ((!dsts.empty() && (dsts[0].amount + dsts[0].slippage+dsts[0].supply_burnt) > 0) || adding_fee || !preferred_inputs.empty() || should_pick_a_second_output(use_rct, txes.back().selected_transfers.size(), *unused_transfers_indices, *unused_dust_indices)) {
     TX &tx = txes.back();
 
     LOG_PRINT_L2("Start of loop with " << unused_transfers_indices->size() << " " << unused_dust_indices->size() << ", tx.dsts.size() " << tx.dsts.size());
     LOG_PRINT_L2("unused_transfers_indices: " << strjoin(*unused_transfers_indices, " "));
     LOG_PRINT_L2("unused_dust_indices: " << strjoin(*unused_dust_indices, " "));
-    LOG_PRINT_L2("dsts size " << dsts.size() << ", first " << (dsts.empty() ? "-" : cryptonote::print_money(dsts[0].amount)) << ", slippage " << dsts[0].slippage);
+    LOG_PRINT_L2("dsts size " << dsts.size() << ", first " << (dsts.empty() ? "-" : cryptonote::print_money(dsts[0].amount)) << ", slippage " << dsts[0].slippage << ", supply burnt " << +dsts[0].supply_burnt);
     LOG_PRINT_L2("adding_fee " << adding_fee << ", use_rct " << use_rct);
 
     // if we need to spend money and don't have any left, we fail
@@ -11087,7 +11127,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       idx = pop_back(preferred_inputs);
       pop_if_present(*unused_transfers_indices, idx);
       pop_if_present(*unused_dust_indices, idx);
-    } else if ((dsts.empty() || (dsts[0].amount == 0 && dsts[0].slippage == 0)) && !adding_fee) {
+    } else if ((dsts.empty() || (dsts[0].amount == 0 && dsts[0].slippage == 0 && dsts[0].supply_burnt == 0)) && !adding_fee) {
       // the "make rct txes 2/2" case - we pick a small value output to "clean up" the wallet too
       std::vector<size_t> indices = get_only_rct(*unused_dust_indices, *unused_transfers_indices);
       idx = pop_best_value(indices, tx.selected_transfers, true);
@@ -11139,31 +11179,38 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     }
     else
     {
-      while (!dsts.empty() && (dsts[0].amount + dsts[0].slippage) <= available_amount && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags) < TX_WEIGHT_TARGET(upper_transaction_weight_limit))
+      while (!dsts.empty() && (dsts[0].amount + dsts[0].slippage + dsts[0].supply_burnt) <= available_amount && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags) < TX_WEIGHT_TARGET(upper_transaction_weight_limit))
       {
         // we can fully pay that destination
         LOG_PRINT_L2("We can fully pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
           " for " << print_money(dsts[0].amount));
-        if (!tx.add(dsts[0], dsts[0].amount, dsts[0].slippage, original_output_index, m_merge_destinations, BULLETPROOF_MAX_OUTPUTS-1))
+        if (!tx.add(dsts[0], dsts[0].amount, dsts[0].slippage, dsts[0].supply_burnt, original_output_index, m_merge_destinations, BULLETPROOF_MAX_OUTPUTS-1, is_burn_enabled))
         {
           LOG_PRINT_L2("Didn't pay: ran out of output slots");
+          if (is_supply_burnt){
+            LOG_PRINT_L2("ran out of output slots for a burn transaction");
+            THROW_WALLET_EXCEPTION_IF(1, error::tx_not_possible, 0, 0, 0);
+          }
           out_slots_exhausted = true;
           break;
         }
         available_amount -= dsts[0].amount;
         available_amount -= dsts[0].slippage;
+        available_amount -= dsts[0].supply_burnt;
         dsts[0].amount = 0;
         dsts[0].slippage = 0;
+        dsts[0].supply_burnt = 0;
         pop_index(dsts, 0);
         ++original_output_index;
       }
 
       if (!out_slots_exhausted && available_amount > 0 && !dsts.empty() &&
-                                                   estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags) < TX_WEIGHT_TARGET(upper_transaction_weight_limit)) {
+                                                   estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag, bulletproof_plus, use_view_tags) < TX_WEIGHT_TARGET(upper_transaction_weight_limit) &&
+                                                   ! is_supply_burnt ) {
         // we can partially fill that destination
         LOG_PRINT_L2("We can partially pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
           " for " << print_money(available_amount) << "/" << print_money(dsts[0].amount));
-        if (tx.add(dsts[0], available_amount > dsts[0].slippage ? (available_amount - dsts[0].slippage) : 0, available_amount > dsts[0].slippage ? dsts[0].slippage : available_amount, original_output_index, m_merge_destinations, BULLETPROOF_MAX_OUTPUTS-1))
+        if (tx.add(dsts[0], available_amount > dsts[0].slippage ? (available_amount - dsts[0].slippage) : 0, available_amount > dsts[0].slippage ? dsts[0].slippage : available_amount, 0 /*supply burn*/, original_output_index, m_merge_destinations, BULLETPROOF_MAX_OUTPUTS-1))
         {
           // HERE BE DRAGONS!!!
           // NEAC: handle situation where there is enough to pay for dt.amount but _not_ dt.slippage (which also needs paying for!!!)
@@ -11241,7 +11288,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         // The check against original_output_index is to ensure the last entry in tx.dsts is really
         // a partial payment. Otherwise multiple requested outputs to the same address could
         // fool this logic into thinking there is a partial payment.
-        if (needed_fee > available_for_fee && !dsts.empty() && (dsts[0].amount+dsts[0].slippage) > 0 && tx.dsts.size() > original_output_index)
+        if (needed_fee > available_for_fee && !dsts.empty() && (dsts[0].amount+dsts[0].slippage+dsts[0].supply_burnt) > 0 && tx.dsts.size() > original_output_index)
         {
           // we don't have enough for the fee, but we've only partially paid the current address,
           // so we can take the fee from the paid amount, since we'll have to make another tx anyway
@@ -11250,11 +11297,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           i = std::find_if(tx.dsts.begin(), tx.dsts.end(),
           [&](const cryptonote::tx_destination_entry &d) { return !memcmp (&d.addr, &dsts[0].addr, sizeof(dsts[0].addr)); });
           THROW_WALLET_EXCEPTION_IF(i == tx.dsts.end(), error::wallet_internal_error, "paid address not found in outputs");
-          if ((i->amount+i->slippage) > needed_fee)
+          if ((i->amount+i->slippage+i->supply_burnt) > needed_fee)
           {
-            uint64_t new_paid_amount = i->amount + i->slippage + test_ptx.fee;
+            uint64_t new_paid_amount = i->amount + i->slippage + i->supply_burnt + test_ptx.fee;
             LOG_PRINT_L2("Adjusting amount paid to " << get_account_address_as_str(m_nettype, i->is_subaddress, i->addr) << " from " <<
-                print_money(i->amount + i->slippage) << " to " << print_money(new_paid_amount) << " to accommodate " <<
+                print_money(i->amount + i->slippage + i->supply_burnt) << " to " << print_money(new_paid_amount) << " to accommodate " <<
                 print_money(needed_fee) << " fee");
             if (i->amount >= needed_fee) {
               // Just take it from the destination amount
@@ -11286,6 +11333,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       // Sanity check for split TXs
       if (!dsts.empty()) {
         THROW_WALLET_EXCEPTION_IF(source_asset != dest_asset, error::wallet_internal_error, "Cannot split conversion TXs - try consolidating your inputs using the appropriate 'sweep' or 'transfer' function");
+        THROW_WALLET_EXCEPTION_IF(is_supply_burnt, error::wallet_internal_error, "Cannot split burn TXs - try consolidating your inputs using the appropriate 'sweep' or 'transfer' function");
         for (auto &txdt: tx.dsts) {
           if (txdt.amount != txdt.dest_amount) {
             // Sanity check that the amount sums to what we want
@@ -11300,7 +11348,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       
       uint64_t inputs = 0, outputs = needed_fee;
       for (size_t idx: tx.selected_transfers) inputs += m_transfers[idx].amount();
-      for (const auto &o: tx.dsts) outputs += o.amount + o.slippage;
+      for (const auto &o: tx.dsts) outputs += o.amount + o.slippage + o.supply_burnt;
 
       if (inputs < outputs)
       {
