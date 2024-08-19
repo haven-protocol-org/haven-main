@@ -139,6 +139,7 @@
 #define BLOCKS_SYNCHRONIZING_MAX_COUNT                  2048   //must be a power of 2, greater than 128, equal to SEEDHASH_EPOCH_BLOCKS
 
 #define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    86400  //seconds, one day
+#define CRYPTONOTE_MEMPOOL_TX_CONVERSION_LIVETIME         3600   //seconds, one hour
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
 
 
@@ -255,6 +256,13 @@
 #define HF_VERSION_YIELD                        23
 #define HF_VERSION_CONVERSION_FEES_NOT_BURNT    23
 
+// Haven v4.1 definitions
+#define HF_VERSION_SLIPPAGE_V2                  24
+#define HF_VERSION_BURN                         24
+#define HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL    24
+#define HF_VERSION_OFFSHORE_FEES_V3             24
+
+
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x1b
 
@@ -262,6 +270,9 @@
 
 #define BURNT_CONVERSION_FEES_MINT_AMOUNT       ((uint64_t)2580000000000000000ull)
 #define BURNT_CONVERSION_FEES_MINT_HEIGHT       ((uint64_t)1656720)
+
+#define BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL       ((uint64_t)511812000000000000ull)
+#define BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL       ((uint64_t)1692002)
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2

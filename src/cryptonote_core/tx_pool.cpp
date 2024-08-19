@@ -499,12 +499,20 @@ namespace cryptonote
         return false;
       }
     } else {
-      // make sure there is no burnt/mint set for transfers, since these numbers will affect circulating supply.
-      if (tx.amount_burnt || tx.amount_minted) {
+      // make sure there is no burnt/mint set for transfers, unless it is a burn, since these numbers will affect circulating supply.
+
+      if ((tx.amount_burnt && hf_version<HF_VERSION_BURN)|| tx.amount_minted) {
         LOG_ERROR("error: Invalid Tx found. Amount burnt/mint > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
       }
+      if ((hf_version >= HF_VERSION_BURN) && tx.amount_minted) {
+        LOG_ERROR("error: Invalid Tx found. Amount mint > 0 for a transfer tx.");
+        tvc.m_verifivation_failed = true;
+        return false;
+      }
+
+
       // make sure no pr height set
       if (tx.pricing_record_height) {
         LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
@@ -1564,9 +1572,11 @@ namespace cryptonote
     std::list<std::pair<crypto::hash, uint64_t>> remove;
     m_blockchain.for_all_txpool_txes([this, &remove](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata_ref*) {
       uint64_t tx_age = time(nullptr) - meta.receive_time;
+      bool has_conv_fee = (meta.offshore_fee > 0);
 
       if((tx_age > CRYPTONOTE_MEMPOOL_TX_LIVETIME && !meta.kept_by_block) ||
-         (tx_age > CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME && meta.kept_by_block) )
+         (tx_age > CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME && meta.kept_by_block) || 
+         (has_conv_fee && tx_age > CRYPTONOTE_MEMPOOL_TX_CONVERSION_LIVETIME && !meta.kept_by_block)) //Remove conversions faster, as their pricing record is outdated
       {
         LOG_PRINT_L1("Tx " << txid << " removed from tx pool due to outdated, age: " << tx_age );
         auto sorted_it = find_tx_in_sorted_container(txid);

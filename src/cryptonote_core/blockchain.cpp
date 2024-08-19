@@ -1601,6 +1601,10 @@ bool Blockchain::validate_miner_transaction(
       if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
         governance_reward += BURNT_CONVERSION_FEES_MINT_AMOUNT;
       }
+
+      if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL)) {
+        governance_reward += BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL;
+      }
       // LAND AHOY!!!
       
       if ((b.miner_tx.vout[1].amount != governance_reward) &&
@@ -1664,7 +1668,20 @@ bool Blockchain::validate_miner_transaction(
           uint64_t miner_reward_xasset = fee_map[first_output_asset_type];
           uint64_t governance_reward_xasset = get_governance_reward(m_db->height(), miner_reward_xasset);
           miner_reward_xasset -= governance_reward_xasset;
-          governance_reward_xasset += offshore_fee_map[first_output_asset_type];
+          if (version >= HF_VERSION_OFFSHORE_FEES_V3) {
+            //split onshore/offshore fees 80% governance wallet, 20% miners
+                boost::multiprecision::uint128_t fee = offshore_fee_map[first_output_asset_type];
+                boost::multiprecision::uint128_t fee_miner_xasset = fee / 5;
+                fee -= fee_miner_xasset;
+                // 80%
+                governance_reward_xasset += fee.convert_to<uint64_t>();
+                // 20%
+                miner_reward_xasset += fee_miner_xasset.convert_to<uint64_t>();
+          } else
+          {
+              //Full conversion fee goes to the governance wallet before HF_VERSION_OFFSHORE_FEES_V3
+              governance_reward_xasset += offshore_fee_map[first_output_asset_type];
+          }
 
           // xAsset fees change fork
           if (version >= HF_VERSION_XASSET_FEES_V2) {
@@ -1724,10 +1741,14 @@ bool Blockchain::validate_miner_transaction(
     // from hard fork 2, since a miner can claim less than the full block reward, we update the base_reward
     // to show the amount of coins that were actually generated, the remainder will be pushed back for later
     // emission. This modifies the emission curve very slightly.
+    bool is_burnt_fee_mint_block = ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT));
+    bool is_burnt_fee_mint_block_final = ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT_FINAL));
+
     if (version >= HF_VERSION_CONVERSION_FEES_NOT_BURNT) {
-      if ((version == HF_VERSION_CONVERSION_FEES_NOT_BURNT) && (m_db->height() == BURNT_CONVERSION_FEES_MINT_HEIGHT)) {
-        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"] - BURNT_CONVERSION_FEES_MINT_AMOUNT  == base_reward, false, "base reward calculation bug when minting previously-burnt fees");
-      } else {
+      if (is_burnt_fee_mint_block || is_burnt_fee_mint_block_final ){
+        uint64_t minted_due_to_burned_fees_bug = is_burnt_fee_mint_block ? BURNT_CONVERSION_FEES_MINT_AMOUNT : BURNT_CONVERSION_FEES_MINT_AMOUNT_FINAL;
+        CHECK_AND_ASSERT_MES(money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"] - minted_due_to_burned_fees_bug  == base_reward, false, "base reward calculation bug when minting previously-burnt fees");
+      } else {        
         // Additional logging
         bool err = (money_in_use_map["XHV"] - fee_map["XHV"] - offshore_fee_map["XHV"] - xasset_fee_map["XHV"]  != base_reward);
         if (err) {
@@ -5426,9 +5447,14 @@ leave:
         }
       }
     } else {
-      //make sure those values are 0 for transfers.
-      if (tx.amount_burnt || tx.amount_minted) {
+      //make sure those values are 0 for transfers, unless it is a burn transaction
+      if ((tx.amount_burnt && hf_version<HF_VERSION_BURN)|| tx.amount_minted) {
         LOG_PRINT_L2("error: Invalid Tx found. Amount burnt/mint > 0 for a transfer tx.");
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+      if ((hf_version >= HF_VERSION_BURN) && tx.amount_minted) {
+        LOG_PRINT_L2("error: Invalid Tx found. Amount mint > 0 for a transfer tx.");
         bvc.m_verifivation_failed = true;
         goto leave;
       }
