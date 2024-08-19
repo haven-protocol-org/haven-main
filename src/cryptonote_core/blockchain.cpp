@@ -1668,7 +1668,20 @@ bool Blockchain::validate_miner_transaction(
           uint64_t miner_reward_xasset = fee_map[first_output_asset_type];
           uint64_t governance_reward_xasset = get_governance_reward(m_db->height(), miner_reward_xasset);
           miner_reward_xasset -= governance_reward_xasset;
-          governance_reward_xasset += offshore_fee_map[first_output_asset_type];
+          if (version >= HF_VERSION_OFFSHORE_FEES_V3) {
+            //split onshore/offshore fees 80% governance wallet, 20% miners
+                boost::multiprecision::uint128_t fee = offshore_fee_map[first_output_asset_type];
+                boost::multiprecision::uint128_t fee_miner_xasset = fee / 5;
+                fee -= fee_miner_xasset;
+                // 80%
+                governance_reward_xasset += fee.convert_to<uint64_t>();
+                // 20%
+                miner_reward_xasset += fee_miner_xasset.convert_to<uint64_t>();
+          } else
+          {
+              //Full conversion fee goes to the governance wallet before HF_VERSION_OFFSHORE_FEES_V3
+              governance_reward_xasset += offshore_fee_map[first_output_asset_type];
+          }
 
           // xAsset fees change fork
           if (version >= HF_VERSION_XASSET_FEES_V2) {
