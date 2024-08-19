@@ -260,6 +260,7 @@
 #define HF_VERSION_SLIPPAGE_V2                  24
 #define HF_VERSION_BURN                         24
 #define HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL    24
+#define HF_VERSION_OFFSHORE_FEES_V3             24
 
 
 #define STAGENET_VERSION                        0x0e
