@@ -1449,7 +1449,9 @@ private:
     uint64_t credits_target() const { return m_credits_target; }
     void credits_target(uint64_t threshold) { m_credits_target = threshold; }
     bool is_multisig_enabled() const { return m_enable_multisig; }
+    bool is_burn_enabled() const { return m_enable_burn; }
     void enable_multisig(bool enable) { m_enable_multisig = enable; }
+    void enable_burn(bool enable) { m_enable_burn = enable; }
     bool is_mismatched_daemon_version_allowed() const { return m_allow_mismatched_daemon_version; }
     void allow_mismatched_daemon_version(bool allow_mismatch) { m_allow_mismatched_daemon_version = allow_mismatch; }
 
@@ -1976,6 +1978,7 @@ private:
     rpc_payment_state_t m_rpc_payment_state;
     uint64_t m_credits_target;
     bool m_enable_multisig;
+    bool m_enable_burn;
     bool m_allow_mismatched_daemon_version;
 
     // Aux transaction data from device
