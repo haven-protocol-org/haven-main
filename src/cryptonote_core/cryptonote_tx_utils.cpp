@@ -1599,7 +1599,7 @@ namespace cryptonote
     for(const tx_destination_entry& dst_entr: destinations)
     {
       CHECK_AND_ASSERT_MES(dst_entr.dest_amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.dest_amount);
-      CHECK_AND_ASSERT_MES(dst_entr.supply_burnt > 0 || tx.version < HF_VERSION_BURN, false, "Burn transaction before Haven 4.1");
+      CHECK_AND_ASSERT_MES(dst_entr.supply_burnt == 0 || hf_version >= HF_VERSION_BURN, false, "Burn transaction before Haven 4.1");
       crypto::public_key out_eph_public_key;
       crypto::view_tag view_tag;
 
