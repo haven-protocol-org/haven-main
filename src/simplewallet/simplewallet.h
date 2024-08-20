@@ -152,6 +152,7 @@ namespace cryptonote
     bool set_export_format(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_load_deprecated_formats(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_enable_multisig(const std::vector<std::string> &args = std::vector<std::string>());
+    bool set_enable_burn(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_persistent_rpc_client_id(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_auto_mine_for_rpc_payment_threshold(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_credits_target(const std::vector<std::string> &args = std::vector<std::string>());
@@ -170,12 +171,15 @@ namespace cryptonote
     bool show_blockchain_height(const std::vector<std::string> &args);
     bool transfer_main(int transfer_type, const std::string& source_asset, const std::string& dest_asset, const std::vector<std::string> &args, bool called_by_mms);
     bool transfer(const std::vector<std::string> &args);
+    bool transfer_burn(const std::vector<std::string> &args);
     bool offshore(const std::vector<std::string> &args);
     bool onshore(const std::vector<std::string> &args);
     bool offshore_transfer(const std::vector<std::string> &args);
+    bool offshore_transfer_burn(const std::vector<std::string> &args);
     bool xusd_to_xasset(const std::vector<std::string> &args);
     bool xasset_to_xusd(const std::vector<std::string> &args);
     bool xasset_transfer(const std::vector<std::string> &args);
+    bool xasset_transfer_burn(const std::vector<std::string> &args);
     bool locked_transfer(const std::vector<std::string> &args);
     bool locked_sweep_all(const std::vector<std::string> &args);
     bool sweep_main(uint32_t account, uint64_t below, bool locked, const std::vector<std::string> &args);

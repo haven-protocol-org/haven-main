@@ -106,6 +106,7 @@ namespace cryptonote
     uint64_t amount;              // destination money in source asset
     uint64_t dest_amount;         // destination money in dest asset
     uint64_t slippage;            // destination money in source asset that will be burnt as slippage
+    uint64_t supply_burnt;            // amount of source asset to be permanently burnt as part of a transfer
     std::string dest_asset_type;  // destination asset type
     account_public_address addr;  // destination address
     bool is_subaddress;
@@ -113,10 +114,10 @@ namespace cryptonote
     bool is_collateral;
     bool is_collateral_change;
 
-    tx_destination_entry() : amount(0), dest_amount(0), slippage(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral, bool is_collateral_change) : amount(a), dest_amount(a), slippage(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), is_collateral_change(is_collateral_change), dest_asset_type("XHV") { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), slippage(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), slippage(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+    tx_destination_entry() : amount(0), dest_amount(0), slippage(0), supply_burnt(0), addr(AUTO_VAL_INIT(addr)), is_subaddress(false), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress, bool is_collateral, bool is_collateral_change) : amount(a), dest_amount(a), slippage(0), supply_burnt(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(is_collateral), is_collateral_change(is_collateral_change), dest_asset_type("XHV") { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad, bool is_subaddress) : amount(a), slippage(0), supply_burnt(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
+    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad, bool is_subaddress) : original(o), amount(a), slippage(0), supply_burnt(0), addr(ad), is_subaddress(is_subaddress), is_integrated(false), is_collateral(false), is_collateral_change(false), dest_asset_type("XHV") { }
 
     std::string address(network_type nettype, const crypto::hash &payment_id) const
     {
@@ -138,6 +139,7 @@ namespace cryptonote
       VARINT_FIELD(amount)
       VARINT_FIELD(dest_amount)
       VARINT_FIELD(slippage)
+      //VARINT_FIELD(supply_burnt)
       FIELD(dest_asset_type)
       FIELD(addr)
       FIELD(is_subaddress)

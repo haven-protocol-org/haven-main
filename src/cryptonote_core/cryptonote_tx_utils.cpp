@@ -1537,6 +1537,12 @@ namespace cryptonote
     (tx_type == transaction_type::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(destinations, hf_version) :
     (tx_type == transaction_type::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(destinations, hf_version) : 0;
 
+    uint64_t supply_burnt = 0;
+
+    for(const tx_destination_entry& dst_entr: destinations) {
+      supply_burnt += dst_entr.supply_burnt;
+    }
+
     if (shuffle_outs)
     {
       std::shuffle(destinations.begin(), destinations.end(), crypto::random_device{});
@@ -1588,14 +1594,18 @@ namespace cryptonote
     //fill outputs
     size_t output_index = 0;
     uint64_t summary_outs_slippage = 0;
+    uint64_t summary_outs_supply_burn = 0;
+    
     for(const tx_destination_entry& dst_entr: destinations)
     {
       CHECK_AND_ASSERT_MES(dst_entr.dest_amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.dest_amount);
+      CHECK_AND_ASSERT_MES(dst_entr.supply_burnt == 0 || hf_version >= HF_VERSION_BURN, false, "Burn transaction before Haven 4.1");
       crypto::public_key out_eph_public_key;
       crypto::view_tag view_tag;
 
       // Sum all the slippage across the outputs
       summary_outs_slippage += dst_entr.slippage;
+      summary_outs_supply_burn += dst_entr.supply_burnt;
       
       hwdev.generate_output_ephemeral_keys(tx.version,sender_account_keys, txkey_pub, tx_key,
                                            dst_entr, change_addr, output_index,
@@ -1637,8 +1647,12 @@ namespace cryptonote
           tx.amount_minted += dst_entr.dest_amount;
           tx.amount_burnt += dst_entr.amount + dst_entr.slippage;
         }
+      } else {
+          tx.amount_burnt += dst_entr.supply_burnt;
       }
     }
+
+
 
     CHECK_AND_ASSERT_MES(additional_tx_public_keys.size() == additional_tx_keys.size(), false, "Internal error creating additional public keys");
 
@@ -1847,7 +1861,7 @@ namespace cryptonote
       if (!use_simple_rct && amount_in > amount_out)
         outamounts.push_back(amount_in - amount_out);
       else
-        fee = summary_inputs_money - summary_outs_money - offshore_fee;
+        fee = summary_inputs_money - summary_outs_money - offshore_fee - supply_burnt;
       
       // since the col ins are added to the summary_inputs_money above for offshores, subtract it.
       if (tx_type == transaction_type::OFFSHORE && hf_version >= HF_VERSION_USE_COLLATERAL) {
