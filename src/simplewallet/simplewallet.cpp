@@ -3979,6 +3979,7 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     success_msg_writer() << "credits-target = " << m_wallet->credits_target();
     success_msg_writer() << "load-deprecated-formats = " << m_wallet->load_deprecated_formats();
     success_msg_writer() << "enable-multisig-experimental = " << m_wallet->is_multisig_enabled();
+    success_msg_writer() << "enable-burn-experimental = " << m_wallet->is_burn_enabled();
     return true;
   }
   else
