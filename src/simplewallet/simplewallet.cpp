@@ -3562,7 +3562,7 @@ simple_wallet::simple_wallet()
                                   "enable-multisig-experimental <1|0>\n "
                                   "  Set this to allow multisig commands. Multisig may currently be exploitable if parties do not trust each other.\n "
                                   "enable-burn-experimental <1|0>\n "
-                                  "  Set this to allow burning of funds. This feature can result in complete funds loss. Do not use.\n "
+                                  "  Set this to allow burning of funds. This feature can result in complete loss of funds. Do not use.\n "
                                   "inactivity-lock-timeout <unsigned int>\n "
                                   "  How many seconds to wait before locking the wallet (0 to disable)."));
   m_cmd_binder.set_handler("encrypted_seed",
