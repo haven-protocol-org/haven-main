@@ -7183,7 +7183,7 @@ bool simple_wallet::transfer_main(
           if (total_suppy_burnt > 0) {
             message_writer(console_color_red, false) << boost::format(tr("WARNING WARNING WARNING !!!.\n"));
             message_writer(console_color_red, false) << boost::format(tr("PERMANENTLY DESTROYING %s %s , MAKE SURE THIS IS INTENTIONAL !!!.\n")) % print_money(total_suppy_burnt) % source_asset;
-            message_writer(console_color_red, false) << boost::format(tr("ABORT IMMEDIATELLY UNLESS ABSOLUTELY CERTAIN !!!.\n"));
+            message_writer(console_color_red, false) << boost::format(tr("ABORT IMMEDIATELY UNLESS ABSOLUTELY CERTAIN !!!.\n"));
             prompt << boost::format(tr("!!!! PERMANENTLY DESTROYING %s %s , MAKE SURE THIS IS INTENTIONAL !!!.\n")) % print_money(total_suppy_burnt) % source_asset;
           }
         } else {
