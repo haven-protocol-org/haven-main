@@ -261,6 +261,8 @@
 #define HF_VERSION_BURN                         24
 #define HF_VERSION_CONVERSION_FEES_NOT_BURNT_FINAL    24
 #define HF_VERSION_OFFSHORE_FEES_V3             24
+#define HF_VERSION_MAX_CONV_TRANSACTION_FEE          24
+#define MAX_CONV_TRANSACTION_FEE                   ((uint64_t)10000000000000ull)
 
 
 #define STAGENET_VERSION                        0x0e
