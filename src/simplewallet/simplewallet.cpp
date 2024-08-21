@@ -7206,11 +7206,11 @@ bool simple_wallet::transfer_main(
             break;
           case tt::XUSD_TO_XASSET:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage which is %s) to %s %s.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % print_money(total_slippage) % print_money(total_received) % dest_asset;
+            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage which is %s) to %s %s.\n")) % print_money(total_sent) % print_money(total_slippage) % print_pct(total_slippage_pct, 2) % print_money(total_received) % dest_asset;
             break;
           case tt::XASSET_TO_XUSD:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage which is %s) to %s XUSD.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_money(total_received);
+            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage which is %s) to %s XUSD.\n")) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_pct(total_slippage_pct, 2) % print_money(total_received);
             break;
           default:
             break;
