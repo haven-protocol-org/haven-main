@@ -3562,7 +3562,7 @@ simple_wallet::simple_wallet()
                                   "enable-multisig-experimental <1|0>\n "
                                   "  Set this to allow multisig commands. Multisig may currently be exploitable if parties do not trust each other.\n "
                                   "enable-burn-experimental <1|0>\n "
-                                  "  Set this to allow burning of funds. This feature can result in complete funds loss. Do not use.\n "
+                                  "  Set this to allow burning of funds. This feature can result in complete loss of funds. Do not use.\n "
                                   "inactivity-lock-timeout <unsigned int>\n "
                                   "  How many seconds to wait before locking the wallet (0 to disable)."));
   m_cmd_binder.set_handler("encrypted_seed",
@@ -3979,6 +3979,7 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     success_msg_writer() << "credits-target = " << m_wallet->credits_target();
     success_msg_writer() << "load-deprecated-formats = " << m_wallet->load_deprecated_formats();
     success_msg_writer() << "enable-multisig-experimental = " << m_wallet->is_multisig_enabled();
+    success_msg_writer() << "enable-burn-experimental = " << m_wallet->is_burn_enabled();
     return true;
   }
   else
@@ -7183,7 +7184,7 @@ bool simple_wallet::transfer_main(
           if (total_suppy_burnt > 0) {
             message_writer(console_color_red, false) << boost::format(tr("WARNING WARNING WARNING !!!.\n"));
             message_writer(console_color_red, false) << boost::format(tr("PERMANENTLY DESTROYING %s %s , MAKE SURE THIS IS INTENTIONAL !!!.\n")) % print_money(total_suppy_burnt) % source_asset;
-            message_writer(console_color_red, false) << boost::format(tr("ABORT IMMEDIATELLY UNLESS ABSOLUTELY CERTAIN !!!.\n"));
+            message_writer(console_color_red, false) << boost::format(tr("ABORT IMMEDIATELY UNLESS ABSOLUTELY CERTAIN !!!.\n"));
             prompt << boost::format(tr("!!!! PERMANENTLY DESTROYING %s %s , MAKE SURE THIS IS INTENTIONAL !!!.\n")) % print_money(total_suppy_burnt) % source_asset;
           }
         } else {
@@ -7205,11 +7206,11 @@ bool simple_wallet::transfer_main(
             break;
           case tt::XUSD_TO_XASSET:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage which is %s) to %s %s.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % print_money(total_slippage) % print_money(total_received) % dest_asset;
+            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage which is %s) to %s %s.\n")) % print_money(total_sent) % print_money(total_slippage) % print_pct(total_slippage_pct, 2) % print_money(total_received) % dest_asset;
             break;
           case tt::XASSET_TO_XUSD:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage which is %s) to %s XUSD.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_money(total_received);
+            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage which is %s) to %s XUSD.\n")) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_pct(total_slippage_pct, 2) % print_money(total_received);
             break;
           default:
             break;

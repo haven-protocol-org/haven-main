@@ -1699,6 +1699,7 @@ namespace rct {
           if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
             CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
         }
+        CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
       }
 
       if (strSource == strDest) {
