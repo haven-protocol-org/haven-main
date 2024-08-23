@@ -156,9 +156,23 @@ typedef cryptonote::simple_wallet sw;
     } \
   } while(0)
 
+#define CHECK_BURN_ENABLED() \
+  do \
+  { \
+    if (!m_wallet->is_burn_enabled()) \
+    { \
+      fail_msg_writer() << tr("Burn is disabled."); \
+      fail_msg_writer() << tr("Burn is an experimental feature and may have bugs. Things that could go wrong include: loss of entire funds in the wallet, corruption of wallet."); \
+      fail_msg_writer() << tr("You can enable it with:"); \
+      fail_msg_writer() << tr("  set enable-burn-experimental 1"); \
+      return false; \
+    } \
+  } while(0)
+
 enum TransferType {
   Transfer,
   TransferLocked,
+  TransferBurn,
 };
 
 static std::string get_human_readable_timespan(std::chrono::seconds seconds);
@@ -198,11 +212,14 @@ namespace
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
   const char* USAGE_TRANSFER("transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount>) [<payment_id>]");
+  const char* USAGE_TRANSFER_BURN("transfer_burn [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount> <burn amount>) [<payment_id>]");
   const char* USAGE_LOCKED_TRANSFER("locked_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <addr> <amount>) <lockblocks> [<payment_id (obsolete)>]");
   const char* USAGE_OFFSHORE("offshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <XHV amount> [memo=<memo data>])");
   const char* USAGE_OFFSHORE_TRANSFER("offshore_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> [memo=<memo data>])");
+  const char* USAGE_OFFSHORE_TRANSFER_BURN("offshore_transfer_burn [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> <xUSD burn amount>[memo=<memo data>])");
   const char* USAGE_ONSHORE("onshore [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount> [memo=<memo data>])");
   const char* USAGE_XASSET_TRANSFER("xasset_transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset type> [memo=<memo data>]");
+  const char* USAGE_XASSET_TRANSFER_BURN("xasset_transfer_burn [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset burn amount> <xAsset type> [memo=<memo data>]");
   const char* USAGE_XASSET_TO_XUSD("xasset_to_xusd [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xAsset amount>) <xAsset type> [memo=<memo data>]");
   const char* USAGE_XUSD_TO_XASSET("xusd_to_xasset [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <xUSD amount>) <xAsset type> [memo=<memo data>]");
   const char* USAGE_LOCKED_SWEEP_ALL("locked_sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] <address> <lockblocks> [<payment_id (obsolete)>]");
@@ -3139,6 +3156,25 @@ bool simple_wallet::set_enable_multisig(const std::vector<std::string> &args/* =
   return true;
 }
 
+bool simple_wallet::set_enable_burn(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
+{
+  if (args.size() < 2)
+  {
+    fail_msg_writer() << tr("Value not specified");
+    return true;
+  }
+
+  const auto pwd_container = get_and_verify_password();
+  if (pwd_container)
+  {
+    parse_bool_and_use(args[1], [&](bool r) {
+      m_wallet->enable_burn(r);
+      m_wallet->rewrite(m_wallet_file, pwd_container->password());
+    });
+  }
+  return true;
+}
+
 bool simple_wallet::help(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
   if(args.empty())
@@ -3310,6 +3346,9 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("transfer", boost::bind(&simple_wallet::on_command, this, &simple_wallet::transfer, _1),
                            tr(USAGE_TRANSFER),
                            tr("Transfer <amount> to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
+  m_cmd_binder.set_handler("transfer_burn", boost::bind(&simple_wallet::on_command, this, &simple_wallet::transfer_burn, _1),
+                           tr(USAGE_TRANSFER_BURN),
+                           tr("Transfer <amount> to <address>, burning <burn amount>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
   m_cmd_binder.set_handler("locked_transfer",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::locked_transfer,_1),
                            tr(USAGE_LOCKED_TRANSFER),
@@ -3322,6 +3361,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::offshore_transfer, this, _1),
                            tr(USAGE_OFFSHORE_TRANSFER),
                            tr("Transfer <amount> xUSD from current offshore balance to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
+  m_cmd_binder.set_handler("offshore_transfer_burn",
+                           boost::bind(&simple_wallet::offshore_transfer_burn, this, _1),
+                           tr(USAGE_OFFSHORE_TRANSFER_BURN),
+                           tr("Transfer <amount> xUSD and burn <burn amount> from current offshore balance to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)")); 
   m_cmd_binder.set_handler("onshore",
                            boost::bind(&simple_wallet::onshore, this, _1),
                            tr(USAGE_ONSHORE),
@@ -3330,6 +3373,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::xasset_transfer, this, _1),
                            tr(USAGE_XASSET_TRANSFER),
                            tr("Transfer <xAsset amount> of xAsset type <xAsset type> from current balance to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
+  m_cmd_binder.set_handler("xasset_transfer_burn",
+                           boost::bind(&simple_wallet::xasset_transfer_burn, this, _1),
+                           tr(USAGE_XASSET_TRANSFER_BURN),
+                           tr("Transfer <xAsset amount> and burn <burn amount> of xAsset type <xAsset type> from current balance to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made (using the same asset type) at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included). If <memo data> is provided, only 1 destination address / URI may be specified."));
   m_cmd_binder.set_handler("xasset_to_xusd",
                            boost::bind(&simple_wallet::xasset_to_xusd, this, _1),
                            tr(USAGE_XASSET_TO_XUSD),
@@ -3514,6 +3561,8 @@ simple_wallet::simple_wallet()
                                   "  Set this if you would like to display the wallet name when locked.\n "
                                   "enable-multisig-experimental <1|0>\n "
                                   "  Set this to allow multisig commands. Multisig may currently be exploitable if parties do not trust each other.\n "
+                                  "enable-burn-experimental <1|0>\n "
+                                  "  Set this to allow burning of funds. This feature can result in complete loss of funds. Do not use.\n "
                                   "inactivity-lock-timeout <unsigned int>\n "
                                   "  How many seconds to wait before locking the wallet (0 to disable)."));
   m_cmd_binder.set_handler("encrypted_seed",
@@ -3930,6 +3979,7 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     success_msg_writer() << "credits-target = " << m_wallet->credits_target();
     success_msg_writer() << "load-deprecated-formats = " << m_wallet->load_deprecated_formats();
     success_msg_writer() << "enable-multisig-experimental = " << m_wallet->is_multisig_enabled();
+    success_msg_writer() << "enable-burn-experimental = " << m_wallet->is_burn_enabled();
     return true;
   }
   else
@@ -3997,6 +4047,7 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     CHECK_SIMPLE_VARIABLE("auto-mine-for-rpc-payment-threshold", set_auto_mine_for_rpc_payment_threshold, tr("floating point >= 0"));
     CHECK_SIMPLE_VARIABLE("credits-target", set_credits_target, tr("unsigned integer"));
     CHECK_SIMPLE_VARIABLE("enable-multisig-experimental", set_enable_multisig, tr("0 or 1"));
+    CHECK_SIMPLE_VARIABLE("enable-burn-experimental", set_enable_burn, tr("0 or 1"));
   }
   fail_msg_writer() << tr("set: unrecognized argument(s)");
   return true;
@@ -6703,6 +6754,9 @@ bool simple_wallet::transfer_main(
   bool called_by_mms
 ){
 
+  if (transfer_type == TransferBurn){
+    CHECK_BURN_ENABLED();
+  }
   //  "transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> <amount> [<payment_id>]"
   if (!try_connect_to_daemon())
     return false;
@@ -6753,7 +6807,7 @@ bool simple_wallet::transfer_main(
     return false;
   }
 
-  const size_t min_args = (transfer_type == TransferLocked) ? 2 : 1;
+  const size_t min_args = (transfer_type == TransferLocked) ? 2 : (transfer_type == TransferBurn) ? 2 : 1;
   if(local_args.size() < min_args)
   {
      fail_msg_writer() << tr("wrong number of arguments");
@@ -6798,7 +6852,33 @@ bool simple_wallet::transfer_main(
     local_args.pop_back();
   }
 
-  // check fot blocked xjpy
+  uint64_t amount_supply_burnt = 0;
+  bool amount_supply_burnt_applied = false;
+  if (transfer_type == TransferBurn)
+  {
+      // check if burn is allowed
+    CHECK_BURN_ENABLED();
+    if (!m_wallet->use_fork_rules(HF_VERSION_BURN, 0)) {
+        fail_msg_writer() << tr("Burn transactions not allowed before Haven 4.1");
+        return false;
+    }
+    try
+    {
+      bool ok = cryptonote::parse_amount(amount_supply_burnt, local_args.back());
+      if (!ok) {
+        fail_msg_writer() << tr("bad <burn amount> parameter:") << " " << local_args.back();
+        return false;  
+      }
+    }
+    catch (const std::exception &e)
+    {
+      fail_msg_writer() << tr("bad <burn amount> parameter:") << " " << local_args.back();
+      return false;
+    }
+    local_args.pop_back();
+  }
+
+  // check for blocked xjpy
   if (m_wallet->use_fork_rules(HF_VERSION_HAVEN2, 0)) {
     if (source_asset == "XJPY" || dest_asset == "XJPY") {
       fail_msg_writer() << tr("XJPY transaction are disabled after haven2 fork.");
@@ -6846,6 +6926,11 @@ bool simple_wallet::transfer_main(
     bool has_uri = m_wallet->parse_uri(local_args[i], address_uri, payment_id_uri, amount, tx_description, recipient_name, unknown_parameters, error);
     if (has_uri)
     {
+        if (amount_supply_burnt>0)
+        {
+          fail_msg_writer() << tr("URI not supported for burn transactions");
+          return false;
+        }
       r = cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), address_uri, oa_prompter);
       if (payment_id_uri.size() == 16)
       {
@@ -6874,6 +6959,11 @@ bool simple_wallet::transfer_main(
             fail_msg_writer() << tr("failed to get max destination amount: ") << err;
             return false;
           }
+        if (amount_supply_burnt > 0)
+        {
+          fail_msg_writer() << tr("usage of max not supported for burn transactions");
+          return false;
+        }
           de.amount = amount;
         } else {
           fail_msg_writer() << tr("amount is wrong: ") << local_args[i] << ' ' << local_args[i + 1] <<
@@ -6882,6 +6972,10 @@ bool simple_wallet::transfer_main(
         }
       }
       de.original = local_args[i];
+      if (amount_supply_burnt>0 && !amount_supply_burnt_applied){
+        de.supply_burnt=amount_supply_burnt;
+        amount_supply_burnt_applied=true;
+      }
       i += 2;
     }
     else
@@ -6964,6 +7058,9 @@ bool simple_wallet::transfer_main(
       case Transfer:
         ptx_vector = m_wallet->create_transactions_2(dsts, source_asset, fake_outs_count, 0 /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices);
       break;
+      case TransferBurn:
+        ptx_vector = m_wallet->create_transactions_2(dsts, source_asset, fake_outs_count, 0 /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices);
+      break;
     }
 
     if (ptx_vector.empty())
@@ -7034,6 +7131,7 @@ bool simple_wallet::transfer_main(
         uint64_t total_col = 0;
         uint64_t total_slippage = 0;
         uint64_t total_tx_fee = 0;
+        uint64_t total_suppy_burnt = 0;
         uint64_t total_offshore_fee = 0;
         uint64_t dust_not_in_fee = 0;
         uint64_t dust_in_fee = 0;
@@ -7041,6 +7139,8 @@ bool simple_wallet::transfer_main(
         for (size_t n = 0; n < ptx_vector.size(); ++n)
         {
           total_tx_fee += ptx_vector[n].tx.rct_signatures.txnFee;
+          if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER)
+            total_suppy_burnt += ptx_vector[n].tx.amount_burnt;
           total_offshore_fee += ptx_vector[n].tx.rct_signatures.txnOffshoreFee;
           for (auto i: ptx_vector[n].selected_transfers)
             if (m_wallet->get_transfer_details(i).asset_type == source_asset)
@@ -7080,7 +7180,13 @@ bool simple_wallet::transfer_main(
         }
         uint64_t conversion_fee_in_C = total_offshore_fee;
         if (source_asset == dest_asset) {
-          prompt << boost::format(tr("Sending %s %s.\n")) % print_money(total_sent) % source_asset;
+          prompt << boost::format(tr("Sending %s %s.\n")) % print_money(total_sent-total_suppy_burnt) % source_asset;
+          if (total_suppy_burnt > 0) {
+            message_writer(console_color_red, false) << boost::format(tr("WARNING WARNING WARNING !!!.\n"));
+            message_writer(console_color_red, false) << boost::format(tr("PERMANENTLY DESTROYING %s %s , MAKE SURE THIS IS INTENTIONAL !!!.\n")) % print_money(total_suppy_burnt) % source_asset;
+            message_writer(console_color_red, false) << boost::format(tr("ABORT IMMEDIATELY UNLESS ABSOLUTELY CERTAIN !!!.\n"));
+            prompt << boost::format(tr("!!!! PERMANENTLY DESTROYING %s %s , MAKE SURE THIS IS INTENTIONAL !!!.\n")) % print_money(total_suppy_burnt) % source_asset;
+          }
         } else {
           double total_slippage_pct = double(total_slippage) / double(total_sent) * 100;
           switch (tx_type)
@@ -7100,11 +7206,11 @@ bool simple_wallet::transfer_main(
             break;
           case tt::XUSD_TO_XASSET:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage which is %s) to %s %s.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % print_money(total_slippage) % print_money(total_received) % dest_asset;
+            prompt << boost::format(tr("Converting %s XUSD (of which %s XUSD is slippage which is %s) to %s %s.\n")) % print_money(total_sent) % print_money(total_slippage) % print_pct(total_slippage_pct, 2) % print_money(total_received) % dest_asset;
             break;
           case tt::XASSET_TO_XUSD:
             conversion_fee_in_C = (total_sent * 3) / 200;
-            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage which is %s) to %s XUSD.\n")) % print_pct(total_slippage_pct, 2) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_money(total_received);
+            prompt << boost::format(tr("Converting %s %s (of which %s %s is slippage which is %s) to %s XUSD.\n")) % print_money(total_sent) % source_asset % print_money(total_slippage) % source_asset % print_pct(total_slippage_pct, 2) % print_money(total_received);
             break;
           default:
             break;
@@ -7278,6 +7384,18 @@ bool simple_wallet::transfer(const std::vector<std::string> &args_)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::transfer_burn(const std::vector<std::string> &args_)
+{
+  CHECK_BURN_ENABLED();
+  if (args_.size() < 2)
+  {
+    PRINT_USAGE(USAGE_TRANSFER_BURN);
+    return true;
+  }
+  transfer_main(TransferBurn, "XHV", "XHV", args_, false);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::locked_transfer(const std::vector<std::string> &args_)
 {
   if (args_.size() < 1)
@@ -7323,6 +7441,18 @@ bool simple_wallet::offshore_transfer(const std::vector<std::string> &args_)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::offshore_transfer_burn(const std::vector<std::string> &args_)
+{
+  CHECK_BURN_ENABLED();
+  if (args_.size() < 3)
+  {
+    PRINT_USAGE(USAGE_OFFSHORE_TRANSFER_BURN);
+    return true;
+  }
+  transfer_main(TransferBurn, "XUSD", "XUSD", args_, false);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::xasset_to_xusd(const std::vector<std::string> &args_)
 {
   // Verify the arguments provided
@@ -7353,6 +7483,7 @@ bool simple_wallet::xasset_to_xusd(const std::vector<std::string> &args_)
   transfer_main(Transfer, source_asset, "XUSD", local_args, false);
   return true;
 }
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::xasset_transfer(const std::vector<std::string> &args)
 {
   // Verify the arguments provided
@@ -7381,6 +7512,38 @@ bool simple_wallet::xasset_transfer(const std::vector<std::string> &args)
   local_args.erase(local_args.end() - 1);
 
   transfer_main(Transfer, asset, asset, local_args, false);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::xasset_transfer_burn(const std::vector<std::string> &args)
+{
+  CHECK_BURN_ENABLED();
+  // Verify the arguments provided
+  if (args.size() < 4) {
+    PRINT_USAGE(USAGE_XASSET_TRANSFER_BURN);
+    return true;
+  }
+  
+  // copy args
+  std::vector<std::string> local_args = args;
+
+  // check and remove the asset type
+  std::string asset = boost::algorithm::to_upper_copy(*(local_args.end() - 1));
+  if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), asset) == offshore::ASSET_TYPES.end()) {
+    fail_msg_writer() << boost::format(tr("Invalid currency '%s' specified")) % asset;
+    return false;
+  }
+  if (asset == "XUSD") {
+    fail_msg_writer() << "xasset_transfer_burn command is only for xAssets. You have to use 'offshore_transfer_burn' command to burn your xUSD.";
+    return false;
+  }
+  if (asset == "XHV") {
+    fail_msg_writer() << "xasset_transfer_burn command is only for xAssets. You have to use 'transfer_burn' command to burn your XHV.";
+    return false;
+  }
+  local_args.erase(local_args.end() - 1);
+
+  transfer_main(TransferBurn, asset, asset, local_args, false);
   return true;
 }
 //----------------------------------------------------------------------------------------------------

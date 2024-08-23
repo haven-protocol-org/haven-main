@@ -1699,8 +1699,25 @@ namespace rct {
           if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
             CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
         }
+        CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
+      }
+
+      if (strSource == strDest) {
+        CHECK_AND_ASSERT_MES(pr.empty(), false, "Pricing record found for a transfer! rejecting tx..");
+        CHECK_AND_ASSERT_MES(amount_collateral==0, false, "Collateral found for a transfer! rejecting tx..");
+        CHECK_AND_ASSERT_MES(amount_slippage==0, false, "Slippage found for a transfer! rejecting tx..");
+        if (version < HF_VERSION_BURN) {
+          CHECK_AND_ASSERT_MES(amount_burnt==0, false, "amount_burnt found for a transfer tx! rejecting tx.. ");
+          }
       }
       
+      uint64_t amount_supply_burnt = 0;
+
+      if ((tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) && version >= HF_VERSION_BURN && amount_burnt>0){
+        amount_supply_burnt = amount_burnt;
+      }
+      
+
       // OUTPUTS SUMMED FOR EACH COLOUR
       key zerokey = rct::identity();
       // Zi is intentionally set to a different value to zerokey, so that if a bug is introduced in the later logic, any comparison with zerokey will fail
@@ -1730,6 +1747,11 @@ namespace rct {
         if (!ok) {
           LOG_ERROR("Failed to get output type");
           return false;
+        }
+        
+        if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS && (is_collateral || is_collateral_change) && output_asset_type != "XHV"){
+          LOG_ERROR("Collateral which is not XHV found");
+          return false;  
         }
 
         // Don't exclude the onshore collateral ouputs from proof-of-value calculation
@@ -1776,6 +1798,8 @@ namespace rct {
       key txnFeeKey = scalarmultH(d2h(rv.txnFee));
       // Calculate offshore conversion fee (also always in C colour)
       key txnOffshoreFeeKey = scalarmultH(d2h(rv.txnOffshoreFee));
+      // Calculate the supply burn (also always in C colour)
+      key amount_supply_burntKey = scalarmultH(d2h(amount_supply_burnt));
 
       // Sum the consumed outputs in their respective asset types (sumColIns = inputs in D)
       key sumPseudoOuts = zerokey;
@@ -1803,6 +1827,9 @@ namespace rct {
       // Subtract the sum of converted output commitments from the sum of consumed output commitments in D colour (if any are present)
       // (Note: there are only consumed output commitments in D colour if the transaction is an onshore and requires collateral)
       subKeys(sumD, sumColIns, sumOutpks_D);
+
+      //Remove burnt supply
+      subKeys(sumC, sumC, amount_supply_burntKey);
 
       if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         // NEAC: Convert the fees for conversions to XHV
@@ -1913,6 +1940,11 @@ namespace rct {
 
         if (version >= HF_VERSION_SLIPPAGE) {
           // Subtract the slippage from the amount_burnt
+          // Check for potential underflow and fail
+          if (amount_burnt<amount_slippage) {
+            LOG_ERROR("Slippage exceeds burnt amount");
+            return false; 
+          }
           amount_burnt -= amount_slippage;
         }
 
