@@ -2113,4 +2113,171 @@ namespace cryptonote
     get_block_longhash(pbc, b, p, height, seed_hash, miners);
     return p;
   }
+
+  //---------------------------------------------------------------
+  //! This function tries to obtain the anonymity pool of a transaction.
+  //! For each input, we check the ring members and determine if from which pool they are.
+  //! If there are inputs with different pools, then the whole transaction has a mixed pool.
+  //! If errors are encountered, then the function returns false and assigns UNSET to the anon_pool.
+  bool get_anonymity_pool(const transaction& tx, const std::vector<std::vector<output_data_t>>& tx_ring_outputs, anonymity_pool& tx_anon_pool)
+  {
+    tx_anon_pool=anonymity_pool::UNSET;
+    size_t assignments=0; //additional check to ensure we update anon_pool without missing inputs
+
+    //For each input of the transaction, we should have a vector with outputs which form its ring members
+    if (tx.vin.size()!=tx_ring_outputs.size()){
+      tx_anon_pool=anonymity_pool::UNSET;
+      LOG_ERROR("The number of inputs differs from the number of groups of ring members! Rejecting..");
+      return false;
+    }
+
+    //A transaction cannot have 0 inputs
+    if (tx.vin.size()==0){
+      tx_anon_pool=anonymity_pool::UNSET;
+      LOG_ERROR("The transaction has no inputs! Rejecting..");
+      return false;
+    }
+
+    for (size_t i = 0; i < tx.vin.size(); i++) {
+      anonymity_pool pool_current_input=anonymity_pool::UNSET;
+      if(!get_input_anonymity_pool(tx.vin[i], tx_ring_outputs[i], pool_current_input)){
+        tx_anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Failed to get the anonymity pool of input " << i << " ! Rejecting..");
+        return false;
+      }
+
+      //Only Pool 1, Pool 2 and Mixed are valid values for a ring member
+      if (pool_current_input!=anonymity_pool::MIXED && pool_current_input!=anonymity_pool::POOL_1 && pool_current_input!=anonymity_pool::POOL_2){
+        tx_anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Failed to assign a ring member to either Pool 1 or Pool 2 or Mixed! Rejecting..");
+        return false;
+      }
+
+      if (tx_anon_pool==anonymity_pool::UNSET){
+        tx_anon_pool=pool_current_input;
+        assignments+=1;
+      } else if (tx_anon_pool!=pool_current_input){
+        tx_anon_pool=anonymity_pool::MIXED;
+        assignments+=1;
+      } else if (tx_anon_pool==pool_current_input){
+        assignments+=1;
+      }
+    }
+
+    // Make sure each input has been considered when assigning the transaction anonymity pool type
+    if (assignments!=tx.vin.size()){
+        LOG_ERROR("Not all inputs were considered when assigning a pool! Rejecting..");
+        tx_anon_pool=anonymity_pool::UNSET;
+        return false;
+    }
+
+    // If the transaction anonymity pool is Mixed, Pool 1, and Pool 2, then we can return the value
+    if (tx_anon_pool==anonymity_pool::MIXED || tx_anon_pool==anonymity_pool::POOL_1 || tx_anon_pool==anonymity_pool::POOL_2){
+      if (tx_anon_pool==anonymity_pool::MIXED){
+        LOG_PRINT_L2("Mixed anonymity pool found, this should not happen. Transaction will rejected as part of transaction validation");  
+      } else {
+        LOG_PRINT_L2("anonymity pool of the input is " << (tx_anon_pool==anonymity_pool::POOL_1 ? "Pool 1" : (tx_anon_pool==anonymity_pool::POOL_2 ? "Pool 2" : "Unknown")));
+      }
+      return true;
+    }
+
+    //If we've reached this point, then something went wrong
+    LOG_ERROR("Failed to assign a transaction anonymity pool! Rejecting..");
+    tx_anon_pool=anonymity_pool::UNSET;
+    return false;
+  }
+  //---------------------------------------------------------------
+  //! This function tries to obtain the anonymity pool of a transaction.
+  //! For each input, we check the ring members and determine from which pool they are.
+  //! If there are inputs with different pools, then the whole transaction has a mixed pool, which should lead to transaction rejection as part of the tx validation.
+  //! If errors are encountered, then the function returns false and assigns UNSET to the anon_pool.
+  bool get_input_anonymity_pool(const txin_v& txin, const std::vector<output_data_t>& ring_outputs, anonymity_pool& anon_pool)
+  {
+    anon_pool=anonymity_pool::UNSET;
+    size_t assignments=0; //additional check to ensure we update anon_pool without missing inputs
+
+    if (txin.type() == typeid(txin_gen)){
+      if (ring_outputs.size()==0){
+        anon_pool=anonymity_pool::NONE;
+        return true;
+      } else {
+        LOG_ERROR("Coinbase input with ring members found! Rejecting..");
+        anon_pool=anonymity_pool::UNSET;
+        return false;
+      }
+    }
+
+    if (txin.type() == typeid(txin_haven_key)){
+      if (ring_outputs.size()==0){
+        anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Non-coinbase input without ring members found! Rejecting..");
+        return false;
+      }
+
+      std::string source_asset_type = boost::get<txin_haven_key>(txin).asset_type;
+      if (source_asset_type.size()==0){
+        anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Failed to find input asset type! Rejecting..");
+        return false;  
+      }
+
+      for (const auto &out: ring_outputs) {
+        anonymity_pool pool_current_ring_member=anonymity_pool::UNSET;
+
+        //Rules for Pool 1
+        //Any output before the supply audit cut-off is considered a member of Pool 1
+        if (out.height < SUPPLY_AUDIT_BLOCK_HEIGHT && out.asset_type==source_asset_type){
+          pool_current_ring_member=anonymity_pool::POOL_1;
+        }
+        //Rules for Pool 2
+        if (out.height >= SUPPLY_AUDIT_BLOCK_HEIGHT && out.asset_type==source_asset_type){
+          pool_current_ring_member=anonymity_pool::POOL_2;
+        }
+        
+
+        // Please add any future logic for new anonymity pools above this point in the code
+        // Beyond it, the anonymity pool of the current ring member must be set
+        if (pool_current_ring_member==anonymity_pool::UNSET){
+          anon_pool=anonymity_pool::UNSET;
+          LOG_ERROR("Failed to assign a ring member to anonymity pool! Rejecting..");
+          return false;
+        }
+
+        //Only Pool 1 and Pool 2 are valid values for a ring member
+        if (pool_current_ring_member!=anonymity_pool::POOL_1 && pool_current_ring_member!=anonymity_pool::POOL_2){
+          anon_pool=anonymity_pool::UNSET;
+          LOG_ERROR("Failed to assign a ring member to either Pool 1 or Pool 2! Rejecting..");
+          return false;
+        }
+
+        if (anon_pool==anonymity_pool::UNSET){
+          anon_pool=pool_current_ring_member;
+          assignments+=1;
+        } else if (anon_pool!=pool_current_ring_member){
+          anon_pool=anonymity_pool::MIXED;
+          assignments+=1;
+        } else if (anon_pool==pool_current_ring_member){
+          assignments+=1;
+        }
+      }
+
+      if (assignments!=ring_outputs.size()){
+        LOG_ERROR("Not all ring members were considered when assigning a pool! Rejecting..");
+        anon_pool=anonymity_pool::UNSET;
+        return false;
+      }
+
+      if (anon_pool==anonymity_pool::MIXED){
+        LOG_PRINT_L2("Mixed anonymity pool found, this should not happen. Transaction will rejected as part of transaction validation");  
+      } else {
+        LOG_PRINT_L2("Anonymity pool of the input is " << (anon_pool==anonymity_pool::POOL_1 ? "Pool 1" : (anon_pool==anonymity_pool::POOL_2 ? "Pool 2" : "Unknown")));
+      }
+      return true;
+    }
+
+    //If we've reached this point, then something went wrong
+    LOG_ERROR("Failed to assign a an input to anonymity pool! Rejecting..");
+    anon_pool=anonymity_pool::UNSET;
+    return false;
+  }
 }

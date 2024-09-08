@@ -30,6 +30,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "cryptonote_protocol/enums.h"
 #include "misc_log_ex.h"
 #include "misc_language.h"
 #include "common/perf_timer.h"
@@ -1658,7 +1659,8 @@ namespace rct {
     const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
     const uint64_t amount_collateral,
-    const uint64_t amount_slippage
+    const uint64_t amount_slippage,
+    const cryptonote::anonymity_pool tx_anon_pool
   ){
 
     try

@@ -45,12 +45,24 @@ namespace cryptonote
 
   enum class transaction_type {
     UNSET = 0,
-    TRANSFER,
-    OFFSHORE,
-    ONSHORE,
-    OFFSHORE_TRANSFER,
-    XUSD_TO_XASSET,
-    XASSET_TO_XUSD,
-    XASSET_TRANSFER
+    TRANSFER,           //!< Transfer of XHV 
+    OFFSHORE,           //!< Conversion of XHV to XUSD
+    ONSHORE,            //!< Conversion of XUSD to XHV
+    OFFSHORE_TRANSFER,  //!< Transfer of XUSD
+    XUSD_TO_XASSET,     //!< Conversion of XUSD to non-XHV asset, such as XAU, XAG, XBTC
+    XASSET_TO_XUSD,     //!< Conversion assets like XAU, XAG, XBTC (not XHV) to XUSD
+    XASSET_TRANSFER     //!< Transfer of asset different from XHV or XUSD, such as XAU, XAG, XBTC 
+  };
+  //! anonymity pools of the ring signatures.
+  //! The supply audit requires that the ring members are split in two distinct anonymity pools, depending on 
+  //! whether or not they preceed the block which marks the start of the supply audit.
+  //! Transactions should not contain ring members from different anonymity pools. 
+  //! Different validation rules will apply, depeneding on the anonymity pool (for example transaction amount might be forced to be revealed for anonnymity pool one)
+  enum class anonymity_pool {
+    UNSET = 0, //!< anonymity pool not yet initialized
+    NONE,      //!< Output is coinbase, so does not belong to any anonymity pool.
+    MIXED,     //!< The ring signature contains members from multiple anonymity pools. This is not allowed and such transactions should be rejected.
+    POOL_1,    //!< All ring members are from before the supply audit
+    POOL_2     //!< All ring members are from after the supply audit
   };
 }

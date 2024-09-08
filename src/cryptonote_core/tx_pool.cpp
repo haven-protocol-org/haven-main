@@ -2622,7 +2622,7 @@ namespace cryptonote
           }
           
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, anonymity_pool::UNSET))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

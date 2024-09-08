@@ -2666,6 +2666,13 @@ crypto::public_key Blockchain::get_output_key(uint64_t amount, uint64_t global_i
 }
 
 //------------------------------------------------------------------
+void Blockchain::get_output_key(const epee::span<const uint64_t> &amounts, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial) const
+{
+  m_db->get_output_key(amounts, offsets, outputs, allow_partial);
+}
+
+
+//------------------------------------------------------------------
 bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
@@ -5344,6 +5351,66 @@ leave:
       goto leave;
     }
 
+    // Get the TX anonymity pool
+    anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
+    std::vector<std::vector<output_data_t>> tx_ring_outputs;
+    tx_ring_outputs.reserve(tx.vin.size());
+    for (const txin_v& txin: tx.vin){
+      std::vector<output_data_t> ring_outputs;
+      if (txin.type() == typeid(txin_haven_key)){
+        txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
+        std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
+
+        if (absolute_offsets.size()!=tx_input.key_offsets.size()){
+          MERROR_VER("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+        
+        try{
+          get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
+          if (absolute_offsets.size() != ring_outputs.size()){
+            MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+        }
+        catch (...){
+          MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+        
+        tx_ring_outputs.push_back(ring_outputs);
+      } else if (txin.type() == typeid(txin_gen)){
+        tx_ring_outputs.push_back(ring_outputs);
+      } else {
+        MERROR_VER("Unexpected input type for transaction" << tx_id);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+    }
+
+    if (tx_ring_outputs.size()!=tx.vin.size()){
+      MERROR_VER("Transaction has more inputs than number of ring member groups: " << tx_id);
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
+    if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+      MERROR("Failed to get the anonymity pool for transaction " << tx_id);
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
+    if(tx_anon_pool==anonymity_pool::UNSET){
+      MERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << tx_id);
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
+
+
     // check for block cap limit
     uint64_t conversion_this_tx_xhv = 0;
     if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
@@ -5433,7 +5500,7 @@ leave:
         }
           
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
         {
           // 2 tx that used reorged pricing record for collateral calculation.
           if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"

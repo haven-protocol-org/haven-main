@@ -264,6 +264,10 @@
 #define HF_VERSION_MAX_CONV_TRANSACTION_FEE          24
 #define MAX_CONV_TRANSACTION_FEE                   ((uint64_t)10000000000000ull)
 
+// Haven v4.2 definitions
+#define HF_VERSION_SUPPLY_AUDIT                 25
+#define SUPPLY_AUDIT_BLOCK_HEIGHT       ((uint64_t)1656720)
+
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x1b
