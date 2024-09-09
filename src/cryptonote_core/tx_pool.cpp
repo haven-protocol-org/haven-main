@@ -2608,7 +2608,7 @@ namespace cryptonote
       
       if(!check_tx_inputs([&tx]()->cryptonote::transaction&{ return tx; }, sorted_it->second, meta.max_used_block_height, meta.max_used_block_id, tvc, meta.kept_by_block))
       {
-        LOG_PRINT_L2(" transaction has invalid anonymity pool " << sorted_it->second);
+        LOG_PRINT_L2(" transaction has invalid inputs or anonymity pool " << sorted_it->second);
         continue;
       }
       
@@ -2691,6 +2691,20 @@ namespace cryptonote
           }
           
           // make sure proof-of-value still holds
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
+          {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
+            continue;
+          }
+        }
+      } else {
+        // make sure proof-of-value still holds for transfers after HF_VERSION_BURN
+        if (hf_version>HF_VERSION_BURN){
+          uint64_t slippage = 0;
+          uint64_t collateral = 0;
+          uint64_t conversion_rate = COIN;
+          uint64_t fee_conversion_rate = COIN;
+          uint64_t tx_fee_conversion_rate = COIN;
           if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
