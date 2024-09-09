@@ -38,6 +38,7 @@
 
 #include "include_base_utils.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "offshore/pricing_record.h"
 #include "tx_pool.h"
 #include "blockchain.h"
 #include "blockchain_db/blockchain_db.h"
@@ -5529,6 +5530,21 @@ leave:
         LOG_PRINT_L2("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         bvc.m_verifivation_failed = true;
         goto leave;
+      }
+
+      uint64_t conversion_rate = COIN;
+      uint64_t fee_conversion_rate = COIN;
+      uint64_t tx_fee_conversion_rate = COIN;
+      uint64_t collateral = 0;
+      uint64_t slippage = 0;
+      offshore::pricing_record pr_empty;
+      if (hf_version >= HF_VERSION_HAVEN2) {
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_empty, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
+          {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
       }
     }
 
