@@ -60,6 +60,7 @@ namespace cryptonote
   //! Different validation rules will apply, depeneding on the anonymity pool (for example transaction amount might be forced to be revealed for anonnymity pool one)
   enum class anonymity_pool {
     UNSET = 0, //!< anonymity pool not yet initialized
+    NOTAPPLICABLE, //!< Transaction is too old, so the pool calculation is not performed
     NONE,      //!< Output is coinbase, so does not belong to any anonymity pool.
     MIXED,     //!< The ring signature contains members from multiple anonymity pools. This is not allowed and such transactions should be rejected.
     POOL_1,    //!< All ring members are from before the supply audit

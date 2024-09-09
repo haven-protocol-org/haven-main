@@ -36,6 +36,7 @@
 #include <boost/format.hpp>
 #include <boost/multiprecision/cpp_int.hpp>
 
+#include "cryptonote_protocol/enums.h"
 #include "include_base_utils.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "offshore/pricing_record.h"
@@ -5352,62 +5353,67 @@ leave:
       goto leave;
     }
 
+    
     // Get the TX anonymity pool
     anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
-    std::vector<std::vector<output_data_t>> tx_ring_outputs;
-    tx_ring_outputs.reserve(tx.vin.size());
-    for (const txin_v& txin: tx.vin){
-      std::vector<output_data_t> ring_outputs;
-      if (txin.type() == typeid(txin_haven_key)){
-        txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
-        std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
+    if (hf_version>=HF_VERSION_BURN) {
+      std::vector<std::vector<output_data_t>> tx_ring_outputs;
+      tx_ring_outputs.reserve(tx.vin.size());
+      for (const txin_v& txin: tx.vin){
+        std::vector<output_data_t> ring_outputs;
+        if (txin.type() == typeid(txin_haven_key)){
+          txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
+          std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
 
-        if (absolute_offsets.size()!=tx_input.key_offsets.size()){
-          MERROR_VER("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
-          bvc.m_verifivation_failed = true;
-          goto leave;
-        }
-        
-        try{
-          get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
-          if (absolute_offsets.size() != ring_outputs.size()){
+          if (absolute_offsets.size()!=tx_input.key_offsets.size()){
+            MERROR_VER("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+          
+          try{
+            get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
+            if (absolute_offsets.size() != ring_outputs.size()){
+              MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+              bvc.m_verifivation_failed = true;
+              goto leave;
+            }
+          }
+          catch (...){
             MERROR_VER("Output does not exist! amount = " << tx_input.amount);
             bvc.m_verifivation_failed = true;
             goto leave;
           }
-        }
-        catch (...){
-          MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+          
+          tx_ring_outputs.push_back(ring_outputs);
+        } else if (txin.type() == typeid(txin_gen)){
+          tx_ring_outputs.push_back(ring_outputs);
+        } else {
+          MERROR_VER("Unexpected input type for transaction" << tx_id);
           bvc.m_verifivation_failed = true;
           goto leave;
         }
-        
-        tx_ring_outputs.push_back(ring_outputs);
-      } else if (txin.type() == typeid(txin_gen)){
-        tx_ring_outputs.push_back(ring_outputs);
-      } else {
-        MERROR_VER("Unexpected input type for transaction" << tx_id);
+      }
+
+      if (tx_ring_outputs.size()!=tx.vin.size()){
+        MERROR_VER("Transaction has more inputs than number of ring member groups: " << tx_id);
         bvc.m_verifivation_failed = true;
         goto leave;
       }
-    }
 
-    if (tx_ring_outputs.size()!=tx.vin.size()){
-      MERROR_VER("Transaction has more inputs than number of ring member groups: " << tx_id);
-      bvc.m_verifivation_failed = true;
-      goto leave;
-    }
+      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+        MERROR("Failed to get the anonymity pool for transaction " << tx_id);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
 
-    if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
-      MERROR("Failed to get the anonymity pool for transaction " << tx_id);
-      bvc.m_verifivation_failed = true;
-      goto leave;
-    }
-
-    if(tx_anon_pool==anonymity_pool::UNSET){
-      MERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << tx_id);
-      bvc.m_verifivation_failed = true;
-      goto leave;
+      if(tx_anon_pool==anonymity_pool::UNSET){
+        MERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << tx_id);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+    } else if (hf_version<HF_VERSION_BURN) {
+      tx_anon_pool=anonymity_pool::NOTAPPLICABLE;  
     }
 
 

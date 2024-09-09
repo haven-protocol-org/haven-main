@@ -31,10 +31,12 @@
 
 #include <algorithm>
 #include <boost/filesystem.hpp>
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
 #include "tx_pool.h"
+#include "cryptonote_protocol/enums.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_config.h"
@@ -2176,56 +2178,60 @@ namespace cryptonote
 
     transaction tx=get_tx();
     bool ret = m_blockchain.check_tx_inputs(tx, max_used_block_height, max_used_block_id, tvc, kept_by_block);
-    
+    uint64_t hf_version=m_blockchain.get_current_hard_fork_version();
     // Get the TX anonymity pool
     anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
-    std::vector<std::vector<output_data_t>> tx_ring_outputs;
-    tx_ring_outputs.reserve(tx.vin.size());
-    
-    for (const txin_v& txin: tx.vin){
-      std::vector<output_data_t> ring_outputs;
-      if (txin.type() == typeid(txin_haven_key)){
-        txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
-        std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
-        if (absolute_offsets.size()!=tx_input.key_offsets.size()){
-          LOG_ERROR("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
-          ret = false;
-        }
-        try{
-          m_blockchain.get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
-          if (absolute_offsets.size() != ring_outputs.size()){
+
+    if (hf_version>=HF_VERSION_BURN) {
+      std::vector<std::vector<output_data_t>> tx_ring_outputs;
+      tx_ring_outputs.reserve(tx.vin.size());
+      
+      for (const txin_v& txin: tx.vin){
+        std::vector<output_data_t> ring_outputs;
+        if (txin.type() == typeid(txin_haven_key)){
+          txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
+          std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
+          if (absolute_offsets.size()!=tx_input.key_offsets.size()){
+            LOG_ERROR("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
+            ret = false;
+          }
+          try{
+            m_blockchain.get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
+            if (absolute_offsets.size() != ring_outputs.size()){
+              LOG_ERROR("Output does not exist! amount = " << tx_input.amount);
+              ret = false;
+            }
+          }
+          catch (...){
             LOG_ERROR("Output does not exist! amount = " << tx_input.amount);
             ret = false;
           }
+          tx_ring_outputs.push_back(ring_outputs);
+        } else if (txin.type() == typeid(txin_gen)){
+          tx_ring_outputs.push_back(ring_outputs);
+        } else {
+          LOG_ERROR("Unexpected input type for transaction" << txid);
+          ret=false;
         }
-        catch (...){
-          LOG_ERROR("Output does not exist! amount = " << tx_input.amount);
-          ret = false;
-        }
-        tx_ring_outputs.push_back(ring_outputs);
-      } else if (txin.type() == typeid(txin_gen)){
-        tx_ring_outputs.push_back(ring_outputs);
-      } else {
-        LOG_ERROR("Unexpected input type for transaction" << txid);
-        ret=false;
       }
-    }
 
-    if (tx_ring_outputs.size()!=tx.vin.size()){
-      LOG_ERROR("Transaction has more inputs than number of ring member groups: " << txid);
-      ret=false;   
-    }
+      if (tx_ring_outputs.size()!=tx.vin.size()){
+        LOG_ERROR("Transaction has more inputs than number of ring member groups: " << txid);
+        ret=false;   
+      }
 
-    if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
-      LOG_ERROR("Failed to get the anonymity pool for transaction " << txid);
-      ret=false;   
-    }
+      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+        LOG_ERROR("Failed to get the anonymity pool for transaction " << txid);
+        ret=false;   
+      }
 
-    if(tx_anon_pool==anonymity_pool::UNSET){
-      LOG_ERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << txid);
-      ret=false;   
+      if(tx_anon_pool==anonymity_pool::UNSET){
+        LOG_ERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << txid);
+        ret=false;   
+      }
+    } else if(hf_version<HF_VERSION_BURN){
+      tx_anon_pool=anonymity_pool::NOTAPPLICABLE;
     }
-
     tvc.m_tx_anon_pool=tx_anon_pool;
     
     if (!kept_by_block)

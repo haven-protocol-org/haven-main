@@ -950,75 +950,79 @@ namespace cryptonote
       }
 
       // Get the TX anonymity pool
+      const uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
       anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
-      std::vector<std::vector<output_data_t>> tx_ring_outputs;
-      tx_ring_outputs.reserve(tx_info[n].tx->vin.size());
-      for (const txin_v& txin: tx_info[n].tx->vin){
-        std::vector<output_data_t> ring_outputs;
-        if (txin.type() == typeid(txin_haven_key)){
-          txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
-          std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
+      if (hf_version>=HF_VERSION_BURN) {
+        std::vector<std::vector<output_data_t>> tx_ring_outputs;
+        tx_ring_outputs.reserve(tx_info[n].tx->vin.size());
+        for (const txin_v& txin: tx_info[n].tx->vin){
+          std::vector<output_data_t> ring_outputs;
+          if (txin.type() == typeid(txin_haven_key)){
+            txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
+            std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
 
-          if (absolute_offsets.size()!=tx_input.key_offsets.size()){
-              MERROR_VER("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
-              set_semantics_failed(tx_info[n].tx_hash);
-              tx_info[n].tvc.m_verifivation_failed = true;
-              tx_info[n].result = false;
-	            continue;  
-          }
-          try{
-            m_blockchain_storage.get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
-            if (absolute_offsets.size() != ring_outputs.size()){
+            if (absolute_offsets.size()!=tx_input.key_offsets.size()){
+                MERROR_VER("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
+                set_semantics_failed(tx_info[n].tx_hash);
+                tx_info[n].tvc.m_verifivation_failed = true;
+                tx_info[n].result = false;
+                continue;  
+            }
+            try{
+              m_blockchain_storage.get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
+              if (absolute_offsets.size() != ring_outputs.size()){
+                MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+                set_semantics_failed(tx_info[n].tx_hash);
+                tx_info[n].tvc.m_verifivation_failed = true;
+                tx_info[n].result = false;
+                continue;
+              }
+            }
+            catch (...){
               MERROR_VER("Output does not exist! amount = " << tx_input.amount);
               set_semantics_failed(tx_info[n].tx_hash);
               tx_info[n].tvc.m_verifivation_failed = true;
               tx_info[n].result = false;
-	            continue;
+              continue;
             }
-          }
-          catch (...){
-            MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+            tx_ring_outputs.push_back(ring_outputs);
+          } else if (txin.type() == typeid(txin_gen)){
+            tx_ring_outputs.push_back(ring_outputs);
+          } else {
+            MERROR_VER("Unexpected input type for transaction" << tx_info[n].tx_hash);
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
             tx_info[n].result = false;
-	          continue;
+            continue;  
           }
-          tx_ring_outputs.push_back(ring_outputs);
-        } else if (txin.type() == typeid(txin_gen)){
-          tx_ring_outputs.push_back(ring_outputs);
-        } else {
-          MERROR_VER("Unexpected input type for transaction" << tx_info[n].tx_hash);
+        }
+
+        if (tx_ring_outputs.size()!=tx_info[n].tx->vin.size()){
+          MERROR_VER("Transaction has more inputs than number of ring member groups: " << tx_info[n].tx_hash);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;
           tx_info[n].result = false;
-	        continue;  
+          continue;    
         }
-      }
 
-      if (tx_ring_outputs.size()!=tx_info[n].tx->vin.size()){
-        MERROR_VER("Transaction has more inputs than number of ring member groups: " << tx_info[n].tx_hash);
-        set_semantics_failed(tx_info[n].tx_hash);
-        tx_info[n].tvc.m_verifivation_failed = true;
-        tx_info[n].result = false;
-	      continue;    
-      }
+        if(!get_anonymity_pool(*tx_info[n].tx, tx_ring_outputs, tx_anon_pool)){
+          MERROR("Failed to get the anonymity pool for transaction " << tx_info[n].tx_hash);
+          set_semantics_failed(tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
+          continue;
+        }
 
-      if(!get_anonymity_pool(*tx_info[n].tx, tx_ring_outputs, tx_anon_pool)){
-        MERROR("Failed to get the anonymity pool for transaction " << tx_info[n].tx_hash);
-        set_semantics_failed(tx_info[n].tx_hash);
-        tx_info[n].tvc.m_verifivation_failed = true;
-        tx_info[n].result = false;
-	      continue;
+        if(tx_anon_pool==anonymity_pool::UNSET){
+          MERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << tx_info[n].tx_hash);
+          set_semantics_failed(tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
+          continue;
+        }
+      } else if (hf_version<HF_VERSION_BURN){
+        tx_anon_pool=anonymity_pool::NOTAPPLICABLE;
       }
-
-      if(tx_anon_pool==anonymity_pool::UNSET){
-        MERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << tx_info[n].tx_hash);
-        set_semantics_failed(tx_info[n].tx_hash);
-        tx_info[n].tvc.m_verifivation_failed = true;
-        tx_info[n].result = false;
-	      continue;
-      }
-
       tx_info[n].tvc.m_tx_anon_pool=tx_anon_pool;
 
       // Get the pricing_record_height for any offshore TX
