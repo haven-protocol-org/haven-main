@@ -30,6 +30,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_protocol/enums.h"
 #include "misc_log_ex.h"
 #include "misc_language.h"
@@ -46,6 +47,7 @@
 
 #include "bulletproofs.cc"
 #include "offshore/pricing_record.cpp"
+#include "ringct/rctOps.h"
 #include "ringct/rctTypes.h"
 
 using namespace crypto;
@@ -1689,6 +1691,7 @@ namespace rct {
         CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
       CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
       CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
+      CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == vin.size(), false, "Mismatched sizes of rv.p.pseudoOuts and vin");
       CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
       CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
       if (rv.type == RCTTypeHaven2) 
@@ -1705,7 +1708,7 @@ namespace rct {
       const bool before_supply_audit = (version < HF_VERSION_SUPPLY_AUDIT);
       const bool during_supply_audit = (version >=HF_VERSION_SUPPLY_AUDIT && version < HF_VERSION_SUPPLY_AUDIT_END);
       const bool after_supply_audit = (version >= HF_VERSION_SUPPLY_AUDIT_END);
-      int num_epochs=(before_supply_audit? 1 : 0)+(during_supply_audit? 1 : 0)+(after_supply_audit? 1 : 0);
+      int num_epochs=(before_supply_audit ? 1 : 0)+(during_supply_audit ? 1 : 0)+(after_supply_audit ? 1 : 0);
       CHECK_AND_ASSERT_MES(num_epochs==1, false, "Failed to determine if the current block is before, during, or after the supply audit");
       if (before_supply_audit){ // Audit transactions not permited
         CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Audit transactions permited only during the audit period");  
@@ -1717,18 +1720,24 @@ namespace rct {
         if (rv.type == RCTTypeBulletproofPlus)
           CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_2, false, "Regular transactions after the audit start should have anonymity pool 2");
         CHECK_AND_ASSERT_MES(tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER, false, "Only transfers allowed during the supply audit period");
-        CHECK_AND_ASSERT_MES(amount_burnt==0, false, "Only transfers allowed during the supply audit period");
-      }
+        CHECK_AND_ASSERT_MES(amount_burnt==0, false, "Burn transaction not allowed during the supply audit period");
       }
       if (after_supply_audit){ // All transactions spent from Pool 2, audit tx not permited 
         CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_2, false, "Transactions after the audit end should have anonymity pool 2");
         CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Audit transactions permited only during the audit period");  
       }
+      //Supply audit transaction should have one amount proof, and only audit transactions should have an amount proof
+      if (rv.type == RCTTypeSupplyAudit)
+        CHECK_AND_ASSERT_MES(rv.p.amountproofs.size()==1, false, "Supply audit transaction found without amount proofs");
+      if (!rv.p.amountproofs.empty())
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSupplyAudit, false, "Amount proof for non-audit transaction found");
+      
        
       CHECK_AND_ASSERT_MES((strSource != strDest) == (tx_type == tt::ONSHORE || tx_type==tt::OFFSHORE || tx_type==tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET), false, "Mismatch between source/dest assets and transaction type");
       if (strSource != strDest) {
         CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
+        CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Supply audit tx cannot be a conversion tx"); //redundant, paranoid check
         if (rv.type >= RCTTypeHaven3) {
           CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
           if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
@@ -1746,6 +1755,15 @@ namespace rct {
           }
       }
       
+      if (version >= HF_VERSION_SUPPLY_AUDIT && rv.type != RCTTypeSupplyAudit){ //Another redundant paranoid check related to the pool split, but we really do not want old funds to be spendable
+        for (auto inp: vin) {
+          cryptonote::txin_haven_key inp_haven_key=boost::get<cryptonote::txin_haven_key>(inp);
+          CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets.size()>0, false, "Input without decoys found");
+          //TO-DO## Somehow get the first "new" output instead of 100
+          CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets[0]>100, false, "Input seems too old");
+        }
+      }
+
       uint64_t amount_supply_burnt = 0;
 
       if ((tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) && version >= HF_VERSION_BURN && amount_burnt>0){
@@ -2067,6 +2085,15 @@ namespace rct {
         return false;
       }
       
+      //Supply proof check
+
+      if(rv.type==RCTTypeSupplyAudit){
+        if(rv.p.amountproofs.empty() || ! verAmountproof(rv.p.amountproofs[0], rv.p.pseudoOuts)) {
+          LOG_PRINT_L1("Amount proof verified failed for an audit transaction");
+          return false;
+        }
+      }
+
       return true;
     }
     // we can get deep throws from ge_frombytes_vartime if input isn't valid
@@ -2672,6 +2699,77 @@ namespace rct {
     }
 
     // Must have succeeded
+    return true;
+  }
+
+  //! This function proves that K2=r*K, where r is the random number in the commitment rG+aH
+  bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts){
+
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.G1), false, "Amount verification failed: G1 is not in the main group");
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.K1), false, "Amount verification failed: K1 is not in the main group");
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.H1), false, "Amount verification failed: H1 is not in the main group");
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.K2), false, "Amount verification failed: K2 is not in the main group");
+    CHECK_AND_ASSERT_MES(sc_check(amountproof.sa.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
+    CHECK_AND_ASSERT_MES(sc_check(amountproof.sr.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
+
+    key zerokey = rct::identity();
+    // Sum the consumed outputs
+    // We do not reuse the value from VerRctSemanticsSimple in order to ensure no errors happen
+    key sumPseudoOuts = zerokey;
+    for (auto po: pseudoOuts) {
+      sumPseudoOuts = addKeys(sumPseudoOuts, po);
+    }
+
+    keyV challenge_to_hash;
+    challenge_to_hash.reserve(6);
+    key initKey;
+    sc_0(initKey.bytes);
+    CHECK_AND_ASSERT_THROW_MES(sizeof(initKey.bytes)>=sizeof(config::HASH_KEY_AMOUNTPROOF), "Amount proof hash init string is too long");
+    memcpy(initKey.bytes,config::HASH_KEY_AMOUNTPROOF,min(sizeof(config::HASH_KEY_AMOUNTPROOF)-1, sizeof(initKey.bytes)-1));
+    
+    challenge_to_hash.push_back(initKey);
+    challenge_to_hash.push_back(amountproof.G1);
+    challenge_to_hash.push_back(amountproof.K1);
+    challenge_to_hash.push_back(amountproof.H1); //Aren't we more secure if we exclude H1 from the challenge?
+    challenge_to_hash.push_back(amountproof.K2);
+    challenge_to_hash.push_back(sumPseudoOuts);
+
+    //Challenge
+    const key c=hash_to_scalar(challenge_to_hash);
+    //First check that sr*G+sa*H==G1+H1+c*C
+    //Assuming this holds, we can deduce the following:
+    //We know that G1 and H1 are in the main subgroup, and that G and H are generators.
+    //Therefore there exist r_r, r_a so that G1=r_r*G and H1=r_a*H
+    //From here we derive (using that the hardness of DLP) that:
+    //(1) s_r*G==r_r*G+c*r*G
+    //(2) s_a*H==r_a*H+c*a*H
+    //We can cancel G and H, and derive:
+    //(1) s_r==r_r+c*r
+    //(2) s_a==r_a+c*a
+
+
+
+
+    //Second, we check that s_r*K==K1+c*K2
+    //Assuming this holds:
+    //K1 is also in the main subgroup, so there exists r_r2 so that r_r2*K=K1
+    //K2 is also in the main subgroup, so there exists r2 so that r2*K=K2 
+    //we know from the first step that s_r==r_r+c*r, therefore
+    //r_r*K+c*r*K==K1+c*K2
+    //r_r*K+c*r*K==r_r2*K+c*r2*K, now we cancel K
+    //
+    //r_r+c*r==r_r2+c*r2
+    //c=hash(r_r, r_r2, r2, r_a, r, a) /Question - what if c=hash(r_r, r_r2, r2, r, a) -> isn't this more secure? a has limited (64 bits) degrees of freedom, while r_a has 256 bits/
+    //One solution is r_r==r_r2 and r==r2
+    //If there is another solution, then we must have a hash collision, which is hard. 
+    // we can assume with negligible probability of the contrary that
+    // 
+    //(3) r_r==r_r2
+    //(4) r==r2
+    //Therefore we have proven that:
+    // K2=r*K
+    // K1=r_r*K
+
     return true;
   }
 }

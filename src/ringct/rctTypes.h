@@ -280,19 +280,22 @@ namespace rct {
       END_SERIALIZE()
     };
 
-    // Audit Amount proof
+    //! Audit Amount proof
     struct AmountProof {
-        key A;
-        key B;
-        key C;
-        key D;
-        key E;
+        key G1; //!< r_r*G
+        key K1; //!< r_r*K
+        key H1; //!< r_a*H
+        key K2; //!< r*K, where r is the r from C=r*G+a*H
+        key sr; //!< sr = r_r + c*r, where r is the r from C=r*G+a*H
+        key sa; //!< sr = r_a + c*a, where a is the r from C=r*G+a*H
+        
         BEGIN_SERIALIZE_OBJECT()
-            FIELD(A)
-            FIELD(B)
-            FIELD(C)
-            FIELD(D)
-            FIELD(E)
+          FIELD(G1)
+          FIELD(K1)
+          FIELD(H1)
+          FIELD(K2)
+          FIELD(sr)
+          FIELD(sa)
         END_SERIALIZE()
     };
 
