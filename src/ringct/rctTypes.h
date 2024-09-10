@@ -280,6 +280,22 @@ namespace rct {
       END_SERIALIZE()
     };
 
+    // Audit Amount proof
+    struct AmountProof {
+        key A;
+        key B;
+        key C;
+        key D;
+        key E;
+        BEGIN_SERIALIZE_OBJECT()
+            FIELD(A)
+            FIELD(B)
+            FIELD(C)
+            FIELD(D)
+            FIELD(E)
+        END_SERIALIZE()
+    };
+
     size_t n_bulletproof_amounts(const Bulletproof &proof);
     size_t n_bulletproof_max_amounts(const Bulletproof &proof);
     size_t n_bulletproof_amounts(const std::vector<Bulletproof> &proofs);
@@ -568,6 +584,7 @@ namespace rct {
         std::vector<mgSig> MGs; // simple rct has N, full has 1
         std::vector<clsag> CLSAGs;
         keyV pseudoOuts; //C - for simple rct
+        std::vector<AmountProof> amountproofs;
 
         // when changing this function, update cryptonote::get_pruned_transaction_weight
         template<bool W, template <bool> class Archive>
@@ -746,6 +763,20 @@ namespace rct {
             }
             ar.end_array();
           }
+          if (type==RCTTypeSupplyAudit){
+            ar.tag("amountproofs");
+            ar.begin_array();
+            PREPARE_CUSTOM_VECTOR_SERIALIZATION(inputs, amountproofs);
+            if (amountproofs.size() != 1) //Only one amount proof permited
+              return false;
+            for (size_t i = 0; i < inputs; ++i)
+            {
+              FIELDS(amountproofs[i])
+              if (inputs - i > 1)
+                ar.delimit_array();
+            }
+            ar.end_array();
+          }
           return ar.good();
         }
 
@@ -756,6 +787,7 @@ namespace rct {
           FIELD(MGs)
           FIELD(CLSAGs)
           FIELD(pseudoOuts)
+          FIELD(amountproofs)
         END_SERIALIZE()
     };
     struct rctSig: public rctSigBase {
@@ -939,6 +971,7 @@ VARIANT_TAG(debug_archive, rct::multisig_kLRki, "rct::multisig_kLRki");
 VARIANT_TAG(debug_archive, rct::multisig_out, "rct::multisig_out");
 VARIANT_TAG(debug_archive, rct::clsag, "rct::clsag");
 VARIANT_TAG(debug_archive, rct::BulletproofPlus, "rct::bulletproof_plus");
+VARIANT_TAG(debug_archive, rct::AmountProof, "rct::amountproof");
 
 VARIANT_TAG(binary_archive, rct::key, 0x90);
 VARIANT_TAG(binary_archive, rct::key64, 0x91);
@@ -957,6 +990,7 @@ VARIANT_TAG(binary_archive, rct::multisig_kLRki, 0x9d);
 VARIANT_TAG(binary_archive, rct::multisig_out, 0x9e);
 VARIANT_TAG(binary_archive, rct::clsag, 0x9f);
 VARIANT_TAG(binary_archive, rct::BulletproofPlus, 0xa0);
+VARIANT_TAG(binary_archive, rct::AmountProof, 0xa1);
 
 VARIANT_TAG(json_archive, rct::key, "rct_key");
 VARIANT_TAG(json_archive, rct::key64, "rct_key64");
@@ -975,5 +1009,6 @@ VARIANT_TAG(json_archive, rct::multisig_kLRki, "rct_multisig_kLR");
 VARIANT_TAG(json_archive, rct::multisig_out, "rct_multisig_out");
 VARIANT_TAG(json_archive, rct::clsag, "rct_clsag");
 VARIANT_TAG(json_archive, rct::BulletproofPlus, "rct_bulletproof_plus");
+VARIANT_TAG(json_archive, rct::AmountProof, "rct_amountproof");
 
 #endif  /* RCTTYPES_H */

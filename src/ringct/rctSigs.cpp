@@ -1677,6 +1677,7 @@ namespace rct {
       std::vector<uint32_t> collateral_change_indices = {};
       //size_t max_non_bp_proofs = 0, offset = 0;
       using tt = cryptonote::transaction_type;
+      using anon = cryptonote::anonymity_pool;
       CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
 
       const bool bulletproof = is_rct_bulletproof(rv.type);
@@ -1694,7 +1695,37 @@ namespace rct {
         CHECK_AND_ASSERT_MES(rv.maskSums.size() == 2, false, "maskSums size is not 2");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
-      CHECK_AND_ASSERT_MES(tx_type != tt::UNSET, false, "Invalid transaction type.");
+      CHECK_AND_ASSERT_MES(tx_type != tt::UNSET, false, "Transaction type is not set.");
+      //### Anonymity pool sanity checks #####
+      CHECK_AND_ASSERT_MES(tx_anon_pool != anon::UNSET, false, "Transaction anonymity pool type is not set.");
+      CHECK_AND_ASSERT_MES(tx_anon_pool != anon::MIXED, false, "Transaction has a mixed anonymity pool which is not permited.");
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_BURN || tx_anon_pool == anon::POOL_1 || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 1 or Pool 2 during the supply audit");
+      //### Supply audit sanity checks #####
+      //This check ensures old funds can't be spent after the audit is over.
+      const bool before_supply_audit = (version < HF_VERSION_SUPPLY_AUDIT);
+      const bool during_supply_audit = (version >=HF_VERSION_SUPPLY_AUDIT && version < HF_VERSION_SUPPLY_AUDIT_END);
+      const bool after_supply_audit = (version >= HF_VERSION_SUPPLY_AUDIT_END);
+      int num_epochs=(before_supply_audit? 1 : 0)+(during_supply_audit? 1 : 0)+(after_supply_audit? 1 : 0);
+      CHECK_AND_ASSERT_MES(num_epochs==1, false, "Failed to determine if the current block is before, during, or after the supply audit");
+      if (before_supply_audit){ // Audit transactions not permited
+        CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Audit transactions permited only during the audit period");  
+      }
+      if (during_supply_audit){ //Conversions disabled, Audit tx spends from Pool 1, non-Audit spends from Pool 2, burn not permited 
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit, false, "Only RCTTypeBulletproofPlus and Audit transactions permited after the supply Audit");
+        if (rv.type == RCTTypeSupplyAudit)
+          CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_1, false, "Supply audit transactions should have anonymity pool 1");
+        if (rv.type == RCTTypeBulletproofPlus)
+          CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_2, false, "Regular transactions after the audit start should have anonymity pool 2");
+        CHECK_AND_ASSERT_MES(tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER, false, "Only transfers allowed during the supply audit period");
+        CHECK_AND_ASSERT_MES(amount_burnt==0, false, "Only transfers allowed during the supply audit period");
+      }
+      }
+      if (after_supply_audit){ // All transactions spent from Pool 2, audit tx not permited 
+        CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_2, false, "Transactions after the audit end should have anonymity pool 2");
+        CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Audit transactions permited only during the audit period");  
+      }
+       
+      CHECK_AND_ASSERT_MES((strSource != strDest) == (tx_type == tt::ONSHORE || tx_type==tt::OFFSHORE || tx_type==tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET), false, "Mismatch between source/dest assets and transaction type");
       if (strSource != strDest) {
         CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
