@@ -268,6 +268,7 @@
 #define HF_VERSION_SUPPLY_AUDIT                 25
 #define SUPPLY_AUDIT_BLOCK_HEIGHT       ((uint64_t)1656720)
 
+#define HF_VERSION_SUPPLY_AUDIT_END             26
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x1b

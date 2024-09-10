@@ -40,6 +40,7 @@
 #include "include_base_utils.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "offshore/pricing_record.h"
+#include "ringct/rctTypes.h"
 #include "tx_pool.h"
 #include "blockchain.h"
 #include "blockchain_db/blockchain_db.h"
@@ -3944,8 +3945,20 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
       }
     }
   }
-
-  if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+  
+  if (hf_version >= HF_VERSION_SUPPLY_AUDIT_END) {
+    // After the supply audit, only rct::RCTTypeHaven3 txs are accepted
+    if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_SUPPLY_AUDIT) {
+    // Durring the supply Audit, both Audit transactions and BPP transactions are allowed
+    if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus && tx.rct_signatures.type != rct::RCTTypeSupplyAudit) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
     // only accept rct::RCTTypeHaven3 txs after Haven3 fork.
     if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus) {
       tvc.m_verifivation_failed = true;
@@ -4049,7 +4062,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const uint8_t hf_version,
       }
     }
   }
-  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus)
+  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus || rv.type == rct::RCTTypeSupplyAudit)
   {
     CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
     rv.mixRing.resize(pubkeys.size());
@@ -4090,7 +4103,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const uint8_t hf_version,
       }
     }
   }
-  else if (rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus)
+  else if (rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus || rv.type == rct::RCTTypeSupplyAudit)
   {
     if (!tx.pruned)
     {
@@ -4374,7 +4387,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     CHECK_AND_ASSERT_MES(*pmax_used_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE <= m_db->height(),
         false, "Transaction spends at least one output which is too young");
   }
-
+  //TO-DO##
   // Warn that new RCT types are present, and thus the cache is not being used effectively
   static constexpr const std::uint8_t RCT_CACHE_TYPE = rct::RCTTypeBulletproofPlus;
   if (tx.rct_signatures.type > RCT_CACHE_TYPE)
@@ -4421,6 +4434,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     case rct::RCTTypeHaven2:
     case rct::RCTTypeHaven3:
     case rct::RCTTypeBulletproofPlus:
+    case rct::RCTTypeSupplyAudit:
     {
       if (!ver_rct_non_semantics_simple_cached(tx, hf_version, pubkeys, m_rct_ver_cache, RCT_CACHE_TYPE))
       {

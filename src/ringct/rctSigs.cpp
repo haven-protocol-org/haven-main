@@ -46,6 +46,7 @@
 
 #include "bulletproofs.cc"
 #include "offshore/pricing_record.cpp"
+#include "ringct/rctTypes.h"
 
 using namespace crypto;
 using namespace std;
@@ -708,7 +709,7 @@ namespace rct {
           kv.push_back(p.t);
         }
       }
-      else if (rv.type == RCTTypeBulletproofPlus)
+      else if (rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit)
       {
         kv.reserve((6*2+6) * rv.p.bulletproofs_plus.size());
         for (const auto &p: rv.p.bulletproofs_plus)
@@ -1143,7 +1144,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(amounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit);
         }
 
         //set txn fee
@@ -1208,7 +1209,7 @@ namespace rct {
         for (size_t n = 0; n < mixRing.size(); ++n) {
           CHECK_AND_ASSERT_THROW_MES(index[n] < mixRing[n].size(), "Bad index into mixRing");
         }
-
+        //TO-DO##
         rctSig rv;
         if (bulletproof_or_plus)
         {
@@ -1323,6 +1324,7 @@ namespace rct {
                         sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
                       }
 
+                      //RCTTypeAudit should not be used for conversions, only for transfers
                       if (rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus) {
                         // save the collateral output mask for offshore
                         if (tx_type == tt::OFFSHORE && outamounts_features.at(i).second.first) {
@@ -1675,7 +1677,7 @@ namespace rct {
       std::vector<uint32_t> collateral_change_indices = {};
       //size_t max_non_bp_proofs = 0, offset = 0;
       using tt = cryptonote::transaction_type;
-      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
+      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
 
       const bool bulletproof = is_rct_bulletproof(rv.type);
       const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -2428,7 +2430,7 @@ namespace rct {
       {
         PERF_TIMER(verRctNonSemanticsSimple);
 
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit,
             false, "verRctNonSemanticsSimple called on non simple rctSig");
         const bool bulletproof = is_rct_bulletproof(rv.type);
         const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -2500,7 +2502,7 @@ namespace rct {
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;
@@ -2524,14 +2526,14 @@ namespace rct {
     }
 
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key &mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit,
             false, "decodeRct called on non simple rctSig");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus|| rv.type == RCTTypeSupplyAudit);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C;

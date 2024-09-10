@@ -200,6 +200,7 @@ namespace rct {
             case RCTTypeHaven2:
             case RCTTypeHaven3:
             case RCTTypeBulletproofPlus:
+            case RCTTypeSupplyAudit:
                 return true;
             default:
                 return false;
@@ -227,6 +228,7 @@ namespace rct {
         switch (type)
         {
             case RCTTypeBulletproofPlus:
+            case RCTTypeSupplyAudit:
                 return true;
             default:
                 return false;
@@ -254,6 +256,7 @@ namespace rct {
             case RCTTypeHaven2:
             case RCTTypeHaven3:
             case RCTTypeBulletproofPlus:
+            case RCTTypeSupplyAudit:
                 return true;
             default:
                 return false;

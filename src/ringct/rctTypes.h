@@ -308,6 +308,7 @@ namespace rct {
       RCTTypeHaven2 = 7, // Add public mask sum terms, remove extraneous fields (txnFee_usd,txnFee_xasset,txnOffshoreFee_usd,txnOffshoreFee_xasset)
       RCTTypeHaven3 = 8, // Add public mask sum term for collateral
       RCTTypeBulletproofPlus = 9,
+      RCTTypeSupplyAudit = 10,
     };
     enum RangeProofType { RangeProofBorromean, RangeProofBulletproof, RangeProofMultiOutputBulletproof, RangeProofPaddedBulletproof };
     struct RCTConfig {
@@ -344,7 +345,7 @@ namespace rct {
           FIELD(type)
           if (type == RCTTypeNull)
             return ar.good();
-          if (type != RCTTypeBulletproofPlus)
+          if (type != RCTTypeBulletproofPlus && type != RCTTypeSupplyAudit)
             return serialize_rctsig_base_old(ar, inputs, outputs);
           VARINT_FIELD(txnFee)
           VARINT_FIELD(txnOffshoreFee)
@@ -580,9 +581,9 @@ namespace rct {
             return false;
           if (type == RCTTypeNull)
             return ar.good();
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN && type != RCTTypeHaven2 && type != RCTTypeHaven3 && type != RCTTypeBulletproofPlus)
+          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeCLSAGN && type != RCTTypeHaven2 && type != RCTTypeHaven3 && type != RCTTypeBulletproofPlus && type != RCTTypeSupplyAudit)
             return false;
-          if (type == RCTTypeBulletproofPlus)
+          if (type == RCTTypeBulletproofPlus || type == RCTTypeSupplyAudit)
           {
             uint32_t nbp = bulletproofs_plus.size();
             VARINT_FIELD(nbp)
@@ -639,7 +640,7 @@ namespace rct {
             ar.end_array();
           }
 
-          if (type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus)
+          if (type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus || type == RCTTypeSupplyAudit)
           {
             ar.tag("CLSAGs");
             ar.begin_array();
@@ -730,7 +731,7 @@ namespace rct {
             }
             ar.end_array();
           }
-          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus)
+          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus || type == RCTTypeSupplyAudit)
           {
             ar.tag("pseudoOuts");
             ar.begin_array();
@@ -762,12 +763,12 @@ namespace rct {
 
         keyV& get_pseudo_outs()
         {
-          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus ? p.pseudoOuts : pseudoOuts;
+          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus || type == RCTTypeSupplyAudit ? p.pseudoOuts : pseudoOuts;
         }
 
         keyV const& get_pseudo_outs() const
         {
-          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus ? p.pseudoOuts : pseudoOuts;
+          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeCLSAGN || type == RCTTypeHaven2 || type == RCTTypeHaven3 || type == RCTTypeBulletproofPlus || type == RCTTypeSupplyAudit ? p.pseudoOuts : pseudoOuts;
         }
 
         BEGIN_SERIALIZE_OBJECT()

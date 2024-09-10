@@ -28,6 +28,7 @@
 
 #include <boost/range/adaptor/reversed.hpp>
 
+#include "ringct/rctTypes.h"
 #include "string_tools.h"
 #include "blockchain_db.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -260,7 +261,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
     else
     {
-      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3 || tx.rct_signatures.type == rct::RCTTypeBulletproofPlus) {
+      if (tx.rct_signatures.type == rct::RCTTypeHaven2 || tx.rct_signatures.type == rct::RCTTypeHaven3 || tx.rct_signatures.type == rct::RCTTypeBulletproofPlus || tx.rct_signatures.type == rct::RCTTypeSupplyAudit) {
         amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, unlock_time, tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
       } else {
         std::string output_asset_type;

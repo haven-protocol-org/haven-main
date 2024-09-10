@@ -621,7 +621,7 @@ static bool set_tx_rct_signatures(
 
   // rct_signatures component of tx
   rct::rctSig rv{};
-
+  //TO-DO##
   // set misc. fields
   switch (rct_config.bp_version)
   {
