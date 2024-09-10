@@ -2702,7 +2702,7 @@ namespace rct {
     return true;
   }
 
-  //! This function proves that K2=r*K, where r is the random number in the commitment rG+aH
+  //! This function proves that, for a fixed point K in the main subgroup, it holds that K2=r*K, where r is the random number in the output commitment rG+aH
   bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts){
 
     CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.G1), false, "Amount verification failed: G1 is not in the main group");
@@ -2714,7 +2714,7 @@ namespace rct {
 
     key zerokey = rct::identity();
     // Sum the consumed outputs
-    // We do not reuse the value from VerRctSemanticsSimple in order to ensure no errors happen
+    // We do not reuse the value from VerRctSemanticsSimple in order to reduce chances of errors
     key sumPseudoOuts = zerokey;
     for (auto po: pseudoOuts) {
       sumPseudoOuts = addKeys(sumPseudoOuts, po);
