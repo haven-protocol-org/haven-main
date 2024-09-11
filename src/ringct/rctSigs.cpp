@@ -2734,15 +2734,15 @@ namespace rct {
     challenge_to_hash.push_back(initKey);
     challenge_to_hash.push_back(amountproof.G1);
     challenge_to_hash.push_back(amountproof.K1);
-    challenge_to_hash.push_back(amountproof.H1); //Aren't we more secure if we exclude H1 from the challenge?
+    challenge_to_hash.push_back(amountproof.H1);
     challenge_to_hash.push_back(amountproof.K2);
     challenge_to_hash.push_back(sumPseudoOuts);
 
     
-    //Challenge
+    //Challenge c=H(init, G1, K1, H1,K2, C), which is in practise c=hash(r_r, r_r2, r2, r_a, r. a), see details below on notation 
     const key c=hash_to_scalar(challenge_to_hash);
     
-    //First check that sr*G+sa*H==G1+H1+c*C --> this proves nothing?!?
+    //First check that sr*G+sa*H==G1+H1+c*C
     //Assuming this holds, we can deduce the following:
     //We know that G1 and H1 are in the main subgroup, and that G and H are generators.
     //Therefore there exist r_r, r_a so that G1=r_r*G and H1=r_a*H
