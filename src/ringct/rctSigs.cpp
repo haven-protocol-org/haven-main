@@ -2712,9 +2712,13 @@ namespace rct {
     CHECK_AND_ASSERT_MES(sc_check(amountproof.sa.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
     CHECK_AND_ASSERT_MES(sc_check(amountproof.sr.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
 
-    key zerokey = rct::identity();
+    const key zerokey = rct::identity();
+    const key init_G =  scalarmultBase(d2h(1));
+    const key init_H =  scalarmultH(d2h(1));
+
     // Sum the consumed outputs
     // We do not reuse the value from VerRctSemanticsSimple in order to reduce chances of errors
+    
     key sumPseudoOuts = zerokey;
     for (auto po: pseudoOuts) {
       sumPseudoOuts = addKeys(sumPseudoOuts, po);
@@ -2724,7 +2728,7 @@ namespace rct {
     challenge_to_hash.reserve(6);
     key initKey;
     sc_0(initKey.bytes);
-    CHECK_AND_ASSERT_THROW_MES(sizeof(initKey.bytes)>=sizeof(config::HASH_KEY_AMOUNTPROOF), "Amount proof hash init string is too long");
+    CHECK_AND_ASSERT_MES(sizeof(initKey.bytes)>=sizeof(config::HASH_KEY_AMOUNTPROOF), false, "Amount proof hash init string is too long");
     memcpy(initKey.bytes,config::HASH_KEY_AMOUNTPROOF,min(sizeof(config::HASH_KEY_AMOUNTPROOF)-1, sizeof(initKey.bytes)-1));
     
     challenge_to_hash.push_back(initKey);
@@ -2734,13 +2738,15 @@ namespace rct {
     challenge_to_hash.push_back(amountproof.K2);
     challenge_to_hash.push_back(sumPseudoOuts);
 
+    
     //Challenge
     const key c=hash_to_scalar(challenge_to_hash);
-    //First check that sr*G+sa*H==G1+H1+c*C
+    
+    //First check that sr*G+sa*H==G1+H1+c*C --> this proves nothing?!?
     //Assuming this holds, we can deduce the following:
     //We know that G1 and H1 are in the main subgroup, and that G and H are generators.
     //Therefore there exist r_r, r_a so that G1=r_r*G and H1=r_a*H
-    //From here we derive (using that the hardness of DLP) that:
+    //From here we derive (using that the hardness of DLP and the fact that c=hash(r_r, r_r2, r2, r_a, r, a)) that:
     //(1) s_r*G==r_r*G+c*r*G
     //(2) s_a*H==r_a*H+c*a*H
     //We can cancel G and H, and derive:
@@ -2749,6 +2755,20 @@ namespace rct {
 
 
 
+    key saH = init_H;
+    key lhs = init_H;
+    key rhs = init_G;
+    key cC  = init_H;
+    
+    scalarmultBase(lhs, amountproof.sr); //lhs=s_r*G
+    saH=scalarmultH(amountproof.sa); //saH = s_a*H
+    addKeys(lhs, lhs, saH); //lhr=s_r*G+s_a*H
+
+    addKeys(rhs, amountproof.G1, amountproof.H1); //rhs=G1+H1
+    cC=scalarmultKey(sumPseudoOuts, c); // cC=c*C
+    addKeys(rhs, rhs, cC); //rhs=G1+H1+c+H
+
+    CHECK_AND_ASSERT_MES(equalKeys(lhs, rhs), false, "First check of amount proof verification failed");
 
     //Second, we check that s_r*K==K1+c*K2
     //Assuming this holds:
@@ -2759,16 +2779,27 @@ namespace rct {
     //r_r*K+c*r*K==r_r2*K+c*r2*K, now we cancel K
     //
     //r_r+c*r==r_r2+c*r2
-    //c=hash(r_r, r_r2, r2, r_a, r, a) /Question - what if c=hash(r_r, r_r2, r2, r, a) -> isn't this more secure? a has limited (64 bits) degrees of freedom, while r_a has 256 bits/
+    //c=hash(r_r, r_r2, r2, r_a, r, a) 
     //One solution is r_r==r_r2 and r==r2
     //If there is another solution, then we must have a hash collision, which is hard. 
-    // we can assume with negligible probability of the contrary that
+    // we can assume with negligible probability of the being false that
     // 
     //(3) r_r==r_r2
     //(4) r==r2
     //Therefore we have proven that:
     // K2=r*K
     // K1=r_r*K
+
+    lhs=init_H;
+    rhs=init_G;
+
+    
+    key K; //TO-DO## K definition - must be a hard-coded point, similar like G
+    lhs=scalarmultKey(K, amountproof.sr); //lhs = s_r*K
+    rhs=scalarmultKey(amountproof.K2, c); //rhs = c*K2
+    addKeys(rhs, rhs, amountproof.K1); //rhs = K1+c*K2
+    CHECK_AND_ASSERT_MES(equalKeys(lhs, rhs), false, "Second check of amount proof verification failed");
+
 
     return true;
   }
