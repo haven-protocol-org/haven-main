@@ -627,7 +627,7 @@ static bool set_tx_rct_signatures(
   {
   case 0:
   case 7:
-    rv.type = rct::RCTTypeBulletproofPlus;
+    rv.type = rct::RCTTypeBulletproofPlus; // Can be overwritten below if we have a supply audit transaction
     break;
   case 6:
     rv.type = rct::RCTTypeHaven3;
