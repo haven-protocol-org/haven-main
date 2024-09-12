@@ -1217,6 +1217,9 @@ namespace rct {
         {
           switch (rct_config.bp_version)
           {
+            case 8:
+              rv.type = RCTTypeSupplyAudit;
+              break;
             case 0:
             case 7:
               rv.type = RCTTypeBulletproofPlus;
