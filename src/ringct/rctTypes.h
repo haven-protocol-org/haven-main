@@ -285,7 +285,7 @@ namespace rct {
         key G1; //!< r_r*G
         key K1; //!< r_r*K
         key H1; //!< r_a*H
-        key K2; //!< r*K, where r is the r from C=r*G+a*H
+        //key K2; //!< r*K, where r is the r from C=r*G+a*H
         key sr; //!< sr = r_r + c*r, where r is the r from C=r*G+a*H
         key sa; //!< sr = r_a + c*a, where a is the r from C=r*G+a*H
         
@@ -293,7 +293,7 @@ namespace rct {
           FIELD(G1)
           FIELD(K1)
           FIELD(H1)
-          FIELD(K2)
+          //FIELD(K2)
           FIELD(sr)
           FIELD(sa)
         END_SERIALIZE()
@@ -356,7 +356,8 @@ namespace rct {
       xmr_amount txnOffshoreFee = 0;
       xmr_amount txnOffshoreFee_usd = 0;
       xmr_amount txnOffshoreFee_xasset = 0;
-      xmr_amount amount_encrypted = 0; //!< Encrypted input amount. Only relevant for Audit transaction
+      xmr_amount amount_encrypted = 0; //!< Encrypted input amount. Only relevant for Audit transaction. Will be used to reconstruct total supply.
+      key decryption_key = { {0x01, 0x00, 0x00,0x00 , 0x00, 0x00, 0x00,0x00 , 0x00, 0x00, 0x00,0x00 , 0x00, 0x00, 0x00,0x00 , 0x00, 0x00, 0x00,0x00 , 0x00, 0x00, 0x00,0x00 , 0x00, 0x00, 0x00,0x00 , 0x00, 0x00, 0x00,0x00  } };
       keyV maskSums; // contains 2 or 3 elements. 1. is the sum of masks of inputs. 2. is the sum of masks of change outputs. 3. mask of the col output.
       
         template<bool W, template <bool> class Archive>
@@ -419,6 +420,7 @@ namespace rct {
           }
           if(type==RCTTypeSupplyAudit){
             VARINT_FIELD(amount_encrypted)
+            FIELDS(decryption_key)
           }
           return ar.good();
         }

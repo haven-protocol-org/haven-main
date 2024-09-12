@@ -3299,6 +3299,123 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   return circulating_supply;
 }
 
+void BlockchainLMDB::recalculate_supply_after_audit(const std::string & supply_audit_decryption_key)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  
+  rct::key decrypt_private_key;
+  //TO-DO## Validate if this really makes sense in this way
+  rct::hash_to_scalar(decrypt_private_key, & supply_audit_decryption_key, sizeof(supply_audit_decryption_key));
+
+  check_open();
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+
+  int result = 0;
+
+  CURSOR(block_info)
+  CURSOR(blocks)
+
+  const uint64_t bc_height = height();
+  const uint64_t start_height=1700000;
+  uint64_t height=start_height;
+
+  //Initialize new total supply at 0
+  std::map<std::string, boost::multiprecision::int128_t> total_new_supply;
+  for (auto asset_type: offshore::ASSET_TYPES){
+    total_new_supply.insert(std::pair<std::string,boost::multiprecision::int128_t>(asset_type, 0));
+  }
+  
+
+  //TO-DO## split this in chunks, so that not all blocks are fetched at the same time, killing the daemon
+  std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
+  bool r = get_blocks_from(start_height, 1, 1000000, 1000, (1024*1024*1000), blocks, true, false, true);
+  if (!r)
+	  throw0(DB_ERROR("Failed to enumerate block information"));
+  
+  for(auto block_data: blocks){
+    if(get_hard_fork_version(height) >= HF_VERSION_SUPPLY_AUDIT){
+      for (auto tx_data: block_data.second){
+        transaction tx;
+        hash tx_hash=tx_data.first;
+        if (!parse_and_validate_tx_base_from_blob(tx_data.second, tx))
+          throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+        // get tx assets
+        std::string strSource;
+        std::string strDest;
+        if (!get_tx_asset_types(tx, tx_hash, strSource, strDest, false)) {
+          throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
+        }
+
+        bool is_mint_and_burn_tx = (strSource != strDest);
+        bool is_burn_tx = (strSource == strDest) && tx.amount_burnt > 0;
+        // NEAC : check for presence of offshore TX to see if we need to update circulating supply information
+        // Tay8NWWFKpz9JT4NXU0w: Also burn transactions affect the supply
+        if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (is_mint_and_burn_tx || is_burn_tx)) {  
+          // Offshore TX - update our records
+          circ_supply cs;
+          cs.tx_hash = tx_hash;
+          cs.pricing_record_height = tx.pricing_record_height;
+          cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
+          cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
+          cs.amount_burnt = tx.amount_burnt;
+          cs.amount_minted = tx.amount_minted;
+          MDB_val_set(val_circ_supply, cs);
+          result = mdb_cursor_put(m_cur_circ_supply, &val_tx_id, &val_circ_supply, MDB_APPEND);
+          if (result)
+            throw0(DB_ERROR(  lmdb_error("Failed to add tx circulating supply to db transaction: ", result).c_str()  ));
+
+          // update the tally table as well
+
+          // Get the current tally value for the source currency type
+          MDB_val_copy<uint64_t> source_idx(cs.source_currency_type);
+          boost::multiprecision::int128_t source_tally = read_circulating_supply_data(m_cur_circ_supply_tally, source_idx);
+          boost::multiprecision::int128_t final_source_tally = source_tally - cs.amount_burnt;
+          boost::multiprecision::int128_t coinbase = get_block_already_generated_coins(m_height-1);
+          if ((strSource == "XHV" && (coinbase + final_source_tally < 0)) ||
+              (strSource != "XHV" && final_source_tally < 0)) {
+            LOG_ERROR(__func__ << " : mint/burn underflow detected for " << strSource << " : correcting supply tally by " << final_source_tally);
+            final_source_tally = 0;
+          }
+          write_circulating_supply_data(m_cur_circ_supply_tally, source_idx, final_source_tally);
+
+          // Get the current tally value for the dest currency type
+          MDB_val_copy<uint64_t> dest_idx(cs.dest_currency_type);
+          boost::multiprecision::int128_t dest_tally = read_circulating_supply_data(m_cur_circ_supply_tally, dest_idx);
+          boost::multiprecision::int128_t final_dest_tally = dest_tally + cs.amount_minted;
+          write_circulating_supply_data(m_cur_circ_supply_tally, dest_idx, final_dest_tally);
+
+          LOG_PRINT_L2("tx ID " << tx_id << "\nSource tally before burn =" << source_tally.str() << "\nSource tally after burn =" << final_source_tally.str() <<
+                      "\nDest tally before mint =" << dest_tally.str() << "\nDest tally after mint =" << final_dest_tally.str());
+
+
+
+
+        if(tx.rct_signatures.type==rct::RCTTypeSupplyAudit){
+          rct::xmr_amount amount_decrypted=tx.rct_signatures.amount_encrypted;
+          rct::xmr_amount encryption_key=0;
+          
+          rct::key decryption_public_key=tx.rct_signatures.decryption_key;
+          
+          const rct::key rS = scalarmultKey(decryption_public_key,decrypt_private_key);
+          for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
+            encryption_key*=256; //Shift 1 bytes
+            encryption_key+=rS.bytes[i];  //Add current byte
+          }
+          amount_decrypted ^= encryption_key; //XOR using the encryption key
+          total_new_supply[strSource] += amount_decrypted;
+        } else if (tx.rct_signatures.type==rct::RCTTypeBulletproofPlus){
+
+        } else {
+          LOG_ERROR("Failed to recalculate supply, unsupported transaction type at block " << height);
+          throw0(DB_ERROR("Failed to recalculate supply, unsupported transaction type"));
+        }
+      }
+    }
+    height++;
+  }
+  
+}
+
 uint64_t BlockchainLMDB::num_outputs() const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);

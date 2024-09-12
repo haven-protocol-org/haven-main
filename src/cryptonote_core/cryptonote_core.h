@@ -1146,6 +1146,15 @@ namespace cryptonote
 
      std::shared_ptr<tools::Notify> m_block_rate_notify;
      boost::function<void(std::vector<txpool_event>)> m_zmq_pub;
+     
+     std::string m_supply_audit_decryption_key;
+
+      /**
+       * @brief recalculates the supply after the supply audit
+       *
+       * @return true
+       */
+      bool recalculate_supply_after_audit();
    };
 }
 

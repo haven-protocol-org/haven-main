@@ -148,7 +148,7 @@ namespace rct {
     key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
 
   bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const uint64_t& conversion_rate, const std::string& source, const std::string& destination, const uint8_t version);
-  bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts);
+  bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts, const key & decryption_key);
 }
 #endif  /* RCTSIGS_H */
 

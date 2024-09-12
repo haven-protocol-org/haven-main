@@ -2416,4 +2416,13 @@ namespace cryptonote
   {
     raise(SIGTERM);
   }
+  //-----------------------------------------------------------------------------------------------
+  bool core::recalculate_supply_after_audit(){ //To-DO##
+    if(m_supply_audit_decryption_key.size()==0){
+      MERROR_VER("Missing decryption key, supply can't be recalculated");
+      return false;
+    }
+    m_blockchain_storage.get_db().recalculate_supply_after_audit(m_supply_audit_decryption_key);
+    return true;
+  }
 }
