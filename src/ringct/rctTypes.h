@@ -356,6 +356,7 @@ namespace rct {
       xmr_amount txnOffshoreFee = 0;
       xmr_amount txnOffshoreFee_usd = 0;
       xmr_amount txnOffshoreFee_xasset = 0;
+      xmr_amount amount_encrypted = 0; //!< Encrypted input amount. Only relevant for Audit transaction
       keyV maskSums; // contains 2 or 3 elements. 1. is the sum of masks of inputs. 2. is the sum of masks of change outputs. 3. mask of the col output.
       
         template<bool W, template <bool> class Archive>
@@ -415,6 +416,9 @@ namespace rct {
               ar.delimit_array();
             FIELDS(maskSums[2])
               ar.end_array();
+          }
+          if(type==RCTTypeSupplyAudit){
+            VARINT_FIELD(amount_encrypted)
           }
           return ar.good();
         }

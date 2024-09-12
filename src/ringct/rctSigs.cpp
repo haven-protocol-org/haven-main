@@ -1249,6 +1249,7 @@ namespace rct {
         using tt = cryptonote::transaction_type;
         bool conversion_tx = tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD;
         bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3;
+        bool supply_audit_tx = rv.type == RCTTypeSupplyAudit;
 
         rv.message = message;
         rv.outPk.resize(destinations.size());
@@ -1488,6 +1489,15 @@ namespace rct {
         sc_sub(a[actual_in_amounts[i].first].bytes, sumout.bytes, sumpouts.bytes);
         genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
 
+        
+        //Sum of blinding factors, to be used for the supply audit
+        //Defining PseudooutsMaskSums as const, to ensure it is not modified 
+        key PseudooutsMaskSumsTemp = zero();
+        if (supply_audit_tx) {
+          sc_add(PseudooutsMaskSumsTemp.bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
+        }
+        const key PseudooutsMaskSums = PseudooutsMaskSumsTemp;
+
         // set the sum of input blinding factors
         if (conversion_tx) {
           // HERE BE DRAGONS!!!
@@ -1528,6 +1538,80 @@ namespace rct {
             {
                 rv.p.MGs[i] = proveRctMGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], index[i], hwdev);
             }
+        }
+
+        //Add amount proof in case of a supply audit tx
+        if (supply_audit_tx){
+          //G1=r_r*G
+          //K1=r_r*K
+          //H1=r_a*H
+          //K2=r*K
+          //s_r=r_r+r*c
+          //s_a=r_a+a*c
+          //C=sum of PseudoOuts
+
+          const key zerokey = rct::identity();
+
+          AmountProof amountproof;
+          key r_r;
+          key r_a;
+          key K; //TO-DO## K initialization
+          key S; //TO-DO## S initialization
+          
+          //Calculate sum of pseudoouts
+          key sumPseudoOuts=zerokey;
+          for (auto po: pseudoOuts){
+            addKeys(sumPseudoOuts, sumPseudoOuts, po);
+          }
+
+          skGen(r_r); //Generate random r_r
+          skGen(r_a); //Generate random r_a
+          
+          amountproof.G1=scalarmultBase(r_r);
+          amountproof.K1=scalarmultKey(K,r_r);
+          amountproof.H1=scalarmultH(r_a);
+          amountproof.K2=scalarmultKey(K,PseudooutsMaskSums);
+
+          //Challenge c=H(init, G1, K1, H1,K2, C), where C is the sum of pseudoouts
+          keyV challenge_to_hash;
+          challenge_to_hash.reserve(6);
+          key initKey;
+          sc_0(initKey.bytes);
+          CHECK_AND_ASSERT_THROW_MES(sizeof(initKey.bytes)>=sizeof(config::HASH_KEY_AMOUNTPROOF), "Amount proof hash init string is too long");
+          memcpy(initKey.bytes,config::HASH_KEY_AMOUNTPROOF,min(sizeof(config::HASH_KEY_AMOUNTPROOF)-1, sizeof(initKey.bytes)-1));
+    
+          challenge_to_hash.push_back(initKey);
+          challenge_to_hash.push_back(amountproof.G1); 
+          challenge_to_hash.push_back(amountproof.K1);
+          challenge_to_hash.push_back(amountproof.H1);
+          challenge_to_hash.push_back(amountproof.K2);
+          challenge_to_hash.push_back(sumPseudoOuts);
+          const key c=hash_to_scalar(challenge_to_hash);
+          //Calculate s_r
+          sc_muladd(amountproof.sr.bytes, r_r.bytes, c.bytes, PseudooutsMaskSums.bytes);
+          //Calculate s_a=r_a+c*a
+          amountproof.sa=r_a;
+          for (auto in_amount: inamounts){ //add (input amounts)*r
+            sc_muladd(amountproof.sa.bytes, amountproof.sa.bytes, c.bytes, d2h(in_amount).bytes);
+          }
+
+          //Calculate encrypted amount
+          rv.amount_encrypted=0;
+          for (auto in_amount: inamounts){ //add (input amounts)*r
+            rv.amount_encrypted += in_amount;
+            CHECK_AND_ASSERT_THROW_MES(rv.amount_encrypted>=in_amount, "Overflow occured, sum of inputs exceeds the maximum xmr amount");
+          }
+          xmr_amount encryption_key=0;
+          const key rS = scalarmultKey(S,PseudooutsMaskSums);
+          for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
+            encryption_key*=256; //Shift 1 bytes
+            encryption_key+=rS.bytes[i];  //Add current byte
+          }
+          rv.amount_encrypted ^= encryption_key; //XOR using the encryption key
+          
+          //Post proof
+          rv.p.amountproofs.clear();
+          rv.p.amountproofs.push_back(amountproof);
         }
         return rv;
     }
@@ -2710,7 +2794,7 @@ namespace rct {
     CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.H1), false, "Amount verification failed: H1 is not in the main group");
     CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.K2), false, "Amount verification failed: K2 is not in the main group");
     CHECK_AND_ASSERT_MES(sc_check(amountproof.sa.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
-    CHECK_AND_ASSERT_MES(sc_check(amountproof.sr.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
+    CHECK_AND_ASSERT_MES(sc_check(amountproof.sr.bytes) == 0, false, "Amount verification failed: bad scalar s_r");
 
     const key zerokey = rct::identity();
     const key init_G =  scalarmultBase(d2h(1));
@@ -2732,7 +2816,7 @@ namespace rct {
     memcpy(initKey.bytes,config::HASH_KEY_AMOUNTPROOF,min(sizeof(config::HASH_KEY_AMOUNTPROOF)-1, sizeof(initKey.bytes)-1));
     
     challenge_to_hash.push_back(initKey);
-    challenge_to_hash.push_back(amountproof.G1);
+    challenge_to_hash.push_back(amountproof.G1); 
     challenge_to_hash.push_back(amountproof.K1);
     challenge_to_hash.push_back(amountproof.H1);
     challenge_to_hash.push_back(amountproof.K2);
