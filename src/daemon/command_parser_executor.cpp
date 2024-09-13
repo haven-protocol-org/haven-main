@@ -316,6 +316,22 @@ bool t_command_parser_executor::print_transaction(const std::vector<std::string>
   return true;
 }
 
+bool t_command_parser_executor::recalculate_supply(const std::vector<std::string>& args)
+{
+  if (args.empty())
+  {
+    std::cout << "Invalid syntax: At least one parameter expected. For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  const std::string& secret_phrase = args.front();
+  crypto::secret_key decrypt_private_key;
+  //TO-DO## Validate if this really makes sense in this way
+  crypto::hash_to_scalar(&secret_phrase, secret_phrase.size(), decrypt_private_key);
+  m_executor.recalculate_supply(decrypt_private_key);
+  return true;
+}
+
 bool t_command_parser_executor::is_key_image_spent(const std::vector<std::string>& args)
 {
   if (args.empty())

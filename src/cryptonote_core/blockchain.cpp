@@ -637,6 +637,32 @@ void Blockchain::pop_blocks(uint64_t nblocks)
   }
 }
 //------------------------------------------------------------------
+// This function recalculates the supply after the supply audit
+void Blockchain::recalculate_supply_after_audit(rct::key decrypt_private_key)
+{
+ 
+  CRITICAL_REGION_LOCAL(m_tx_pool);
+  CRITICAL_REGION_LOCAL1(m_blockchain_lock);
+
+  bool stop_batch = m_db->batch_start();
+
+  try
+  {
+    m_db->recalculate_supply_after_audit(decrypt_private_key);
+  }
+  catch (const std::exception& e)
+  {
+    LOG_ERROR("Error when when recalculating the supply" << e.what());
+    if (stop_batch)
+      m_db->batch_abort();
+    return;
+  }
+
+
+  if (stop_batch)
+    m_db->batch_stop();
+}
+//------------------------------------------------------------------
 // This function tells BlockchainDB to remove the top block from the
 // blockchain and then returns all transactions (except the miner tx, of course)
 // from it to the tx_pool

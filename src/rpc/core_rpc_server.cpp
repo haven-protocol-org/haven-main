@@ -3214,6 +3214,17 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_recalculate_supply(const COMMAND_RPC_RECALCULATE_SUPPLY::request& req, COMMAND_RPC_RECALCULATE_SUPPLY::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(recalculate_supply); //TO-DO## error handling!
+
+    m_core.get_blockchain_storage().recalculate_supply_after_audit(req.decrypt_private_key);
+    
+    res.status = CORE_RPC_STATUS_OK;
+
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_relay_tx(const COMMAND_RPC_RELAY_TX::request& req, COMMAND_RPC_RELAY_TX::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(relay_tx);

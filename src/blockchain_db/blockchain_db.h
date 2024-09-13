@@ -1182,7 +1182,7 @@ public:
    *
    * @param supply_audit_decryption_key Decryption key for amount_encrypted
    */
-  virtual void recalculate_supply_after_audit(const std::string & supply_audit_decryption_key) = 0;
+  virtual void recalculate_supply_after_audit(const rct::key & supply_audit_decryption_key) = 0;
   
 
   /**

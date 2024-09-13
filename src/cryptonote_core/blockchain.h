@@ -1135,6 +1135,13 @@ namespace cryptonote
      * @param nblocks number of blocks to be removed
      */
     void pop_blocks(uint64_t nblocks);
+        
+    /**
+     * @brief recalculate supply after the supply audit
+     *
+     * @param decrypt_private_key: Secret key for decryption of Audit transaction amounts
+     */
+    void recalculate_supply_after_audit(rct::key decrypt_private_key);
 
     /**
      * @brief checks whether a given block height is included in the precompiled block hash area

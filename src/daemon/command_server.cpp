@@ -336,6 +336,12 @@ t_command_server::t_command_server(
     , "flush_cache [bad-txs] [bad-blocks]"
     , "Flush the specified cache(s)."
     );
+    m_command_lookup.set_handler(
+      "recalculate_supply"
+    , std::bind(&t_command_parser_executor::recalculate_supply, &m_parser, p::_1)
+    , "recalculate_supply <amount decryption secret phrase>"
+    , "Decrypts audit transaction amounts using the decryption phrase and recalculates the circulating supply"
+    );
 }
 
 bool t_command_server::process_command_str(const std::string& cmd)
