@@ -1721,6 +1721,16 @@ bool wallet2::is_spent(const transfer_details &td, bool strict) const
     return td.m_spent;
   }
 }
+//REMOVE AFTER SUPPLY AUDIT START
+//----------------------------------------------------------------------------------------------------
+//! Returns true if an output must undergo a supply audit
+bool wallet2::is_old_output(const transfer_details &td)
+{
+  uint64_t block_supply_audit_start;
+  get_hard_fork_info(HF_VERSION_SUPPLY_AUDIT, block_supply_audit_start);
+  return td.m_block_height<block_supply_audit_start;
+}
+//REMOVE AFTER SUPPLY AUDIT END
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_spent(size_t idx, bool strict) const
 {
@@ -8595,6 +8605,7 @@ void wallet2::light_wallet_get_outs(std::vector<std::vector<tools::wallet2::get_
 
   {
     const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
+    //TO-DO## Make sure only Pool 1 or Pool 2 outputs are selected during the Audit
     bool r = epee::net_utils::invoke_http_json("/get_random_outs", oreq, ores, *m_http_client, rpc_timeout, "POST");
     m_daemon_rpc_mutex.unlock();
     THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_random_outs");
@@ -8730,6 +8741,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
 {
   LOG_PRINT_L2("fake_outputs_count: " << fake_outputs_count);
 
+  using anon=cryptonote::anonymity_pool;
   if(m_light_wallet && fake_outputs_count > 0) {
     light_wallet_get_outs(outs, selected_transfers, fake_outputs_count);
     return;
@@ -8751,21 +8763,39 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     uint64_t rct_start_height;
     bool has_rct = false;
     bool use_global_outs = false;
-    const std::string rct_asset_type = m_transfers[selected_transfers[0]].asset_type; 
+    const std::string rct_asset_type = m_transfers[selected_transfers[0]].asset_type;
+    const bool first_is_old_output = is_old_output(m_transfers[selected_transfers[0]]);
+    const anon anon_pool = first_is_old_output ? anon::POOL_1 : anon::POOL_2;
+    uint64_t block_supply_audit_start;
+    uint64_t min_pool_output_height = 0;
+    uint64_t max_pool_output_height = 0;
+    
+    get_hard_fork_info(HF_VERSION_SUPPLY_AUDIT, block_supply_audit_start);
+    for (auto sd: selected_transfers){
+      THROW_WALLET_EXCEPTION_IF(is_old_output(m_transfers[sd]) == first_is_old_output, error::wallet_internal_error, "Cant get mixings from both before and after the audit start");
+    }
+    if (anon_pool==anon::POOL_1){
+      min_pool_output_height = 0;
+      max_pool_output_height = block_supply_audit_start-1;
+    } else if (anon_pool==anon::POOL_2){
+      min_pool_output_height = block_supply_audit_start;
+      max_pool_output_height = 0;
+    } else {
+      THROW_WALLET_EXCEPTION_IF(false, error::wallet_internal_error, "Unknown anonymity pool");  
+    }
+
     uint64_t max_rct_index = 0;
     for (size_t idx: selected_transfers)
     {
       if (m_transfers[idx].is_rct())
       {
-        // use_global_outs should either always be true or false, because the single rct distribution requested in get_rct_distribution below 
-        // will either be the distribution of all global outputs, or the distribution of outputs by asset type. This check makes
-        // sure the use_global_outs boolean will not be flipped when set in the next line.
+        // Only asset type outputs can be used after HF_VERSION_SUPPLY_AUDIT
         THROW_WALLET_EXCEPTION_IF(has_rct && ((use_global_outs && m_transfers[idx].m_asset_type_output_index_known) || (!use_global_outs && !m_transfers[idx].m_asset_type_output_index_known)),
           error::wallet_internal_error, "Mismatch of global outputs and asset type outputs");
 
         has_rct = true;
-        use_global_outs = !m_transfers[idx].m_asset_type_output_index_known;
-        uint64_t rct_index = use_global_outs ? m_transfers[idx].m_global_output_index : m_transfers[idx].m_asset_type_output_index;
+        use_global_outs = false;
+        uint64_t rct_index = m_transfers[idx].m_asset_type_output_index;
         max_rct_index = std::max(max_rct_index, rct_index);
       }
     }
@@ -8781,13 +8811,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     // When use_global_outs is false, each element corresponds to the cumulative total number of outputs of a particular asset 
     // type from that block number and below. The client will then use these to select fake outputs using asset type output id's.
     // In the example above, even if there were 100 XHV outputs in block 0, the XUSD rct_offsets could still be: [5, 12, 15]
-    // 
-    // When use_global_outs is true, each element corresponds to the cumulative total number of all outputs. The client will then
-    // make selections of outputs using global outputs, potentially revealing which input is the user's in the ring (e.g.
-    // if the tx is an XBTC transfer, and the ring has 10 XHV outputs in it and 1 XBTC output, this reveals the user's real output).
-    // use_global_outs should only be true when connected to a node < v17. Eventually it should never be true, when nodes 
-    // require users to use rings constructed with outputs of the same asset type.
-    //
+ 
     const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution(use_global_outs, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
     
     THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
@@ -10253,6 +10277,7 @@ void wallet2::light_wallet_get_unspent_outs()
 
 
   m_daemon_rpc_mutex.lock();
+  //TO-DO##
   bool r = invoke_http_json("/get_unspent_outs", oreq, ores, rpc_timeout, "POST");
   m_daemon_rpc_mutex.unlock();
   THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_unspent_outs");
@@ -10820,7 +10845,60 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const bool need_slippage = use_fork_rules(HF_VERSION_SLIPPAGE, 0) && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD);
   const uint64_t current_height = get_blockchain_current_height()-1;
   const uint32_t hf_version = get_current_hard_fork();
-  const auto specific_transfers = get_specific_transfers(source_asset);
+  
+  //REMOVE AFTER SUPPLY AUDIT START
+  transfers_iterator_container specific_transfers;
+  if(hf_version==HF_VERSION_SUPPLY_AUDIT) {
+  
+    const size_t tx_weight_one_ring = estimate_tx_weight(use_rct, 1, fake_outs_count, 2, 0, bulletproof, clsag, bulletproof_plus, use_view_tags);
+    const size_t tx_weight_two_rings = estimate_tx_weight(use_rct, 2, fake_outs_count, 2, 0, bulletproof, clsag, bulletproof_plus, use_view_tags);
+    THROW_WALLET_EXCEPTION_IF(tx_weight_one_ring > tx_weight_two_rings, error::wallet_internal_error, "Estimated tx weight with 1 input is larger than with 2 inputs!");
+    const size_t tx_weight_per_ring = tx_weight_two_rings - tx_weight_one_ring;
+    const uint64_t fractional_threshold = (base_fee * tx_weight_per_ring) / (use_per_byte_fee ? 1 : 1024);
+
+    THROW_WALLET_EXCEPTION_IF(source_asset!=dest_asset, error::wallet_internal_error, "cant have conversion transactions during the supply audit");
+    uint64_t needed_money=0;
+    uint64_t old_money=0;
+    uint64_t new_money=0;
+    for(auto& dt: dsts)
+      needed_money+=dt.amount;
+
+    for(auto& td: m_transfers){
+      if (td.asset_type==source_asset && !is_spent(td, false) && !td.m_frozen && td.is_rct() && td.amount() > fractional_threshold && is_transfer_unlocked(td) && td.m_subaddr_index.major == subaddr_account && subaddr_indices.count(td.m_subaddr_index.minor) == 1)
+        if(is_old_output(td)){
+          old_money+=td.amount();
+        } else {
+          new_money+=td.amount();  
+        }
+    }
+    
+    LOG_PRINT_L2("Needed money: " << needed_money << ", available old money: " << old_money << ", available new money: " << new_money);       
+    THROW_WALLET_EXCEPTION_IF(needed_money>(old_money+new_money), error::wallet_internal_error, "Not enough money to construction the transaction");
+    //TO-DO## Better error message
+    THROW_WALLET_EXCEPTION_IF((needed_money>old_money) && (needed_money>new_money), error::wallet_internal_error, "Transaction needs to spent both new and old money, which is not permited. Try completing the supply audit by sending to yourself amount");
+    if (needed_money<=old_money){
+      LOG_PRINT_L2("Trying to use only old money");
+      for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
+        if (i->asset_type == source_asset && is_old_output(*i))
+          specific_transfers.push_back(i);
+      }
+    } else {
+      LOG_PRINT_L2("Trying to use only new money");
+      for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
+        if (i->asset_type == source_asset && !is_old_output(*i))
+          specific_transfers.push_back(i);
+      }  
+    }
+
+  } else { //Default behaviour, use all money
+      for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
+      if (i->asset_type == source_asset)
+        specific_transfers.push_back(i);
+      }    
+  }
+  //REMOVE AFTER SUPPLY AUDIT END AND UNCOMMENT THE LINE BELOW
+  //const auto specific_transfers = get_specific_transfers(source_asset);
+
   offshore::pricing_record pricing_record;
   uint64_t conversion_rate = COIN;
   uint64_t fee_conversion_rate = COIN;
@@ -10968,7 +11046,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   THROW_WALLET_EXCEPTION_IF(tx_weight_one_ring > tx_weight_two_rings, error::wallet_internal_error, "Estimated tx weight with 1 input is larger than with 2 inputs!");
   const size_t tx_weight_per_ring = tx_weight_two_rings - tx_weight_one_ring;
   const uint64_t fractional_threshold = (base_fee * tx_weight_per_ring) / (use_per_byte_fee ? 1 : 1024);
-
+ 
   // gather all dust and non-dust outputs belonging to specified subaddresses
   size_t num_nondust_outputs = 0;
   size_t num_dust_outputs = 0;
