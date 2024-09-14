@@ -8808,9 +8808,9 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     uint64_t rct_start_height;
     bool has_rct = false;
     bool use_global_outs = false;
-    const std::string rct_asset_type = m_transfers[selected_transfers[0]].asset_type;
+    const std::string rct_asset_type = m_transfers[selected_transfers[0]].asset_type; 
     const bool first_is_old_output = is_old_output(m_transfers[selected_transfers[0]]);
-    const anon anon_pool = first_is_old_output ? anon::POOL_1 : anon::POOL_2;
+    const anon rct_anon_pool = first_is_old_output ? anon::POOL_1 : anon::POOL_2;
     uint64_t block_supply_audit_start;
     uint64_t min_pool_output_height = 0;
     uint64_t max_pool_output_height = 0;
@@ -8818,6 +8818,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     get_hard_fork_info(HF_VERSION_SUPPLY_AUDIT, block_supply_audit_start);
     for (auto sd: selected_transfers){
       THROW_WALLET_EXCEPTION_IF(is_old_output(m_transfers[sd]) == first_is_old_output, error::wallet_internal_error, "Cant get mixings from both before and after the audit start");
+      THROW_WALLET_EXCEPTION_IF(m_transfers[sd].asset_type == rct_asset_type, error::wallet_internal_error, "Cant get mixings for different assets");
     }
     if (anon_pool==anon::POOL_1){
       min_pool_output_height = 0;
@@ -8837,7 +8838,6 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         // Only asset type outputs can be used after HF_VERSION_SUPPLY_AUDIT
         THROW_WALLET_EXCEPTION_IF(has_rct && ((use_global_outs && m_transfers[idx].m_asset_type_output_index_known) || (!use_global_outs && !m_transfers[idx].m_asset_type_output_index_known)),
           error::wallet_internal_error, "Mismatch of global outputs and asset type outputs");
-
         has_rct = true;
         use_global_outs = false;
         uint64_t rct_index = m_transfers[idx].m_asset_type_output_index;
@@ -8856,7 +8856,17 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     // When use_global_outs is false, each element corresponds to the cumulative total number of outputs of a particular asset 
     // type from that block number and below. The client will then use these to select fake outputs using asset type output id's.
     // In the example above, even if there were 100 XHV outputs in block 0, the XUSD rct_offsets could still be: [5, 12, 15]
- 
+
+    uint64_t output_offset_for_anon_pool=0;
+
+    if (min_pool_output_height>0){
+      const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution_block_range(0, min_pool_output_height-1, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
+      THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
+        error::get_output_distribution, "Failed to get rct distribution");
+      THROW_WALLET_EXCEPTION_IF(rct_offsets.size() > 0,
+        error::get_output_distribution, "No rct outputs found");
+      output_offset_for_anon_pool=rct_offsets.back();
+    }
     const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution_block_range(min_pool_output_height, max_pool_output_height, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
     
     THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
@@ -8865,7 +8875,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     // check we're clear enough of rct start, to avoid corner cases below
     THROW_WALLET_EXCEPTION_IF(rct_offsets.size() <= CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE,
         error::get_output_distribution, "Not enough rct outputs");
-    THROW_WALLET_EXCEPTION_IF(rct_offsets.back() <= max_rct_index,
+    THROW_WALLET_EXCEPTION_IF(rct_offsets.back() + output_offset_for_anon_pool <= max_rct_index,
         error::get_output_distribution, "Daemon reports suspicious number of rct outputs");
 
     // get histogram for the amounts we need
