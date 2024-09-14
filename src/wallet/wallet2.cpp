@@ -10789,7 +10789,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
   const bool bulletproof_plus = use_fork_rules(get_bulletproof_plus_fork(), 0);
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
-  const rct::RCTConfig rct_config {
+  const rct::RCTConfig rct_config { //TO-DO##
     rct::RangeProofPaddedBulletproof,
     bulletproof_plus ? 7 : use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
                   use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
