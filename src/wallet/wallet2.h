@@ -1856,6 +1856,7 @@ private:
     hw::device& lookup_device(const std::string & device_descriptor);
 
     bool get_rct_distribution(const bool use_global_outs, const std::string rct_asset_type, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &num_spendable_global_outs);
+    bool get_rct_distribution_block_range(const uint64_t from_height, const uint64_t to_height, const std::string rct_asset_type, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &num_spendable_global_outs);
 
     uint64_t get_segregation_fork_height() const;
 

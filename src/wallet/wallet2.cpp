@@ -4181,6 +4181,51 @@ bool wallet2::get_rct_distribution(const bool use_global_outs, const std::string
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::get_rct_distribution_block_range(const uint64_t from_height, const uint64_t to_height, const std::string rct_asset_type, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &num_spendable_global_outs)
+{
+  MDEBUG("Requesting rct distribution");
+
+  cryptonote::COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request req = AUTO_VAL_INIT(req);
+  cryptonote::COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response res = AUTO_VAL_INIT(res);
+  req.amounts.push_back(0);
+  req.from_height = from_height;
+  req.to_height = to_height;
+  req.rct_asset_type = rct_asset_type;
+  req.default_tx_spendable_age = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
+  req.cumulative = true;
+  req.binary = true;
+  req.compress = true;
+
+  bool r;
+  try
+  {
+    const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
+    uint64_t pre_call_credits = m_rpc_payment_state.credits;
+    req.client = get_client_signature();
+    r = net_utils::invoke_http_bin("/get_output_distribution.bin", req, res, *m_http_client, rpc_timeout);
+    THROW_ON_RPC_RESPONSE_ERROR_GENERIC(r, {}, res, "/get_output_distribution.bin");
+    check_rpc_cost("/get_output_distribution.bin", res.credits, pre_call_credits, COST_PER_OUTPUT_DISTRIBUTION_0);
+  }
+  catch(...)
+  {
+    return false;
+  }
+  if (res.distributions.size() != 1)
+  {
+    MWARNING("Failed to request output distribution: not the expected single result");
+    return false;
+  }
+  if (res.distributions[0].amount != 0)
+  {
+    MWARNING("Failed to request output distribution: results are not for amount 0");
+    return false;
+  }
+  start_height = res.distributions[0].data.start_height;
+  num_spendable_global_outs = res.distributions[0].data.num_spendable_global_outs;
+  distribution = std::move(res.distributions[0].data.distribution);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 void wallet2::detach_blockchain(uint64_t height, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
   LOG_PRINT_L0("Detaching blockchain on height " << height);
@@ -8812,7 +8857,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     // type from that block number and below. The client will then use these to select fake outputs using asset type output id's.
     // In the example above, even if there were 100 XHV outputs in block 0, the XUSD rct_offsets could still be: [5, 12, 15]
  
-    const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution(use_global_outs, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
+    const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution_block_range(min_pool_output_height, max_pool_output_height, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
     
     THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
         error::get_output_distribution, "Failed to get rct distribution");
