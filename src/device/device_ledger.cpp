@@ -1966,7 +1966,7 @@ namespace hw {
           memmove(this->buffer_send+offset, data+C_offset,32);
           offset += 32;
           C_offset += 32;
-          if (type==rct::RCTTypeBulletproof2 || type==rct::RCTTypeCLSAG || type==rct::RCTTypeBulletproofPlus) {
+          if (type==rct::RCTTypeBulletproof2 || type==rct::RCTTypeCLSAG || type==rct::RCTTypeBulletproofPlus || type==rct::RCTTypeSupplyAudit) {
             //k
             memset(this->buffer_send+offset, 0, 32);
             offset += 32;

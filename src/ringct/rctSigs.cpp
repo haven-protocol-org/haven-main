@@ -1453,7 +1453,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(outamounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit);
         }
 
         //set txn fee
@@ -1806,9 +1806,9 @@ namespace rct {
       if (during_supply_audit){ //Conversions disabled, Audit tx spends from Pool 1, non-Audit spends from Pool 2, burn not permited 
         CHECK_AND_ASSERT_MES(rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit, false, "Only RCTTypeBulletproofPlus and Audit transactions permited after the supply Audit");
         if (rv.type == RCTTypeSupplyAudit)
-          CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_1, false, "Supply audit transactions should have anonymity pool 1");
+          CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_1, false, "Supply audit transactions should have anonymity pool 1");
         if (rv.type == RCTTypeBulletproofPlus)
-          CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_2, false, "Regular transactions after the audit start should have anonymity pool 2");
+          CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_2, false, "Regular transactions after the audit start should have anonymity pool 2");
         CHECK_AND_ASSERT_MES(tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER, false, "Only transfers allowed during the supply audit period");
         CHECK_AND_ASSERT_MES(amount_burnt==0, false, "Burn transaction not allowed during the supply audit period");
       }
@@ -2805,6 +2805,7 @@ namespace rct {
     const key zerokey = rct::identity();
     const key init_G =  scalarmultBase(d2h(1));
     const key init_H =  scalarmultH(d2h(1));
+    const key K = scalarmultBase(d2h(10)); //TO-DO## K initialization
 
     // Sum the consumed outputs
     // We do not reuse the value from VerRctSemanticsSimple in order to reduce chances of errors
@@ -2858,7 +2859,7 @@ namespace rct {
     cC=scalarmultKey(sumPseudoOuts, c); // cC=c*C
     addKeys(rhs, rhs, cC); //rhs=G1+H1+c+H
 
-    CHECK_AND_ASSERT_MES(equalKeys(lhs, rhs), false, "First check of amount proof verification failed");
+    CHECK_AND_ASSERT_MES(!equalKeys(lhs, rhs), false, "First check of amount proof verification failed");
 
     //Second, we check that s_r*K==K1+c*K2
     //Assuming this holds:
@@ -2883,13 +2884,13 @@ namespace rct {
     lhs=init_H;
     rhs=init_G;
 
-    const key K = scalarmultBase(d2h(10)); //TO-DO## K initialization
+    
 
     //key K; //TO-DO## K definition - must be a hard-coded point, similar like G
     lhs=scalarmultKey(K, amountproof.sr); //lhs = s_r*K
     rhs=scalarmultKey(decryption_key, c); //rhs = c*K2
     addKeys(rhs, rhs, amountproof.K1); //rhs = K1+c*K2
-    CHECK_AND_ASSERT_MES(equalKeys(lhs, rhs), false, "Second check of amount proof verification failed");
+    CHECK_AND_ASSERT_MES(!equalKeys(lhs, rhs), false, "Second check of amount proof verification failed");
 
 
     return true;

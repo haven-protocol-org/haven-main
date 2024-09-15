@@ -104,8 +104,8 @@ namespace cryptonote
   struct tx_destination_entry
   {
     std::string original;
-    uint64_t amount;              // destination money in source asset
-    uint64_t dest_amount;         // destination money in dest asset
+    uint64_t amount;              //! destination money in source asset
+    uint64_t dest_amount;         //! destination money in dest asset
     uint64_t slippage;            // destination money in source asset that will be burnt as slippage
     uint64_t supply_burnt;            // amount of source asset to be permanently burnt as part of a transfer
     std::string dest_asset_type;  // destination asset type

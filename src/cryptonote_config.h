@@ -266,7 +266,7 @@
 
 // Haven v4.2 definitions
 #define HF_VERSION_SUPPLY_AUDIT                 25
-#define SUPPLY_AUDIT_BLOCK_HEIGHT       ((uint64_t)1656720)
+#define SUPPLY_AUDIT_BLOCK_HEIGHT       ((uint64_t)1705700)
 
 #define HF_VERSION_SUPPLY_AUDIT_END             26
 

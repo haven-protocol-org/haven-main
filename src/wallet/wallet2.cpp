@@ -10013,6 +10013,9 @@ void wallet2::transfer_selected_rct(
     );
   } else {
     // make a normal tx
+    for(const auto & sd: splitted_dsts){
+      LOG_PRINT_L2("Destination amounts "<<sd.amount << ", " << sd.dest_amount <<".");  
+    }
     bool r = cryptonote::construct_tx_and_get_tx_key(
       source_asset,
       dest_asset,
@@ -10825,10 +10828,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
   auto original_dsts = dsts;
 
-  for (const auto &d: original_dsts){
-    MDEBUG("Originally expected destination amount(s) " << d.dest_amount << d.amount);
-  }
-
   if(m_light_wallet) {
     // Populate m_transfers
     light_wallet_get_unspent_outs();
@@ -10954,8 +10953,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     uint64_t old_money=0;
     uint64_t new_money=0;
     for(auto& dt: dsts)
-      needed_money+=dt.amount;
-
+      {
+        needed_money += dt.amount;
+      }
     for(auto& td: m_transfers){
       LOG_PRINT_L2("td_asset_type: " << td.asset_type << ", source_asset: " << source_asset << "(spent, frozen, rct): "<<is_spent(td, false)<<td.m_frozen << td.is_rct() << " amount, fractioanl amount: "<< td.amount() << " " << fractional_threshold);
       if (td.asset_type==source_asset && !is_spent(td, false) && !td.m_frozen && td.is_rct() && td.amount() > fractional_threshold && is_transfer_unlocked(td) && td.m_subaddr_index.major == subaddr_account && (subaddr_indices.empty() || subaddr_indices.count(td.m_subaddr_index.minor) == 1))
@@ -11022,9 +11022,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
     // Sanity check that we are actually doing a conversion
     if (source_asset == dest_asset) {
-      
+      LOG_PRINT_L2("Updating: destination and source amounts are the same for transfers, " << dt.amount);
       dt.dest_amount = dt.amount; // for regular transfers
-
     } else {
 
       bool r = false;
@@ -11709,6 +11708,9 @@ skip_tx:
   for (const auto &d: original_dsts){
     MDEBUG("Expected destination amount before sanity check: " << d.dest_amount << d.amount);
   }
+  for (const auto &d: dsts){
+    MDEBUG("Expected destination amount before sanity check: " << d.dest_amount << d.amount);
+  }
   THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, original_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
 
   // if we made it this far, we're OK to actually send the transactions
@@ -11769,7 +11771,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
         std::string proof = get_tx_proof(ptx.tx, ptx.tx_key, ptx.additional_tx_keys, address, r.second.second, "automatic-sanity-check");
         check_tx_proof(ptx.tx, address, r.second.second, "automatic-sanity-check", proof, received);
       }
-      catch (const std::exception &e) { received = 0; }
+      catch (const std::exception &e) { LOG_PRINT_L2("Error during tx proof: " << e.what()); received = 0; }
       total_received += received;
     }
 
@@ -12894,8 +12896,10 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
         rct::addKeys2(Ctmp, ecdh_info.mask, ecdh_info.amount, rct::H);
         if (rct::equalKeys(C, Ctmp))
           amount = rct::h2d(ecdh_info.amount);
-        else
+        else{
           amount = 0;
+          LOG_PRINT_L2("Amount validation failed! Amount: " << ecdh_info.amount << ", mask: " << ecdh_info.mask << ", Ctmp: " << Ctmp <<", C:"<<C);
+        }
       }
       received += amount;
     }
