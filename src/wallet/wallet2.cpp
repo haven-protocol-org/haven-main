@@ -8802,40 +8802,19 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     THROW_WALLET_EXCEPTION_IF(result, error::wallet_internal_error, "Failed to get height");
     bool is_shortly_after_segregation_fork = height >= segregation_fork_height && height < segregation_fork_height + SEGREGATION_FORK_VICINITY;
     bool is_after_segregation_fork = height >= segregation_fork_height;
-
     // if we have at least one rct out, get the distribution, or fall back to the previous system
     std::vector<uint64_t> rct_offsets;
     uint64_t rct_start_height;
     bool has_rct = false;
     bool use_global_outs = false;
     const std::string rct_asset_type = m_transfers[selected_transfers[0]].asset_type; 
-    const bool first_is_old_output = is_old_output(m_transfers[selected_transfers[0]]);
-    const anon rct_anon_pool = first_is_old_output ? anon::POOL_1 : anon::POOL_2;
-    uint64_t block_supply_audit_start;
-    uint64_t min_pool_output_height = 0;
-    uint64_t max_pool_output_height = 0;
-    
-    get_hard_fork_info(HF_VERSION_SUPPLY_AUDIT, block_supply_audit_start);
-    for (auto sd: selected_transfers){
-      THROW_WALLET_EXCEPTION_IF(is_old_output(m_transfers[sd]) == first_is_old_output, error::wallet_internal_error, "Cant get mixings from both before and after the audit start");
-      THROW_WALLET_EXCEPTION_IF(m_transfers[sd].asset_type == rct_asset_type, error::wallet_internal_error, "Cant get mixings for different assets");
-    }
-    if (anon_pool==anon::POOL_1){
-      min_pool_output_height = 0;
-      max_pool_output_height = block_supply_audit_start-1;
-    } else if (anon_pool==anon::POOL_2){
-      min_pool_output_height = block_supply_audit_start;
-      max_pool_output_height = 0;
-    } else {
-      THROW_WALLET_EXCEPTION_IF(false, error::wallet_internal_error, "Unknown anonymity pool");  
-    }
 
     uint64_t max_rct_index = 0;
     for (size_t idx: selected_transfers)
     {
       if (m_transfers[idx].is_rct())
       {
-        // Only asset type outputs can be used after HF_VERSION_SUPPLY_AUDIT
+        // Only asset type outputs can be used after HF_VERSION_SUPPLY_AUDIT due to anonymity pool split
         THROW_WALLET_EXCEPTION_IF(has_rct && ((use_global_outs && m_transfers[idx].m_asset_type_output_index_known) || (!use_global_outs && !m_transfers[idx].m_asset_type_output_index_known)),
           error::wallet_internal_error, "Mismatch of global outputs and asset type outputs");
         has_rct = true;
@@ -8843,6 +8822,67 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         uint64_t rct_index = m_transfers[idx].m_asset_type_output_index;
         max_rct_index = std::max(max_rct_index, rct_index);
       }
+    }
+
+    //Anonymity pool logic
+    //If we have started with the supply audit, we need to split the decoys based on the pool of the selected_transfers
+
+    uint64_t min_pool_output_height = 0; //! Height at which the anon pool starts
+    uint64_t max_pool_output_height = 0; //! Height at which the anon pool ends, 0 if it has no end
+
+    uint64_t min_pool_output_index = 0; //! First output index (based on asset type) for the anon pool
+    uint64_t max_pool_output_index = std::numeric_limits<uint64_t>::max(); //! Last output index (based on asset type) for the anon pool
+
+    uint64_t block_supply_audit_start = std::numeric_limits<uint64_t>::max(); //! Only initalized after HF_VERSION_SUPPLY_AUDIT
+
+    const bool first_is_old_output = is_old_output(m_transfers[selected_transfers[0]]); //! Is this an old output from Pool 1?
+    const anon anon_pool = first_is_old_output ? anon::POOL_1 : anon::POOL_2;
+
+
+    if ( hf_version >= HF_VERSION_SUPPLY_AUDIT){
+
+      uint64_t output_index_pool_1_min = 0;
+      uint64_t output_index_pool_1_max = std::numeric_limits<uint64_t>::max();
+
+      uint64_t output_index_pool_2_min = std::numeric_limits<uint64_t>::max();
+      uint64_t output_index_pool_2_max = std::numeric_limits<uint64_t>::max();
+
+      for (auto sd: selected_transfers){
+        THROW_WALLET_EXCEPTION_IF(is_old_output(m_transfers[sd]) == first_is_old_output, error::wallet_internal_error, "Cant get mixings from both before and after the audit start");
+        THROW_WALLET_EXCEPTION_IF(m_transfers[sd].asset_type == rct_asset_type, error::wallet_internal_error, "Cant get mixings for different assets");
+      }
+
+      if (anon_pool==anon::POOL_1){
+        LOG_PRINT_L2("Searching for mixins from Pool 1");
+        min_pool_output_height = 0;
+        max_pool_output_height = block_supply_audit_start-1;
+      } else if (anon_pool==anon::POOL_2){
+        LOG_PRINT_L2("Searching for mixins from Pool 2");
+        min_pool_output_height = block_supply_audit_start;
+        max_pool_output_height = 0;
+      } else {
+        THROW_WALLET_EXCEPTION_IF(false, error::wallet_internal_error, "Unknown anonymity pool");  
+      }
+
+      get_hard_fork_info(HF_VERSION_SUPPLY_AUDIT, block_supply_audit_start);
+      const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution_block_range(0, block_supply_audit_start-1, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
+      THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
+        error::get_output_distribution, "Failed to get rct distribution");
+      THROW_WALLET_EXCEPTION_IF(rct_offsets.size() > 0,
+        error::get_output_distribution, "No rct outputs found");
+      output_index_pool_1_max = rct_offsets.back();
+      output_index_pool_2_min=output_index_pool_1_max+1;
+
+      if (anon_pool==anon::POOL_1){
+        min_pool_output_index = output_index_pool_1_min;
+        max_pool_output_index = output_index_pool_1_max;
+      } else if (anon_pool==anon::POOL_2){
+        min_pool_output_index = output_index_pool_2_min;
+        max_pool_output_index = output_index_pool_2_max;
+      } else {
+        THROW_WALLET_EXCEPTION_IF(false, error::wallet_internal_error, "Unknown anonymity pool");  
+      }
+      LOG_PRINT_L2("Output index must be between "<<min_pool_output_index << " and " << max_pool_output_index << " in order to be in the right pool");
     }
 
     // rct_offsets is a vector, where each position in the vector corresponds to a block number, in order.
@@ -8857,16 +8897,6 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     // type from that block number and below. The client will then use these to select fake outputs using asset type output id's.
     // In the example above, even if there were 100 XHV outputs in block 0, the XUSD rct_offsets could still be: [5, 12, 15]
 
-    uint64_t output_offset_for_anon_pool=0;
-
-    if (min_pool_output_height>0){
-      const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution_block_range(0, min_pool_output_height-1, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
-      THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
-        error::get_output_distribution, "Failed to get rct distribution");
-      THROW_WALLET_EXCEPTION_IF(rct_offsets.size() > 0,
-        error::get_output_distribution, "No rct outputs found");
-      output_offset_for_anon_pool=rct_offsets.back();
-    }
     const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution_block_range(min_pool_output_height, max_pool_output_height, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
     
     THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
@@ -8875,7 +8905,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     // check we're clear enough of rct start, to avoid corner cases below
     THROW_WALLET_EXCEPTION_IF(rct_offsets.size() <= CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE,
         error::get_output_distribution, "Not enough rct outputs");
-    THROW_WALLET_EXCEPTION_IF(rct_offsets.back() + output_offset_for_anon_pool <= max_rct_index,
+    THROW_WALLET_EXCEPTION_IF(rct_offsets.back() <= max_rct_index,
         error::get_output_distribution, "Daemon reports suspicious number of rct outputs");
 
     // get histogram for the amounts we need
@@ -9197,21 +9227,21 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
             // gamma distribution
             if (num_found -1 < recent_outputs_count + pre_fork_outputs_count)
             {
-              do i = gamma->pick(); while (i >= segregation_limit[amount].first);
+              do i = gamma->pick(); while (i >= segregation_limit[amount].first && i >= min_pool_output_index && i <= max_pool_output_index); //Ensure we pick from the right anon pool
               type = "pre-fork gamma";
             }
             else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count + post_fork_outputs_count)
             {
-              do i = gamma->pick(); while (i < segregation_limit[amount].first || i >= num_outs);
+              do i = gamma->pick(); while ((i < segregation_limit[amount].first || i >= num_outs) && ((i >= min_pool_output_index) && (i <= max_pool_output_index))); //Ensure we pick from the right anon pool
               type = "post-fork gamma";
             }
             else
             {
-              do i = gamma->pick(); while (i >= num_outs);
+              do i = gamma->pick(); while (i >= num_outs && i >= min_pool_output_index && i <= max_pool_output_index); //Ensure we pick from the right anon pool
               type = "gamma";
             }
           }
-          else if (num_found - 1 < recent_outputs_count) // -1 to account for the real one we seeded with
+          else if (num_found - 1 < recent_outputs_count) // -1 to account for the real one we seeded with //TO-DO##
           {
             // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
@@ -9224,7 +9254,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
           }
           else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count)
           {
-            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
+            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit //TO-DO##
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
             double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
             i = (uint64_t)(frac*segregation_limit[amount].first);
@@ -9233,7 +9263,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
               --i;
             type = " pre-fork";
           }
-          else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count + post_fork_outputs_count)
+          else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count + post_fork_outputs_count) //TO-DO##
           {
             // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
@@ -9246,7 +9276,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
           }
           else
           {
-            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
+            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit //TO-DO##
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
             double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
             i = (uint64_t)(frac*num_outs);
@@ -10869,7 +10899,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
   const bool bulletproof_plus = use_fork_rules(get_bulletproof_plus_fork(), 0);
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
-  const rct::RCTConfig rct_config { //TO-DO##
+  //CHANGE AFTER SUPPLY AUDIT
+  rct::RCTConfig rct_config { //TO-DO## make const again after the supply audit
     rct::RangeProofPaddedBulletproof,
     bulletproof_plus ? 7 : use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
                   use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
@@ -10937,6 +10968,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         if (i->asset_type == source_asset && is_old_output(*i))
           specific_transfers.push_back(i);
       }
+      rct_config.bp_version=8;
     } else {
       LOG_PRINT_L2("Trying to use only new money");
       for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
