@@ -1552,14 +1552,14 @@ namespace rct {
           //s_r=r_r+r*c
           //s_a=r_a+a*c
           //C=sum of PseudoOuts
-
+          LOG_PRINT_L2("Generating amount proof signature");
           const key zerokey = rct::identity();
 
           AmountProof amountproof;
           key r_r;
           key r_a;
-          key K; //TO-DO## K initialization
-          key S; //TO-DO## S initialization
+          key K = scalarmultBase(d2h(10)); //TO-DO## K initialization
+          key S = scalarmultH(d2h(100)); //TO-DO## S initialization
           
           //Calculate sum of pseudoouts
           key sumPseudoOuts=zerokey;
@@ -1617,6 +1617,7 @@ namespace rct {
           //Post proof
           rv.p.amountproofs.clear();
           rv.p.amountproofs.push_back(amountproof);
+          LOG_PRINT_L2("Amount proof generated");
         }
         return rv;
     }
@@ -2882,8 +2883,9 @@ namespace rct {
     lhs=init_H;
     rhs=init_G;
 
-    
-    key K; //TO-DO## K definition - must be a hard-coded point, similar like G
+    const key K = scalarmultBase(d2h(10)); //TO-DO## K initialization
+
+    //key K; //TO-DO## K definition - must be a hard-coded point, similar like G
     lhs=scalarmultKey(K, amountproof.sr); //lhs = s_r*K
     rhs=scalarmultKey(decryption_key, c); //rhs = c*K2
     addKeys(rhs, rhs, amountproof.K1); //rhs = K1+c*K2

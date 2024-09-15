@@ -8831,7 +8831,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     uint64_t max_pool_output_height = 0; //! Height at which the anon pool ends, 0 if it has no end
 
     uint64_t min_pool_output_index = 0; //! First output index (based on asset type) for the anon pool
-    uint64_t max_pool_output_index = std::numeric_limits<uint64_t>::max(); //! Last output index (based on asset type) for the anon pool
+    uint64_t max_pool_output_index = std::numeric_limits<uint64_t>::max()-1; //! Last output index (based on asset type) for the anon pool
 
     uint64_t block_supply_audit_start = std::numeric_limits<uint64_t>::max(); //! Only initalized after HF_VERSION_SUPPLY_AUDIT
 
@@ -8842,14 +8842,15 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     if ( hf_version >= HF_VERSION_SUPPLY_AUDIT){
 
       uint64_t output_index_pool_1_min = 0;
-      uint64_t output_index_pool_1_max = std::numeric_limits<uint64_t>::max();
+      uint64_t output_index_pool_1_max = std::numeric_limits<uint64_t>::max()-1;
 
-      uint64_t output_index_pool_2_min = std::numeric_limits<uint64_t>::max();
-      uint64_t output_index_pool_2_max = std::numeric_limits<uint64_t>::max();
+      uint64_t output_index_pool_2_min = std::numeric_limits<uint64_t>::max()-1;
+      uint64_t output_index_pool_2_max = std::numeric_limits<uint64_t>::max()-1;
 
       for (auto sd: selected_transfers){
-        THROW_WALLET_EXCEPTION_IF(is_old_output(m_transfers[sd]) == first_is_old_output, error::wallet_internal_error, "Cant get mixings from both before and after the audit start");
-        THROW_WALLET_EXCEPTION_IF(m_transfers[sd].asset_type == rct_asset_type, error::wallet_internal_error, "Cant get mixings for different assets");
+        LOG_PRINT_L2("Index "<< sd << " , is_old_output: " << is_old_output(m_transfers[sd]));
+        THROW_WALLET_EXCEPTION_IF(is_old_output(m_transfers[sd]) != first_is_old_output, error::wallet_internal_error, "Cant get mixings from both before and after the audit start");
+        THROW_WALLET_EXCEPTION_IF(m_transfers[sd].asset_type != rct_asset_type, error::wallet_internal_error, "Cant get mixings for different assets");
       }
 
       if (anon_pool==anon::POOL_1){
@@ -8865,10 +8866,11 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       }
 
       get_hard_fork_info(HF_VERSION_SUPPLY_AUDIT, block_supply_audit_start);
+      LOG_PRINT_L2("Supply audit start block: " << block_supply_audit_start);
       const bool has_rct_distribution = has_rct && (!rct_offsets.empty() || get_rct_distribution_block_range(0, block_supply_audit_start-1, rct_asset_type, rct_start_height, rct_offsets, num_spendable_global_outs));
       THROW_WALLET_EXCEPTION_IF(!has_rct_distribution,
         error::get_output_distribution, "Failed to get rct distribution");
-      THROW_WALLET_EXCEPTION_IF(rct_offsets.size() > 0,
+      THROW_WALLET_EXCEPTION_IF(rct_offsets.size() == 0,
         error::get_output_distribution, "No rct outputs found");
       output_index_pool_1_max = rct_offsets.back();
       output_index_pool_2_min=output_index_pool_1_max+1;
@@ -10823,6 +10825,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
   auto original_dsts = dsts;
 
+  for (const auto &d: original_dsts){
+    MDEBUG("Originally expected destination amount(s) " << d.dest_amount << d.amount);
+  }
+
   if(m_light_wallet) {
     // Populate m_transfers
     light_wallet_get_unspent_outs();
@@ -10935,7 +10941,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   //REMOVE AFTER SUPPLY AUDIT START
   transfers_iterator_container specific_transfers;
   if(hf_version==HF_VERSION_SUPPLY_AUDIT) {
-  
+
+    LOG_PRINT_L2("Source asset:" << source_asset << ", destination asset:" << dest_asset);  
     const size_t tx_weight_one_ring = estimate_tx_weight(use_rct, 1, fake_outs_count, 2, 0, bulletproof, clsag, bulletproof_plus, use_view_tags);
     const size_t tx_weight_two_rings = estimate_tx_weight(use_rct, 2, fake_outs_count, 2, 0, bulletproof, clsag, bulletproof_plus, use_view_tags);
     THROW_WALLET_EXCEPTION_IF(tx_weight_one_ring > tx_weight_two_rings, error::wallet_internal_error, "Estimated tx weight with 1 input is larger than with 2 inputs!");
@@ -10950,7 +10957,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       needed_money+=dt.amount;
 
     for(auto& td: m_transfers){
-      if (td.asset_type==source_asset && !is_spent(td, false) && !td.m_frozen && td.is_rct() && td.amount() > fractional_threshold && is_transfer_unlocked(td) && td.m_subaddr_index.major == subaddr_account && subaddr_indices.count(td.m_subaddr_index.minor) == 1)
+      LOG_PRINT_L2("td_asset_type: " << td.asset_type << ", source_asset: " << source_asset << "(spent, frozen, rct): "<<is_spent(td, false)<<td.m_frozen << td.is_rct() << " amount, fractioanl amount: "<< td.amount() << " " << fractional_threshold);
+      if (td.asset_type==source_asset && !is_spent(td, false) && !td.m_frozen && td.is_rct() && td.amount() > fractional_threshold && is_transfer_unlocked(td) && td.m_subaddr_index.major == subaddr_account && (subaddr_indices.empty() || subaddr_indices.count(td.m_subaddr_index.minor) == 1))
         if(is_old_output(td)){
           old_money+=td.amount();
         } else {
@@ -11698,6 +11706,9 @@ skip_tx:
     ptx_vector.push_back(tx.ptx);
   }
 
+  for (const auto &d: original_dsts){
+    MDEBUG("Expected destination amount before sanity check: " << d.dest_amount << d.amount);
+  }
   THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, original_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
 
   // if we made it this far, we're OK to actually send the transactions
@@ -11716,7 +11727,9 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
   {
     required[d.addr].first += d.dest_amount;
     required[d.addr].second = d.is_subaddress;
+    MDEBUG("Expected destination amount " << d.dest_amount);
   }
+  
 
   // add change
   uint64_t change = 0;
@@ -11727,6 +11740,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
         change += m_transfers[idx].amount();
     change -= ptx.fee;
   }
+  MDEBUG("Remaining amount after fees:" << change);
   for (const auto &r: required)
     change -= r.second.first;
   MDEBUG("Adding " << cryptonote::print_money(change) << " expected change");

@@ -1921,6 +1921,7 @@ namespace cryptonote
         return false;
       }
       
+      LOG_PRINT_L2("Preparing RCT signatures");
       crypto::hash tx_prefix_hash;
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;

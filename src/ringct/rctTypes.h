@@ -420,6 +420,7 @@ namespace rct {
           }
           if(type==RCTTypeSupplyAudit){
             VARINT_FIELD(amount_encrypted)
+            ar.tag("decryption_key");
             FIELDS(decryption_key)
           }
           return ar.good();
