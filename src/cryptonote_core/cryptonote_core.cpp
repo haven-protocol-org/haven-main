@@ -1168,7 +1168,7 @@ namespace cryptonote
         case rct::RCTTypeSupplyAudit:
           if (!is_canonical_bulletproof_plus_layout(rv.p.bulletproofs_plus))
           {
-            MERROR_VER("Bulletproof_plus does not have canonical form");
+            MERROR_VER("SupplyAudit does not have canonical form");
             set_semantics_failed(tx_info[n].tx_hash);
             tx_info[n].tvc.m_verifivation_failed = true;
             tx_info[n].result = false;

@@ -729,6 +729,16 @@ namespace rct {
           for (size_t n = 0; n < p.R.size(); ++n)
             kv.push_back(p.R[n]);
         }
+        if (rv.type == RCTTypeSupplyAudit){ //Add amount proof
+        kv.reserve(5*rv.p.amountproofs.size());
+          for (const auto &ap: rv.p.amountproofs){
+            kv.push_back(ap.G1);
+            kv.push_back(ap.K1);
+            kv.push_back(ap.H1);
+            kv.push_back(ap.sa);
+            kv.push_back(ap.sr);
+          }
+        }
       }
       else
       {
@@ -1526,24 +1536,7 @@ namespace rct {
         DP(pseudoOuts[onshore_col_in_amounts[i].first]);
         DP(pseudoOuts[i]);
 
-        key full_message = get_pre_mlsag_hash(rv,hwdev);
-
-        for (i = 0 ; i < inamounts.size(); i++)
-        {
-            if (is_rct_clsag(rv.type))
-            {
-                if (hwdev.get_mode() == hw::device::TRANSACTION_CREATE_FAKE)
-                    rv.p.CLSAGs[i] = make_dummy_clsag(rv.mixRing[i].size());
-                else
-                    rv.p.CLSAGs[i] = proveRctCLSAGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], index[i], hwdev);
-            }
-            else
-            {
-                rv.p.MGs[i] = proveRctMGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], index[i], hwdev);
-            }
-        }
-
-        //Add amount proof in case of a supply audit tx
+//Add amount proof in case of a supply audit tx
         if (supply_audit_tx){
           //G1=r_r*G
           //K1=r_r*K
@@ -1619,6 +1612,25 @@ namespace rct {
           rv.p.amountproofs.push_back(amountproof);
           LOG_PRINT_L2("Amount proof generated");
         }
+
+        key full_message = get_pre_mlsag_hash(rv,hwdev);
+
+        for (i = 0 ; i < inamounts.size(); i++)
+        {
+            if (is_rct_clsag(rv.type))
+            {
+                if (hwdev.get_mode() == hw::device::TRANSACTION_CREATE_FAKE)
+                    rv.p.CLSAGs[i] = make_dummy_clsag(rv.mixRing[i].size());
+                else
+                    rv.p.CLSAGs[i] = proveRctCLSAGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], index[i], hwdev);
+            }
+            else
+            {
+                rv.p.MGs[i] = proveRctMGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], index[i], hwdev);
+            }
+        }
+
+        
         return rv;
     }
 
