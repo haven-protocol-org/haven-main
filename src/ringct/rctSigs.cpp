@@ -1825,7 +1825,7 @@ namespace rct {
         CHECK_AND_ASSERT_MES(amount_burnt==0, false, "Burn transaction not allowed during the supply audit period");
       }
       if (after_supply_audit){ // All transactions spent from Pool 2, audit tx not permited 
-        CHECK_AND_ASSERT_MES(tx_anon_pool != anon::POOL_2, false, "Transactions after the audit end should have anonymity pool 2");
+        CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_2, false, "Transactions after the audit end should have anonymity pool 2");
         CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Audit transactions permited only during the audit period");  
       }
       //Supply audit transaction should have one amount proof, and only audit transactions should have an amount proof
@@ -1836,6 +1836,8 @@ namespace rct {
       
        
       CHECK_AND_ASSERT_MES((strSource != strDest) == (tx_type == tt::ONSHORE || tx_type==tt::OFFSHORE || tx_type==tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET), false, "Mismatch between source/dest assets and transaction type");
+      CHECK_AND_ASSERT_MES((strSource == strDest) == (tx_type == tt::TRANSFER || tx_type==tt::OFFSHORE_TRANSFER || tx_type==tt::XASSET_TRANSFER ), false, "Mismatch between source/dest assets(equal) and transaction type");
+      
       if (strSource != strDest) {
         CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
@@ -1861,8 +1863,8 @@ namespace rct {
         for (auto inp: vin) {
           cryptonote::txin_haven_key inp_haven_key=boost::get<cryptonote::txin_haven_key>(inp);
           CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets.size()>0, false, "Input without decoys found");
-          //TO-DO## Somehow get the first "new" output instead of 100
-          CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets[0]>100, false, "Input seems too old");
+          //TO-DO## Somehow get the first "new" output instead of 1
+          CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets[0]>1, false, "Input seems too old");
         }
       }
 
