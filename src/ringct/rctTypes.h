@@ -776,15 +776,10 @@ namespace rct {
           if (type==RCTTypeSupplyAudit){
             ar.tag("amountproofs");
             ar.begin_array();
-            PREPARE_CUSTOM_VECTOR_SERIALIZATION(inputs, amountproofs);
+            PREPARE_CUSTOM_VECTOR_SERIALIZATION(1, amountproofs);
             if (amountproofs.size() != 1) //Only one amount proof permited
               return false;
-            for (size_t i = 0; i < inputs; ++i)
-            {
-              FIELDS(amountproofs[i])
-              if (inputs - i > 1)
-                ar.delimit_array();
-            }
+            FIELDS(amountproofs[0])
             ar.end_array();
           }
           return ar.good();
