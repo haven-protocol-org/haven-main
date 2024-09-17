@@ -3340,7 +3340,6 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & supply_audi
 
   while(height < bc_height && after_audit_start) {
     block b = get_block_from_height(height);
-    MDEBUG("height: " << height);
     if (!audit_blocked_reached)
       audit_blocked_reached=(get_hard_fork_version(height) == HF_VERSION_SUPPLY_AUDIT);
     if(audit_blocked_reached){
