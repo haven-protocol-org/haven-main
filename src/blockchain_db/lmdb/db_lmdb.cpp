@@ -3387,7 +3387,6 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & supply_audi
           MDEBUG("height,amount_decrypted,tx: " << height<<","<<amount_decrypted<<","<<tx_hash);
           uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
           total_new_supply[dest_currency_type] += amount_decrypted; //Sum of outgoing amounts
-          total_new_supply[dest_currency_type] += tx.rct_signatures.txnFee; //Transaction fee. As this is a transfer, this is the only fee applicable.
         } else { //check if we already have a transaction record
             MDB_val v;
             result = mdb_cursor_get(m_cur_circ_supply, &val_tx_id, &v, MDB_SET);
