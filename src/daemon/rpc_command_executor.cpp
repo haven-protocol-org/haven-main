@@ -2337,14 +2337,14 @@ bool t_rpc_command_executor::pop_blocks(uint64_t num_blocks)
   return true;
 }
 
-bool t_rpc_command_executor::recalculate_supply(crypto::secret_key decrypt_private_key)
+bool t_rpc_command_executor::recalculate_supply(rct::key decrypt_private_key)
 {
   cryptonote::COMMAND_RPC_RECALCULATE_SUPPLY::request req;
   cryptonote::COMMAND_RPC_RECALCULATE_SUPPLY::response res;
   std::string fail_message = "recalculate_supply failed";
 
   int pos=0;
-  for (auto d: decrypt_private_key.data){
+  for (auto d: decrypt_private_key.bytes){
     req.decrypt_private_key[pos]=d;
     pos++;
   }

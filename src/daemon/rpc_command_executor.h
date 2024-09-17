@@ -156,7 +156,7 @@ public:
 
   bool pop_blocks(uint64_t num_blocks);
 
-  bool recalculate_supply(crypto::secret_key decrypt_private_key);
+  bool recalculate_supply(rct::key decrypt_private_key);
 
   bool prune_blockchain();
 

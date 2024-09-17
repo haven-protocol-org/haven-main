@@ -318,16 +318,41 @@ bool t_command_parser_executor::print_transaction(const std::vector<std::string>
 
 bool t_command_parser_executor::recalculate_supply(const std::vector<std::string>& args)
 {
-  if (args.empty())
+  if (args.size() !=2 )
   {
-    std::cout << "Invalid syntax: At least one parameter expected. For more details, use the help command." << std::endl;
+    std::cout << "Invalid syntax: Exactly 2 parameters expected. For more details, use the help command." << std::endl;
     return true;
   }
 
-  const std::string& secret_phrase = args.front();
-  crypto::secret_key decrypt_private_key;
+  const std::string& secret_phrase_1 = args[0];
+  const std::string& secret_phrase_2 = args[1];
+
   //TO-DO## Validate if this really makes sense in this way
-  crypto::hash_to_scalar(&secret_phrase, secret_phrase.size(), decrypt_private_key);
+  
+  rct::keyV string_to_scalar;
+  rct::key initKey1, initKey2;
+  sc_0(initKey1.bytes);
+  sc_0(initKey2.bytes);
+  uint64_t pos=0;
+  for(auto s: secret_phrase_1){
+    if(pos >= sizeof(initKey1.bytes))
+      break;
+    initKey1.bytes[pos]=s;
+    pos++;
+  }
+  pos=0;
+  for(auto s: secret_phrase_2){
+    if(pos >= sizeof(initKey2.bytes))
+      break;
+    initKey2.bytes[pos]=s;
+    pos++;
+  }
+
+  string_to_scalar.push_back(initKey1);
+  string_to_scalar.push_back(initKey2);
+
+  const rct::key decrypt_private_key = hash_to_scalar(string_to_scalar);
+  std::cout << "Decrypt private key:" << decrypt_private_key;
   m_executor.recalculate_supply(decrypt_private_key);
   return true;
 }

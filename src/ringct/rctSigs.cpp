@@ -1536,7 +1536,7 @@ namespace rct {
         DP(pseudoOuts[onshore_col_in_amounts[i].first]);
         DP(pseudoOuts[i]);
 
-//Add amount proof in case of a supply audit tx
+        //Add amount proof in case of a supply audit tx
         if (supply_audit_tx){
           //G1=r_r*G
           //K1=r_r*K
@@ -1551,8 +1551,8 @@ namespace rct {
           AmountProof amountproof;
           key r_r;
           key r_a;
-          key K = scalarmultBase(d2h(10)); //TO-DO## K initialization
-          key S = scalarmultH(d2h(100)); //TO-DO## S initialization
+          const key K = scalarmultBase(d2h(10)); //TO-DO## K initialization, S initialization
+          const key S = {{0x71, 0x1c, 0xca, 0x0f, 0x50, 0x86, 0x90, 0x49, 0x3e, 0xd3, 0x90, 0x84, 0x69, 0x57, 0xf1, 0x66, 0x2d, 0xf4, 0x5f, 0xc3, 0xd7, 0xc2, 0x25, 0xcc, 0xc6, 0x48, 0xbf, 0xb0, 0x9b, 0x08, 0x64, 0x4e}};
           
           //Calculate sum of pseudoouts
           key sumPseudoOuts=zerokey;

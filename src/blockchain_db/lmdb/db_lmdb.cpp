@@ -989,6 +989,7 @@ read_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val idx)
 void write_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val idx, boost::multiprecision::int128_t tally)
 {
   // packing the Boost 128-bit signed integer into 2 uint64's + a sign bit
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   circ_supply_tally cst;
 
   // From the Boost docs, bitwise operations on negative values "Yields the value, but not the bit pattern, that would result from
@@ -3315,11 +3316,12 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & supply_audi
 
   CURSOR(block_info)
   CURSOR(blocks)
+  CURSOR(circ_supply)
   CURSOR(circ_supply_tally)
 
   const uint64_t bc_height = height();
   const uint64_t start_height=1700000;
-  uint64_t height=start_height;
+  uint64_t height = start_height;
 
   //Initialize new total supply at 0
   std::map<uint64_t, boost::multiprecision::int128_t> total_new_supply;
@@ -3330,73 +3332,78 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & supply_audi
   }
 
   uint64_t coinbase_at_start_of_audit = 0;
-  const bool after_audit_start=get_hard_fork_version(bc_height);
+  const bool after_audit_start = get_hard_fork_version(bc_height - 1) >= HF_VERSION_SUPPLY_AUDIT;
+  bool audit_blocked_reached = false;
 
   //TO-DO## split this in chunks, so that not all blocks are fetched at the same time, killing the daemon
   std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
 
   while(height < bc_height && after_audit_start) {
-    bool r = get_blocks_from(height, 1, 100000, 1000, (1024*1024*100), blocks, true, false, true);
-    if (!r)
-      throw0(DB_ERROR("Failed to enumerate block information"));
-    for(auto block_data: blocks){
-      if(get_hard_fork_version(height) >= HF_VERSION_SUPPLY_AUDIT){
-        if (coinbase_at_start_of_audit == 0) { //All coins minted by mining prior to the audit will have to undergo audit, so have to be removed from the coinbase supply
-          coinbase_at_start_of_audit=get_block_already_generated_coins(height-1);
+    block b = get_block_from_height(height);
+    MDEBUG("height: " << height);
+    if (!audit_blocked_reached)
+      audit_blocked_reached=(get_hard_fork_version(height) == HF_VERSION_SUPPLY_AUDIT);
+    if(audit_blocked_reached){
+      if (coinbase_at_start_of_audit == 0)  //All coins minted by mining prior to the audit will have to undergo audit, so have to be removed from the coinbase supply
+        coinbase_at_start_of_audit=get_block_already_generated_coins(height-1);
+        
+      for (auto &tx_hash: b.tx_hashes){
+        cryptonote::blobdata tx_blob;
+        if(!get_pruned_tx_blob(tx_hash, tx_blob))
+          throw1(TX_DNE("Cant get transaction from DB"));
+       
+
+        circ_supply cs;
+        transaction tx;
+        MDB_val_set(val_h, tx_hash);
+        if (!parse_and_validate_tx_base_from_blob(tx_blob, tx))
+          throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+        
+
+        if (mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &val_h, MDB_GET_BOTH))
+          throw1(TX_DNE("Attempting to remove transaction that isn't in the db"));
+        txindex *tip = (txindex *)val_h.mv_data;
+        MDB_val_set(val_tx_id, tip->data.tx_id);
+        bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
+        // get tx assets
+        std::string strSource;
+        std::string strDest;
+        if (!get_tx_asset_types(tx, tx_hash, strSource, strDest, is_miner_tx)) {
+          throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
         }
-        for (auto tx_data: block_data.second){
-          circ_supply cs;
-          transaction tx;
-          hash tx_hash=tx_data.first;
-          MDB_val_set(val_h, tx_hash);
 
-          if (mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &val_h, MDB_GET_BOTH))
-            throw1(TX_DNE("Attempting to update the supply for a transaction that isn't in the db"));
-          txindex *tip = (txindex *)val_h.mv_data;
-          MDB_val_set(val_tx_id, tip->data.tx_id);
-
-
-          if (!parse_and_validate_tx_base_from_blob(tx_data.second, tx))
-            throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
-          bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
-          // get tx assets
-          std::string strSource;
-          std::string strDest;
-          if (!get_tx_asset_types(tx, tx_hash, strSource, strDest, is_miner_tx)) {
-            throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
+        if(tx.rct_signatures.type==rct::RCTTypeSupplyAudit){
+          rct::xmr_amount amount_decrypted=tx.rct_signatures.amount_encrypted;
+          rct::xmr_amount encryption_key=0;
+            
+          rct::key decryption_public_key=tx.rct_signatures.decryption_key;
+            
+          const rct::key rS = scalarmultKey(decryption_public_key,supply_audit_decryption_key);
+          for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
+            encryption_key*=256; //Shift 1 bytes
+            encryption_key+=rS.bytes[i];  //Add current byte
           }
+          amount_decrypted ^= encryption_key; //XOR using the encryption key
 
-          if(tx.rct_signatures.type==rct::RCTTypeSupplyAudit){
-            rct::xmr_amount amount_decrypted=tx.rct_signatures.amount_encrypted;
-            rct::xmr_amount encryption_key=0;
-            
-            rct::key decryption_public_key=tx.rct_signatures.decryption_key;
-            
-            const rct::key rS = scalarmultKey(decryption_public_key,supply_audit_decryption_key);
-            for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
-              encryption_key*=256; //Shift 1 bytes
-              encryption_key+=rS.bytes[i];  //Add current byte
-            }
-            amount_decrypted ^= encryption_key; //XOR using the encryption key
-
-            uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
-            total_new_supply[dest_currency_type] += amount_decrypted;
-          } else { //check if we already have a transaction record
-              MDB_val v;
-              result = mdb_cursor_get(m_cur_circ_supply, &val_tx_id, &v, MDB_SET);
-              if (result==0){
-                const circ_supply &cs = *(const circ_supply*)v.mv_data;
-                boost::multiprecision::int128_t burnt = cs.amount_burnt;
-                total_new_supply[cs.source_currency_type] -= burnt;
-                boost::multiprecision::int128_t minted = cs.amount_minted;
-                total_new_supply[cs.dest_currency_type] += minted;
-              } else if(result != MDB_NOTFOUND)
+          MDEBUG("height,amount_decrypted,tx: " << height<<","<<amount_decrypted<<","<<tx_hash);
+          uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
+          total_new_supply[dest_currency_type] += amount_decrypted;
+        } else { //check if we already have a transaction record
+            MDB_val v;
+            result = mdb_cursor_get(m_cur_circ_supply, &val_tx_id, &v, MDB_SET);
+            if (result==0){
+              const circ_supply &cs = *(const circ_supply*)v.mv_data;
+              boost::multiprecision::int128_t burnt = cs.amount_burnt;
+              total_new_supply[cs.source_currency_type] -= burnt;
+              boost::multiprecision::int128_t minted = cs.amount_minted;
+              total_new_supply[cs.dest_currency_type] += minted;
+            } else if(result != MDB_NOTFOUND)
                 throw0(DB_ERROR(lmdb_error("Failed to enumerate circ_supply table: ", result).c_str()));
           }
-        }
+        
       }
-      height++;
     }
+    height++;
   }
   //remove old coinbase amount
   uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), "XHV") - offshore::ASSET_TYPES.begin();
@@ -3627,6 +3634,7 @@ bool BlockchainLMDB::get_pruned_tx_blobs_from(const crypto::hash& h, size_t coun
   return true;
 }
 
+//TO-DO## Potentially not working as expected?
 bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata>>>>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
