@@ -308,7 +308,11 @@ namespace
   const char* USAGE_MARK_OUTPUT_UNSPENT("mark_output_unspent <amount>/<offset>");
   const char* USAGE_IS_OUTPUT_SPENT("is_output_spent <amount>/<offset>");
   const char* USAGE_FREEZE("freeze <key_image>");
+  const char* USAGE_FREEZE_ALL_OLD("freeze_all_old");
+  const char* USAGE_FREEZE_ALL_NEW("freeze_all_new");
   const char* USAGE_THAW("thaw <key_image>");
+  const char* USAGE_THAW_ALL_OLD("thaw_all_old");
+  const char* USAGE_THAW_ALL_NEW("thaw_all_new");  
   const char* USAGE_FROZEN("frozen <key_image>");
   const char* USAGE_LOCK("lock");
   const char* USAGE_NET_STATS("net_stats");
@@ -2214,15 +2218,73 @@ bool simple_wallet::freeze_thaw(const std::vector<std::string> &args, bool freez
 
   return true;
 }
+//! This function freezes or thaws all unspent outputs which are either new or old, depending on the parameters passed
+bool simple_wallet::freeze_thaw_old_new(const std::vector<std::string> &args, bool freeze, bool old)
+{
+  if (!args.empty())
+  {
+    fail_msg_writer() << boost::format(tr("usage: %s_all_%s")) % (freeze ? "freeze" : "thaw") % (old ? "old" : "new");
+    return true;
+  }
+  try
+  {
+    size_t ntd = m_wallet->get_num_transfer_details();
+    for (size_t i = 0; i < ntd; ++i)
+    {
+      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(i);
+      if (!td.m_spent){ //Only change unspent outputs
+        bool is_output_frozen=td.m_frozen;
+        bool is_output_old = m_wallet->is_old_output(td);
+        if (is_output_old==old) //we need to do something
+          if(is_output_frozen != freeze) { //if the output does not have the same value as desired, in which case we don't need to do anything
+            if(freeze) {
+              m_wallet->freeze(td.m_key_image);
+              message_writer() << tr("Frozen: ") << td.m_key_image << " " << cryptonote::print_money(td.amount()) << " " << td.asset_type;
+            } else {
+              m_wallet->thaw(td.m_key_image);
+              message_writer() << tr("Thaw: ") << td.m_key_image << " " << cryptonote::print_money(td.amount()) << " " << td.asset_type;
+            }
+          }
+      }
+    }
+  }
+  catch (const std::exception &e)
+  {
+    fail_msg_writer() << e.what();
+    return true;
+  }
+
+  return true;
+}
 
 bool simple_wallet::freeze(const std::vector<std::string> &args)
 {
   return freeze_thaw(args, true);
 }
 
+bool simple_wallet::freeze_all_old(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, true);
+}
+
+bool simple_wallet::freeze_all_new(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, true);
+}
+
 bool simple_wallet::thaw(const std::vector<std::string> &args)
 {
   return freeze_thaw(args, false);
+}
+
+bool simple_wallet::thaw_all_old(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, false);
+}
+
+bool simple_wallet::thaw_all_new(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, false);
 }
 
 bool simple_wallet::frozen(const std::vector<std::string> &args)
@@ -3851,10 +3913,26 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze, _1),
                            tr(USAGE_FREEZE),
                            tr("Freeze a single output by key image so it will not be used"));
+  m_cmd_binder.set_handler("freeze_all_old",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze_all_old, _1),
+                           tr(USAGE_FREEZE_ALL_OLD),
+                           tr("Freeze all outputs from before the supply audit start, so that they will not be used"));
+  m_cmd_binder.set_handler("freeze_all_new",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze_all_new, _1),
+                           tr(USAGE_FREEZE_ALL_NEW),
+                           tr("Freeze all outputs from after the supply audit start, so that they will not be used"));                         
   m_cmd_binder.set_handler("thaw",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw, _1),
                            tr(USAGE_THAW),
                            tr("Thaw a single output by key image so it may be used again"));
+  m_cmd_binder.set_handler("thaw_all_old",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw_all_old, _1),
+                           tr(USAGE_THAW_ALL_OLD),
+                           tr("Thaw all outputs from before the supply audit start, so that they may be used again"));
+  m_cmd_binder.set_handler("thaw_all_new",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw_all_new, _1),
+                           tr(USAGE_THAW_ALL_NEW),
+                           tr("Thaw all outputs from after the supply audit start, so that they may be used again"));
   m_cmd_binder.set_handler("frozen",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::frozen, _1),
                            tr(USAGE_FROZEN),
