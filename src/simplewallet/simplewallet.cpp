@@ -2264,12 +2264,12 @@ bool simple_wallet::freeze(const std::vector<std::string> &args)
 
 bool simple_wallet::freeze_all_old(const std::vector<std::string> &args)
 {
-  return freeze_thaw_old_new(args, true);
+  return freeze_thaw_old_new(args, true, true);
 }
 
 bool simple_wallet::freeze_all_new(const std::vector<std::string> &args)
 {
-  return freeze_thaw_old_new(args, true);
+  return freeze_thaw_old_new(args, true, false);
 }
 
 bool simple_wallet::thaw(const std::vector<std::string> &args)
@@ -2279,12 +2279,12 @@ bool simple_wallet::thaw(const std::vector<std::string> &args)
 
 bool simple_wallet::thaw_all_old(const std::vector<std::string> &args)
 {
-  return freeze_thaw_old_new(args, false);
+  return freeze_thaw_old_new(args, false, true);
 }
 
 bool simple_wallet::thaw_all_new(const std::vector<std::string> &args)
 {
-  return freeze_thaw_old_new(args, false);
+  return freeze_thaw_old_new(args, false, false);
 }
 
 bool simple_wallet::frozen(const std::vector<std::string> &args)
@@ -3916,11 +3916,11 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("freeze_all_old",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze_all_old, _1),
                            tr(USAGE_FREEZE_ALL_OLD),
-                           tr("Freeze all outputs from before the supply audit start, so that they will not be used"));
+                           tr("Freeze all unspent outputs from before the supply audit start, so that they will not be used"));
   m_cmd_binder.set_handler("freeze_all_new",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze_all_new, _1),
                            tr(USAGE_FREEZE_ALL_NEW),
-                           tr("Freeze all outputs from after the supply audit start, so that they will not be used"));                         
+                           tr("Freeze all unspent outputs from after the supply audit start, so that they will not be used"));                         
   m_cmd_binder.set_handler("thaw",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw, _1),
                            tr(USAGE_THAW),
@@ -3928,11 +3928,11 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("thaw_all_old",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw_all_old, _1),
                            tr(USAGE_THAW_ALL_OLD),
-                           tr("Thaw all outputs from before the supply audit start, so that they may be used again"));
+                           tr("Thaw all unspent outputs from before the supply audit start, so that they may be used again"));
   m_cmd_binder.set_handler("thaw_all_new",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw_all_new, _1),
                            tr(USAGE_THAW_ALL_NEW),
-                           tr("Thaw all outputs from after the supply audit start, so that they may be used again"));
+                           tr("Thaw all unspent outputs from after the supply audit start, so that they may be used again"));
   m_cmd_binder.set_handler("frozen",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::frozen, _1),
                            tr(USAGE_FROZEN),
