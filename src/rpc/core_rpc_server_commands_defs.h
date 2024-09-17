@@ -2834,11 +2834,11 @@ namespace cryptonote
   {
     struct request_t: public rpc_request_base
     {
-      rct::key decrypt_private_key;
+      rct::key decrypt_secretkey;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_request_base)
-        KV_SERIALIZE_VAL_POD_AS_BLOB(decrypt_private_key)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(decrypt_secretkey)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

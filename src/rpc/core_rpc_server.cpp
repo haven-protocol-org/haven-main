@@ -3218,7 +3218,7 @@ namespace cryptonote
   {
     RPC_TRACKER(recalculate_supply); //TO-DO## error handling!
 
-    m_core.get_blockchain_storage().recalculate_supply_after_audit(req.decrypt_private_key);
+    m_core.get_blockchain_storage().recalculate_supply_after_audit(req.decrypt_secretkey);
     
     res.status = CORE_RPC_STATUS_OK;
 

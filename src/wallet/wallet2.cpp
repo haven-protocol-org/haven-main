@@ -11977,10 +11977,35 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
   const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
   const bool bulletproof_plus = use_fork_rules(get_bulletproof_plus_fork(), 0);
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
-  //TO-DO##
+  uint32_t hf_version = get_current_hard_fork();
+  using anon=cryptonote::anonymity_pool;
+  anon ap=anon::UNSET;
+
+  for (auto &ind: unused_dust_indices){
+    bool old_output = is_old_output(m_transfers[ind]);
+    if (ap == anon::UNSET) {
+      ap = old_output ? anon::POOL_1 : anon::POOL_2;
+    } else {
+      THROW_WALLET_EXCEPTION_IF(ap != (old_output ? anon::POOL_1 : anon::POOL_2), error::wallet_internal_error, "Old and new output types cannot be part of the same transaction!");  
+    }
+  }
+
+  for (auto &ind: unused_transfers_indices){
+    bool old_output = is_old_output(m_transfers[ind]);
+    if (ap == anon::UNSET) {
+      ap = old_output ? anon::POOL_1 : anon::POOL_2;
+    } else {
+      THROW_WALLET_EXCEPTION_IF(ap != (old_output ? anon::POOL_1 : anon::POOL_2), error::wallet_internal_error, "Old and new output types cannot be part of the same transaction!");  
+    }
+  }
+  
+  THROW_WALLET_EXCEPTION_IF(ap == anon::POOL_1 && hf_version >= HF_VERSION_SUPPLY_AUDIT_END, error::wallet_internal_error, "Old outputs cannot be spent after the end of the supply audit");
+
+  const bool is_audit_tx = (hf_version == HF_VERSION_SUPPLY_AUDIT && ap == anon::POOL_1);
+  
   const rct::RCTConfig rct_config {
     rct::RangeProofPaddedBulletproof,
-    bulletproof_plus ? 7 : use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
+    is_audit_tx ? 8 : bulletproof_plus ? 7 : use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
                   use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
                   use_fork_rules(HF_VERSION_XASSET_FULL, 0) ? 4 : 
                   use_fork_rules(HF_VERSION_CLSAG, 0) ? 3 : 0

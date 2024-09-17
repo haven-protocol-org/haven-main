@@ -1935,7 +1935,8 @@ namespace cryptonote
     return get_tx_tree_hash(txs_ids);
   }
   //---------------------------------------------------------------
-  bool is_valid_decomposed_amount(uint64_t amount)
+  bool 
+  is_valid_decomposed_amount(uint64_t amount)
   {
     const uint64_t *begin = valid_decomposed_outputs;
     const uint64_t *end = valid_decomposed_outputs + sizeof(valid_decomposed_outputs) / sizeof(valid_decomposed_outputs[0]);

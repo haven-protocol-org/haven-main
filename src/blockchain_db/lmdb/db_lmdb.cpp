@@ -3303,7 +3303,7 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
 //! This function updates the circulating total supply, but it does not update the individual transaction supply. 
 //! It is meant as a temporary measure, due to the limitation of not being able to publish the private decryption key.
 //! It will be redesigned in the next Haven release
-void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & supply_audit_decryption_key)
+void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & decryption_secretkey)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
 
@@ -3375,9 +3375,9 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & supply_audi
           rct::xmr_amount amount_decrypted=tx.rct_signatures.amount_encrypted;
           rct::xmr_amount encryption_key=0;
             
-          rct::key decryption_public_key=tx.rct_signatures.decryption_key;
+          rct::key decryption_pubkey=tx.rct_signatures.decryption_pubkey;
             
-          const rct::key rS = scalarmultKey(decryption_public_key,supply_audit_decryption_key);
+          const rct::key rS = scalarmultKey(decryption_pubkey,decryption_secretkey);
           for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
             encryption_key*=256; //Shift 1 bytes
             encryption_key+=rS.bytes[i];  //Add current byte

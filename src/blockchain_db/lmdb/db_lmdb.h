@@ -263,7 +263,7 @@ public:
 
   virtual std::vector<std::pair<std::string, std::string>> get_circulating_supply() const;
 
-  virtual void recalculate_supply_after_audit(const rct::key & supply_audit_decryption_key);
+  virtual void recalculate_supply_after_audit(const rct::key & decryption_secretkey);
   
   virtual uint64_t height() const;
 

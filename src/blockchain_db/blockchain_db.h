@@ -1180,9 +1180,9 @@ public:
   /**
    * @brief Recalculate supply after the audit
    *
-   * @param supply_audit_decryption_key Decryption key for amount_encrypted
+   * @param decryption_secretkey Decryption key for amount_encrypted
    */
-  virtual void recalculate_supply_after_audit(const rct::key & supply_audit_decryption_key) = 0;
+  virtual void recalculate_supply_after_audit(const rct::key & decryption_secretkey) = 0;
   
 
   /**

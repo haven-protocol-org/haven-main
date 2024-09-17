@@ -638,7 +638,7 @@ void Blockchain::pop_blocks(uint64_t nblocks)
 }
 //------------------------------------------------------------------
 // This function recalculates the supply after the supply audit
-void Blockchain::recalculate_supply_after_audit(rct::key decrypt_private_key)
+void Blockchain::recalculate_supply_after_audit(rct::key decrypt_secretkey)
 {
  
   CRITICAL_REGION_LOCAL(m_tx_pool);
@@ -648,7 +648,7 @@ void Blockchain::recalculate_supply_after_audit(rct::key decrypt_private_key)
 
   try
   {
-    m_db->recalculate_supply_after_audit(decrypt_private_key);
+    m_db->recalculate_supply_after_audit(decrypt_secretkey);
   }
   catch (const std::exception& e)
   {

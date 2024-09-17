@@ -351,9 +351,12 @@ bool t_command_parser_executor::recalculate_supply(const std::vector<std::string
   string_to_scalar.push_back(initKey1);
   string_to_scalar.push_back(initKey2);
 
-  const rct::key decrypt_private_key = hash_to_scalar(string_to_scalar);
-  std::cout << "Decrypt private key:" << decrypt_private_key;
-  m_executor.recalculate_supply(decrypt_private_key);
+  const rct::key decrypt_secretkey = hash_to_scalar(string_to_scalar);
+  //TO-DO: Validation of the secret key
+  //Can be done as A==decryption_secretkey*B, where A and B are specific points
+  //Fail if the validation fails
+  std::cout << "Decryption secret key:" << decrypt_secretkey;
+  m_executor.recalculate_supply(decrypt_secretkey);
   return true;
 }
 

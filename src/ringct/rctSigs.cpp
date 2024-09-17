@@ -1551,8 +1551,6 @@ namespace rct {
           AmountProof amountproof;
           key r_r;
           key r_a;
-          const key K = scalarmultBase(d2h(10)); //TO-DO## K initialization, S initialization
-          const key S = {{0x71, 0x1c, 0xca, 0x0f, 0x50, 0x86, 0x90, 0x49, 0x3e, 0xd3, 0x90, 0x84, 0x69, 0x57, 0xf1, 0x66, 0x2d, 0xf4, 0x5f, 0xc3, 0xd7, 0xc2, 0x25, 0xcc, 0xc6, 0x48, 0xbf, 0xb0, 0x9b, 0x08, 0x64, 0x4e}};
           
           //Calculate sum of pseudoouts
           key sumPseudoOuts=zerokey;
@@ -1564,9 +1562,9 @@ namespace rct {
           skGen(r_a); //Generate random r_a
           
           amountproof.G1=scalarmultBase(r_r);
-          amountproof.K1=scalarmultKey(K,r_r);
+          amountproof.K1=scalarmultKey(K_ap,r_r);
           amountproof.H1=scalarmultH(r_a);
-          rv.decryption_key=scalarmultKey(K,PseudooutsMaskSums);
+          rv.decryption_pubkey=scalarmultKey(K_ap,PseudooutsMaskSums);
 
           //Challenge c=H(init, G1, K1, H1,K2, C), where C is the sum of pseudoouts
           keyV challenge_to_hash;
@@ -1580,7 +1578,7 @@ namespace rct {
           challenge_to_hash.push_back(amountproof.G1); 
           challenge_to_hash.push_back(amountproof.K1);
           challenge_to_hash.push_back(amountproof.H1);
-          challenge_to_hash.push_back(rv.decryption_key);
+          challenge_to_hash.push_back(rv.decryption_pubkey);
           challenge_to_hash.push_back(sumPseudoOuts);
           const key c=hash_to_scalar(challenge_to_hash);
           //Calculate s_r
@@ -1600,7 +1598,7 @@ namespace rct {
             CHECK_AND_ASSERT_THROW_MES(rv.amount_encrypted>=in_amount, "Overflow occured, sum of inputs exceeds the maximum xmr amount");
           }
           xmr_amount encryption_key=0;
-          const key rS = scalarmultKey(S,PseudooutsMaskSums);
+          const key rS = scalarmultKey(S_ap,PseudooutsMaskSums);
           for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
             encryption_key*=256; //Shift 1 bytes
             encryption_key+=rS.bytes[i];  //Add current byte
@@ -2192,7 +2190,7 @@ namespace rct {
       //Supply proof check
 
       if(rv.type==RCTTypeSupplyAudit){
-        if(rv.p.amountproofs.empty() || ! verAmountproof(rv.p.amountproofs[0], rv.p.pseudoOuts, rv.decryption_key)) {
+        if(rv.p.amountproofs.empty() || ! verAmountproof(rv.p.amountproofs[0], rv.p.pseudoOuts, rv.decryption_pubkey)) {
           LOG_PRINT_L1("Amount proof verified failed for an audit transaction");
           return false;
         }
@@ -2807,19 +2805,18 @@ namespace rct {
   }
 
   //! This function proves that, for a fixed point K in the main subgroup, it holds that K2=r*K, where r is the random number in the output commitment rG+aH
-  bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts, const key & decryption_key){
+  bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts, const key & decryption_pubkey){
 
     CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.G1), false, "Amount verification failed: G1 is not in the main group");
     CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.K1), false, "Amount verification failed: K1 is not in the main group");
     CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.H1), false, "Amount verification failed: H1 is not in the main group");
-    CHECK_AND_ASSERT_MES(isInMainSubgroup(decryption_key), false, "Amount verification failed: the decryption key is not in the main group");
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(decryption_pubkey), false, "Amount verification failed: the decryption key is not in the main group");
     CHECK_AND_ASSERT_MES(sc_check(amountproof.sa.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
     CHECK_AND_ASSERT_MES(sc_check(amountproof.sr.bytes) == 0, false, "Amount verification failed: bad scalar s_r");
 
     const key zerokey = rct::identity();
     const key init_G =  scalarmultBase(d2h(1));
     const key init_H =  scalarmultH(d2h(1));
-    const key K = scalarmultBase(d2h(10)); //TO-DO## K initialization
 
     // Sum the consumed outputs
     // We do not reuse the value from VerRctSemanticsSimple in order to reduce chances of errors
@@ -2840,7 +2837,7 @@ namespace rct {
     challenge_to_hash.push_back(amountproof.G1); 
     challenge_to_hash.push_back(amountproof.K1);
     challenge_to_hash.push_back(amountproof.H1);
-    challenge_to_hash.push_back(decryption_key);
+    challenge_to_hash.push_back(decryption_pubkey);
     challenge_to_hash.push_back(sumPseudoOuts);
 
     
@@ -2901,8 +2898,8 @@ namespace rct {
     
 
     //key K; //TO-DO## K definition - must be a hard-coded point, similar like G
-    lhs=scalarmultKey(K, amountproof.sr); //lhs = s_r*K
-    rhs=scalarmultKey(decryption_key, c); //rhs = c*K2
+    lhs=scalarmultKey(K_ap, amountproof.sr); //lhs = s_r*K
+    rhs=scalarmultKey(decryption_pubkey, c); //rhs = c*K2
     addKeys(rhs, rhs, amountproof.K1); //rhs = K1+c*K2
     CHECK_AND_ASSERT_MES(!equalKeys(lhs, rhs), false, "Second check of amount proof verification failed");
 
