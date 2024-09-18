@@ -1749,6 +1749,9 @@ namespace rct {
   //
   //ver RingCT simple
   //assumes only post-rct style inputs (at least for max anonymity)
+  //Tay8NWWFKpz9JT4NXU0w, 18.09.2024
+  //The complexity of this procedure has grown dramatically and it needs to be redesigned
+  //Most of the validation rules depend on HF_VERSION and tx type
   bool verRctSemanticsSimple2(
     const rctSig& rv, 
     const offshore::pricing_record& pr,
@@ -1800,66 +1803,109 @@ namespace rct {
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
       CHECK_AND_ASSERT_MES(tx_type != tt::UNSET, false, "Transaction type is not set.");
       //### Anonymity pool sanity checks #####
+      // These checks should ensure that the tx_anon_pool fits to the HF_VERSION
+      // They require that the tx_anon_pool value is correct
       CHECK_AND_ASSERT_MES(tx_anon_pool != anon::UNSET, false, "Transaction anonymity pool type is not set.");
       CHECK_AND_ASSERT_MES(tx_anon_pool != anon::MIXED, false, "Transaction has a mixed anonymity pool which is not permited.");
       CHECK_AND_ASSERT_MES(version < HF_VERSION_BURN || tx_anon_pool == anon::POOL_1 || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 1 or Pool 2 during the supply audit");
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_SUPPLY_AUDIT_END || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 2 after the end of the supply audit");
       //### Supply audit sanity checks #####
       //This check ensures old funds can't be spent after the audit is over.
-      const bool before_supply_audit = (version < HF_VERSION_SUPPLY_AUDIT);
-      const bool during_supply_audit = (version >=HF_VERSION_SUPPLY_AUDIT && version < HF_VERSION_SUPPLY_AUDIT_END);
-      const bool after_supply_audit = (version >= HF_VERSION_SUPPLY_AUDIT_END);
-      int num_epochs=(before_supply_audit ? 1 : 0)+(during_supply_audit ? 1 : 0)+(after_supply_audit ? 1 : 0);
+      const bool is_before_supply_audit = (version < HF_VERSION_SUPPLY_AUDIT);
+      const bool is_during_supply_audit = (version >=HF_VERSION_SUPPLY_AUDIT && version < HF_VERSION_SUPPLY_AUDIT_END);
+      const bool is_after_supply_audit = (version >= HF_VERSION_SUPPLY_AUDIT_END);
+      const bool is_after_vbs_disabling = (version >= HF_VERSION_VBS_REMOVAL);
+      const int num_epochs=(is_before_supply_audit ? 1 : 0)+(is_during_supply_audit ? 1 : 0)+(is_after_supply_audit ? 1 : 0);
       CHECK_AND_ASSERT_MES(num_epochs==1, false, "Failed to determine if the current block is before, during, or after the supply audit");
-      if (before_supply_audit){ // Audit transactions not permited
-        CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Audit transactions permited only during the audit period");  
+      
+      const bool is_audit_tx = (rv.type == RCTTypeSupplyAudit);
+      const bool is_conversion_type_tx = (tx_type == tt::ONSHORE || tx_type==tt::OFFSHORE || tx_type==tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET);
+      const bool is_transfer_type_tx = (tx_type == tt::TRANSFER || tx_type==tt::OFFSHORE_TRANSFER || tx_type==tt::XASSET_TRANSFER);
+      CHECK_AND_ASSERT_MES(is_conversion_type_tx ^ is_transfer_type_tx, false, "The transaction type should either be a transfer or a conversion");
+      
+      const bool is_burn_tx = is_transfer_type_tx && (amount_burnt>0);
+
+      //### Block height related restrictions
+      if (version < HF_VERSION_BURN)
+        CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Burn transaction found before HF_VERSION_BURN! rejecting tx.. ");
+
+      //Rules what transactions are allowed during the audit, after the audit, and after VBS is disabled
+      if (is_before_supply_audit){ // Audit transactions not permited
+        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
       }
-      if (during_supply_audit){ //Conversions disabled, Audit tx spends from Pool 1, non-Audit spends from Pool 2, burn not permited 
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit, false, "Only RCTTypeBulletproofPlus and Audit transactions permited after the supply Audit");
-        if (rv.type == RCTTypeSupplyAudit)
+      if (is_during_supply_audit){ //Conversions disabled, Audit tx spends from Pool 1, non-Audit spends from Pool 2, burn not permited 
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeBulletproofPlus || is_audit_tx, false, "Only RCTTypeBulletproofPlus and Audit transactions permited after the supply Audit");
+        if (is_audit_tx) //Prevent double-counting of supply. An audit transaction spending from Pool 2 will mean funds are already have been counted earlier.
           CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_1, false, "Supply audit transactions should have anonymity pool 1");
-        if (rv.type == RCTTypeBulletproofPlus)
+        if (!is_audit_tx) //Make sure movement from Pool 1 to Pool 2 requires an audit, and that any non-audit transfer spends only from Pool 2
           CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_2, false, "Regular transactions after the audit start should have anonymity pool 2");
-        CHECK_AND_ASSERT_MES(tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER, false, "Only transfers allowed during the supply audit period");
-        CHECK_AND_ASSERT_MES(amount_burnt==0, false, "Burn transaction not allowed during the supply audit period");
+        CHECK_AND_ASSERT_MES(is_transfer_type_tx, false, "Only transfers allowed during the supply audit period");
+        CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Burn transaction not allowed during the supply audit period");
       }
-      if (after_supply_audit){ // All transactions spent from Pool 2, audit tx not permited 
+
+      if (is_after_supply_audit){ // All transactions spent from Pool 2, audit tx not permited 
         CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_2, false, "Transactions after the audit end should have anonymity pool 2");
-        CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Audit transactions permited only during the audit period");  
+        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
       }
+
+      if ((is_after_supply_audit && is_during_supply_audit) && ! is_after_vbs_disabling) { 
+        //After the end of the supply audit, only re-enable coversions and burn tx after VBS is disabled
+        CHECK_AND_ASSERT_MES(!is_conversion_type_tx, false, "Conversions not allowed in the period between the audit start and VBS disabling");
+        CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Conversions not allowed in the period between the audit start and VBS disabling");
+      }
+
+      if (is_after_vbs_disabling){ //No collateral requirement after VSB disabling, only 1 source asset type
+        if (is_conversion_type_tx)
+          CHECK_AND_ASSERT_MES(amount_collateral == 0, false, "Non-zero collateral requirement after VBS removal, something went wrong! rejecting tx..");
+        
+        for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
+          if (boost::get<cryptonote::txin_haven_key>(vin[i]).asset_type != strSource) {
+            LOG_ERROR("Transaction inputs found which have different asset type than the source asset type");
+            return false;
+          }
+        }
+
+      }
+
+
       //Supply audit transaction should have one amount proof, and only audit transactions should have an amount proof
-      if (rv.type == RCTTypeSupplyAudit)
+      if (is_audit_tx)
         CHECK_AND_ASSERT_MES(rv.p.amountproofs.size()==1, false, "Supply audit transaction found without amount proofs");
       if (!rv.p.amountproofs.empty())
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSupplyAudit, false, "Amount proof for non-audit transaction found");
+        CHECK_AND_ASSERT_MES(is_audit_tx, false, "Amount proof for non-audit transaction found");
       
-       
-      CHECK_AND_ASSERT_MES((strSource != strDest) == (tx_type == tt::ONSHORE || tx_type==tt::OFFSHORE || tx_type==tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET), false, "Mismatch between source/dest assets and transaction type");
-      CHECK_AND_ASSERT_MES((strSource == strDest) == (tx_type == tt::TRANSFER || tx_type==tt::OFFSHORE_TRANSFER || tx_type==tt::XASSET_TRANSFER ), false, "Mismatch between source/dest assets(equal) and transaction type");
+      const bool source_dest_asset_types_match=(strSource == strDest);
       
-      if (strSource != strDest) {
+      CHECK_AND_ASSERT_MES(source_dest_asset_types_match == is_transfer_type_tx, false, "Mismatch between source/dest assets and transaction type");
+      CHECK_AND_ASSERT_MES((!source_dest_asset_types_match) == is_conversion_type_tx, false, "Mismatch between source/dest assets and transaction type");
+      
+      if (is_conversion_type_tx) {
         CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
-        CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Supply audit tx cannot be a conversion tx"); //redundant, paranoid check
+        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Supply audit tx cannot be a conversion tx"); //redundant check
         if (rv.type >= RCTTypeHaven3) {
           CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
           if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
-            CHECK_AND_ASSERT_MES(amount_collateral < 0  || version >= HF_VERSION_VBS_REMOVAL, false, "0 collateral requirement before VBS removal, something went wrong! rejecting tx..");
-            CHECK_AND_ASSERT_MES(amount_collateral == 0 || version < HF_VERSION_VBS_REMOVAL, false, "Non-zero collateral requirement after VBS removal, something went wrong! rejecting tx..");
+            CHECK_AND_ASSERT_MES(amount_collateral > 0  || is_after_vbs_disabling, false, "0 collateral requirement before VBS removal, something went wrong! rejecting tx..");
           }
         }
-        CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
       }
 
-      if (strSource == strDest) {
+      //Txn fee sanity check
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
+
+      if (is_transfer_type_tx) {
         CHECK_AND_ASSERT_MES(pr.empty(), false, "Pricing record found for a transfer! rejecting tx..");
         CHECK_AND_ASSERT_MES(amount_collateral==0, false, "Collateral found for a transfer! rejecting tx..");
         CHECK_AND_ASSERT_MES(amount_slippage==0, false, "Slippage found for a transfer! rejecting tx..");
         if (version < HF_VERSION_BURN) {
           CHECK_AND_ASSERT_MES(amount_burnt==0, false, "amount_burnt found for a transfer tx! rejecting tx.. ");
-          }
+        }
       }
+
       
-      if (version >= HF_VERSION_SUPPLY_AUDIT && rv.type != RCTTypeSupplyAudit){ //Another redundant paranoid check related to the pool split, but we really do not want old funds to be spendable
+      //TO-DO##
+      if (version >= HF_VERSION_SUPPLY_AUDIT && !is_audit_tx){ //Another redundant paranoid check related to the pool split, but we really do not want old funds to be spendable
         for (auto inp: vin) {
           cryptonote::txin_haven_key inp_haven_key=boost::get<cryptonote::txin_haven_key>(inp);
           CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets.size()>0, false, "Input without decoys found");
@@ -1870,7 +1916,7 @@ namespace rct {
 
       uint64_t amount_supply_burnt = 0;
 
-      if ((tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) && version >= HF_VERSION_BURN && amount_burnt>0){
+      if (is_burn_tx){
         amount_supply_burnt = amount_burnt;
       }
       
@@ -1883,6 +1929,8 @@ namespace rct {
       // Calculate sum of all C' and D'
       rct::keyV masks_C;
       rct::keyV masks_D;
+
+      uint64_t masks_pushed=0; //! Used to ensure we don't lose any outputs when pushing to mask_C and mask_D
       for (size_t i=0; i<vout.size(); i++) {
 
         bool is_collateral = false;
@@ -1892,6 +1940,9 @@ namespace rct {
           LOG_ERROR("Failed to get output collateral status");
           return false;
         }
+        //If we are before HF_VERSION_USE_COLLATERAL or after the VBS removal, there should be no collateral-related outputs
+        if(version < HF_VERSION_USE_COLLATERAL || is_after_vbs_disabling)
+          CHECK_AND_ASSERT_MES(!is_collateral && ! is_collateral_change, false, "No collateral expected after VBS is disabled"); 
         if (is_collateral) {
           collateral_indices.push_back(i);
         }
@@ -1906,6 +1957,10 @@ namespace rct {
           return false;
         }
         
+        if(is_after_vbs_disabling && output_asset_type != strSource){
+          CHECK_AND_ASSERT_MES(output_asset_type == strDest && is_conversion_type_tx, false, "Unexpected output asset type");  
+        }
+
         if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS && (is_collateral || is_collateral_change) && output_asset_type != "XHV"){
           LOG_ERROR("Collateral which is not XHV found");
           return false;  
@@ -1914,32 +1969,39 @@ namespace rct {
         // Don't exclude the onshore collateral ouputs from proof-of-value calculation
         if (output_asset_type == strSource) {
           masks_C.push_back(rv.outPk[i].mask);
+          masks_pushed++;
         } else if (output_asset_type == strDest) {
           masks_D.push_back(rv.outPk[i].mask);
+          masks_pushed++;
         } else {
           LOG_ERROR("Invalid output detected (wrong asset type)");
           return false;
         }
       }
+      CHECK_AND_ASSERT_MES(masks_pushed == vout.size(), false, "Some output masks were not considered for validation purposes"); 
 
+      //There should be no collateral outputs in the case of non on/offshore txs
+      if(tx_type != tt::OFFSHORE && tx_type != tt::ONSHORE)
+        CHECK_AND_ASSERT_MES((collateral_indices.size()==0) && (collateral_change_indices.size()==0), false, "No collateral expected - not an onshore of offshore tx");  
+      
       // Sanity check the collateral
       bool collateral_exploit = false;
-      if ((version >= HF_VERSION_USE_COLLATERAL) &&
+      if ((version >= HF_VERSION_USE_COLLATERAL) && !is_after_vbs_disabling &&
           (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-        if (collateral_indices.size() != 1 && version < HF_VERSION_VBS_REMOVAL) {
+        if (collateral_indices.size() != 1) {
           LOG_ERROR("Incorrect number of collateral outputs provided");
           if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS)
             return false;
           else
             collateral_exploit = true;
-        } else if ((tx_type == tt::OFFSHORE && collateral_change_indices.size() != 0 && version < HF_VERSION_VBS_REMOVAL)  ||
-                   (tx_type == tt::ONSHORE && collateral_change_indices.size() != 1 && version < HF_VERSION_VBS_REMOVAL)) {
+        } else if ((tx_type == tt::OFFSHORE && collateral_change_indices.size() != 0)  ||
+                   (tx_type == tt::ONSHORE && collateral_change_indices.size() != 1)) {
           LOG_ERROR("Incorrect number of collateral change outputs provided");
           if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS)
             return false;
           else
             collateral_exploit = true;
-        } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0] && version < HF_VERSION_VBS_REMOVAL) { 
+        } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0]) {
           LOG_ERROR("Collateral output cannot also be collateral_change output");
           return false;
         } else if (collateral_indices.size() != 0 || collateral_change_indices.size() != 0){
@@ -1947,6 +2009,9 @@ namespace rct {
           return false;
         }
       }
+
+      if(is_transfer_type_tx)
+        CHECK_AND_ASSERT_MES(masks_D.size() == 0,  false, "Commitments for transfer non-source asset type found for a transfer");
       
       key sumOutpks_C = addKeys(masks_C);
       key sumOutpks_D = addKeys(masks_D);
@@ -1962,19 +2027,32 @@ namespace rct {
       key amount_supply_burntKey = scalarmultH(d2h(amount_supply_burnt));
 
       // Sum the consumed outputs in their respective asset types (sumColIns = inputs in D)
+      bool has_input_collateral = false;
+
+      uint64_t pseudoouts_added = 0;
       key sumPseudoOuts = zerokey;
       key sumColIns = zerokey;
-      if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL && version < HF_VERSION_VBS_REMOVAL) {
+      if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL && !is_after_vbs_disabling) {
         for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
           if (boost::get<cryptonote::txin_haven_key>(vin[i]).asset_type == "XHV") {
             sumColIns = addKeys(sumColIns, rv.p.pseudoOuts[i]);
+            has_input_collateral=true;
+            pseudoouts_added++;
           } else {
             sumPseudoOuts = addKeys(sumPseudoOuts, rv.p.pseudoOuts[i]);
+            pseudoouts_added++;
           }
         }
       } else {
         sumPseudoOuts = addKeys(rv.p.pseudoOuts);
+        pseudoouts_added+=rv.p.pseudoOuts.size();
       }
+      CHECK_AND_ASSERT_MES(pseudoouts_added == rv.p.pseudoOuts.size(), false, "Some transaction inputs commitments were not considered for validation purposes");
+      if(is_after_vbs_disabling)
+        CHECK_AND_ASSERT_MES(!has_input_collateral,  false, "No collateral transaction inputs expected - VBS is disabled");
+      if(is_after_vbs_disabling)
+        CHECK_AND_ASSERT_MES(equalKeys(sumColIns, zerokey),  false, "Commitments for transaction input collaterals are not zero after VBS disabling");
+         
       DP(sumPseudoOuts);
 
       // C COLOUR
