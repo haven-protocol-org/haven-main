@@ -34,6 +34,7 @@
 #include <memory>  // std::unique_ptr
 #include <cstring>  // memcpy
 
+#include "cryptonote_config.h"
 #include "string_tools.h"
 #include "file_io_utils.h"
 #include "common/util.h"
@@ -3904,6 +3905,13 @@ output_data_t BlockchainLMDB::get_output_key(const uint64_t& amount, const uint6
     if (include_commitmemt)
       ret.commitment = rct::zeroCommit(amount);
   }
+
+  uint64_t m_height = height(); //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
+  if(ret.height<HF_VERSION_SUPPLY_AUDIT && m_height>=HF_VERSION_SUPPLY_AUDIT_END){
+    ret.unlock_time+=20000000;
+    if (ret.unlock_time>20000000)
+      ret.unlock_time=20000000;
+  }
   TXN_POSTFIX_RDONLY();
   return ret;
 }
@@ -4669,6 +4677,7 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
 
   RCURSOR(output_amounts);
 
+  uint64_t m_height = height(); 
   for (size_t i = 0; i < offsets.size(); ++i)
   {
     const uint64_t amount = amounts.size() == 1 ? amounts[0] : amounts[i];
@@ -4700,6 +4709,13 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
       output_data_t &data = outputs.back();
       memcpy(&data, &okp->data, sizeof(pre_rct_output_data_t));
       data.commitment = rct::zeroCommit(amount);
+    }
+    //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
+    output_data_t &data = outputs.back();
+    if(data.height<HF_VERSION_SUPPLY_AUDIT && m_height>=HF_VERSION_SUPPLY_AUDIT_END){
+      data.unlock_time+=20000000;
+      if (data.unlock_time>20000000)
+        data.unlock_time=20000000;
     }
   }
 
