@@ -3751,54 +3751,64 @@ bool Blockchain::check_unlock_time_21(const uint64_t output_unlock_time, const u
   // What type of network are we operating in?
   if (m_nettype == cryptonote::MAINNET) {
     // Do the right thing, based on what the output actually is
-    if (is_collateral)
+    if (is_collateral) {
       if (unlock_time < HF21_COLLATERAL_LOCK_BLOCKS) return false;
       else return true;
-    if (tx_type == transaction_type::OFFSHORE)
+    }
+    if (tx_type == transaction_type::OFFSHORE) {
       if (output_asset_type == "XHV") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS) return false;
         else return true;
-    if (tx_type == transaction_type::ONSHORE)
+    }
+    if (tx_type == transaction_type::ONSHORE) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS) return false;
         else return true;
-    if (tx_type == transaction_type::XUSD_TO_XASSET)
+    }
+    if (tx_type == transaction_type::XUSD_TO_XASSET) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS) return false;
         else return true;
-    if (tx_type == transaction_type::XASSET_TO_XUSD)
+    }
+    if (tx_type == transaction_type::XASSET_TO_XUSD) {
       if (output_asset_type != "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS) return false;
         else return true;
+    }
   } else {
     // Do the right thing, based on what the output actually is
-    if (is_collateral)
+    if (is_collateral) {
       if (unlock_time < HF21_COLLATERAL_LOCK_BLOCKS_TESTNET) return false;
       else return true;
-    if (tx_type == transaction_type::OFFSHORE)
+    }
+    if (tx_type == transaction_type::OFFSHORE){
       if (output_asset_type == "XHV") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS_TESTNET) return false;
         else return true;
-    if (tx_type == transaction_type::ONSHORE)
+    }
+    if (tx_type == transaction_type::ONSHORE) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS_TESTNET) return false;
         else return true;
-    if (tx_type == transaction_type::XUSD_TO_XASSET)
+    }
+    if (tx_type == transaction_type::XUSD_TO_XASSET) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS_TESTNET) return false;
         else return true;
-    if (tx_type == transaction_type::XASSET_TO_XUSD)
+    }
+    if (tx_type == transaction_type::XASSET_TO_XUSD) {
       if (output_asset_type != "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS_TESTNET) return false;
         else return true;
+    }
   }
   // Should never get here
   return false;
