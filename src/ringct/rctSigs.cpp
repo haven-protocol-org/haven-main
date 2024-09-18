@@ -1842,8 +1842,10 @@ namespace rct {
         CHECK_AND_ASSERT_MES(rv.type != RCTTypeSupplyAudit, false, "Supply audit tx cannot be a conversion tx"); //redundant, paranoid check
         if (rv.type >= RCTTypeHaven3) {
           CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
-          if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
-            CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
+          if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
+            CHECK_AND_ASSERT_MES(amount_collateral < 0  || version >= HF_VERSION_VBS_REMOVAL, false, "0 collateral requirement before VBS removal, something went wrong! rejecting tx..");
+            CHECK_AND_ASSERT_MES(amount_collateral == 0 || version < HF_VERSION_VBS_REMOVAL, false, "Non-zero collateral requirement after VBS removal, something went wrong! rejecting tx..");
+          }
         }
         CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
       }
@@ -1924,21 +1926,24 @@ namespace rct {
       bool collateral_exploit = false;
       if ((version >= HF_VERSION_USE_COLLATERAL) &&
           (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
-        if (collateral_indices.size() != 1) {
+        if (collateral_indices.size() != 1 && version < HF_VERSION_VBS_REMOVAL) {
           LOG_ERROR("Incorrect number of collateral outputs provided");
           if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS)
             return false;
           else
             collateral_exploit = true;
-        } else if ((tx_type == tt::OFFSHORE && collateral_change_indices.size() != 0)  ||
-                   (tx_type == tt::ONSHORE && collateral_change_indices.size() != 1)) {
+        } else if ((tx_type == tt::OFFSHORE && collateral_change_indices.size() != 0 && version < HF_VERSION_VBS_REMOVAL)  ||
+                   (tx_type == tt::ONSHORE && collateral_change_indices.size() != 1 && version < HF_VERSION_VBS_REMOVAL)) {
           LOG_ERROR("Incorrect number of collateral change outputs provided");
           if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS)
             return false;
           else
             collateral_exploit = true;
-        } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0]) {
+        } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0] && version < HF_VERSION_VBS_REMOVAL) { 
           LOG_ERROR("Collateral output cannot also be collateral_change output");
+          return false;
+        } else if (collateral_indices.size() != 0 || collateral_change_indices.size() != 0){
+          LOG_ERROR("Collateral output found, when one was not expected");
           return false;
         }
       }
@@ -1959,7 +1964,7 @@ namespace rct {
       // Sum the consumed outputs in their respective asset types (sumColIns = inputs in D)
       key sumPseudoOuts = zerokey;
       key sumColIns = zerokey;
-      if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL) {
+      if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL && version < HF_VERSION_VBS_REMOVAL) {
         for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
           if (boost::get<cryptonote::txin_haven_key>(vin[i]).asset_type == "XHV") {
             sumColIns = addKeys(sumColIns, rv.p.pseudoOuts[i]);
@@ -2141,8 +2146,8 @@ namespace rct {
         }
       }
 
-      // validate the collateral
-      if ((version >= HF_VERSION_USE_COLLATERAL)) {
+      // validate the collateral - before HF_VERSION_USE_COLLATERAL and after version HF_VERSION_VBS_REMOVAL no collateral is required
+      if ((version >= HF_VERSION_USE_COLLATERAL && version < HF_VERSION_VBS_REMOVAL)) {
 
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
 
@@ -2176,6 +2181,8 @@ namespace rct {
             }
           }
         }
+      } else { //Just a paranoid check - if we have reached this point, then the sum of collateral outputs should be zero
+        CHECK_AND_NO_ASSERT_MES(equalKeys(sumColIns, zerokey), false, "Collateral inputs found for a transaction where no collateral is needed");
       }
 
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)

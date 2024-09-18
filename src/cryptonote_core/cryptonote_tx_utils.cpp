@@ -985,10 +985,13 @@ namespace cryptonote
     // Calculate the market cap ratio
     cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
     double ratio_mcap = ratio_mcap_128.convert_to<double>();
-
-    // Do the right thing, based on the HF version
-    if (hf_version >= HF_VERSION_SLIPPAGE) {
-
+    if (hf_version >= HF_VERSION_VBS_REMOVAL) {
+      // No collateral needed
+      collateral = 0;
+      // Done - return to caller
+      return true;
+    } else if (hf_version >= HF_VERSION_SLIPPAGE) { // Do the right thing, based on the HF version
+    
       // Force the VBS rate to 1.0, irrespective of health of network - let slippage pick up the slack
       if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
 
