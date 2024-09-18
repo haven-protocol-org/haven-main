@@ -3906,8 +3906,9 @@ output_data_t BlockchainLMDB::get_output_key(const uint64_t& amount, const uint6
       ret.commitment = rct::zeroCommit(amount);
   }
 
-  uint64_t m_height = height(); //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
-  if(ret.height<HF_VERSION_SUPPLY_AUDIT && m_height>=HF_VERSION_SUPPLY_AUDIT_END){
+  const uint64_t m_height = height(); //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
+  const uint8_t hf_version=get_hard_fork_version(m_height);
+  if(get_hard_fork_version(ret.height)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
     ret.unlock_time+=20000000;
     if (ret.unlock_time>20000000)
       ret.unlock_time=20000000;
@@ -4677,7 +4678,8 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
 
   RCURSOR(output_amounts);
 
-  uint64_t m_height = height(); 
+  const uint64_t m_height = height(); 
+  const uint8_t hf_version=get_hard_fork_version(m_height);
   for (size_t i = 0; i < offsets.size(); ++i)
   {
     const uint64_t amount = amounts.size() == 1 ? amounts[0] : amounts[i];
@@ -4712,7 +4714,7 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
     }
     //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
     output_data_t &data = outputs.back();
-    if(data.height<HF_VERSION_SUPPLY_AUDIT && m_height>=HF_VERSION_SUPPLY_AUDIT_END){
+    if(get_hard_fork_version(data.height)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
       data.unlock_time+=20000000;
       if (data.unlock_time>20000000)
         data.unlock_time=20000000;
