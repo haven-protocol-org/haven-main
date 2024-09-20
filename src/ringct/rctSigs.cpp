@@ -1935,6 +1935,8 @@ namespace rct {
       rct::keyV masks_C;
       rct::keyV masks_D;
 
+      //Be extremely careful if you change how masks_C and masks_D are calculated!
+      //Previous exploits made use of the fact that there are outputs not assigned to sumOutpks_C or sumOutpks_D, therefore escaping validation checks. 
       uint64_t masks_pushed=0; //! Used to ensure we don't lose any outputs when pushing to mask_C and mask_D
       for (size_t i=0; i<vout.size(); i++) {
 
@@ -2277,6 +2279,8 @@ namespace rct {
       //These fit into the category of reduntant, paranoid checks - the Proof of Value validation above should ensure they hold. Nonetheless we will do them.
       //The goal is to validate that amount_minted is correct is correct using a PK, and also that the net C color change has a certain value using a PK.
       //Due to not having collateral,we can use maskSums[2] to store the blinding factor for the non-color C outputs (which should be only D color)
+      //We assume completeness and correctness of sumOutpks_C, sumOutpks_D, and sumPseudoouts. Be extremely careful if you change how they are calculated.
+      //Previous exploits took care that there are outputs not assigned to sumOutpks_C or sumOutpks_D, therefore escaping validation checks.
       //So we can check that:
       // maskSums[2]*G + amount_minted*H == sumOutpks_D
       // Now we can get rid of the D color
