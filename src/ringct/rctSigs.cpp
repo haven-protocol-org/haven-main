@@ -2275,7 +2275,7 @@ namespace rct {
 
       //Additional conversions validations after VBS removal
       //These fit into the category of reduntant, paranoid checks - the Proof of Value validation above should ensure they hold. Nonetheless we will do them.
-      //The goal is to validate that amount_burnt is correct is correct using a PK, and also that the net C color change has a certain value using a PK.
+      //The goal is to validate that amount_minted is correct is correct using a PK, and also that the net C color change has a certain value using a PK.
       //Due to not having collateral,we can use maskSums[2] to store the blinding factor for the non-color C outputs (which should be only D color)
       //So we can check that:
       // maskSums[2]*G + amount_minted*H == sumOutpks_D
