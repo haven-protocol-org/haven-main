@@ -1261,7 +1261,7 @@ namespace rct {
 
         using tt = cryptonote::transaction_type;
         bool conversion_tx = tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD;
-        bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3;
+        bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3 && hf_version < HF_VERSION_VBS_REMOVAL; //after VBS is removed, there is collateral required
         bool supply_audit_tx = rv.type == RCTTypeSupplyAudit;
 
         rv.message = message;
@@ -1284,11 +1284,11 @@ namespace rct {
 
         size_t i;
         keyV masks(destinations.size()); //sk mask..
-        outSk.resize(destinations.size());
+        outSk.resize(destinations.size()); //!< Scalar used for the outgoing output Pk. Generated during the range proof (bp, bp+, etc).
         for (i = 0; i < destinations.size(); i++) {
 
             //add destination to sig
-            rv.outPk[i].dest = copy(destinations[i]);
+            rv.outPk[i].dest = copy(destinations[i]); //!< Outgoing output commitment. Generated during the range proof  (bp, bp+, etc).
             //compute range proof
             if (!bulletproof_or_plus)
               rv.p.rangeSigs[i] = proveRange(rv.outPk[i].mask, outSk[i].mask, outamounts[i]);
@@ -1341,7 +1341,12 @@ namespace rct {
                       }
 
                       //RCTTypeAudit should not be used for conversions, only for transfers
-                      if (rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus) {
+                      //After VSB removal, we will use maskSums[2] to store the masks in color different from C(in theory only D, but we cannot guarantee that here)
+                      if (hf_version >= HF_VERSION_VBS_REMOVAL){
+                        if (outamounts_features.at(i).first != in_asset_type) {
+                          sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
+                        }
+                      } else if (rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus) {
                         // save the collateral output mask for offshore
                         if (tx_type == tt::OFFSHORE && outamounts_features.at(i).second.first) {
                           sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
@@ -1396,7 +1401,7 @@ namespace rct {
             }
         }
 
-        key sumout = zero();
+        key sumout = zero(); //!< Sum of masks of transaction outgoing outputs, scalled to color C, excluding collateral outputs
         key sumout_onshore_col = zero();
         key atomic = d2h(COIN);
         key inverse_atomic = invert(atomic);
@@ -1489,6 +1494,7 @@ namespace rct {
         }
 
         // generate commitments per input
+        key PseudooutsMaskSumsTemp = zero();
         key sumpouts = zero(); //sum pseudoOut masks
         keyV a(inamounts.size());
         for (i = 0 ; i < actual_in_amounts.size() - 1; i++) {
@@ -1498,17 +1504,16 @@ namespace rct {
           sc_add(sumpouts.bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
           // Generate a commitment to the amount with the random key
           genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
+          if(supply_audit_tx) //For audit tx, add the masking factor to the sum used for the amount proof. It should match the commitment mask above.
+            sc_add(PseudooutsMaskSumsTemp.bytes, a[actual_in_amounts[i].first].bytes, PseudooutsMaskSumsTemp.bytes); 
         }
-        sc_sub(a[actual_in_amounts[i].first].bytes, sumout.bytes, sumpouts.bytes);
+        //sumpouts = sum of masks of all but the last transaction input's masks
+        sc_sub(a[actual_in_amounts[i].first].bytes, sumout.bytes, sumpouts.bytes); //last mask = sumout - sumpouts, so the sum of pseudoout masks is sumout, which is the sum of scalled outgoing output masks.
         genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
+        if(supply_audit_tx) //For audit tx, add the masking factor to the sum used for the amount proof. It should match the commitment mask above.
+          sc_add(PseudooutsMaskSumsTemp.bytes, a[actual_in_amounts[i].first].bytes, PseudooutsMaskSumsTemp.bytes); 
 
-        
-        //Sum of blinding factors, to be used for the supply audit
-        //Defining PseudooutsMaskSums as const, to ensure it is not modified 
-        key PseudooutsMaskSumsTemp = zero();
-        if (supply_audit_tx) {
-          sc_add(PseudooutsMaskSumsTemp.bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
-        }
+        //Defining PseudooutsMaskSums as const, to ensure it is not modified
         const key PseudooutsMaskSums = PseudooutsMaskSumsTemp;
 
         // set the sum of input blinding factors
@@ -1978,7 +1983,9 @@ namespace rct {
           return false;
         }
       }
-      CHECK_AND_ASSERT_MES(masks_pushed == vout.size(), false, "Some output masks were not considered for validation purposes"); 
+      CHECK_AND_ASSERT_MES(masks_pushed == vout.size(), false, "Some output masks were not considered for validation purposes");
+      CHECK_AND_ASSERT_MES(masks_C.size()+ masks_D.size() == vout.size(), false, "Some output masks were not clasified as either C or D color");
+      
 
       //There should be no collateral outputs in the case of non on/offshore txs
       if(tx_type != tt::OFFSHORE && tx_type != tt::ONSHORE)
@@ -2013,8 +2020,9 @@ namespace rct {
       if(is_transfer_type_tx)
         CHECK_AND_ASSERT_MES(masks_D.size() == 0,  false, "Commitments for transfer non-source asset type found for a transfer");
       
-      key sumOutpks_C = addKeys(masks_C);
-      key sumOutpks_D = addKeys(masks_D);
+      //Making sure nothing tampers with the sums of output PKs
+      const key sumOutpks_C = addKeys(masks_C);
+      const key sumOutpks_D = addKeys(masks_D);
       DP(sumOutpks_C);
       DP(sumOutpks_D);
 
@@ -2030,7 +2038,7 @@ namespace rct {
       bool has_input_collateral = false;
 
       uint64_t pseudoouts_added = 0;
-      key sumPseudoOuts = zerokey;
+      key sumPseudoOuts_temp = zerokey;
       key sumColIns = zerokey;
       if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL && !is_after_vbs_disabling) {
         for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
@@ -2039,12 +2047,12 @@ namespace rct {
             has_input_collateral=true;
             pseudoouts_added++;
           } else {
-            sumPseudoOuts = addKeys(sumPseudoOuts, rv.p.pseudoOuts[i]);
+            sumPseudoOuts_temp = addKeys(sumPseudoOuts_temp, rv.p.pseudoOuts[i]);
             pseudoouts_added++;
           }
         }
       } else {
-        sumPseudoOuts = addKeys(rv.p.pseudoOuts);
+        sumPseudoOuts_temp = addKeys(rv.p.pseudoOuts);
         pseudoouts_added+=rv.p.pseudoOuts.size();
       }
       CHECK_AND_ASSERT_MES(pseudoouts_added == rv.p.pseudoOuts.size(), false, "Some transaction inputs commitments were not considered for validation purposes");
@@ -2053,7 +2061,9 @@ namespace rct {
       if(is_after_vbs_disabling)
         CHECK_AND_ASSERT_MES(equalKeys(sumColIns, zerokey),  false, "Commitments for transaction input collaterals are not zero after VBS disabling");
          
-      DP(sumPseudoOuts);
+      DP(sumPseudoOuts_temp); 
+      //Making sure nothing tampers with the pseudoouts sum
+      const key sumPseudoOuts=sumPseudoOuts_temp;
 
       // C COLOUR
       key sumC;
@@ -2263,6 +2273,26 @@ namespace rct {
         CHECK_AND_NO_ASSERT_MES(equalKeys(sumColIns, zerokey), false, "Collateral inputs found for a transaction where no collateral is needed");
       }
 
+      //Additional conversions validations after VBS removal
+      //These fit into the category of reduntant, paranoid checks - the Proof of Value validation above should ensure they hold. Nonetheless we will do them.
+      //The goal is to validate that amount_burnt is correct is correct using a PK, and also that the net C color change has a certain value using a PK.
+      //Due to not having collateral,we can use maskSums[2] to store the blinding factor for the non-color C outputs (which should be only D color)
+      //So we can check that:
+      // maskSums[2]*G + amount_minted*H == sumOutpks_D
+      // Now we can get rid of the D color
+      // D_tmp = sumOutpks_D - amount_minted*H = maskSum[2] * G
+      // D_tmp_scaled = D_tmp/(conv rate)
+      // We also know that masksums[0] = maskSums[1]+maskSums[2] / (conv rate)
+      // Now, we can calculate c_amt_net = amount_burnt + fees (we should take into account fees in XHV and covert back to XUSD for OFFSHORES)
+      // and check that
+      // c_amt_net*H + masksums[2]/(conv rate)*G == sumPseudoOuts - umOutpks_C
+      // This should be true because:
+      // c_amt_net is by defintion the difference between incoming and outgoing C amount
+      // for the G part, sumPseudoouts has a mask masksums[0] = maskSums[1]+maskSums[2] / (conv rate), and umOutpks_C has a mask maskSums[1]
+      // this will validate the net C color amount in the transaction - it should be positive, it should also be bigger than amount burnt
+
+      //TO-DO##
+
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
         proofs.push_back(&rv.p.bulletproofs[i]);
     
@@ -2272,8 +2302,8 @@ namespace rct {
         return false;
       }
       
-      //Supply proof check
-
+      //Supply proof check for Audit transactions
+      //It ensures the proof that the decryption key == rK, where r is exactly the masking factor in the pseudouts PK r*G+a*H
       if(rv.type==RCTTypeSupplyAudit){
         if(rv.p.amountproofs.empty() || ! verAmountproof(rv.p.amountproofs[0], rv.p.pseudoOuts, rv.decryption_pubkey)) {
           LOG_PRINT_L1("Amount proof verified failed for an audit transaction");
