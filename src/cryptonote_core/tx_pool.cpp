@@ -2691,7 +2691,7 @@ namespace cryptonote
           }
           
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;
@@ -2706,7 +2706,7 @@ namespace cryptonote
           uint64_t fee_conversion_rate = COIN;
           uint64_t tx_fee_conversion_rate = COIN;
           offshore::pricing_record pr_empty;
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_empty, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_empty, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

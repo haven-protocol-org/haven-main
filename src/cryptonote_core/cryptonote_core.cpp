@@ -1235,7 +1235,7 @@ namespace cryptonote
             }
           }
           
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage, tx_info[n].tvc.m_tx_anon_pool))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage, tx_info[n].tvc.m_tx_anon_pool))
             {
               // 2 tx that used reorged pricing reocord for callateral calculation.
               if (epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"

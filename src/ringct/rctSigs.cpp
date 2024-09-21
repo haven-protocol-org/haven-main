@@ -1767,6 +1767,7 @@ namespace rct {
     const std::string& strSource, 
     const std::string& strDest,
     uint64_t amount_burnt,
+    const uint64_t amount_minted,
     const std::vector<cryptonote::tx_out> &vout,
     const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
@@ -1830,6 +1831,8 @@ namespace rct {
       
       const bool is_burn_tx = is_transfer_type_tx && (amount_burnt>0);
 
+      const uint64_t amount_burnt_orig=amount_burnt;
+
       //### Block height related restrictions
       if (version < HF_VERSION_BURN)
         CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Burn transaction found before HF_VERSION_BURN! rejecting tx.. ");
@@ -1853,7 +1856,7 @@ namespace rct {
         CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
       }
 
-      if ((is_after_supply_audit && is_during_supply_audit) && ! is_after_vbs_disabling) { 
+      if (! is_before_supply_audit && ! is_after_vbs_disabling) { 
         //After the end of the supply audit, only re-enable coversions and burn tx after VBS is disabled
         CHECK_AND_ASSERT_MES(!is_conversion_type_tx, false, "Conversions not allowed in the period between the audit start and VBS disabling");
         CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Conversions not allowed in the period between the audit start and VBS disabling");
@@ -2081,6 +2084,9 @@ namespace rct {
       //Remove burnt supply
       subKeys(sumC, sumC, amount_supply_burntKey);
 
+      uint64_t txnFeeInC = rv.txnFee; //!< Transaction fee in C color. Equal to txnFee for transfers, but requires conversion from XHV for conversions due to fees being in XHV
+      uint64_t txnOffshoreFeeInC = rv.txnOffshoreFee; //!< Transaction conversion fee in C color. Equal to txnOffshoreFee for transfers, but requires conversion from XHV for conversions due to fees being in XHV
+      
       if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         // NEAC: Convert the fees for conversions to XHV
         if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
@@ -2093,6 +2099,7 @@ namespace rct {
           boost::multiprecision::uint128_t tx_fee_128 = rv.txnFee; // Fee stored in XHV
           tx_fee_128 *= tx_fee_conversion_rate;
           tx_fee_128 /= COIN;
+          txnFeeInC = tx_fee_128.convert_to<uint64_t>();
           key txnFeeKeyInC = scalarmultH(d2h(tx_fee_128.convert_to<uint64_t>()));
 
           // Deduct the transaction fee from our sum of C terms
@@ -2109,7 +2116,7 @@ namespace rct {
             LOG_ERROR("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
             return false;
           }
-
+          txnOffshoreFeeInC=fee_128.convert_to<uint64_t>();
           // Deduct the conversion fee from our C terms
           key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
           subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
@@ -2276,26 +2283,58 @@ namespace rct {
       }
 
       //Additional conversions validations after VBS removal
-      //These fit into the category of reduntant, paranoid checks - the Proof of Value validation above should ensure they hold. Nonetheless we will do them.
+      //These fit into the category of reduntant, paranoid checks - the Proof of Value validation above should ensure they hold. Nevertheless we will do them.
       //The goal is to validate that amount_minted is correct is correct using a PK, and also that the net C color change has a certain value using a PK.
       //Due to not having collateral,we can use maskSums[2] to store the blinding factor for the non-color C outputs (which should be only D color)
       //We assume completeness and correctness of sumOutpks_C, sumOutpks_D, and sumPseudoouts. Be extremely careful if you change how they are calculated.
-      //Previous exploits took care that there are outputs not assigned to sumOutpks_C or sumOutpks_D, therefore escaping validation checks.
-      //So we can check that:
+      //Previous exploits took advantage of the fact that there are outputs not assigned to sumOutpks_C or sumOutpks_D, therefore escaping validation checks.
+      //We can check that:
       // maskSums[2]*G + amount_minted*H == sumOutpks_D
-      // Now we can get rid of the D color
-      // D_tmp = sumOutpks_D - amount_minted*H = maskSum[2] * G
-      // D_tmp_scaled = D_tmp/(conv rate)
+      // 
       // We also know that masksums[0] = maskSums[1]+maskSums[2] / (conv rate)
-      // Now, we can calculate c_amt_net = amount_burnt + fees (we should take into account fees in XHV and covert back to XUSD for OFFSHORES)
+      // Now, we can calculate amount_C_net = amount_burnt + fees (we should take into account fees in XHV and covert back to C color for conversions)
       // and check that
-      // c_amt_net*H + masksums[2]/(conv rate)*G == sumPseudoOuts - umOutpks_C
+      // amount_C_net*H + masksums[2]/(conv rate)*G == sumPseudoOuts - sumOutpks_C
       // This should be true because:
-      // c_amt_net is by defintion the difference between incoming and outgoing C amount
+      // amount_C_net is by defintion the difference between incoming and outgoing C amount
       // for the G part, sumPseudoouts has a mask masksums[0] = maskSums[1]+maskSums[2] / (conv rate), and umOutpks_C has a mask maskSums[1]
       // this will validate the net C color amount in the transaction - it should be positive, it should also be bigger than amount burnt
+      if (version>=HF_VERSION_VBS_REMOVAL){
+        //TO-DO##
+        key lhs;
+        key rhs;
+        uint64_t amount_C_net = amount_burnt_orig;
+        amount_C_net+=txnFeeInC;
+        CHECK_AND_NO_ASSERT_MES(amount_C_net>=txnFeeInC, false, "Overflow when adding txnFeeinC");
+        amount_C_net+=txnOffshoreFeeInC;
+        CHECK_AND_NO_ASSERT_MES(amount_C_net>=txnOffshoreFeeInC, false, "Overflow when adding txnOffshoreFeeInC");
 
-      //TO-DO##
+        LOG_PRINT_L2("net amount (spent - change) in C color " << amount_C_net);
+        
+        //Validate (1) maskSums[2]*G + amount_minted*H == sumOutpks_D
+        CHECK_AND_NO_ASSERT_MES(rv.maskSums.size()==3, false, "Less masks than expected");
+        genC(lhs, rv.maskSums[2], amount_minted);
+        rhs = sumOutpks_D;
+        CHECK_AND_NO_ASSERT_MES(equalKeys(lhs, rhs), false, "Validation of amount_minted failed");
+        //Validate (2) amount_C_net*H + masksums[2]/(conv rate)*G == sumPseudoOuts - sumOutpks_C
+
+        key mask_C_scaled;
+        const key conv_invert = invert(d2h(conversion_rate));
+        sc_mul(mask_C_scaled.bytes, rv.maskSums[2].bytes, d2h(COIN).bytes);
+        key mask_C_final;
+        sc_mul(mask_C_final.bytes, mask_C_scaled.bytes, conv_invert.bytes);
+        genC(lhs, mask_C_final, amount_C_net);
+        subKeys(rhs, sumPseudoOuts, sumOutpks_C);
+        CHECK_AND_NO_ASSERT_MES(equalKeys(lhs, rhs), false, "Validation of net amount (spent - change) in C color failed");
+        //At this point we have validated amount_minted and amount_C_net
+
+        CHECK_AND_NO_ASSERT_MES(amount_C_net >= amount_slippage, false, "Slippage exceeds (spent - change) in C color");
+        boost::multiprecision::uint128_t amount_C_after_slippage = amount_C_net - amount_slippage;
+        amount_C_after_slippage*=COIN;
+        boost::multiprecision::uint128_t amount_D_estimated = amount_C_after_slippage/conversion_rate;
+        CHECK_AND_NO_ASSERT_MES(amount_D_estimated > amount_minted, false, "Validation of net amount (spent - change) in C color failed");
+      }
+      
 
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
         proofs.push_back(&rv.p.bulletproofs[i]);
@@ -2959,7 +2998,7 @@ namespace rct {
     challenge_to_hash.push_back(decryption_pubkey);
     challenge_to_hash.push_back(sumPseudoOuts);
 
-    
+    //K2=decryption_pubkey
     //Challenge c=H(init, G1, K1, H1,K2, C), which is in practise c=hash(r_r, r_r2, r2, r_a, r. a), see details below on notation 
     const key c=hash_to_scalar(challenge_to_hash);
     
@@ -3014,9 +3053,6 @@ namespace rct {
     lhs=init_H;
     rhs=init_G;
 
-    
-
-    //key K; //TO-DO## K definition - must be a hard-coded point, similar like G
     lhs=scalarmultKey(K_ap, amountproof.sr); //lhs = s_r*K
     rhs=scalarmultKey(decryption_pubkey, c); //rhs = c*K2
     addKeys(rhs, rhs, amountproof.K1); //rhs = K1+c*K2

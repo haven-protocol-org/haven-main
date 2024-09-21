@@ -3328,7 +3328,8 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & decryption_
   std::map<uint64_t, boost::multiprecision::int128_t> total_new_supply;
   uint64_t asset_id=0;
   for (auto asset_type: offshore::ASSET_TYPES){
-    total_new_supply.insert(std::pair<uint64_t, boost::multiprecision::int128_t>(asset_id, 0));
+    if (asset_type!="XCAD" && asset_type != "XNOK" && asset_type != "XNZD") //TO-DO##
+      total_new_supply.insert(std::pair<uint64_t, boost::multiprecision::int128_t>(asset_id, 0));
     asset_id++;
   }
 
@@ -3908,7 +3909,7 @@ output_data_t BlockchainLMDB::get_output_key(const uint64_t& amount, const uint6
 
   const uint64_t m_height = height(); //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
   const uint8_t hf_version=get_hard_fork_version(m_height);
-  if(get_hard_fork_version(ret.height)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
+  if(get_hard_fork_version(ret.height-1)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
     ret.unlock_time=OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT;
   }
   TXN_POSTFIX_RDONLY();
@@ -4677,7 +4678,7 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
   RCURSOR(output_amounts);
 
   const uint64_t m_height = height(); 
-  const uint8_t hf_version=get_hard_fork_version(m_height);
+  const uint8_t hf_version=get_hard_fork_version(m_height-1);
   for (size_t i = 0; i < offsets.size(); ++i)
   {
     const uint64_t amount = amounts.size() == 1 ? amounts[0] : amounts[i];

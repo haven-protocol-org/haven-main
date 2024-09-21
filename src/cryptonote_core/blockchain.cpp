@@ -5557,7 +5557,7 @@ leave:
         }
           
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
         {
           // 2 tx that used reorged pricing record for collateral calculation.
           if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
@@ -5595,7 +5595,7 @@ leave:
       uint64_t slippage = 0;
       offshore::pricing_record pr_empty;
       if (hf_version >= HF_VERSION_HAVEN2) {
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_empty, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_empty, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
             bvc.m_verifivation_failed = true;

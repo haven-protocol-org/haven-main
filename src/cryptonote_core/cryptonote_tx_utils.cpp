@@ -710,6 +710,8 @@ namespace cryptonote
     using namespace boost::multiprecision;
     using tt = cryptonote::transaction_type;
 
+    LOG_PRINT_L2("cryptonote_tx_utils::" << __func__);
+
     // Fail dismally if we have been called too early
     if (hf_version < HF_VERSION_SLIPPAGE) {
       LOG_ERROR("get_slippage() called from a pre-slippage client - aborting");
@@ -743,7 +745,7 @@ namespace cryptonote
       if (i.first != "XUSD") {
         amount_xasset *= COIN;
         amount_xasset /= price_xasset;
-      }      
+      }
 
       // Sum into our total for all xAssets
       mcap_xassets += amount_xasset;
@@ -944,6 +946,7 @@ namespace cryptonote
     using namespace boost::multiprecision;
     using tt = transaction_type;
 
+    LOG_PRINT_L2("cryptonote_tx_utils::" << __func__);
     // Process the circulating supply data
     std::map<std::string, uint128_t> map_amounts;
     uint128_t mcap_xassets = 0;
@@ -1167,6 +1170,7 @@ namespace cryptonote
   }
   //---------------------------------------------------------------
   bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate, const uint8_t hf_version) {
+    LOG_PRINT_L2("cryptonote_tx_utils::" << __func__);
     // Check for transfers
     if (from_asset == to_asset) {
       rate = COIN;
