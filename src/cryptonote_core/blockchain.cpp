@@ -4423,7 +4423,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     CHECK_AND_ASSERT_MES(*pmax_used_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE <= m_db->height(),
         false, "Transaction spends at least one output which is too young");
   }
-  //TO-DO##
   // Warn that new RCT types are present, and thus the cache is not being used effectively
   static constexpr const std::uint8_t RCT_CACHE_TYPE = rct::RCTTypeBulletproofPlus;
   if (tx.rct_signatures.type > RCT_CACHE_TYPE)

@@ -1221,7 +1221,6 @@ namespace rct {
         for (size_t n = 0; n < mixRing.size(); ++n) {
           CHECK_AND_ASSERT_THROW_MES(index[n] < mixRing[n].size(), "Bad index into mixRing");
         }
-        //TO-DO##
         rctSig rv;
         if (bulletproof_or_plus)
         {
@@ -2300,7 +2299,6 @@ namespace rct {
       // for the G part, sumPseudoouts has a mask masksums[0] = maskSums[1]+maskSums[2] / (conv rate), and umOutpks_C has a mask maskSums[1]
       // this will validate the net C color amount in the transaction - it should be positive, it should also be bigger than amount burnt
       if (version>=HF_VERSION_VBS_REMOVAL){
-        //TO-DO##
         key lhs;
         key rhs;
         uint64_t amount_C_net = amount_burnt_orig;

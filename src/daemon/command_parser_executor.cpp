@@ -327,8 +327,6 @@ bool t_command_parser_executor::recalculate_supply(const std::vector<std::string
   const std::string& secret_phrase_1 = args[0];
   const std::string& secret_phrase_2 = args[1];
 
-  //TO-DO## Validate if this really makes sense in this way
-  
   rct::keyV string_to_scalar;
   rct::key initKey1, initKey2;
   sc_0(initKey1.bytes);
@@ -352,7 +350,7 @@ bool t_command_parser_executor::recalculate_supply(const std::vector<std::string
   string_to_scalar.push_back(initKey2);
 
   const rct::key decrypt_secretkey = hash_to_scalar(string_to_scalar);
-  //TO-DO: Validation of the secret key
+  //TO-DO##: Validation of the secret key
   //Can be done as A==decryption_secretkey*B, where A and B are specific points
   //Fail if the validation fails
   std::cout << "Decryption secret key:" << decrypt_secretkey;

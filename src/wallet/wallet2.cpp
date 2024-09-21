@@ -8650,7 +8650,6 @@ void wallet2::light_wallet_get_outs(std::vector<std::vector<tools::wallet2::get_
 
   {
     const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-    //TO-DO## Make sure only Pool 1 or Pool 2 outputs are selected during the Audit
     bool r = epee::net_utils::invoke_http_json("/get_random_outs", oreq, ores, *m_http_client, rpc_timeout, "POST");
     m_daemon_rpc_mutex.unlock();
     THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_random_outs");
@@ -9264,7 +9263,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
               type = "gamma";
             }
           }
-          else if (num_found - 1 < recent_outputs_count) // -1 to account for the real one we seeded with //TO-DO##
+          else if (num_found - 1 < recent_outputs_count) // -1 to account for the real one we seeded with 
           {
             // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
@@ -9277,7 +9276,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
           }
           else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count)
           {
-            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit //TO-DO##
+            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit 
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
             double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
             i = (uint64_t)(frac*segregation_limit[amount].first);
@@ -9286,7 +9285,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
               --i;
             type = " pre-fork";
           }
-          else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count + post_fork_outputs_count) //TO-DO##
+          else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count + post_fork_outputs_count) 
           {
             // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
@@ -9299,7 +9298,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
           }
           else
           {
-            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit //TO-DO##
+            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
             uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
             double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
             i = (uint64_t)(frac*num_outs);
@@ -10989,7 +10988,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     
     LOG_PRINT_L2("Needed money: " << needed_money << ", available old money: " << old_money << ", available new money: " << new_money);       
     THROW_WALLET_EXCEPTION_IF(needed_money>(old_money+new_money), error::wallet_internal_error, "Not enough money to construction the transaction");
-    //TO-DO## Better error message
     THROW_WALLET_EXCEPTION_IF((needed_money>old_money) && (needed_money>new_money), error::wallet_internal_error, "Transaction needs to spent both new and old money, which is not permited. Try completing the supply audit by sending to yourself amount");
     if (needed_money<=old_money){
       LOG_PRINT_L2("Trying to use only old money");
@@ -11007,6 +11005,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     }
 
   } else if (hf_version>=HF_VERSION_SUPPLY_AUDIT_END){
+      if(hf_version<HF_VERSION_VBS_REMOVAL)
+        THROW_WALLET_EXCEPTION_IF(source_asset!=dest_asset, error::wallet_internal_error, "cant have conversion transactions after the audit starts and before collateral is removed");
       LOG_PRINT_L2("After supply audit hard fork has ended, so using only new money");
       for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
         if (i->asset_type == source_asset && !is_old_output(*i))
