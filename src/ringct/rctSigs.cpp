@@ -1937,8 +1937,6 @@ namespace rct {
         }
       }
 
-      uint64_t amount_supply_burnt = 0;
-
       if (is_burn_tx){
         amount_supply_burnt = amount_burnt;
       }
