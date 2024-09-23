@@ -1997,7 +1997,12 @@ namespace rct {
       
       // Sanity check the collateral
       bool collateral_exploit = false;
-      if ((version >= HF_VERSION_USE_COLLATERAL) && !is_after_vbs_disabling &&
+      if (is_after_vbs_disabling){
+        if (collateral_indices.size() != 0 || collateral_change_indices.size() != 0){
+          LOG_ERROR("Collateral output found, when one was not expected");
+          return false;
+        } 
+      } else if ((version >= HF_VERSION_USE_COLLATERAL) &&
           (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
         if (collateral_indices.size() != 1) {
           LOG_ERROR("Incorrect number of collateral outputs provided");
@@ -2015,10 +2020,10 @@ namespace rct {
         } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0]) {
           LOG_ERROR("Collateral output cannot also be collateral_change output");
           return false;
-        } else if (collateral_indices.size() != 0 || collateral_change_indices.size() != 0){
+        } 
+      } else if (collateral_indices.size() != 0 || collateral_change_indices.size() != 0){
           LOG_ERROR("Collateral output found, when one was not expected");
           return false;
-        }
       }
 
       if(is_transfer_type_tx)
