@@ -1908,6 +1908,22 @@ namespace rct {
         if (version < HF_VERSION_BURN) {
           CHECK_AND_ASSERT_MES(amount_burnt==0, false, "amount_burnt found for a transfer tx! rejecting tx.. ");
         }
+        CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
+      }
+
+      if (strSource == strDest) {
+        CHECK_AND_ASSERT_MES(pr.empty(), false, "Pricing record found for a transfer! rejecting tx..");
+        CHECK_AND_ASSERT_MES(amount_collateral==0, false, "Collateral found for a transfer! rejecting tx..");
+        CHECK_AND_ASSERT_MES(amount_slippage==0, false, "Slippage found for a transfer! rejecting tx..");
+        if (version < HF_VERSION_BURN) {
+          CHECK_AND_ASSERT_MES(amount_burnt==0, false, "amount_burnt found for a transfer tx! rejecting tx.. ");
+          }
+      }
+      
+      uint64_t amount_supply_burnt = 0;
+
+      if ((tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) && version >= HF_VERSION_BURN && amount_burnt>0){
+        amount_supply_burnt = amount_burnt;
       }
 
       
@@ -1927,6 +1943,7 @@ namespace rct {
         amount_supply_burnt = amount_burnt;
       }
       
+
 
       // OUTPUTS SUMMED FOR EACH COLOUR
       key zerokey = rct::identity();
@@ -1966,9 +1983,11 @@ namespace rct {
           return false;
         }
         
+
         if(is_after_vbs_disabling && output_asset_type != strSource){
           CHECK_AND_ASSERT_MES(output_asset_type == strDest && is_conversion_type_tx, false, "Unexpected output asset type");  
         }
+
 
         if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS && (is_collateral || is_collateral_change) && output_asset_type != "XHV"){
           LOG_ERROR("Collateral which is not XHV found");
@@ -2091,6 +2110,7 @@ namespace rct {
       uint64_t txnFeeInC = rv.txnFee; //!< Transaction fee in C color. Equal to txnFee for transfers, but requires conversion from XHV for conversions due to fees being in XHV
       uint64_t txnOffshoreFeeInC = rv.txnOffshoreFee; //!< Transaction conversion fee in C color. Equal to txnOffshoreFee for transfers, but requires conversion from XHV for conversions due to fees being in XHV
       
+
       if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         // NEAC: Convert the fees for conversions to XHV
         if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {

@@ -273,6 +273,7 @@
 #define HF_VERSION_SUPPLY_AUDIT_END             26
 #define HF_VERSION_VBS_REMOVAL                  27
 
+
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x1b
 

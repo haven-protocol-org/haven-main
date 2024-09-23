@@ -4987,6 +4987,7 @@ bool wallet2::load_keys_buf(const std::string& keys_buf, const epee::wipeable_st
     m_max_audit_outputs_XUSD = 10;
     m_max_audit_outputs_XASSETS = 5;
     
+
   }
   else
   {
