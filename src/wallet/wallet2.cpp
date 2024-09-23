@@ -1227,7 +1227,10 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_enable_multisig(false),
   m_enable_burn(false),
   m_has_ever_refreshed_from_node(false),
-  m_allow_mismatched_daemon_version(false)
+  m_allow_mismatched_daemon_version(false),
+  m_max_audit_outputs_XHV(20),
+  m_max_audit_outputs_XUSD(10),
+  m_max_audit_outputs_XASSETS(5)
 {
   set_rpc_client_secret_key(rct::rct2sk(rct::skGen()));
 }
@@ -4740,6 +4743,9 @@ bool wallet2::load_keys_buf(const std::string& keys_buf, const epee::wipeable_st
     m_enable_multisig = false;
     m_enable_burn = false;
     m_allow_mismatched_daemon_version = false;
+    m_max_audit_outputs_XHV = 20;
+    m_max_audit_outputs_XUSD = 10;
+    m_max_audit_outputs_XASSETS = 5;
   }
   else if(json.IsObject())
   {
@@ -4976,6 +4982,10 @@ bool wallet2::load_keys_buf(const std::string& keys_buf, const epee::wipeable_st
     m_enable_multisig = field_enable_multisig;
     
     m_enable_burn = false;
+    
+    m_max_audit_outputs_XHV = 20;
+    m_max_audit_outputs_XUSD = 10;
+    m_max_audit_outputs_XASSETS = 5;
     
   }
   else
@@ -11910,6 +11920,150 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(
           extra
         );
 }
+
+std::vector<wallet2::pending_tx> wallet2::create_transactions_audit(
+  const cryptonote::account_public_address &address,
+  bool is_subaddress,
+  const size_t fake_outs_count,
+  const uint64_t unlock_time,
+  uint32_t priority,
+  const std::vector<uint8_t>& extra,
+  const bool keep_subaddress
+){
+  uint64_t below = 0;
+  const size_t outputs=1;
+  std::vector<size_t> unused_transfers_indices;
+  std::vector<size_t> unused_dust_indices;
+
+  const bool use_rct = use_fork_rules(4, 0);
+
+  std::vector<wallet2::pending_tx> ret_val;
+
+  // determine threshold for fractional amount
+  const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
+  const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
+  const bool bulletproof_plus = use_fork_rules(get_bulletproof_plus_fork(), 0);
+  const bool clsag = use_fork_rules(get_clsag_fork(), 0);
+  const bool use_view_tags = use_fork_rules(get_view_tag_fork(), 0);
+  const uint64_t base_fee  = get_base_fee(priority);
+  const size_t tx_weight_one_ring = estimate_tx_weight(use_rct, 1, fake_outs_count, 2, 0, bulletproof, clsag, bulletproof_plus, use_view_tags);
+  const size_t tx_weight_two_rings = estimate_tx_weight(use_rct, 2, fake_outs_count, 2, 0, bulletproof, clsag, bulletproof_plus, use_view_tags);
+  THROW_WALLET_EXCEPTION_IF(tx_weight_one_ring > tx_weight_two_rings, error::wallet_internal_error, "Estimated tx weight with 1 input is larger than with 2 inputs!");
+  const size_t tx_weight_per_ring = tx_weight_two_rings - tx_weight_one_ring;
+  const uint64_t fractional_threshold = (base_fee * tx_weight_per_ring) / (use_per_byte_fee ? 1 : 1024);
+  std::unordered_set<crypto::public_key> valid_public_keys_cache;
+
+  for (uint32_t account_index = 0; account_index < get_num_subaddress_accounts(); ++account_index) { //Loop over all accounts
+    for (const auto& asset_type: offshore::ASSET_TYPES) { //Loop over all asset types
+      auto balance_cur = balance(account_index, asset_type, false);
+      auto unlocked_balance_cur = unlocked_balance(account_index, asset_type, false);
+      if (unlocked_balance_cur == 0) //No unlocked balance, nothing to do
+        continue;
+      uint64_t max_outputs_per_tx = (asset_type == "XHV" ? m_max_audit_outputs_XHV : (asset_type == "XUSD" ? m_max_audit_outputs_XUSD : m_max_audit_outputs_XASSETS));
+      MDEBUG("Maximum  " << max_outputs_per_tx << " outputs per transaction batch for asset type " << asset_type);
+      std::vector<size_t> outputs_batch;
+      std::vector<size_t> dust;
+      std::map<uint32_t, std::vector<size_t>> indices_per_subaddress;
+      const bool is_subaddress_account = account_index != 0;
+      cryptonote::transaction_type tx_type = (asset_type == "XHV" ? cryptonote::transaction_type::TRANSFER : (asset_type == "XUSD" ? cryptonote::transaction_type::OFFSHORE_TRANSFER : cryptonote::transaction_type::XASSET_TRANSFER));
+      bool fund_found=false;
+      for (size_t i = 0; i < m_transfers.size(); ++i){
+        const auto& td = m_transfers[i];
+        if (m_ignore_fractional_outputs && td.amount() < fractional_threshold)
+        {
+          MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which is below threshold " << print_money(fractional_threshold));
+          continue;
+        }
+        if (is_old_output(td) && !is_spent(td, false) && !td.m_frozen && !td.m_key_image_partial && (use_rct ? true : !td.is_rct()) && is_transfer_unlocked(td) && (td.m_subaddr_index.major == account_index) && (td.asset_type == asset_type))
+        {
+          fund_found = true;
+          uint32_t subaddr_index = td.m_subaddr_index.minor;
+          indices_per_subaddress[subaddr_index].push_back(i);
+        }
+      }
+
+      cryptonote::account_public_address current_address = get_subaddress({account_index,0}); //Failsafe, just in case
+      cryptonote::account_public_address address_to_send = get_subaddress({account_index,0}); //Failsafe, just in case
+      const bool is_subaddr_to_send = keep_subaddress ? is_subaddress_account : is_subaddress;
+
+      for(const auto& sa: indices_per_subaddress){
+        uint32_t subaddress_index=sa.first;
+        current_address = get_subaddress({account_index,subaddress_index});
+        address_to_send = (keep_subaddress ? current_address : address);
+        for (auto i: sa.second){
+          MDEBUG("Adding input " << i << " of amount " << print_money(m_transfers[i].amount()) << m_transfers[i].asset_type);
+          outputs_batch.push_back(i);
+          if (outputs_batch.size() >= max_outputs_per_tx){ // we need to create a tx
+           std::vector<wallet2::pending_tx> cur_ret_val = 
+           create_transactions_from(
+              address_to_send,
+              is_subaddr_to_send,
+              outputs,
+              outputs_batch,
+              dust,
+              asset_type,
+              tx_type,
+              fake_outs_count,
+              unlock_time,
+              priority,
+              extra
+            );
+            ret_val.insert(ret_val.end(), cur_ret_val.begin(), cur_ret_val.end());
+            MDEBUG("Sending tx of asset type " << asset_type << " with " << outputs_batch.size());
+            outputs_batch.resize(0);
+          }
+        }
+
+        if (outputs_batch.size() > 0 && keep_subaddress) //In case we need to preserve the subaddresses, then send any remaining outputs before moving to the next subaddress.
+        {
+          std::vector<wallet2::pending_tx> cur_ret_val = 
+            create_transactions_from(
+              address_to_send,
+              is_subaddr_to_send,
+              outputs,
+              outputs_batch,
+              dust,
+              asset_type,
+              tx_type,
+              fake_outs_count,
+              unlock_time,
+              priority,
+              extra
+            );
+          ret_val.insert(ret_val.end(), cur_ret_val.begin(), cur_ret_val.end());
+          MDEBUG("Sending tx of asset type " << asset_type << " with " << outputs_batch.size());
+          outputs_batch.resize(0);
+        }
+
+      }
+      if (outputs_batch.size()>0){  //If we did not create all transactions already on subaddress level, then we need to do so on account level. 
+        THROW_WALLET_EXCEPTION_IF(keep_subaddress, error::wallet_internal_error, "Error, proceeding will not preserve the sendsing subaddress");
+        std::vector<wallet2::pending_tx> cur_ret_val = 
+          create_transactions_from(
+            address, //we are not preserving subaddresses
+            is_subaddress,
+            outputs,
+            outputs_batch,
+            dust,
+            asset_type,
+            tx_type,
+            fake_outs_count,
+            unlock_time,
+            priority,
+            extra
+          );
+        ret_val.insert(ret_val.end(), cur_ret_val.begin(), cur_ret_val.end());
+        MDEBUG("Sending tx of asset type " << asset_type << " with " << outputs_batch.size());
+        outputs_batch.resize(0);
+      }
+    }
+  }
+  return ret_val; 
+
+}
+
+
+
 
 std::vector<wallet2::pending_tx> wallet2::create_transactions_single(const crypto::key_image &ki, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra)
 {

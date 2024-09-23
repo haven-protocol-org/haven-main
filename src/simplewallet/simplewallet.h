@@ -199,6 +199,9 @@ namespace cryptonote
     bool get_block_cap(const std::vector<std::string> &args);
     
     bool donate(const std::vector<std::string> &args);
+    bool audit_main(bool keep_subaddress, const std::vector<std::string> &args);
+    bool audit_subaddress(const std::vector<std::string> &args_);
+    bool audit(const std::vector<std::string> &args_);
     bool sign_transfer(const std::vector<std::string> &args);
     bool submit_transfer(const std::vector<std::string> &args);
     std::vector<std::vector<cryptonote::tx_destination_entry>> split_amounts(

@@ -1145,6 +1145,15 @@ private:
       const std::string &asset_type,
       const cryptonote::transaction_type tx_type
     );
+    std::vector<wallet2::pending_tx> create_transactions_audit(
+      const cryptonote::account_public_address &address,
+      bool is_subaddress,
+      const size_t fake_outs_count,
+      const uint64_t unlock_time,
+      uint32_t priority,
+      const std::vector<uint8_t>& extra,
+      const bool keep_subaddress
+    );
     std::vector<wallet2::pending_tx> create_transactions_single(
       const crypto::key_image &ki,
       const cryptonote::account_public_address &address,
@@ -1982,6 +1991,10 @@ private:
     bool m_enable_multisig;
     bool m_enable_burn;
     bool m_allow_mismatched_daemon_version;
+    uint8_t m_max_audit_outputs_XHV;
+    uint8_t m_max_audit_outputs_XUSD;
+    uint8_t m_max_audit_outputs_XASSETS;
+    
 
     // Aux transaction data from device
     serializable_unordered_map<crypto::hash, std::string> m_tx_device;
