@@ -8817,6 +8817,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     uint64_t rct_start_height;
     bool has_rct = false;
     bool use_global_outs = false;
+    THROW_WALLET_EXCEPTION_IF(selected_transfers.size()==0, error::wallet_internal_error, "get_out request contains no transfers");
     const std::string rct_asset_type = m_transfers[selected_transfers[0]].asset_type; 
 
     uint64_t max_rct_index = 0;
@@ -8936,9 +8937,14 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         error::get_output_distribution, "Daemon reports suspicious number of rct outputs");
 
     for(auto & ro: rct_offsets){
-          THROW_WALLET_EXCEPTION_IF(ro < rct_offsets_min_output_id,
+        LOG_PRINT_L2("Adjusting rct_offset " << ro << " by substracting "<< rct_offsets_min_output_id);
+          THROW_WALLET_EXCEPTION_IF(ro + 1 < rct_offsets_min_output_id,
         error::get_output_distribution, "RCT offsets received which are below the minimum output id value for the current anon pool");
-        ro-= rct_offsets_min_output_id;
+        if (ro<rct_offsets_min_output_id) {
+          ro=0;
+        } else{
+          ro-= rct_offsets_min_output_id;
+        }
     }
 
     // get histogram for the amounts we need
@@ -9733,7 +9739,7 @@ void wallet2::transfer_selected_rct(
   uint64_t needed_col = 0;
   uint8_t hf_version = get_current_hard_fork();
   uint64_t current_height = get_blockchain_current_height()-1;
-  bool using_onshore_collateral = hf_version >= HF_VERSION_USE_COLLATERAL && source_asset == "XUSD" && dest_asset == "XHV";
+  bool using_onshore_collateral = hf_version >= HF_VERSION_USE_COLLATERAL && hf_version < HF_VERSION_VBS_REMOVAL && source_asset == "XUSD" && dest_asset == "XHV" ;
   LOG_PRINT_L2("transfer_selected_rct: starting with fee " << print_money (needed_money));
   LOG_PRINT_L2("selected transfers: " << strjoin(selected_transfers, " "));
 
