@@ -2321,7 +2321,7 @@ namespace rct {
       // amount_C_net is by defintion the difference between incoming and outgoing C amount
       // for the G part, sumPseudoouts has a mask masksums[0] = maskSums[1]+maskSums[2] / (conv rate), and umOutpks_C has a mask maskSums[1]
       // this will validate the net C color amount in the transaction - it should be positive, it should also be bigger than amount burnt
-      if (version>=HF_VERSION_VBS_REMOVAL){
+      if (version>=HF_VERSION_VBS_REMOVAL && is_conversion_type_tx){
         key lhs;
         key rhs;
         uint64_t amount_C_net = amount_burnt_orig;
@@ -2351,9 +2351,13 @@ namespace rct {
 
         CHECK_AND_NO_ASSERT_MES(amount_C_net >= amount_slippage, false, "Slippage exceeds (spent - change) in C color");
         boost::multiprecision::uint128_t amount_C_after_slippage = amount_C_net - amount_slippage;
-        amount_C_after_slippage*=COIN;
-        boost::multiprecision::uint128_t amount_D_estimated = amount_C_after_slippage/conversion_rate;
-        CHECK_AND_NO_ASSERT_MES(amount_D_estimated > amount_minted, false, "Validation of net amount (spent - change) in C color failed");
+        CHECK_AND_NO_ASSERT_MES(amount_C_after_slippage >= txnOffshoreFeeInC + txnFeeInC, false, "Fees will exceed converted amount minus slippage");
+        boost::multiprecision::uint128_t amount_C_after_slippage_and_fees = amount_C_after_slippage - txnOffshoreFeeInC - txnFeeInC;
+        
+        LOG_PRINT_L2("amount_burnt minus fees and slippage (net amount in C before conversion) " << amount_C_after_slippage_and_fees);
+        boost::multiprecision::uint128_t amount_D_estimated = (amount_C_after_slippage_and_fees * conversion_rate)/COIN;
+        LOG_PRINT_L2("net amount converted in D color " << amount_D_estimated);
+        CHECK_AND_NO_ASSERT_MES(amount_D_estimated >= amount_minted, false, "Validation of net amount (spent - change) failed, amount_burnt minus slippage and fees after conversion appears to be less than amount_minted");
       }
       
 
