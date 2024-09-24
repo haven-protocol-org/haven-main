@@ -29,6 +29,7 @@
 #include "cryptonote_core/blockchain.h"
 #include "cryptonote_core/tx_verification_utils.h"
 #include "ringct/rctSigs.h"
+#include "ringct/rctTypes.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain"
@@ -130,7 +131,8 @@ bool ver_rct_non_semantics_simple_cached
     // mixring. Future versions of the protocol may differ in this regard, but if this assumptions
     // holds true in the future, enable the verification hash by modifying the `untested_tx`
     // condition below.
-    const bool untested_tx = tx.version > HAVEN_TYPES_TRANSACTION_VERSION || tx.rct_signatures.type > rct::RCTTypeBulletproofPlus;
+    //TO-DO##
+    const bool untested_tx = tx.version > HAVEN_TYPES_TRANSACTION_VERSION || (tx.rct_signatures.type > rct::RCTTypeBulletproofPlus && tx.rct_signatures.type != rct::RCTTypeSupplyAudit); //Supply audit txs will not be cached
     VER_ASSERT(!untested_tx, "Unknown TX type. Make sure RCT cache works correctly with this type and then enable it in the code here.");
 
     // Don't cache older (or newer) rctSig types

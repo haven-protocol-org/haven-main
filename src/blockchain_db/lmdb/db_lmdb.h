@@ -262,6 +262,8 @@ public:
   virtual block get_top_block() const;
 
   virtual std::vector<std::pair<std::string, std::string>> get_circulating_supply() const;
+
+  virtual void recalculate_supply_after_audit(const rct::key & decryption_secretkey);
   
   virtual uint64_t height() const;
 

@@ -2337,6 +2337,34 @@ bool t_rpc_command_executor::pop_blocks(uint64_t num_blocks)
   return true;
 }
 
+bool t_rpc_command_executor::recalculate_supply(rct::key decrypt_secretkey)
+{
+  cryptonote::COMMAND_RPC_RECALCULATE_SUPPLY::request req;
+  cryptonote::COMMAND_RPC_RECALCULATE_SUPPLY::response res;
+  std::string fail_message = "recalculate_supply failed";
+
+  req.decrypt_secretkey = decrypt_secretkey;
+
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->rpc_request(req, res, "/recalculatesupply", fail_message.c_str()))
+    {
+      return true;
+    }
+  }
+  else
+  {
+    if (!m_rpc_server->on_recalculate_supply(req, res) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, res.status);
+      return true;
+    }
+  }
+  tools::success_msg_writer() << "Supply recalculated";
+
+  return true;
+}
+
 bool t_rpc_command_executor::prune_blockchain()
 {
     cryptonote::COMMAND_RPC_PRUNE_BLOCKCHAIN::request req;

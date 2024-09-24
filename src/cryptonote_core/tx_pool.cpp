@@ -31,10 +31,12 @@
 
 #include <algorithm>
 #include <boost/filesystem.hpp>
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
 #include "tx_pool.h"
+#include "cryptonote_protocol/enums.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_config.h"
@@ -2173,7 +2175,65 @@ namespace cryptonote
         return std::get<0>(i->second);
       }
     }
-    bool ret = m_blockchain.check_tx_inputs(get_tx(), max_used_block_height, max_used_block_id, tvc, kept_by_block);
+
+    transaction tx=get_tx();
+    bool ret = m_blockchain.check_tx_inputs(tx, max_used_block_height, max_used_block_id, tvc, kept_by_block);
+    uint64_t hf_version=m_blockchain.get_current_hard_fork_version();
+    // Get the TX anonymity pool
+    anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
+
+    if (hf_version>=HF_VERSION_BURN) {
+      std::vector<std::vector<output_data_t>> tx_ring_outputs;
+      tx_ring_outputs.reserve(tx.vin.size());
+      
+      for (const txin_v& txin: tx.vin){
+        std::vector<output_data_t> ring_outputs;
+        if (txin.type() == typeid(txin_haven_key)){
+          txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
+          std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
+          if (absolute_offsets.size()!=tx_input.key_offsets.size()){
+            LOG_ERROR("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
+            ret = false;
+          }
+          try{
+            m_blockchain.get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
+            if (absolute_offsets.size() != ring_outputs.size()){
+              LOG_ERROR("Output does not exist! amount = " << tx_input.amount);
+              ret = false;
+            }
+          }
+          catch (...){
+            LOG_ERROR("Output does not exist! amount = " << tx_input.amount);
+            ret = false;
+          }
+          tx_ring_outputs.push_back(ring_outputs);
+        } else if (txin.type() == typeid(txin_gen)){
+          tx_ring_outputs.push_back(ring_outputs);
+        } else {
+          LOG_ERROR("Unexpected input type for transaction" << txid);
+          ret=false;
+        }
+      }
+
+      if (tx_ring_outputs.size()!=tx.vin.size()){
+        LOG_ERROR("Transaction has more inputs than number of ring member groups: " << txid);
+        ret=false;   
+      }
+
+      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+        LOG_ERROR("Failed to get the anonymity pool for transaction " << txid);
+        ret=false;   
+      }
+
+      if(tx_anon_pool==anonymity_pool::UNSET){
+        LOG_ERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << txid);
+        ret=false;   
+      }
+    } else if(hf_version<HF_VERSION_BURN){
+      tx_anon_pool=anonymity_pool::NOTAPPLICABLE;
+    }
+    tvc.m_tx_anon_pool=tx_anon_pool;
+    
     if (!kept_by_block)
       m_input_cache.insert(std::make_pair(txid, std::make_tuple(ret, tvc, max_used_block_height, max_used_block_id)));
     return ret;
@@ -2543,6 +2603,15 @@ namespace cryptonote
         continue;
       }
 
+      tx_verification_context tvc;
+
+      
+      if(!check_tx_inputs([&tx]()->cryptonote::transaction&{ return tx; }, sorted_it->second, meta.max_used_block_height, meta.max_used_block_id, tvc, meta.kept_by_block))
+      {
+        LOG_PRINT_L2(" transaction has invalid inputs or anonymity pool " << sorted_it->second);
+        continue;
+      }
+      
       uint64_t conversion_this_tx_xhv = 0;
       if (source != dest)
       {
@@ -2622,7 +2691,22 @@ namespace cryptonote
           }
           
           // make sure proof-of-value still holds
-          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
+          {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
+            continue;
+          }
+        }
+      } else {
+        // make sure proof-of-value still holds for transfers after HF_VERSION_BURN
+        if (hf_version>HF_VERSION_BURN){
+          uint64_t slippage = 0;
+          uint64_t collateral = 0;
+          uint64_t conversion_rate = COIN;
+          uint64_t fee_conversion_rate = COIN;
+          uint64_t tx_fee_conversion_rate = COIN;
+          offshore::pricing_record pr_empty;
+          if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_empty, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tvc.m_tx_anon_pool))
           {
             LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << sorted_it->second);
             continue;

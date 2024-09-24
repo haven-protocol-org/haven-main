@@ -34,6 +34,7 @@
 #include <memory>  // std::unique_ptr
 #include <cstring>  // memcpy
 
+#include "cryptonote_config.h"
 #include "string_tools.h"
 #include "file_io_utils.h"
 #include "common/util.h"
@@ -989,6 +990,7 @@ read_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val idx)
 void write_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val idx, boost::multiprecision::int128_t tally)
 {
   // packing the Boost 128-bit signed integer into 2 uint64's + a sign bit
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   circ_supply_tally cst;
 
   // From the Boost docs, bitwise operations on negative values "Yields the value, but not the bit pattern, that would result from
@@ -3299,6 +3301,123 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   return circulating_supply;
 }
 
+//! This function updates the circulating total supply, but it does not update the individual transaction supply. 
+//! It is meant as a temporary measure, due to the limitation of not being able to publish the private decryption key.
+//! It will be redesigned in the next Haven release
+void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & decryption_secretkey)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+
+
+  check_open();
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+
+  block_wtxn_start();
+  int result = 0;
+
+  CURSOR(block_info)
+  CURSOR(blocks)
+  CURSOR(circ_supply)
+  CURSOR(circ_supply_tally)
+
+  const uint64_t bc_height = height();
+  const uint64_t start_height=1700000;
+  uint64_t height = start_height;
+
+  //Initialize new total supply at 0
+  std::map<uint64_t, boost::multiprecision::int128_t> total_new_supply;
+  uint64_t asset_id=0;
+  for (auto asset_type: offshore::ASSET_TYPES){
+    if (asset_type!="XCAD" && asset_type != "XNOK" && asset_type != "XNZD") //TO-DO##
+      total_new_supply.insert(std::pair<uint64_t, boost::multiprecision::int128_t>(asset_id, 0));
+    asset_id++;
+  }
+
+  uint64_t coinbase_at_start_of_audit = 0;
+  const bool after_audit_start = get_hard_fork_version(bc_height - 1) >= HF_VERSION_SUPPLY_AUDIT;
+  bool audit_blocked_reached = false;
+
+  //TO-DO## split this in chunks, so that not all blocks are fetched at the same time, killing the daemon
+  std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
+
+  while(height < bc_height && after_audit_start) {
+    block b = get_block_from_height(height);
+    if (!audit_blocked_reached)
+      audit_blocked_reached=(get_hard_fork_version(height) == HF_VERSION_SUPPLY_AUDIT);
+    if(audit_blocked_reached){
+      if (coinbase_at_start_of_audit == 0)  //All coins minted by mining prior to the audit will have to undergo audit, so have to be removed from the coinbase supply
+        coinbase_at_start_of_audit=get_block_already_generated_coins(height-1);
+        
+      for (auto &tx_hash: b.tx_hashes){
+        cryptonote::blobdata tx_blob;
+        if(!get_pruned_tx_blob(tx_hash, tx_blob))
+          throw1(TX_DNE("Cant get transaction from DB"));
+       
+
+        circ_supply cs;
+        transaction tx;
+        MDB_val_set(val_h, tx_hash);
+        if (!parse_and_validate_tx_base_from_blob(tx_blob, tx))
+          throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+        
+
+        if (mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &val_h, MDB_GET_BOTH))
+          throw1(TX_DNE("Attempting to remove transaction that isn't in the db"));
+        txindex *tip = (txindex *)val_h.mv_data;
+        MDB_val_set(val_tx_id, tip->data.tx_id);
+        bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
+        // get tx assets
+        std::string strSource;
+        std::string strDest;
+        if (!get_tx_asset_types(tx, tx_hash, strSource, strDest, is_miner_tx)) {
+          throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
+        }
+
+        if(tx.rct_signatures.type==rct::RCTTypeSupplyAudit){
+          rct::xmr_amount amount_decrypted=tx.rct_signatures.amount_encrypted;
+          rct::xmr_amount encryption_key=0;
+            
+          rct::key decryption_pubkey=tx.rct_signatures.decryption_pubkey;
+            
+          const rct::key rS = scalarmultKey(decryption_pubkey,decryption_secretkey);
+          for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
+            encryption_key*=256; //Shift 1 bytes
+            encryption_key+=rS.bytes[i];  //Add current byte
+          }
+          amount_decrypted ^= encryption_key; //XOR using the encryption key
+
+          MDEBUG("height,amount_decrypted,tx: " << height<<","<<amount_decrypted<<","<<tx_hash);
+          uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
+          total_new_supply[dest_currency_type] += amount_decrypted; //Sum of outgoing amounts
+        } else { //check if we already have a transaction record
+            MDB_val v;
+            result = mdb_cursor_get(m_cur_circ_supply, &val_tx_id, &v, MDB_SET);
+            if (result==0){
+              const circ_supply &cs = *(const circ_supply*)v.mv_data;
+              boost::multiprecision::int128_t burnt = cs.amount_burnt;
+              total_new_supply[cs.source_currency_type] -= burnt;
+              boost::multiprecision::int128_t minted = cs.amount_minted;
+              total_new_supply[cs.dest_currency_type] += minted;
+            } else if(result != MDB_NOTFOUND)
+                throw0(DB_ERROR(lmdb_error("Failed to enumerate circ_supply table: ", result).c_str()));
+          }
+        
+      }
+    }
+    height++;
+  }
+  //remove old coinbase amount
+  uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), "XHV") - offshore::ASSET_TYPES.begin();
+  total_new_supply[dest_currency_type]-=coinbase_at_start_of_audit;
+
+  if (after_audit_start) //write supply back to the DB only if the current height is above the start of the audit
+    for (auto &tally: total_new_supply) {
+      MDB_val_copy<uint64_t> currency_type(tally.first);
+      write_circulating_supply_data(m_cur_circ_supply_tally, currency_type, tally.second);
+    }
+  block_wtxn_stop();
+}
+
 uint64_t BlockchainLMDB::num_outputs() const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -3516,6 +3635,7 @@ bool BlockchainLMDB::get_pruned_tx_blobs_from(const crypto::hash& h, size_t coun
   return true;
 }
 
+//TO-DO## Potentially not working as expected?
 bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata>>>>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -3785,6 +3905,12 @@ output_data_t BlockchainLMDB::get_output_key(const uint64_t& amount, const uint6
     memcpy(&ret, &okp->data, sizeof(pre_rct_output_data_t));
     if (include_commitmemt)
       ret.commitment = rct::zeroCommit(amount);
+  }
+
+  const uint64_t m_height = height(); //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
+  const uint8_t hf_version=get_hard_fork_version(m_height);
+  if(get_hard_fork_version(ret.height-1)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
+    ret.unlock_time=OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT;
   }
   TXN_POSTFIX_RDONLY();
   return ret;
@@ -4551,6 +4677,8 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
 
   RCURSOR(output_amounts);
 
+  const uint64_t m_height = height(); 
+  const uint8_t hf_version=get_hard_fork_version(m_height-1);
   for (size_t i = 0; i < offsets.size(); ++i)
   {
     const uint64_t amount = amounts.size() == 1 ? amounts[0] : amounts[i];
@@ -4582,6 +4710,11 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
       output_data_t &data = outputs.back();
       memcpy(&data, &okp->data, sizeof(pre_rct_output_data_t));
       data.commitment = rct::zeroCommit(amount);
+    }
+    //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
+    output_data_t &data = outputs.back();
+    if(get_hard_fork_version(data.height)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
+      data.unlock_time=OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT;
     }
   }
 

@@ -30,6 +30,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
+#include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/utility.hpp>
@@ -103,8 +104,8 @@ namespace cryptonote
   struct tx_destination_entry
   {
     std::string original;
-    uint64_t amount;              // destination money in source asset
-    uint64_t dest_amount;         // destination money in dest asset
+    uint64_t amount;              //! destination money in source asset
+    uint64_t dest_amount;         //! destination money in dest asset
     uint64_t slippage;            // destination money in source asset that will be burnt as slippage
     uint64_t supply_burnt;            // amount of source asset to be permanently burnt as part of a transfer
     std::string dest_asset_type;  // destination asset type
@@ -255,6 +256,8 @@ namespace cryptonote
   uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
   // Get onshore amount in XHV, not XUSD
   uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
+  bool get_anonymity_pool(const transaction& tx, const std::vector<std::vector<output_data_t>>& tx_ring_outputs, anonymity_pool& tx_anon_pool);
+  bool get_input_anonymity_pool(const txin_v& txin, const std::vector<output_data_t>& ring_outputs, anonymity_pool& anon_pool);
 }
 
 BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)

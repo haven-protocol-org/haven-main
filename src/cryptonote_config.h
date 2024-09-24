@@ -264,6 +264,15 @@
 #define HF_VERSION_MAX_CONV_TRANSACTION_FEE          24
 #define MAX_CONV_TRANSACTION_FEE                   ((uint64_t)10000000000000ull)
 
+// Haven v4.2 definitions
+#define HF_VERSION_SUPPLY_AUDIT                 25
+#define SUPPLY_AUDIT_BLOCK_HEIGHT               ((uint64_t)1713000)
+#define OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT       ((uint64_t)20000000)  //After the supply audit ends, all old outputs will be locked to this block, to avoid spending them
+
+
+#define HF_VERSION_SUPPLY_AUDIT_END             26
+#define HF_VERSION_VBS_REMOVAL                  27
+
 
 #define STAGENET_VERSION                        0x0e
 #define TESTNET_VERSION                         0x1b
@@ -342,6 +351,7 @@ namespace config
   const constexpr char HASH_KEY_MULTISIG_TX_PRIVKEYS_SEED[] = "multisig_tx_privkeys_seed";
   const constexpr char HASH_KEY_MULTISIG_TX_PRIVKEYS[] = "multisig_tx_privkeys";
   const constexpr char HASH_KEY_TXHASH_AND_MIXRING[] = "txhash_and_mixring";
+  const unsigned char HASH_KEY_AMOUNTPROOF[] = "AmountProof";
 
   // Multisig
   const uint32_t MULTISIG_MAX_SIGNERS{16};

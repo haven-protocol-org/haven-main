@@ -36,8 +36,11 @@
 #include <boost/format.hpp>
 #include <boost/multiprecision/cpp_int.hpp>
 
+#include "cryptonote_protocol/enums.h"
 #include "include_base_utils.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "offshore/pricing_record.h"
+#include "ringct/rctTypes.h"
 #include "tx_pool.h"
 #include "blockchain.h"
 #include "blockchain_db/blockchain_db.h"
@@ -632,6 +635,32 @@ void Blockchain::pop_blocks(uint64_t nblocks)
     const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(m_db->height()));
     rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
   }
+}
+//------------------------------------------------------------------
+// This function recalculates the supply after the supply audit
+void Blockchain::recalculate_supply_after_audit(rct::key decrypt_secretkey)
+{
+ 
+  CRITICAL_REGION_LOCAL(m_tx_pool);
+  CRITICAL_REGION_LOCAL1(m_blockchain_lock);
+
+  bool stop_batch = m_db->batch_start();
+
+  try
+  {
+    m_db->recalculate_supply_after_audit(decrypt_secretkey);
+  }
+  catch (const std::exception& e)
+  {
+    LOG_ERROR("Error when when recalculating the supply" << e.what());
+    if (stop_batch)
+      m_db->batch_abort();
+    return;
+  }
+
+
+  if (stop_batch)
+    m_db->batch_stop();
 }
 //------------------------------------------------------------------
 // This function tells BlockchainDB to remove the top block from the
@@ -2666,6 +2695,13 @@ crypto::public_key Blockchain::get_output_key(uint64_t amount, uint64_t global_i
 }
 
 //------------------------------------------------------------------
+void Blockchain::get_output_key(const epee::span<const uint64_t> &amounts, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial) const
+{
+  m_db->get_output_key(amounts, offsets, outputs, allow_partial);
+}
+
+
+//------------------------------------------------------------------
 bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
@@ -3715,54 +3751,64 @@ bool Blockchain::check_unlock_time_21(const uint64_t output_unlock_time, const u
   // What type of network are we operating in?
   if (m_nettype == cryptonote::MAINNET) {
     // Do the right thing, based on what the output actually is
-    if (is_collateral)
+    if (is_collateral) {
       if (unlock_time < HF21_COLLATERAL_LOCK_BLOCKS) return false;
       else return true;
-    if (tx_type == transaction_type::OFFSHORE)
+    }
+    if (tx_type == transaction_type::OFFSHORE) {
       if (output_asset_type == "XHV") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS) return false;
         else return true;
-    if (tx_type == transaction_type::ONSHORE)
+    }
+    if (tx_type == transaction_type::ONSHORE) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS) return false;
         else return true;
-    if (tx_type == transaction_type::XUSD_TO_XASSET)
+    }
+    if (tx_type == transaction_type::XUSD_TO_XASSET) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS) return false;
         else return true;
-    if (tx_type == transaction_type::XASSET_TO_XUSD)
+    }
+    if (tx_type == transaction_type::XASSET_TO_XUSD) {
       if (output_asset_type != "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS) return false;
         else return true;
+    }
   } else {
     // Do the right thing, based on what the output actually is
-    if (is_collateral)
+    if (is_collateral) {
       if (unlock_time < HF21_COLLATERAL_LOCK_BLOCKS_TESTNET) return false;
       else return true;
-    if (tx_type == transaction_type::OFFSHORE)
+    }
+    if (tx_type == transaction_type::OFFSHORE){
       if (output_asset_type == "XHV") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS_TESTNET) return false;
         else return true;
-    if (tx_type == transaction_type::ONSHORE)
+    }
+    if (tx_type == transaction_type::ONSHORE) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_SHORING_LOCK_BLOCKS_TESTNET) return false;
         else return true;
-    if (tx_type == transaction_type::XUSD_TO_XASSET)
+    }
+    if (tx_type == transaction_type::XUSD_TO_XASSET) {
       if (output_asset_type == "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS_TESTNET) return false;
         else return true;
-    if (tx_type == transaction_type::XASSET_TO_XUSD)
+    }
+    if (tx_type == transaction_type::XASSET_TO_XUSD) {
       if (output_asset_type != "XUSD") return true;
       else
         if (unlock_time < HF21_XASSET_LOCK_BLOCKS_TESTNET) return false;
         else return true;
+    }
   }
   // Should never get here
   return false;
@@ -3935,8 +3981,20 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
       }
     }
   }
-
-  if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
+  
+  if (hf_version >= HF_VERSION_SUPPLY_AUDIT_END) {
+    // After the supply audit, only rct::RCTTypeHaven3 txs are accepted
+    if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_SUPPLY_AUDIT) {
+    // Durring the supply Audit, both Audit transactions and BPP transactions are allowed
+    if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus && tx.rct_signatures.type != rct::RCTTypeSupplyAudit) {
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  } else if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
     // only accept rct::RCTTypeHaven3 txs after Haven3 fork.
     if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus) {
       tvc.m_verifivation_failed = true;
@@ -4040,7 +4098,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const uint8_t hf_version,
       }
     }
   }
-  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus)
+  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus || rv.type == rct::RCTTypeSupplyAudit)
   {
     CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
     rv.mixRing.resize(pubkeys.size());
@@ -4081,7 +4139,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const uint8_t hf_version,
       }
     }
   }
-  else if (rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus)
+  else if (rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeCLSAGN || rv.type == rct::RCTTypeHaven2 || rv.type == rct::RCTTypeHaven3 || rv.type == rct::RCTTypeBulletproofPlus || rv.type == rct::RCTTypeSupplyAudit)
   {
     if (!tx.pruned)
     {
@@ -4365,7 +4423,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     CHECK_AND_ASSERT_MES(*pmax_used_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE <= m_db->height(),
         false, "Transaction spends at least one output which is too young");
   }
-
   // Warn that new RCT types are present, and thus the cache is not being used effectively
   static constexpr const std::uint8_t RCT_CACHE_TYPE = rct::RCTTypeBulletproofPlus;
   if (tx.rct_signatures.type > RCT_CACHE_TYPE)
@@ -4412,6 +4469,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     case rct::RCTTypeHaven2:
     case rct::RCTTypeHaven3:
     case rct::RCTTypeBulletproofPlus:
+    case rct::RCTTypeSupplyAudit:
     {
       if (!ver_rct_non_semantics_simple_cached(tx, hf_version, pubkeys, m_rct_ver_cache, RCT_CACHE_TYPE))
       {
@@ -5344,6 +5402,71 @@ leave:
       goto leave;
     }
 
+    
+    // Get the TX anonymity pool
+    anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
+    if (hf_version>=HF_VERSION_BURN) {
+      std::vector<std::vector<output_data_t>> tx_ring_outputs;
+      tx_ring_outputs.reserve(tx.vin.size());
+      for (const txin_v& txin: tx.vin){
+        std::vector<output_data_t> ring_outputs;
+        if (txin.type() == typeid(txin_haven_key)){
+          txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
+          std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
+
+          if (absolute_offsets.size()!=tx_input.key_offsets.size()){
+            MERROR_VER("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+          
+          try{
+            get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
+            if (absolute_offsets.size() != ring_outputs.size()){
+              MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+              bvc.m_verifivation_failed = true;
+              goto leave;
+            }
+          }
+          catch (...){
+            MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
+          
+          tx_ring_outputs.push_back(ring_outputs);
+        } else if (txin.type() == typeid(txin_gen)){
+          tx_ring_outputs.push_back(ring_outputs);
+        } else {
+          MERROR_VER("Unexpected input type for transaction" << tx_id);
+          bvc.m_verifivation_failed = true;
+          goto leave;
+        }
+      }
+
+      if (tx_ring_outputs.size()!=tx.vin.size()){
+        MERROR_VER("Transaction has more inputs than number of ring member groups: " << tx_id);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+
+      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+        MERROR("Failed to get the anonymity pool for transaction " << tx_id);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+
+      if(tx_anon_pool==anonymity_pool::UNSET){
+        MERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << tx_id);
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
+    } else if (hf_version<HF_VERSION_BURN) {
+      tx_anon_pool=anonymity_pool::NOTAPPLICABLE;  
+    }
+
+
+
     // check for block cap limit
     uint64_t conversion_this_tx_xhv = 0;
     if (hf_version >= HF_VERSION_USE_COLLATERAL && (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
@@ -5433,7 +5556,7 @@ leave:
         }
           
         // make sure proof-of-value still holds
-        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.vout, tx.vin, hf_version, collateral, slippage))
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_bl.pricing_record, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
         {
           // 2 tx that used reorged pricing record for collateral calculation.
           if (epee::string_tools::pod_to_hex(tx_id) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
@@ -5462,6 +5585,21 @@ leave:
         LOG_PRINT_L2("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         bvc.m_verifivation_failed = true;
         goto leave;
+      }
+
+      uint64_t conversion_rate = COIN;
+      uint64_t fee_conversion_rate = COIN;
+      uint64_t tx_fee_conversion_rate = COIN;
+      uint64_t collateral = 0;
+      uint64_t slippage = 0;
+      offshore::pricing_record pr_empty;
+      if (hf_version >= HF_VERSION_HAVEN2) {
+        if (!rct::verRctSemanticsSimple2(tx.rct_signatures, pr_empty, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_type, source, dest, tx.amount_burnt, tx.amount_minted, tx.vout, tx.vin, hf_version, collateral, slippage, tx_anon_pool))
+          {
+            LOG_PRINT_L2(" transaction proof-of-value is now invalid for tx " << tx.hash);
+            bvc.m_verifivation_failed = true;
+            goto leave;
+          }
       }
     }
 

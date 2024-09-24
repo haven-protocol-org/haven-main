@@ -316,6 +316,47 @@ bool t_command_parser_executor::print_transaction(const std::vector<std::string>
   return true;
 }
 
+bool t_command_parser_executor::recalculate_supply(const std::vector<std::string>& args)
+{
+  if (args.size() !=2 )
+  {
+    std::cout << "Invalid syntax: Exactly 2 parameters expected. For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  const std::string& secret_phrase_1 = args[0];
+  const std::string& secret_phrase_2 = args[1];
+
+  rct::keyV string_to_scalar;
+  rct::key initKey1, initKey2;
+  sc_0(initKey1.bytes);
+  sc_0(initKey2.bytes);
+  uint64_t pos=0;
+  for(auto s: secret_phrase_1){
+    if(pos >= sizeof(initKey1.bytes))
+      break;
+    initKey1.bytes[pos]=s;
+    pos++;
+  }
+  pos=0;
+  for(auto s: secret_phrase_2){
+    if(pos >= sizeof(initKey2.bytes))
+      break;
+    initKey2.bytes[pos]=s;
+    pos++;
+  }
+
+  string_to_scalar.push_back(initKey1);
+  string_to_scalar.push_back(initKey2);
+
+  const rct::key decrypt_secretkey = hash_to_scalar(string_to_scalar);
+  //TO-DO##: Validation of the secret key
+  //Can be done as A==decryption_secretkey*B, where A and B are specific points
+  //Fail if the validation fails
+  m_executor.recalculate_supply(decrypt_secretkey);
+  return true;
+}
+
 bool t_command_parser_executor::is_key_image_spent(const std::vector<std::string>& args)
 {
   if (args.empty())

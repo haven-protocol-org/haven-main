@@ -1146,6 +1146,7 @@ namespace cryptonote
 
      std::shared_ptr<tools::Notify> m_block_rate_notify;
      boost::function<void(std::vector<txpool_event>)> m_zmq_pub;
+     
    };
 }
 

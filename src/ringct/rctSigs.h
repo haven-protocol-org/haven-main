@@ -138,7 +138,7 @@ namespace rct {
   rctSig genRctSimple(const key &message, const ctkeyV & inSk, const keyV & destinations, const cryptonote::transaction_type tx_type, const std::string& in_asset_type, const std::vector<xmr_amount> &inamounts, const std::vector<size_t>& inamounts_col_indices, const std::vector<xmr_amount> &outamounts, const std::map<size_t, std::pair<std::string, std::pair<bool,bool>>>& outamounts_features, const xmr_amount txnFee, const xmr_amount txnOffshoreFee, const xmr_amount onshore_col_amount, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, uint8_t tx_version, const offshore::pricing_record& pr, const uint64_t& conversion_rate, const uint32_t hf_version, const RCTConfig &rct_config, hw::device &hwdev);
     bool verRct(const rctSig & rv, bool semantics);
     static inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
-  bool verRctSemanticsSimple2(const rctSig & rv, const offshore::pricing_record& pr, const uint64_t& conversion_rate, const uint64_t& fee_conversion_rate, const uint64_t& tx_fee_conversion_rate, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest, uint64_t amount_burnt, const std::vector<cryptonote::tx_out> &vout, const std::vector<cryptonote::txin_v> &vin, const uint8_t version, const uint64_t amount_collateral, const uint64_t amount_slippage);
+  bool verRctSemanticsSimple2(const rctSig & rv, const offshore::pricing_record& pr, const uint64_t& conversion_rate, const uint64_t& fee_conversion_rate, const uint64_t& tx_fee_conversion_rate, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest, uint64_t amount_burnt, uint64_t amount_minted, const std::vector<cryptonote::tx_out> &vout, const std::vector<cryptonote::txin_v> &vin, const uint8_t version, const uint64_t amount_collateral, const uint64_t amount_slippage, const cryptonote::anonymity_pool tx_anon_pool);
   bool verRctSemanticsSimple(const rctSig & rv, const offshore::pricing_record& pr, const cryptonote::transaction_type& type, const std::string& strSource, const std::string& strDest);
     bool verRctNonSemanticsSimple(const rctSig & rv);
     xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
@@ -148,6 +148,7 @@ namespace rct {
     key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
 
   bool checkBurntAndMinted(const rctSig &rv, const xmr_amount amount_burnt, const xmr_amount amount_minted, const offshore::pricing_record pr, const uint64_t& conversion_rate, const std::string& source, const std::string& destination, const uint8_t version);
+  bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts, const key & decryption_pubkey);
 }
 #endif  /* RCTSIGS_H */
 
