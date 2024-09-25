@@ -356,7 +356,6 @@ namespace cryptonote
           // Miner component of the xAsset TX fee
           r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
           CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
-          idx++;
           crypto::view_tag view_tag;
 
           if (hard_fork_version >= HF_VERSION_VIEW_TAGS) {
@@ -386,6 +385,7 @@ namespace cryptonote
             out_miner.target = tk_miner;
             tx.vout.push_back(out_miner);
           }
+          idx++;
 
           crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
           if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset, view_tag))
