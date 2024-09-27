@@ -988,7 +988,7 @@ namespace cryptonote
     // Calculate the market cap ratio
     cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
     double ratio_mcap = ratio_mcap_128.convert_to<double>();
-    if (hf_version >= HF_VERSION_VBS_REMOVAL) {
+    if (hf_version >= HF_VERSION_VBS_DISABLING) {
       // No collateral needed
       collateral = 0;
       // Done - return to caller

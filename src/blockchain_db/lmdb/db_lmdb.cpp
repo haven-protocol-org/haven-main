@@ -1133,15 +1133,17 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
       if (!cryptonote::get_conversion_rate(pricing_block.pricing_record, "XHV", strSource, conversion_rate, hf_version)){
         LOG_PRINT_L2("Failed to get conversition rate for transaction " << tx.hash << " total supply will not account properly for fees in XHV");
       } else {
-          boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
-          tx_fee_128 *= conversion_rate;
-          tx_fee_128 /= COIN;
-          boost::multiprecision::uint128_t conversion_fee_128 = tx.rct_signatures.txnOffshoreFee; // Fee stored in XHV
-          conversion_fee_128 *= conversion_rate;
-          conversion_fee_128 /= COIN;
-          fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
-          fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
-          cs.amount_burnt+=fee_in_strSource;
+        if (strSource=="XHV")
+          conversion_rate=COIN;
+        boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
+        tx_fee_128 *= conversion_rate;
+        tx_fee_128 /= COIN;
+        boost::multiprecision::uint128_t conversion_fee_128 = tx.amount_burnt; // Fee stored in XHV
+        conversion_fee_128 *= 3;
+        conversion_fee_128 /= 200;
+        fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
+        fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
+        cs.amount_burnt+=fee_in_strSource;
       }
     }
     cs.amount_minted = tx.amount_minted;
@@ -1278,12 +1280,14 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
       if (!cryptonote::get_conversion_rate(pricing_block.pricing_record, "XHV", strSource, conversion_rate, hf_version)){
         LOG_PRINT_L2("Failed to get conversition rate for transaction " << tx.hash << " total supply will not account properly for fees in XHV");
       } else {
+          if (strSource=="XHV")
+            conversion_rate=COIN;
           boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
           tx_fee_128 *= conversion_rate;
           tx_fee_128 /= COIN;
-          boost::multiprecision::uint128_t conversion_fee_128 = tx.rct_signatures.txnOffshoreFee; // Fee stored in XHV
-          conversion_fee_128 *= conversion_rate;
-          conversion_fee_128 /= COIN;
+          boost::multiprecision::uint128_t conversion_fee_128 = tx.amount_burnt; // Fee stored in XHV
+          conversion_fee_128 *= 3;
+          conversion_fee_128 /= 200;
           fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
           fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
           cs.amount_burnt+=fee_in_strSource;
@@ -3484,16 +3488,18 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & decryption_
                 if (!cryptonote::get_conversion_rate(pricing_block.pricing_record, "XHV", strSource , conversion_rate, hf_version)){
                   LOG_PRINT_L2("Failed to get conversition rate for transaction " << tx.hash << " total supply will not account properly for fees in XHV");
                 } else {
-                    boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
-                    tx_fee_128 *= conversion_rate;
-                    tx_fee_128 /= COIN;
-                    boost::multiprecision::uint128_t conversion_fee_128 = tx.amount_burnt; // Fee stored in XHV
-                    conversion_fee_128 *= 3;
-                    conversion_fee_128 /= 200;
-                    fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
-                    fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
-                    cs.amount_burnt+=fee_in_strSource;
-                    MDEBUG(print_money(tx.amount_burnt) << " " << print_money(tx_fee_128.convert_to<uint64_t>()) << " " <<  print_money(conversion_fee_128.convert_to<uint64_t>()));
+                  if (strSource=="XHV")
+                    conversion_rate = COIN;
+                  boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
+                  tx_fee_128 *= conversion_rate;
+                  tx_fee_128 /= COIN;
+                  boost::multiprecision::uint128_t conversion_fee_128 = tx.amount_burnt; // Fee stored in XHV
+                  conversion_fee_128 *= 3;
+                  conversion_fee_128 /= 200;
+                  fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
+                  fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
+                  cs.amount_burnt+=fee_in_strSource;
+                  MDEBUG(print_money(tx.amount_burnt) << " " << print_money(tx_fee_128.convert_to<uint64_t>()) << " " <<  print_money(conversion_fee_128.convert_to<uint64_t>()));
                 }
               }
               

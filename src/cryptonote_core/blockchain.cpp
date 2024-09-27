@@ -3603,7 +3603,9 @@ bool Blockchain::check_unlock_time(const uint64_t output_unlock_time, const uint
   }
 
   // Start implementing per-HF overrides of this function, so the logic is clearer
-  if (hf_version >= HF_VERSION_SLIPPAGE) {
+  if (hf_version >= HF_VERSION_VBS_DISABLING){
+    return check_unlock_time_27(output_unlock_time, tx_height, tx_type, output_asset_type, is_collateral, is_collateral_change);  
+  } else if (hf_version >= HF_VERSION_SLIPPAGE) {
     return check_unlock_time_23(output_unlock_time, tx_height, tx_type, output_asset_type, is_collateral, is_collateral_change);
   } else if (hf_version >= HF_VERSION_USE_COLLATERAL_V2) {
     return check_unlock_time_21(output_unlock_time, tx_height, tx_type, output_asset_type, is_collateral, is_collateral_change);
@@ -3658,6 +3660,55 @@ bool Blockchain::check_unlock_time(const uint64_t output_unlock_time, const uint
 
   // return success
   return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::check_unlock_time_27(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const
+{
+  
+  if (is_collateral_change || is_collateral) return false;
+  // Check for transfers calling us erroneously
+  if (tx_type == transaction_type::TRANSFER ||
+      tx_type == transaction_type::OFFSHORE_TRANSFER ||
+      tx_type == transaction_type::XASSET_TRANSFER ||
+      tx_type == transaction_type::ONSHORE ||
+      tx_type == transaction_type::OFFSHORE) {
+    // Just return true - code elsewhere guarantees minimum 10 block unlock
+    return true;
+  }
+
+  // Calculate the number of blocks the output is/was locked for
+  uint64_t unlock_time = 0;
+  if (tx_height <= 973672 || output_unlock_time > tx_height)
+    unlock_time = output_unlock_time - tx_height;
+
+  // What type of network are we operating in?
+  if (m_nettype == cryptonote::MAINNET) {
+    // Do the right thing, based on what the output actually is
+    if (tx_type == transaction_type::XUSD_TO_XASSET)
+      if (output_asset_type == "XUSD") return true;
+      else
+        if (unlock_time < HF27_XASSET_LOCK_BLOCKS) return false;
+        else return true;
+    if (tx_type == transaction_type::XASSET_TO_XUSD)
+      if (output_asset_type != "XUSD") return true;
+      else
+        if (unlock_time < HF27_XASSET_LOCK_BLOCKS) return false;
+        else return true;
+  } else {
+    // Do the right thing, based on what the output actually is
+    if (tx_type == transaction_type::XUSD_TO_XASSET)
+      if (output_asset_type == "XUSD") return true;
+      else
+        if (unlock_time < HF27_XASSET_LOCK_BLOCKS_TESTNET) return false;
+        else return true;
+    if (tx_type == transaction_type::XASSET_TO_XUSD)
+      if (output_asset_type != "XUSD") return true;
+      else
+        if (unlock_time < HF27_XASSET_LOCK_BLOCKS_TESTNET) return false;
+        else return true;
+  }
+  // Should never get here
+  return false;
 }
 //------------------------------------------------------------------
 bool Blockchain::check_unlock_time_23(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const
