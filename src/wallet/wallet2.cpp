@@ -8892,7 +8892,9 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         error::get_output_distribution, "Failed to get rct distribution");
       THROW_WALLET_EXCEPTION_IF(rct_offsets_inner.size() == 0,
         error::get_output_distribution, "No rct outputs found");
-      output_index_pool_1_max = rct_offsets_inner.back();
+      THROW_WALLET_EXCEPTION_IF(rct_offsets_inner.back() == 0,
+        error::get_output_distribution, "No rct outputs found");
+      output_index_pool_1_max = rct_offsets_inner.back()-1; //The last offset element is th number of outputs. However, the enumaration of outputs starts at 0, so we need to substract 1.
       output_index_pool_2_min=output_index_pool_1_max+1;
 
       if (anon_pool==anon::POOL_1){
@@ -8938,13 +8940,9 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
 
     for(auto & ro: rct_offsets){
         LOG_PRINT_L2("Adjusting rct_offset " << ro << " by substracting "<< rct_offsets_min_output_id);
-          THROW_WALLET_EXCEPTION_IF(ro + 1 < rct_offsets_min_output_id,
+      THROW_WALLET_EXCEPTION_IF(ro < rct_offsets_min_output_id,
         error::get_output_distribution, "RCT offsets received which are below the minimum output id value for the current anon pool");
-        if (ro<rct_offsets_min_output_id) {
-          ro=0;
-        } else{
-          ro-= rct_offsets_min_output_id;
-        }
+        ro-= rct_offsets_min_output_id;
     }
 
     // get histogram for the amounts we need
@@ -9739,7 +9737,7 @@ void wallet2::transfer_selected_rct(
   uint64_t needed_col = 0;
   uint8_t hf_version = get_current_hard_fork();
   uint64_t current_height = get_blockchain_current_height()-1;
-  bool using_onshore_collateral = hf_version >= HF_VERSION_USE_COLLATERAL && hf_version < HF_VERSION_VBS_REMOVAL && source_asset == "XUSD" && dest_asset == "XHV" ;
+  bool using_onshore_collateral = hf_version >= HF_VERSION_USE_COLLATERAL && hf_version < HF_VERSION_VBS_DISABLING && source_asset == "XUSD" && dest_asset == "XHV" ;
   LOG_PRINT_L2("transfer_selected_rct: starting with fee " << print_money (needed_money));
   LOG_PRINT_L2("selected transfers: " << strjoin(selected_transfers, " "));
 
@@ -11005,7 +11003,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     
     LOG_PRINT_L2("Needed money: " << needed_money << ", available old money: " << old_money << ", available new money: " << new_money);       
     THROW_WALLET_EXCEPTION_IF(needed_money>(old_money+new_money), error::wallet_internal_error, "Not enough money to construction the transaction");
-    THROW_WALLET_EXCEPTION_IF((needed_money>old_money) && (needed_money>new_money), error::wallet_internal_error, "Transaction needs to spent both new and old money, which is not permited. Try completing the supply audit by sending to yourself amount");
+    THROW_WALLET_EXCEPTION_IF((needed_money>old_money) && (needed_money>new_money), error::wallet_internal_error, "Transaction needs to spent both new and old money, which is not permited. Try completing the supply audit by using the commands \"audit <addr>\" or \"audit_subaddress\", or by sending to yourself a smaller amount");
     if (needed_money<=old_money){
       LOG_PRINT_L2("Trying to use only old money");
       for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
@@ -11022,8 +11020,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
     }
 
   } else if (hf_version>=HF_VERSION_SUPPLY_AUDIT_END){
-      if(hf_version<HF_VERSION_VBS_REMOVAL)
-        THROW_WALLET_EXCEPTION_IF(source_asset!=dest_asset, error::wallet_internal_error, "cant have conversion transactions after the audit starts and before collateral is removed");
+      if(hf_version<HF_VERSION_VBS_DISABLING)
+        THROW_WALLET_EXCEPTION_IF(source_asset!=dest_asset, error::wallet_internal_error, "Cannot have conversion transactions after the audit starts and before collateral is removed");
       LOG_PRINT_L2("After supply audit hard fork has ended, so using only new money");
       for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
         if (i->asset_type == source_asset && !is_old_output(*i))
@@ -11846,6 +11844,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(
   std::vector<size_t> unused_transfers_indices;
   std::vector<size_t> unused_dust_indices;
   const bool use_rct = use_fork_rules(4, 0);
+  uint32_t hf_version = get_current_hard_fork();
+  
 
   // determine threshold for fractional amount
   const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
@@ -11869,6 +11869,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(
 
   // gather all dust and non-dust outputs of specified subaddress (if any) and below specified threshold (if any)
   bool fund_found = false;
+  bool has_new_money = false;
+  bool has_old_money = false;
+
   for (size_t i = 0; i < specific_transfers.size(); ++i)
   {
     const transfer_details& td = *specific_transfers[i];
@@ -11887,10 +11890,17 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(
         else
           unused_transfer_dust_indices_per_subaddr[td.m_subaddr_index.minor].second.push_back((size_t)(INDEX_TO_M_TRANSFERS(i)));
       }
+      if (is_old_output(td)){
+        has_old_money=true;
+      } else {
+        has_new_money=true;
+      }
     }
   }
   THROW_WALLET_EXCEPTION_IF(!fund_found, error::wallet_internal_error, "No unlocked balance in the specified subaddress(es)");
   THROW_WALLET_EXCEPTION_IF(unused_transfer_dust_indices_per_subaddr.empty(), error::wallet_internal_error, "The smallest amount found is not below the specified threshold");
+  THROW_WALLET_EXCEPTION_IF(has_old_money && has_new_money, error::wallet_internal_error, "The transaction attemtps to spend both old and new money. Please either complete the supply audit (commands \"audit\" and \"audit_subaddress\"), or freeze old or new outputs (commands freeze_all_old and freeze_old_new). Please use the help command to get more details on the usage.");
+  THROW_WALLET_EXCEPTION_IF(has_old_money && hf_version >= HF_VERSION_SUPPLY_AUDIT_END , error::wallet_internal_error, "The transaction attemtps to spend old mooney after the supply audit end. Please freeze old money using the command \"freeze_all_old\". Old funds from before the supply audit cannot be spent after its completition.");
 
   if (subaddr_indices.empty())
   {
@@ -11986,15 +11996,15 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_audit(
           fund_found = true;
           uint32_t subaddr_index = td.m_subaddr_index.minor;
           indices_per_subaddress[subaddr_index].push_back(i);
+          MDEBUG("Adding " << td.amount() << " " <<  td.asset_type << " to subaddress " << subaddr_index << ", current index is " << td.m_subaddr_index.major);
         }
       }
 
       cryptonote::account_public_address current_address = get_subaddress({account_index,0}); //Failsafe, just in case
       cryptonote::account_public_address address_to_send = get_subaddress({account_index,0}); //Failsafe, just in case
-      const bool is_subaddr_to_send = keep_subaddress ? is_subaddress_account : is_subaddress;
-
       for(const auto& sa: indices_per_subaddress){
         uint32_t subaddress_index=sa.first;
+        const bool is_subaddr_to_send = keep_subaddress ? (is_subaddress_account || subaddress_index>0) : is_subaddress;
         current_address = get_subaddress({account_index,subaddress_index});
         address_to_send = (keep_subaddress ? current_address : address);
         for (auto i: sa.second){

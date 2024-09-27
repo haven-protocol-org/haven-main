@@ -82,6 +82,13 @@
 #define HF23_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
 #define HF23_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
 
+// HF23 Unlock times
+#define HF27_SHORING_LOCK_BLOCKS                        10     // 20 minute unlock time
+#define HF27_XASSET_LOCK_BLOCKS                         720    // 1 day unlock time
+#define HF27_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
+#define HF27_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
+
+
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 
 // MONEY_SUPPLY - total number coins to be generated
@@ -271,7 +278,7 @@
 
 
 #define HF_VERSION_SUPPLY_AUDIT_END             26
-#define HF_VERSION_VBS_REMOVAL                  27
+#define HF_VERSION_VBS_DISABLING                  27
 
 
 #define STAGENET_VERSION                        0x0e

@@ -5763,6 +5763,20 @@ bool simple_wallet::check_daemon_rpc_prices(const std::string &daemon_url, uint3
 //----------------------------------------------------------------------------------------------------
 uint64_t simple_wallet::get_locked_blocks(cryptonote::transaction_type tx_type, uint32_t priority) {
   using tt = cryptonote::transaction_type;
+
+  if (m_wallet->use_fork_rules(HF_VERSION_VBS_DISABLING, 0)) {
+    switch (tx_type)
+    {
+      case tt::XUSD_TO_XASSET:
+      case tt::XASSET_TO_XUSD:
+        if (m_wallet->nettype() == cryptonote::TESTNET || m_wallet->nettype() == cryptonote::STAGENET) {
+          return HF27_XASSET_LOCK_BLOCKS_TESTNET;
+        }
+        return HF27_XASSET_LOCK_BLOCKS;
+      default:
+        return 0;  
+    }
+  }
   if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL_V2, 0)) {
     switch (tx_type)
     {
@@ -6199,6 +6213,11 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     // Clear line "Height xxx of xxx"
     std::cout << "\r                                                                \r";
     success_msg_writer(true) << tr("Refresh done, blocks received: ") << fetched_blocks;
+    if ((start_height<SUPPLY_AUDIT_BLOCK_HEIGHT) && m_wallet->get_current_hard_fork()>=HF_VERSION_SUPPLY_AUDIT_END){
+      success_msg_writer(true) << tr("Freezing outputs which can no longer be spent after the end of the supply audit: ");
+      std::vector<std::string> args_dummy;
+      freeze_all_old(args_dummy);
+    }
     if (is_init)
       print_accounts();
     show_balance_unlocked();
@@ -10707,6 +10726,21 @@ void simple_wallet::print_accounts()
 
   if (num_untagged_accounts < m_wallet->get_num_subaddress_accounts())
     success_msg_writer() << tr("\nGrand total:\n  Balance: ") << print_money(m_wallet->balance_all(false, "XHV")) << tr(", unlocked balance: ") << print_money(m_wallet->unlocked_balance_all(false, "XHV"));
+  
+  std::vector<tools::wallet2::transfer_details> transfers;
+  m_wallet->get_transfers(transfers);
+  bool has_spendable_old_outputs = false;
+  
+  if(m_wallet->get_current_hard_fork()==HF_VERSION_SUPPLY_AUDIT){
+    for (auto td: transfers){
+      if (!td.m_spent && td.amount()>100000000 && m_wallet->is_old_output(td))
+        has_spendable_old_outputs=true;
+    }
+  }
+  if (has_spendable_old_outputs){
+    message_writer(console_color_red, true) << tr("WARNING: The wallet contains funds which need to undergo an audit. Please do so using the commands \"audit\" or \"audit_subaddress\". Funds which do not undergo audit will be permanently lost at the end of the supply audit.");  
+  }
+  
 }
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::print_accounts(const std::string& tag)

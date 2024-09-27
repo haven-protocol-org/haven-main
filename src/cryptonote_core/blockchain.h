@@ -647,6 +647,7 @@ namespace cryptonote
     bool check_unlock_time(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change, const uint8_t hf_version) const;
     bool check_unlock_time_21(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const;
     bool check_unlock_time_23(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const;
+    bool check_unlock_time_27(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const;
     
     /**
      * @brief get fee quantization mask

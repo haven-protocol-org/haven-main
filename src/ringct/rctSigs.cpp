@@ -1260,7 +1260,7 @@ namespace rct {
 
         using tt = cryptonote::transaction_type;
         bool conversion_tx = tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD;
-        bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3 && hf_version < HF_VERSION_VBS_REMOVAL; //after VBS is removed, there is collateral required
+        bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3 && hf_version < HF_VERSION_VBS_DISABLING; //after VBS is removed, there is collateral required
         bool supply_audit_tx = rv.type == RCTTypeSupplyAudit;
 
         rv.message = message;
@@ -1341,7 +1341,7 @@ namespace rct {
 
                       //RCTTypeAudit should not be used for conversions, only for transfers
                       //After VSB removal, we will use maskSums[2] to store the masks in color different from C(in theory only D, but we cannot guarantee that here)
-                      if (hf_version >= HF_VERSION_VBS_REMOVAL){
+                      if (hf_version >= HF_VERSION_VBS_DISABLING){
                         if (outamounts_features.at(i).first != in_asset_type) {
                           sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
                         }
@@ -1813,13 +1813,13 @@ namespace rct {
       CHECK_AND_ASSERT_MES(tx_anon_pool != anon::UNSET, false, "Transaction anonymity pool type is not set.");
       CHECK_AND_ASSERT_MES(tx_anon_pool != anon::MIXED, false, "Transaction has a mixed anonymity pool which is not permited.");
       CHECK_AND_ASSERT_MES(version < HF_VERSION_BURN || tx_anon_pool == anon::POOL_1 || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 1 or Pool 2 during the supply audit");
-      CHECK_AND_ASSERT_MES(version < HF_VERSION_SUPPLY_AUDIT_END || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 2 after the end of the supply audit");
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_SUPPLY_AUDIT_END || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be only Pool 2 after the end of the supply audit");
       //### Supply audit sanity checks #####
       //This check ensures old funds can't be spent after the audit is over.
       const bool is_before_supply_audit = (version < HF_VERSION_SUPPLY_AUDIT);
       const bool is_during_supply_audit = (version >=HF_VERSION_SUPPLY_AUDIT && version < HF_VERSION_SUPPLY_AUDIT_END);
       const bool is_after_supply_audit = (version >= HF_VERSION_SUPPLY_AUDIT_END);
-      const bool is_after_vbs_disabling = (version >= HF_VERSION_VBS_REMOVAL);
+      const bool is_after_vbs_disabling = (version >= HF_VERSION_VBS_DISABLING);
       const int num_epochs=(is_before_supply_audit ? 1 : 0)+(is_during_supply_audit ? 1 : 0)+(is_after_supply_audit ? 1 : 0);
       CHECK_AND_ASSERT_MES(num_epochs==1, false, "Failed to determine if the current block is before, during, or after the supply audit");
       
@@ -2265,8 +2265,8 @@ namespace rct {
         }
       }
 
-      // validate the collateral - before HF_VERSION_USE_COLLATERAL and after version HF_VERSION_VBS_REMOVAL no collateral is required
-      if ((version >= HF_VERSION_USE_COLLATERAL && version < HF_VERSION_VBS_REMOVAL)) {
+      // validate the collateral - before HF_VERSION_USE_COLLATERAL and after version HF_VERSION_VBS_DISABLING no collateral is required
+      if ((version >= HF_VERSION_USE_COLLATERAL && version < HF_VERSION_VBS_DISABLING)) {
 
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
 
@@ -2321,7 +2321,7 @@ namespace rct {
       // amount_C_net is by defintion the difference between incoming and outgoing C amount
       // for the G part, sumPseudoouts has a mask masksums[0] = maskSums[1]+maskSums[2] / (conv rate), and umOutpks_C has a mask maskSums[1]
       // this will validate the net C color amount in the transaction - it should be positive, it should also be bigger than amount burnt
-      if (version>=HF_VERSION_VBS_REMOVAL && is_conversion_type_tx){
+      if (version>=HF_VERSION_VBS_DISABLING && is_conversion_type_tx){
         key lhs;
         key rhs;
         uint64_t amount_C_net = amount_burnt_orig;
