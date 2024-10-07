@@ -32,8 +32,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/uuid/nil_generator.hpp>
 
-#include "cryptonote_core/cryptonote_tx_utils.h"
-#include "cryptonote_protocol/enums.h"
 #include "string_tools.h"
 using namespace epee;
 

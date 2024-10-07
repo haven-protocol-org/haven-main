@@ -31,7 +31,6 @@
 
 #include <atomic>
 #include <boost/algorithm/string.hpp>
-#include "ringct/rctTypes.h"
 #include "wipeable_string.h"
 #include "string_tools.h"
 #include "string_tools_lexical.h"
@@ -105,7 +104,7 @@ namespace cryptonote
       ge_p1p1_to_p3(&A2, &tmp3);
       ge_p3_tobytes(&AB, &A2);
   }
-//TO-DO##
+//TO-DO## Next release
   uint64_t get_transaction_weight_clawback(const transaction &tx, size_t n_padded_outputs)
   {
     const rct::rctSig &rv = tx.rct_signatures;

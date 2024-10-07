@@ -82,7 +82,11 @@
 #define HF23_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
 #define HF23_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
 
-// HF23 Unlock times
+// HF25 Unlock times
+#define HF25_AUDIT_LOCK_BLOCKS                          1440    // 2 day unlock time
+#define HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS             30      // 1 hour for the transaction to go through after being submitted
+
+// HF27 Unlock times
 #define HF27_SHORING_LOCK_BLOCKS                        10     // 20 minute unlock time
 #define HF27_XASSET_LOCK_BLOCKS                         720    // 1 day unlock time
 #define HF27_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY

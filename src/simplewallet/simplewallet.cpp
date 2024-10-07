@@ -8764,7 +8764,7 @@ bool simple_wallet::audit_main(bool keep_subaddress, const std::vector<std::stri
 
   uint32_t priority = 0;
   priority = m_wallet->adjust_priority(priority);
-  uint64_t unlock_block = 0;
+  uint64_t unlock_block = bc_height + HF25_AUDIT_LOCK_BLOCKS;
 
 
   size_t fake_outs_count = m_wallet->get_min_ring_size() - 1;

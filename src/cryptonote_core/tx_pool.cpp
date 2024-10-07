@@ -31,12 +31,10 @@
 
 #include <algorithm>
 #include <boost/filesystem.hpp>
-#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
 #include "tx_pool.h"
-#include "cryptonote_protocol/enums.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_config.h"
@@ -46,6 +44,7 @@
 #include "common/boost_serialization_helper.h"
 #include "int-util.h"
 #include "misc_language.h"
+#include "ringct/rctTypes.h"
 #include "warnings.h"
 #include "common/perf_timer.h"
 #include "crypto/hash.h"
@@ -379,6 +378,7 @@ namespace cryptonote
       // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
       bool found_collateral_output = false;
       bool found_collateral_change_output = false;
+      const bool is_audit_tx = (tx.rct_signatures.type==rct::RCTTypeSupplyAudit); 
       for (size_t i = 0; i < tx.vout.size(); ++i) {
 
         // Check if the output is collateral or collateral_change
@@ -434,6 +434,14 @@ namespace cryptonote
           ok = m_blockchain.check_unlock_time(output_unlock_time, tx.pricing_record_height, tx_type, output_asset_type, is_collateral, is_collateral_change, hf_version);
           if (!ok) {
             LOG_ERROR("incorrect output unlock time for output index " << i);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        }
+
+        if(is_audit_tx){ //Make sure audit tx are locked for 2 days
+          if(current_height + HF25_AUDIT_LOCK_BLOCKS  > output_unlock_time + HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS){
+            LOG_ERROR("incorrect output unlock time for output index, part of an audit tx " << i); 
             tvc.m_verifivation_failed = true;
             return false;
           }

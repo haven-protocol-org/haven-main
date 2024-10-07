@@ -36,11 +36,8 @@
 #include <boost/format.hpp>
 #include <boost/multiprecision/cpp_int.hpp>
 
-#include "cryptonote_protocol/enums.h"
 #include "include_base_utils.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "offshore/pricing_record.h"
-#include "ringct/rctTypes.h"
 #include "tx_pool.h"
 #include "blockchain.h"
 #include "blockchain_db/blockchain_db.h"
@@ -250,7 +247,7 @@ bool Blockchain::scan_outputkeys_for_indexes(const uint8_t hf_version, size_t tx
           output_index = m_db->get_output_key(tx_in_to_key.amount, i);
 
         // call to the passed boost visitor to grab the public key for the output
-        if (!vis.handle_output(output_index.unlock_time, tx_in_to_key.asset_type, output_index.pubkey, output_index.commitment))
+        if (!vis.handle_output(output_index.unlock_time, tx_in_to_key.asset_type, output_index.pubkey, output_index.commitment, output_index.height))
         {
           MERROR_VER("Failed to handle_output for output no = " << count << ", with absolute offset " << i);
           return false;
@@ -4931,7 +4928,7 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
       m_output_keys(output_keys), m_bch(bch), m_asset_type(asset_type), hf_version(hf_version)
     {
     }
-    bool handle_output(uint64_t unlock_time, const std::string& asset_type, const crypto::public_key &pubkey, const rct::key &commitment)
+    bool handle_output(uint64_t unlock_time, const std::string& asset_type, const crypto::public_key &pubkey, const rct::key &commitment, const uint64_t height)
     {
       //check tx unlock time
       if (!m_bch.is_tx_spendtime_unlocked(unlock_time, hf_version))
@@ -4946,6 +4943,11 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
           MERROR_VER("One of outputs for one of inputs has wrong asset type. Expected = " << asset_type << " Got = " << m_asset_type);
           return false;
         }
+      }
+
+      if(hf_version>=HF_VERSION_SUPPLY_AUDIT_END && height < SUPPLY_AUDIT_BLOCK_HEIGHT){
+        MERROR_VER("Attempting to spent an old output after the end of the supply audit");
+        return false;  
       }
 
       // The original code includes a check for the output corresponding to this input
