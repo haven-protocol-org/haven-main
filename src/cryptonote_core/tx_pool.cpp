@@ -377,7 +377,6 @@ namespace cryptonote
       // Iterate over the outputs, allowing change to have a shorter unlock time (we need the index!)
       bool found_collateral_output = false;
       bool found_collateral_change_output = false;
-      const bool is_audit_tx = (tx.rct_signatures.type==rct::RCTTypeSupplyAudit); 
       for (size_t i = 0; i < tx.vout.size(); ++i) {
 
         // Check if the output is collateral or collateral_change
@@ -433,14 +432,6 @@ namespace cryptonote
           ok = m_blockchain.check_unlock_time(output_unlock_time, tx.pricing_record_height, tx_type, output_asset_type, is_collateral, is_collateral_change, hf_version);
           if (!ok) {
             LOG_ERROR("incorrect output unlock time for output index " << i);
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-        }
-
-        if(is_audit_tx){ //Make sure audit tx are locked for 2 days
-          if(current_height + HF25_AUDIT_LOCK_BLOCKS  > output_unlock_time + HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS){
-            LOG_ERROR("incorrect output unlock time for output index, part of an audit tx " << i); 
             tvc.m_verifivation_failed = true;
             return false;
           }
@@ -527,6 +518,25 @@ namespace cryptonote
         LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
+      }
+      uint64_t current_height = m_blockchain.get_current_blockchain_height();
+      const bool is_audit_tx = (tx.rct_signatures.type==rct::RCTTypeSupplyAudit);
+      if(is_audit_tx){
+        for (size_t i = 0; i < tx.vout.size(); ++i) { //Make sure all audit tx outputs are locked for 2 days
+          // Check output unlock time
+          uint64_t output_unlock_time;
+          bool ok = cryptonote::get_output_unlock_time(tx.vout[i], output_unlock_time);
+          if (!ok) {
+            LOG_ERROR("failed to get output unlock time for output index " << i);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+          if(current_height + HF25_AUDIT_LOCK_BLOCKS  > output_unlock_time + HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS){
+            LOG_ERROR("incorrect output unlock time for output index, part of an audit tx " << i); 
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        }
       }
     }
 

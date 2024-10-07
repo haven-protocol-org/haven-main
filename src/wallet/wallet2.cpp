@@ -11622,7 +11622,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
           if (use_rct) {
-            transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee_xhv, extra,
+            transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, needed_fee, needed_fee_xhv, extra,
               test_tx, test_ptx, rct_config, source_asset, dest_asset, pricing_record, use_view_tags);
           }
           else
@@ -12312,7 +12312,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
           dt.dest_asset_type = asset_type;
         }
         if (use_rct)
-          transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee, extra, 
+          transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, needed_fee, needed_fee, extra, 
             test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
         else
           transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time_adj, needed_fee, extra,
@@ -12351,7 +12351,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
     cryptonote::transaction test_tx;
     pending_tx test_ptx;
     if (use_rct) {
-      transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, outs_collateral, valid_public_keys_cache, unlock_time, tx.needed_fee, tx.needed_fee, extra,
+      transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, tx.needed_fee, tx.needed_fee, extra,
         test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
     } else {
       transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, valid_public_keys_cache, unlock_time_adj, tx.needed_fee, extra,

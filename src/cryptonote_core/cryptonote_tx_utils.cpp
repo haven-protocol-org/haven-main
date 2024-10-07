@@ -1602,6 +1602,7 @@ namespace cryptonote
     size_t output_index = 0;
     uint64_t summary_outs_slippage = 0;
     uint64_t summary_outs_supply_burn = 0;
+    const bool is_audit_tx = (rct_config.bp_version == 8);
     
     for(const tx_destination_entry& dst_entr: destinations)
     {
@@ -1636,6 +1637,9 @@ namespace cryptonote
         }
       } else if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral_change) {
         u_time = 0;
+      } else if (is_audit_tx){
+        if (u_time < HF25_AUDIT_LOCK_BLOCKS + current_height + 1)
+          u_time = HF25_AUDIT_LOCK_BLOCKS + current_height + 1;
       } else {
         if (dst_entr.dest_asset_type == source_asset) {
           u_time = 0;
