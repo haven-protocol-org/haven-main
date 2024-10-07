@@ -31,11 +31,9 @@
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 #include <boost/circular_buffer.hpp>
-#include <cstdint>
 #include <memory>  // std::unique_ptr
 #include <cstring>  // memcpy
 
-#include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "string_tools.h"
 #include "file_io_utils.h"

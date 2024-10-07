@@ -44,7 +44,6 @@
 #include "common/boost_serialization_helper.h"
 #include "int-util.h"
 #include "misc_language.h"
-#include "ringct/rctTypes.h"
 #include "warnings.h"
 #include "common/perf_timer.h"
 #include "crypto/hash.h"
