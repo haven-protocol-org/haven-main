@@ -2131,8 +2131,11 @@ namespace cryptonote
   //! For each input, we check the ring members and determine if from which pool they are.
   //! If there are inputs with different pools, then the whole transaction has a mixed pool.
   //! If errors are encountered, then the function returns false and assigns UNSET to the anon_pool.
-  bool get_anonymity_pool(const transaction& tx, const std::vector<std::vector<output_data_t>>& tx_ring_outputs, anonymity_pool& tx_anon_pool)
+  bool get_anonymity_pool(const transaction& tx, const std::vector<std::vector<output_data_t>>& tx_ring_outputs, anonymity_pool& tx_anon_pool, const network_type nettype)
   {
+
+    const uint64_t supply_audit_height = (nettype != TESTNET && nettype != STAGENET) ? SUPPLY_AUDIT_BLOCK_HEIGHT :  SUPPLY_AUDIT_BLOCK_HEIGHT_TESTNET;
+
     tx_anon_pool=anonymity_pool::UNSET;
     size_t assignments=0; //additional check to ensure we update anon_pool without missing inputs
 
@@ -2152,7 +2155,7 @@ namespace cryptonote
 
     for (size_t i = 0; i < tx.vin.size(); i++) {
       anonymity_pool pool_current_input=anonymity_pool::UNSET;
-      if(!get_input_anonymity_pool(tx.vin[i], tx_ring_outputs[i], pool_current_input)){
+      if(!get_input_anonymity_pool(tx.vin[i], tx_ring_outputs[i], pool_current_input, supply_audit_height)){
         tx_anon_pool=anonymity_pool::UNSET;
         LOG_ERROR("Failed to get the anonymity pool of input " << i << " ! Rejecting..");
         return false;
@@ -2203,7 +2206,7 @@ namespace cryptonote
   //! For each input, we check the ring members and determine from which pool they are.
   //! If there are inputs with different pools, then the whole transaction has a mixed pool, which should lead to transaction rejection as part of the tx validation.
   //! If errors are encountered, then the function returns false and assigns UNSET to the anon_pool.
-  bool get_input_anonymity_pool(const txin_v& txin, const std::vector<output_data_t>& ring_outputs, anonymity_pool& anon_pool)
+  bool get_input_anonymity_pool(const txin_v& txin, const std::vector<output_data_t>& ring_outputs, anonymity_pool& anon_pool, const uint64_t supply_audit_height)
   {
     anon_pool=anonymity_pool::UNSET;
     size_t assignments=0; //additional check to ensure we update anon_pool without missing inputs
@@ -2238,11 +2241,11 @@ namespace cryptonote
 
         //Rules for Pool 1
         //Any output before the supply audit cut-off is considered a member of Pool 1
-        if (out.height < SUPPLY_AUDIT_BLOCK_HEIGHT && out.asset_type==source_asset_type){
+        if (out.height < supply_audit_height && out.asset_type==source_asset_type){
           pool_current_ring_member=anonymity_pool::POOL_1;
         }
         //Rules for Pool 2
-        if (out.height >= SUPPLY_AUDIT_BLOCK_HEIGHT && out.asset_type==source_asset_type){
+        if (out.height >= supply_audit_height && out.asset_type==source_asset_type){
           pool_current_ring_member=anonymity_pool::POOL_2;
         }
         

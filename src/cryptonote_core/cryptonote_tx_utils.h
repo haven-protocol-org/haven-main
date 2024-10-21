@@ -256,8 +256,8 @@ namespace cryptonote
   uint64_t get_xusd_amount(const uint64_t amount, const std::string& amount_asset_type, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
   // Get onshore amount in XHV, not XUSD
   uint64_t get_xhv_amount(const uint64_t xusd_amount, const offshore::pricing_record& pr, const transaction_type tx_type, uint8_t hf_version);
-  bool get_anonymity_pool(const transaction& tx, const std::vector<std::vector<output_data_t>>& tx_ring_outputs, anonymity_pool& tx_anon_pool);
-  bool get_input_anonymity_pool(const txin_v& txin, const std::vector<output_data_t>& ring_outputs, anonymity_pool& anon_pool);
+  bool get_anonymity_pool(const transaction& tx, const std::vector<std::vector<output_data_t>>& tx_ring_outputs, anonymity_pool& tx_anon_pool, const network_type nettype );
+  bool get_input_anonymity_pool(const txin_v& txin, const std::vector<output_data_t>& ring_outputs, anonymity_pool& anon_pool, const uint64_t supply_audit_height);
 }
 
 BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 5)

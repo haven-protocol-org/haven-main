@@ -4945,7 +4945,9 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_haven_key& txin, c
         }
       }
 
-      if(hf_version>=HF_VERSION_SUPPLY_AUDIT_END && height < SUPPLY_AUDIT_BLOCK_HEIGHT){
+      const uint64_t supply_audit_height = (m_bch.m_nettype != TESTNET && m_bch.m_nettype != STAGENET) ? SUPPLY_AUDIT_BLOCK_HEIGHT :  SUPPLY_AUDIT_BLOCK_HEIGHT_TESTNET;
+
+      if(hf_version>=HF_VERSION_SUPPLY_AUDIT_END && height < supply_audit_height){
         MERROR_VER("Attempting to spent an old output after the end of the supply audit");
         return false;  
       }
@@ -5503,7 +5505,7 @@ leave:
         goto leave;
       }
 
-      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool, m_nettype)){
         MERROR("Failed to get the anonymity pool for transaction " << tx_id);
         bvc.m_verifivation_failed = true;
         goto leave;

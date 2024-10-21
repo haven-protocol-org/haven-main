@@ -2237,7 +2237,7 @@ namespace cryptonote
         ret=false;   
       }
 
-      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool, m_blockchain.get_nettype())){
         LOG_ERROR("Failed to get the anonymity pool for transaction " << txid);
         ret=false;   
       }
