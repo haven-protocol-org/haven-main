@@ -30,8 +30,6 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "cryptonote_basic/cryptonote_basic.h"
-#include "cryptonote_protocol/enums.h"
 #include "misc_log_ex.h"
 #include "misc_language.h"
 #include "common/perf_timer.h"
@@ -47,8 +45,6 @@
 
 #include "bulletproofs.cc"
 #include "offshore/pricing_record.cpp"
-#include "ringct/rctOps.h"
-#include "ringct/rctTypes.h"
 
 using namespace crypto;
 using namespace std;
@@ -1927,7 +1923,7 @@ namespace rct {
       }
 
       
-      //TO-DO##
+      //TO-DO## Next release
       if (version >= HF_VERSION_SUPPLY_AUDIT && !is_audit_tx){ //Another redundant paranoid check related to the pool split, but we really do not want old funds to be spendable
         for (auto inp: vin) {
           cryptonote::txin_haven_key inp_haven_key=boost::get<cryptonote::txin_haven_key>(inp);

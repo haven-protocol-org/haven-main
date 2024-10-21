@@ -31,11 +31,9 @@
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 #include <boost/circular_buffer.hpp>
-#include <cstdint>
 #include <memory>  // std::unique_ptr
 #include <cstring>  // memcpy
 
-#include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "string_tools.h"
 #include "file_io_utils.h"
@@ -3402,7 +3400,7 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & decryption_
   std::map<uint64_t, boost::multiprecision::int128_t> total_new_supply;
   uint64_t asset_id=0;
   for (auto asset_type: offshore::ASSET_TYPES){
-    if (asset_type!="XCAD" && asset_type != "XNOK" && asset_type != "XNZD") //TO-DO##
+    if (asset_type!="XCAD" && asset_type != "XNOK" && asset_type != "XNZD") //TO-DO## Next release
       total_new_supply.insert(std::pair<uint64_t, boost::multiprecision::int128_t>(asset_id, 0));
     asset_id++;
   }
@@ -3410,8 +3408,7 @@ void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & decryption_
   uint64_t coinbase_at_start_of_audit = 0;
   const bool after_audit_start = get_hard_fork_version(bc_height - 1) >= HF_VERSION_SUPPLY_AUDIT;
   bool audit_blocked_reached = false;
-
-  //TO-DO## split this in chunks, so that not all blocks are fetched at the same time, killing the daemon
+  
   std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
 
   while(height < bc_height && after_audit_start) {
@@ -3744,7 +3741,7 @@ bool BlockchainLMDB::get_pruned_tx_blobs_from(const crypto::hash& h, size_t coun
   return true;
 }
 
-//TO-DO## Potentially not working as expected?
+//TO-DO## Potentially not working as expected? Next release
 bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata>>>>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);

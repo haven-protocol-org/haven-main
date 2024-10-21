@@ -32,8 +32,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/uuid/nil_generator.hpp>
 
-#include "cryptonote_core/cryptonote_tx_utils.h"
-#include "cryptonote_protocol/enums.h"
 #include "string_tools.h"
 using namespace epee;
 
@@ -1005,7 +1003,7 @@ namespace cryptonote
           continue;    
         }
 
-        if(!get_anonymity_pool(*tx_info[n].tx, tx_ring_outputs, tx_anon_pool)){
+        if(!get_anonymity_pool(*tx_info[n].tx, tx_ring_outputs, tx_anon_pool, m_blockchain_storage.get_nettype())){
           MERROR("Failed to get the anonymity pool for transaction " << tx_info[n].tx_hash);
           set_semantics_failed(tx_info[n].tx_hash);
           tx_info[n].tvc.m_verifivation_failed = true;

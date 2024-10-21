@@ -10402,7 +10402,6 @@ void wallet2::light_wallet_get_unspent_outs()
 
 
   m_daemon_rpc_mutex.lock();
-  //TO-DO##
   bool r = invoke_http_json("/get_unspent_outs", oreq, ores, rpc_timeout, "POST");
   m_daemon_rpc_mutex.unlock();
   THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_unspent_outs");
@@ -10840,6 +10839,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   bool is_supply_burnt = false;
   bool is_burn_enabled = false;
 
+  uint64_t unlock_time_adj = unlock_time; // in case of audit tx, this will be set to current height + 2 days
+
   is_burn_enabled = m_enable_burn && use_fork_rules(HF_VERSION_BURN, 0);
 
   //Check if one of the destinations has a permanently burnt amount
@@ -10940,7 +10941,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   const bool bulletproof_plus = use_fork_rules(get_bulletproof_plus_fork(), 0);
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   //CHANGE AFTER SUPPLY AUDIT
-  rct::RCTConfig rct_config { //TO-DO## make const again after the supply audit
+  rct::RCTConfig rct_config { //TO-DO## Next release make const again after the supply audit
     rct::RangeProofPaddedBulletproof,
     bulletproof_plus ? 7 : use_fork_rules(HF_VERSION_USE_COLLATERAL, 0) ? 6 : 
                   use_fork_rules(HF_VERSION_HAVEN2, 0) ? 5 : 
@@ -11011,6 +11012,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           specific_transfers.push_back(i);
       }
       rct_config.bp_version=8;
+      if (unlock_time_adj < current_height + HF25_AUDIT_LOCK_BLOCKS)
+        unlock_time_adj = current_height + HF25_AUDIT_LOCK_BLOCKS;
     } else {
       LOG_PRINT_L2("Trying to use only new money");
       for (auto i = m_transfers.begin(); i < m_transfers.end(); i++) {
@@ -11119,8 +11122,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   THROW_WALLET_EXCEPTION_IF(needed_money == 0, error::zero_amount);
 
   // Calculate the conversion fee
-  uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? cryptonote::get_offshore_fee(dsts, unlock_time - current_height - 1, hf_version)
-    : (tx_type == tt::ONSHORE) ? cryptonote::get_onshore_fee(dsts, unlock_time - current_height - 1, hf_version)
+  uint64_t offshore_fee = (tx_type == tt::OFFSHORE) ? cryptonote::get_offshore_fee(dsts, unlock_time_adj - current_height - 1, hf_version)
+    : (tx_type == tt::ONSHORE) ? cryptonote::get_onshore_fee(dsts, unlock_time_adj - current_height - 1, hf_version)
     : (tx_type == tt::XUSD_TO_XASSET) ? cryptonote::get_xusd_to_xasset_fee(dsts, hf_version)
     : (tx_type == tt::XASSET_TO_XUSD) ? cryptonote::get_xasset_to_xusd_fee(dsts, hf_version)
     : 0;
@@ -11587,11 +11590,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
           for (const auto i: col_ins)
             tx.selected_transfers.push_back(i);
         }
-        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee_xhv, extra,
+        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, needed_fee, needed_fee_xhv, extra,
           test_tx, test_ptx, rct_config, source_asset, dest_asset, pricing_record, use_view_tags);
       }
       else
-        transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
+        transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time_adj, needed_fee, extra,
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
       needed_fee = needed_fee_xhv = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
@@ -11619,11 +11622,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         LOG_PRINT_L2("We made a tx, adjusting fee and saving it, we need " << print_money(needed_fee) << " and we have " << print_money(test_ptx.fee));
         while (needed_fee > test_ptx.fee) {
           if (use_rct) {
-            transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee_xhv, extra,
+            transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, needed_fee, needed_fee_xhv, extra,
               test_tx, test_ptx, rct_config, source_asset, dest_asset, pricing_record, use_view_tags);
           }
           else
-            transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
+            transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time_adj, needed_fee, extra,
               detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
           txBlob = t_serializable_object_to_blob(test_ptx.tx);
           needed_fee = needed_fee_xhv = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
@@ -11700,7 +11703,7 @@ skip_tx:
                             tx.outs,                    /* MOD   std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, */
                             outs_collateral,
                             valid_public_keys_cache,
-                            unlock_time,                /* CONST uint64_t unlock_time,  */
+                            unlock_time_adj,                /* CONST uint64_t unlock_time,  */
                             tx.needed_fee,              /* CONST uint64_t fee, */
                             tx.needed_fee_xhv,          /* CONST uint64_t fee, */
                             extra,                      /* const std::vector<uint8_t>& extra, */
@@ -11717,7 +11720,7 @@ skip_tx:
                         fake_outs_count,
                         tx.outs,
                         valid_public_keys_cache,
-                        unlock_time,
+                        unlock_time_adj,
                         tx.needed_fee,
                         extra,
                         detail::digit_split_strategy,
@@ -12173,6 +12176,11 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
   THROW_WALLET_EXCEPTION_IF(ap == anon::POOL_1 && hf_version >= HF_VERSION_SUPPLY_AUDIT_END, error::wallet_internal_error, "Old outputs cannot be spent after the end of the supply audit");
 
   const bool is_audit_tx = (hf_version == HF_VERSION_SUPPLY_AUDIT && ap == anon::POOL_1);
+  const uint64_t current_height = get_blockchain_current_height()-1;
+  uint64_t unlock_time_adj = unlock_time;
+  if (is_audit_tx && unlock_time_adj < current_height + HF25_AUDIT_LOCK_BLOCKS){
+    unlock_time_adj = current_height + HF25_AUDIT_LOCK_BLOCKS;
+  }
   
   const rct::RCTConfig rct_config {
     rct::RangeProofPaddedBulletproof,
@@ -12265,10 +12273,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
       LOG_PRINT_L2("Trying to create a tx now, with " << tx.dsts.size() << " destinations and " <<
         tx.selected_transfers.size() << " outputs");
       if (use_rct)
-        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee, extra,
+        transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, needed_fee, needed_fee, extra,
           test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
       else
-        transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
+        transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time_adj, needed_fee, extra,
           detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
       auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
       needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
@@ -12304,10 +12312,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
           dt.dest_asset_type = asset_type;
         }
         if (use_rct)
-          transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time, needed_fee, needed_fee, extra, 
+          transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, needed_fee, needed_fee, extra, 
             test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
         else
-          transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time, needed_fee, extra,
+          transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, outs, valid_public_keys_cache, unlock_time_adj, needed_fee, extra,
             detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
         txBlob = t_serializable_object_to_blob(test_ptx.tx);
         needed_fee = calculate_fee(use_per_byte_fee, test_ptx.tx, txBlob.size(), base_fee, fee_quantization_mask);
@@ -12343,10 +12351,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
     cryptonote::transaction test_tx;
     pending_tx test_ptx;
     if (use_rct) {
-      transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, outs_collateral, valid_public_keys_cache, unlock_time, tx.needed_fee, tx.needed_fee, extra,
+      transfer_selected_rct(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, outs_collateral, valid_public_keys_cache, unlock_time_adj, tx.needed_fee, tx.needed_fee, extra,
         test_tx, test_ptx, rct_config, asset_type, asset_type, offshore::pricing_record(), use_view_tags);
     } else {
-      transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, valid_public_keys_cache, unlock_time, tx.needed_fee, extra,
+      transfer_selected(tx.dsts, tx.selected_transfers, fake_outs_count, tx.outs, valid_public_keys_cache, unlock_time_adj, tx.needed_fee, extra,
         detail::digit_split_strategy, tx_dust_policy(::config::DEFAULT_DUST_THRESHOLD), test_tx, test_ptx, use_view_tags);
     }
     auto txBlob = t_serializable_object_to_blob(test_ptx.tx);
@@ -13881,15 +13889,15 @@ uint64_t wallet2::get_daemon_blockchain_target_height(string &err)
 uint64_t wallet2::get_approximate_blockchain_height() const
 {
   // time of v2 fork
-  const time_t fork_time = m_nettype == TESTNET ? 1448285909 : m_nettype == STAGENET ? 1520937818 : 1522818000;
+  const time_t fork_time = m_nettype == TESTNET ? 1729588741 : m_nettype == STAGENET ? 1729588741 : 1729588741;
   // v2 fork block
-  const uint64_t fork_block = m_nettype == TESTNET ? 624634 : m_nettype == STAGENET ? 32000 : 38500;
+  const uint64_t fork_block = m_nettype == TESTNET ? 550 : m_nettype == STAGENET ? 550 : 1732000;
   // avg seconds per block
   const int seconds_per_block = DIFFICULTY_TARGET_V2;
   // Calculated blockchain height
   uint64_t approx_blockchain_height = fork_block + (time(NULL) - fork_time)/seconds_per_block;
   // testnet and stagenet got some huge rollbacks, so the estimation is way off
-  static const uint64_t approximate_rolled_back_blocks = m_nettype == TESTNET ? 342100 : 30000;
+  static const uint64_t approximate_rolled_back_blocks = m_nettype == TESTNET ? 100 : 30000;
   if ((m_nettype == TESTNET || m_nettype == STAGENET) && approx_blockchain_height > approximate_rolled_back_blocks)
     approx_blockchain_height -= approximate_rolled_back_blocks;
   LOG_PRINT_L2("Calculated blockchain height: " << approx_blockchain_height);

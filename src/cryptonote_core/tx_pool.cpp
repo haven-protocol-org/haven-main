@@ -31,12 +31,10 @@
 
 #include <algorithm>
 #include <boost/filesystem.hpp>
-#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
 #include "tx_pool.h"
-#include "cryptonote_protocol/enums.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_config.h"
@@ -520,6 +518,25 @@ namespace cryptonote
         LOG_ERROR("error: Invalid Tx found. Tx pricing_record_height > 0 for a transfer tx.");
         tvc.m_verifivation_failed = true;
         return false;
+      }
+      uint64_t current_height = m_blockchain.get_current_blockchain_height();
+      const bool is_audit_tx = (tx.rct_signatures.type==rct::RCTTypeSupplyAudit);
+      if(is_audit_tx){
+        for (size_t i = 0; i < tx.vout.size(); ++i) { //Make sure all audit tx outputs are locked for 2 days
+          // Check output unlock time
+          uint64_t output_unlock_time;
+          bool ok = cryptonote::get_output_unlock_time(tx.vout[i], output_unlock_time);
+          if (!ok) {
+            LOG_ERROR("failed to get output unlock time for output index " << i);
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+          if(current_height + HF25_AUDIT_LOCK_BLOCKS  > output_unlock_time + HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS){
+            LOG_ERROR("incorrect output unlock time for output index, part of an audit tx " << i); 
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+        }
       }
     }
 
@@ -2220,7 +2237,7 @@ namespace cryptonote
         ret=false;   
       }
 
-      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool)){
+      if(!get_anonymity_pool(tx, tx_ring_outputs, tx_anon_pool, m_blockchain.get_nettype())){
         LOG_ERROR("Failed to get the anonymity pool for transaction " << txid);
         ret=false;   
       }

@@ -2231,6 +2231,7 @@ bool simple_wallet::freeze_thaw_old_new(const std::vector<std::string> &args, bo
   try
   {
     size_t ntd = m_wallet->get_num_transfer_details();
+    bool header_message_shown=false;
     for (size_t i = 0; i < ntd; ++i)
     {
       const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(i);
@@ -2240,6 +2241,10 @@ bool simple_wallet::freeze_thaw_old_new(const std::vector<std::string> &args, bo
         if (is_output_old==old) //we need to do something
           if(is_output_frozen != freeze) { //if the output does not have the same value as desired, in which case we don't need to do anything
             if(freeze) {
+              if (!header_message_shown){
+                success_msg_writer("Freezing outputs which can no longer be spent after the end of the supply audit:");
+                header_message_shown=true;
+              }
               m_wallet->freeze(td.m_key_image);
               message_writer() << tr("Frozen: ") << td.m_key_image << " " << cryptonote::print_money(td.amount()) << " " << td.asset_type;
             } else {
@@ -6214,7 +6219,6 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     std::cout << "\r                                                                \r";
     success_msg_writer(true) << tr("Refresh done, blocks received: ") << fetched_blocks;
     if ((start_height<SUPPLY_AUDIT_BLOCK_HEIGHT) && m_wallet->get_current_hard_fork()>=HF_VERSION_SUPPLY_AUDIT_END){
-      success_msg_writer(true) << tr("Freezing outputs which can no longer be spent after the end of the supply audit: ");
       std::vector<std::string> args_dummy;
       freeze_all_old(args_dummy);
     }
@@ -8764,7 +8768,7 @@ bool simple_wallet::audit_main(bool keep_subaddress, const std::vector<std::stri
 
   uint32_t priority = 0;
   priority = m_wallet->adjust_priority(priority);
-  uint64_t unlock_block = 0;
+  uint64_t unlock_block = bc_height + HF25_AUDIT_LOCK_BLOCKS;
 
 
   size_t fake_outs_count = m_wallet->get_min_ring_size() - 1;

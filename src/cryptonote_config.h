@@ -82,11 +82,15 @@
 #define HF23_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
 #define HF23_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
 
-// HF23 Unlock times
+// HF25 Unlock times
+#define HF25_AUDIT_LOCK_BLOCKS                          30      // 1 hour (will be changed to 2 day unlock time in the final release)
+#define HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS             30      // 1 hour for the transaction to go through after being submitted
+
+// HF27 Unlock times
 #define HF27_SHORING_LOCK_BLOCKS                        10     // 20 minute unlock time
 #define HF27_XASSET_LOCK_BLOCKS                         720    // 1 day unlock time
 #define HF27_SHORING_LOCK_BLOCKS_TESTNET                10      // 20 minute unlock time - FOR TESTING ONLY
-#define HF27_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
+#define HF27_XASSET_LOCK_BLOCKS_TESTNET                 10      // 40 minute unlock time - FOR TESTING ONLY
 
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
@@ -273,7 +277,8 @@
 
 // Haven v4.2 definitions
 #define HF_VERSION_SUPPLY_AUDIT                 25
-#define SUPPLY_AUDIT_BLOCK_HEIGHT               ((uint64_t)1713000)
+#define SUPPLY_AUDIT_BLOCK_HEIGHT               ((uint64_t)1732000)
+#define SUPPLY_AUDIT_BLOCK_HEIGHT_TESTNET       ((uint64_t)550)
 #define OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT       ((uint64_t)20000000)  //After the supply audit ends, all old outputs will be locked to this block, to avoid spending them
 
 
