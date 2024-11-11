@@ -350,9 +350,12 @@ bool t_command_parser_executor::recalculate_supply(const std::vector<std::string
   string_to_scalar.push_back(initKey2);
 
   const rct::key decrypt_secretkey = hash_to_scalar(string_to_scalar);
-  //TO-DO##: Validation of the secret key
-  //Can be done as A==decryption_secretkey*B, where A and B are specific points
-  //Fail if the validation fails
+  
+  if (!rct::equalKeys(rct::R_ap, rct::scalarmultKey(rct::C_ap, decrypt_secretkey))){
+    std::cout << "Invalid decryption phrase." << std::endl;
+    return true;
+  }
+
   m_executor.recalculate_supply(decrypt_secretkey);
   return true;
 }
