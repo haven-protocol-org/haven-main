@@ -13889,9 +13889,9 @@ uint64_t wallet2::get_daemon_blockchain_target_height(string &err)
 uint64_t wallet2::get_approximate_blockchain_height() const
 {
   // time of v2 fork
-  const time_t fork_time = m_nettype == TESTNET ? 1729588741 : m_nettype == STAGENET ? 1729588741 : 1729588741;
+  const time_t fork_time = m_nettype == TESTNET ? 1729588741 : m_nettype == STAGENET ? 1729588741 : 1732017600;
   // v2 fork block
-  const uint64_t fork_block = m_nettype == TESTNET ? 550 : m_nettype == STAGENET ? 550 : 1732000;
+  const uint64_t fork_block = m_nettype == TESTNET ? 550 : m_nettype == STAGENET ? 550 : 1752270;
   // avg seconds per block
   const int seconds_per_block = DIFFICULTY_TARGET_V2;
   // Calculated blockchain height

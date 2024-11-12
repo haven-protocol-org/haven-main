@@ -50,10 +50,10 @@ const hardfork_t mainnet_hard_forks[] = {
   { 21, 1439500, 0, 1690797000 }, // Fork time is on or around 29th August 2023 at 10:00 GMT. Fork time finalised on 2023-07-31.
   { 22, 1439544, 0, 1693999500 }, // Fork time is on or around 29th August 2023 at 12:05 GMT. Fork time finalised on 2023-09-06.
   { 23, 1656000, 0, 1719672007 }, // Fork time is on or around 8th July 2024 at 09:00 GMT. Fork time finalised on 2024-06-29.
-  { 24, 1692720, 0, 1724274501 },  // Fork time is on or around 28th August 2024 at 11:00 GMT. Fork time finalised on 2024-09-21.
-  { 25, 1732000, 0, 1729588741 },  // Not finalized yet.
-  { 26, 1732100, 0, 1729589741 },  // Not finalized yet.
-  { 27, 1732200, 0, 1729590741}  // Not finalized yet.
+  { 24, 1692720, 0, 1724274501 }, // Fork time is on or around 28th August 2024 at 11:00 GMT. Fork time finalised on 2024-08-21.
+  { 25, 1752270, 0, 1732017600 }, // Fork time is on or around 19th November 2024 at 12:00 GMT. Fork time finalised on 2024-11-11.
+  { 26, 1783950, 0, 1735819200 }, // Fork time is on or around 2nd January 2025 at 12:00 GMT. Fork time finalised on 2024-11-11.
+  { 27, 1788990, 0, 1736424000}   // Fork time is on or around 9th January 2025 at 12:00 GMT. Fork time finalised on 2024-11-11.
 };
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
 const uint64_t mainnet_hard_fork_version_1_till = 1009826;
