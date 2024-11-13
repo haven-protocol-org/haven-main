@@ -83,7 +83,7 @@
 #define HF23_XASSET_LOCK_BLOCKS_TESTNET                 20      // 40 minute unlock time - FOR TESTING ONLY
 
 // HF25 Unlock times
-#define HF25_AUDIT_LOCK_BLOCKS                          30      // 1 hour (will be changed to 2 day unlock time in the final release)
+#define HF25_AUDIT_LOCK_BLOCKS                          1440      // 1 hour (will be changed to 2 day unlock time in the final release)
 #define HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS             30      // 1 hour for the transaction to go through after being submitted
 
 // HF27 Unlock times
