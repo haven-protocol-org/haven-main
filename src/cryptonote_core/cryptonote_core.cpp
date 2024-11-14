@@ -950,7 +950,7 @@ namespace cryptonote
       // Get the TX anonymity pool
       const uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
       anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
-      if (hf_version>=HF_VERSION_BURN) {
+      if (hf_version >= HF_VERSION_BURN && current_height >= SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT) {
         std::vector<std::vector<output_data_t>> tx_ring_outputs;
         tx_ring_outputs.reserve(tx_info[n].tx->vin.size());
         for (const txin_v& txin: tx_info[n].tx->vin){
@@ -1018,8 +1018,15 @@ namespace cryptonote
           tx_info[n].result = false;
           continue;
         }
-      } else if (hf_version<HF_VERSION_BURN){
+      } else if (hf_version<HF_VERSION_BURN || current_height < SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT){
         tx_anon_pool=anonymity_pool::NOTAPPLICABLE;
+      } else {
+        //This should not happen
+        MERROR_VER("Failed to validate anonymity pool");
+        set_semantics_failed(tx_info[n].tx_hash);
+        tx_info[n].tvc.m_verifivation_failed = true;
+        tx_info[n].result = false;
+        continue;
       }
       tx_info[n].tvc.m_tx_anon_pool=tx_anon_pool;
 

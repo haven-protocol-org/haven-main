@@ -5460,7 +5460,7 @@ leave:
     
     // Get the TX anonymity pool
     anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
-    if (hf_version>=HF_VERSION_BURN) {
+    if (hf_version>=HF_VERSION_BURN && blockchain_height >= SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT) {
       std::vector<std::vector<output_data_t>> tx_ring_outputs;
       tx_ring_outputs.reserve(tx.vin.size());
       for (const txin_v& txin: tx.vin){
@@ -5516,8 +5516,13 @@ leave:
         bvc.m_verifivation_failed = true;
         goto leave;
       }
-    } else if (hf_version<HF_VERSION_BURN) {
+    } else if (hf_version < HF_VERSION_BURN || blockchain_height < SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT) {
       tx_anon_pool=anonymity_pool::NOTAPPLICABLE;  
+    } else {
+      //This should not happen
+      MERROR_VER("Cannot validate anonymity pool for tx " << tx_id);
+      bvc.m_verifivation_failed = true;
+      goto leave;
     }
 
 
