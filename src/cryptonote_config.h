@@ -278,6 +278,7 @@
 // Haven v4.2 definitions
 #define HF_VERSION_SUPPLY_AUDIT                 25
 #define SUPPLY_AUDIT_BLOCK_HEIGHT               ((uint64_t)1752270)
+#define SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT     ((uint64_t)1748800) 
 #define SUPPLY_AUDIT_BLOCK_HEIGHT_TESTNET       ((uint64_t)410)
 #define OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT       ((uint64_t)20000000)  //After the supply audit ends, all old outputs will be locked to this block, to avoid spending them
 
