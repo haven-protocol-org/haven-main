@@ -356,7 +356,6 @@ namespace cryptonote
           // Miner component of the xAsset TX fee
           r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
           CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
-          idx++;
           crypto::view_tag view_tag;
 
           if (hard_fork_version >= HF_VERSION_VIEW_TAGS) {
@@ -386,6 +385,7 @@ namespace cryptonote
             out_miner.target = tk_miner;
             tx.vout.push_back(out_miner);
           }
+          idx++;
 
           crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
           if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset, view_tag))
@@ -710,6 +710,8 @@ namespace cryptonote
     using namespace boost::multiprecision;
     using tt = cryptonote::transaction_type;
 
+    LOG_PRINT_L2("cryptonote_tx_utils::" << __func__);
+
     // Fail dismally if we have been called too early
     if (hf_version < HF_VERSION_SLIPPAGE) {
       LOG_ERROR("get_slippage() called from a pre-slippage client - aborting");
@@ -743,7 +745,7 @@ namespace cryptonote
       if (i.first != "XUSD") {
         amount_xasset *= COIN;
         amount_xasset /= price_xasset;
-      }      
+      }
 
       // Sum into our total for all xAssets
       mcap_xassets += amount_xasset;
@@ -944,6 +946,7 @@ namespace cryptonote
     using namespace boost::multiprecision;
     using tt = transaction_type;
 
+    LOG_PRINT_L2("cryptonote_tx_utils::" << __func__);
     // Process the circulating supply data
     std::map<std::string, uint128_t> map_amounts;
     uint128_t mcap_xassets = 0;
@@ -985,10 +988,13 @@ namespace cryptonote
     // Calculate the market cap ratio
     cpp_bin_float_quad ratio_mcap_128 = mcap_xassets.convert_to<cpp_bin_float_quad>() / mcap_xhv.convert_to<cpp_bin_float_quad>();
     double ratio_mcap = ratio_mcap_128.convert_to<double>();
-
-    // Do the right thing, based on the HF version
-    if (hf_version >= HF_VERSION_SLIPPAGE) {
-
+    if (hf_version >= HF_VERSION_VBS_DISABLING) {
+      // No collateral needed
+      collateral = 0;
+      // Done - return to caller
+      return true;
+    } else if (hf_version >= HF_VERSION_SLIPPAGE) { // Do the right thing, based on the HF version
+    
       // Force the VBS rate to 1.0, irrespective of health of network - let slippage pick up the slack
       if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD) {
 
@@ -1164,6 +1170,7 @@ namespace cryptonote
   }
   //---------------------------------------------------------------
   bool get_conversion_rate(const offshore::pricing_record& pr, const std::string& from_asset, const std::string& to_asset, uint64_t& rate, const uint8_t hf_version) {
+    LOG_PRINT_L2("cryptonote_tx_utils::" << __func__);
     // Check for transfers
     if (from_asset == to_asset) {
       rate = COIN;
@@ -1595,6 +1602,7 @@ namespace cryptonote
     size_t output_index = 0;
     uint64_t summary_outs_slippage = 0;
     uint64_t summary_outs_supply_burn = 0;
+    const bool is_audit_tx = (rct_config.bp_version == 8);
     
     for(const tx_destination_entry& dst_entr: destinations)
     {
@@ -1629,6 +1637,9 @@ namespace cryptonote
         }
       } else if (hf_version >= HF_VERSION_USE_COLLATERAL && tx_type == transaction_type::ONSHORE && dst_entr.is_collateral_change) {
         u_time = 0;
+      } else if (is_audit_tx){
+        if (u_time < HF25_AUDIT_LOCK_BLOCKS + current_height + 1)
+          u_time = HF25_AUDIT_LOCK_BLOCKS + current_height + 1;
       } else {
         if (dst_entr.dest_asset_type == source_asset) {
           u_time = 0;
@@ -1921,6 +1932,7 @@ namespace cryptonote
         return false;
       }
       
+      LOG_PRINT_L2("Preparing RCT signatures");
       crypto::hash tx_prefix_hash;
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
       rct::ctkeyV outSk;
@@ -2112,5 +2124,175 @@ namespace cryptonote
     crypto::hash p = crypto::null_hash;
     get_block_longhash(pbc, b, p, height, seed_hash, miners);
     return p;
+  }
+
+  //---------------------------------------------------------------
+  //! This function tries to obtain the anonymity pool of a transaction.
+  //! For each input, we check the ring members and determine if from which pool they are.
+  //! If there are inputs with different pools, then the whole transaction has a mixed pool.
+  //! If errors are encountered, then the function returns false and assigns UNSET to the anon_pool.
+  bool get_anonymity_pool(const transaction& tx, const std::vector<std::vector<output_data_t>>& tx_ring_outputs, anonymity_pool& tx_anon_pool, const network_type nettype)
+  {
+
+    const uint64_t supply_audit_height = (nettype != TESTNET && nettype != STAGENET) ? SUPPLY_AUDIT_BLOCK_HEIGHT :  SUPPLY_AUDIT_BLOCK_HEIGHT_TESTNET;
+
+    tx_anon_pool=anonymity_pool::UNSET;
+    size_t assignments=0; //additional check to ensure we update anon_pool without missing inputs
+
+    //For each input of the transaction, we should have a vector with outputs which form its ring members
+    if (tx.vin.size()!=tx_ring_outputs.size()){
+      tx_anon_pool=anonymity_pool::UNSET;
+      LOG_ERROR("The number of inputs differs from the number of groups of ring members! Rejecting..");
+      return false;
+    }
+
+    //A transaction cannot have 0 inputs
+    if (tx.vin.size()==0){
+      tx_anon_pool=anonymity_pool::UNSET;
+      LOG_ERROR("The transaction has no inputs! Rejecting..");
+      return false;
+    }
+
+    for (size_t i = 0; i < tx.vin.size(); i++) {
+      anonymity_pool pool_current_input=anonymity_pool::UNSET;
+      if(!get_input_anonymity_pool(tx.vin[i], tx_ring_outputs[i], pool_current_input, supply_audit_height)){
+        tx_anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Failed to get the anonymity pool of input " << i << " ! Rejecting..");
+        return false;
+      }
+
+      //Only Pool 1, Pool 2 and Mixed are valid values for a ring member
+      if (pool_current_input!=anonymity_pool::MIXED && pool_current_input!=anonymity_pool::POOL_1 && pool_current_input!=anonymity_pool::POOL_2){
+        tx_anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Failed to assign a ring member to either Pool 1 or Pool 2 or Mixed! Rejecting..");
+        return false;
+      }
+
+      if (tx_anon_pool==anonymity_pool::UNSET){
+        tx_anon_pool=pool_current_input;
+        assignments+=1;
+      } else if (tx_anon_pool!=pool_current_input){
+        tx_anon_pool=anonymity_pool::MIXED;
+        assignments+=1;
+      } else if (tx_anon_pool==pool_current_input){
+        assignments+=1;
+      }
+    }
+
+    // Make sure each input has been considered when assigning the transaction anonymity pool type
+    if (assignments!=tx.vin.size()){
+        LOG_ERROR("Not all inputs were considered when assigning a pool! Rejecting..");
+        tx_anon_pool=anonymity_pool::UNSET;
+        return false;
+    }
+
+    // If the transaction anonymity pool is Mixed, Pool 1, and Pool 2, then we can return the value
+    if (tx_anon_pool==anonymity_pool::MIXED || tx_anon_pool==anonymity_pool::POOL_1 || tx_anon_pool==anonymity_pool::POOL_2){
+      if (tx_anon_pool==anonymity_pool::MIXED){
+        LOG_PRINT_L2("Mixed anonymity pool found, this should not happen. Transaction will rejected as part of transaction validation");  
+      } else {
+        LOG_PRINT_L2("anonymity pool of the input is " << (tx_anon_pool==anonymity_pool::POOL_1 ? "Pool 1" : (tx_anon_pool==anonymity_pool::POOL_2 ? "Pool 2" : "Unknown")));
+      }
+      return true;
+    }
+
+    //If we've reached this point, then something went wrong
+    LOG_ERROR("Failed to assign a transaction anonymity pool! Rejecting..");
+    tx_anon_pool=anonymity_pool::UNSET;
+    return false;
+  }
+  //---------------------------------------------------------------
+  //! This function tries to obtain the anonymity pool of a transaction.
+  //! For each input, we check the ring members and determine from which pool they are.
+  //! If there are inputs with different pools, then the whole transaction has a mixed pool, which should lead to transaction rejection as part of the tx validation.
+  //! If errors are encountered, then the function returns false and assigns UNSET to the anon_pool.
+  bool get_input_anonymity_pool(const txin_v& txin, const std::vector<output_data_t>& ring_outputs, anonymity_pool& anon_pool, const uint64_t supply_audit_height)
+  {
+    anon_pool=anonymity_pool::UNSET;
+    size_t assignments=0; //additional check to ensure we update anon_pool without missing inputs
+
+    if (txin.type() == typeid(txin_gen)){
+      if (ring_outputs.size()==0){
+        anon_pool=anonymity_pool::NONE;
+        return true;
+      } else {
+        LOG_ERROR("Coinbase input with ring members found! Rejecting..");
+        anon_pool=anonymity_pool::UNSET;
+        return false;
+      }
+    }
+
+    if (txin.type() == typeid(txin_haven_key)){
+      if (ring_outputs.size()==0){
+        anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Non-coinbase input without ring members found! Rejecting..");
+        return false;
+      }
+
+      std::string source_asset_type = boost::get<txin_haven_key>(txin).asset_type;
+      if (source_asset_type.size()==0){
+        anon_pool=anonymity_pool::UNSET;
+        LOG_ERROR("Failed to find input asset type! Rejecting..");
+        return false;  
+      }
+
+      for (const auto &out: ring_outputs) {
+        anonymity_pool pool_current_ring_member=anonymity_pool::UNSET;
+
+        //Rules for Pool 1
+        //Any output before the supply audit cut-off is considered a member of Pool 1
+        if (out.height < supply_audit_height && out.asset_type==source_asset_type){
+          pool_current_ring_member=anonymity_pool::POOL_1;
+        }
+        //Rules for Pool 2
+        if (out.height >= supply_audit_height && out.asset_type==source_asset_type){
+          pool_current_ring_member=anonymity_pool::POOL_2;
+        }
+        
+
+        // Please add any future logic for new anonymity pools above this point in the code
+        // Beyond it, the anonymity pool of the current ring member must be set
+        if (pool_current_ring_member==anonymity_pool::UNSET){
+          anon_pool=anonymity_pool::UNSET;
+          LOG_ERROR("Failed to assign a ring member to anonymity pool! Rejecting..");
+          return false;
+        }
+
+        //Only Pool 1 and Pool 2 are valid values for a ring member
+        if (pool_current_ring_member!=anonymity_pool::POOL_1 && pool_current_ring_member!=anonymity_pool::POOL_2){
+          anon_pool=anonymity_pool::UNSET;
+          LOG_ERROR("Failed to assign a ring member to either Pool 1 or Pool 2! Rejecting..");
+          return false;
+        }
+
+        if (anon_pool==anonymity_pool::UNSET){
+          anon_pool=pool_current_ring_member;
+          assignments+=1;
+        } else if (anon_pool!=pool_current_ring_member){
+          anon_pool=anonymity_pool::MIXED;
+          assignments+=1;
+        } else if (anon_pool==pool_current_ring_member){
+          assignments+=1;
+        }
+      }
+
+      if (assignments!=ring_outputs.size()){
+        LOG_ERROR("Not all ring members were considered when assigning a pool! Rejecting..");
+        anon_pool=anonymity_pool::UNSET;
+        return false;
+      }
+
+      if (anon_pool==anonymity_pool::MIXED){
+        LOG_PRINT_L2("Mixed anonymity pool found, this should not happen. Transaction will rejected as part of transaction validation");  
+      } else {
+        LOG_PRINT_L2("Anonymity pool of the input is " << (anon_pool==anonymity_pool::POOL_1 ? "Pool 1" : (anon_pool==anonymity_pool::POOL_2 ? "Pool 2" : "Unknown")));
+      }
+      return true;
+    }
+
+    //If we've reached this point, then something went wrong
+    LOG_ERROR("Failed to assign a an input to anonymity pool! Rejecting..");
+    anon_pool=anonymity_pool::UNSET;
+    return false;
   }
 }

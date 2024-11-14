@@ -67,6 +67,7 @@ namespace cryptonote
     uint64_t m_collateral;
     uint64_t m_slippage;
     bool tx_pr_height_verified = false;
+    anonymity_pool m_tx_anon_pool = anonymity_pool::UNSET;
   };
 
   struct block_verification_context

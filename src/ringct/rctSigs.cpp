@@ -707,7 +707,7 @@ namespace rct {
           kv.push_back(p.t);
         }
       }
-      else if (rv.type == RCTTypeBulletproofPlus)
+      else if (rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit)
       {
         kv.reserve((6*2+6) * rv.p.bulletproofs_plus.size());
         for (const auto &p: rv.p.bulletproofs_plus)
@@ -724,6 +724,16 @@ namespace rct {
             kv.push_back(p.L[n]);
           for (size_t n = 0; n < p.R.size(); ++n)
             kv.push_back(p.R[n]);
+        }
+        if (rv.type == RCTTypeSupplyAudit){ //Add amount proof
+        kv.reserve(5*rv.p.amountproofs.size());
+          for (const auto &ap: rv.p.amountproofs){
+            kv.push_back(ap.G1);
+            kv.push_back(ap.K1);
+            kv.push_back(ap.H1);
+            kv.push_back(ap.sa);
+            kv.push_back(ap.sr);
+          }
         }
       }
       else
@@ -1142,7 +1152,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(amounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit);
         }
 
         //set txn fee
@@ -1207,12 +1217,14 @@ namespace rct {
         for (size_t n = 0; n < mixRing.size(); ++n) {
           CHECK_AND_ASSERT_THROW_MES(index[n] < mixRing[n].size(), "Bad index into mixRing");
         }
-
         rctSig rv;
         if (bulletproof_or_plus)
         {
           switch (rct_config.bp_version)
           {
+            case 8:
+              rv.type = RCTTypeSupplyAudit;
+              break;
             case 0:
             case 7:
               rv.type = RCTTypeBulletproofPlus;
@@ -1244,7 +1256,8 @@ namespace rct {
 
         using tt = cryptonote::transaction_type;
         bool conversion_tx = tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE || tx_type == tt::XUSD_TO_XASSET || tx_type == tt::XASSET_TO_XUSD;
-        bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3;
+        bool use_onshore_col = tx_type == tt::ONSHORE && rv.type >= RCTTypeHaven3 && hf_version < HF_VERSION_VBS_DISABLING; //after VBS is removed, there is collateral required
+        bool supply_audit_tx = rv.type == RCTTypeSupplyAudit;
 
         rv.message = message;
         rv.outPk.resize(destinations.size());
@@ -1266,11 +1279,11 @@ namespace rct {
 
         size_t i;
         keyV masks(destinations.size()); //sk mask..
-        outSk.resize(destinations.size());
+        outSk.resize(destinations.size()); //!< Scalar used for the outgoing output Pk. Generated during the range proof (bp, bp+, etc).
         for (i = 0; i < destinations.size(); i++) {
 
             //add destination to sig
-            rv.outPk[i].dest = copy(destinations[i]);
+            rv.outPk[i].dest = copy(destinations[i]); //!< Outgoing output commitment. Generated during the range proof  (bp, bp+, etc).
             //compute range proof
             if (!bulletproof_or_plus)
               rv.p.rangeSigs[i] = proveRange(rv.outPk[i].mask, outSk[i].mask, outamounts[i]);
@@ -1322,7 +1335,13 @@ namespace rct {
                         sc_add(rv.maskSums[1].bytes, rv.maskSums[1].bytes, masks[i].bytes);
                       }
 
-                      if (rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus) {
+                      //RCTTypeAudit should not be used for conversions, only for transfers
+                      //After VSB removal, we will use maskSums[2] to store the masks in color different from C(in theory only D, but we cannot guarantee that here)
+                      if (hf_version >= HF_VERSION_VBS_DISABLING){
+                        if (outamounts_features.at(i).first != in_asset_type) {
+                          sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
+                        }
+                      } else if (rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus) {
                         // save the collateral output mask for offshore
                         if (tx_type == tt::OFFSHORE && outamounts_features.at(i).second.first) {
                           sc_add(rv.maskSums[2].bytes, rv.maskSums[2].bytes, masks[i].bytes);
@@ -1377,7 +1396,7 @@ namespace rct {
             }
         }
 
-        key sumout = zero();
+        key sumout = zero(); //!< Sum of masks of transaction outgoing outputs, scalled to color C, excluding collateral outputs
         key sumout_onshore_col = zero();
         key atomic = d2h(COIN);
         key inverse_atomic = invert(atomic);
@@ -1444,7 +1463,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(outamounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit);
         }
 
         //set txn fee
@@ -1470,6 +1489,7 @@ namespace rct {
         }
 
         // generate commitments per input
+        key PseudooutsMaskSumsTemp = zero();
         key sumpouts = zero(); //sum pseudoOut masks
         keyV a(inamounts.size());
         for (i = 0 ; i < actual_in_amounts.size() - 1; i++) {
@@ -1479,9 +1499,17 @@ namespace rct {
           sc_add(sumpouts.bytes, a[actual_in_amounts[i].first].bytes, sumpouts.bytes);
           // Generate a commitment to the amount with the random key
           genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
+          if(supply_audit_tx) //For audit tx, add the masking factor to the sum used for the amount proof. It should match the commitment mask above.
+            sc_add(PseudooutsMaskSumsTemp.bytes, a[actual_in_amounts[i].first].bytes, PseudooutsMaskSumsTemp.bytes); 
         }
-        sc_sub(a[actual_in_amounts[i].first].bytes, sumout.bytes, sumpouts.bytes);
+        //sumpouts = sum of masks of all but the last transaction input's masks
+        sc_sub(a[actual_in_amounts[i].first].bytes, sumout.bytes, sumpouts.bytes); //last mask = sumout - sumpouts, so the sum of pseudoout masks is sumout, which is the sum of scalled outgoing output masks.
         genC(pseudoOuts[actual_in_amounts[i].first], a[actual_in_amounts[i].first], actual_in_amounts[i].second);
+        if(supply_audit_tx) //For audit tx, add the masking factor to the sum used for the amount proof. It should match the commitment mask above.
+          sc_add(PseudooutsMaskSumsTemp.bytes, a[actual_in_amounts[i].first].bytes, PseudooutsMaskSumsTemp.bytes); 
+
+        //Defining PseudooutsMaskSums as const, to ensure it is not modified
+        const key PseudooutsMaskSums = PseudooutsMaskSumsTemp;
 
         // set the sum of input blinding factors
         if (conversion_tx) {
@@ -1508,6 +1536,81 @@ namespace rct {
         DP(pseudoOuts[onshore_col_in_amounts[i].first]);
         DP(pseudoOuts[i]);
 
+        //Add amount proof in case of a supply audit tx
+        if (supply_audit_tx){
+          //G1=r_r*G
+          //K1=r_r*K
+          //H1=r_a*H
+          //K2=r*K
+          //s_r=r_r+r*c
+          //s_a=r_a+a*c
+          //C=sum of PseudoOuts
+          LOG_PRINT_L2("Generating amount proof signature");
+          const key zerokey = rct::identity();
+
+          AmountProof amountproof;
+          key r_r;
+          key r_a;
+          
+          //Calculate sum of pseudoouts
+          key sumPseudoOuts=zerokey;
+          for (auto po: pseudoOuts){
+            addKeys(sumPseudoOuts, sumPseudoOuts, po);
+          }
+
+          skGen(r_r); //Generate random r_r
+          skGen(r_a); //Generate random r_a
+          
+          amountproof.G1=scalarmultBase(r_r);
+          amountproof.K1=scalarmultKey(K_ap,r_r);
+          amountproof.H1=scalarmultH(r_a);
+          rv.decryption_pubkey=scalarmultKey(K_ap,PseudooutsMaskSums);
+
+          //Challenge c=H(init, G1, K1, H1,K2, C), where C is the sum of pseudoouts
+          keyV challenge_to_hash;
+          challenge_to_hash.reserve(6);
+          key initKey;
+          sc_0(initKey.bytes);
+          CHECK_AND_ASSERT_THROW_MES(sizeof(initKey.bytes)>=sizeof(config::HASH_KEY_AMOUNTPROOF), "Amount proof hash init string is too long");
+          memcpy(initKey.bytes,config::HASH_KEY_AMOUNTPROOF,min(sizeof(config::HASH_KEY_AMOUNTPROOF)-1, sizeof(initKey.bytes)-1));
+    
+          challenge_to_hash.push_back(initKey);
+          challenge_to_hash.push_back(amountproof.G1); 
+          challenge_to_hash.push_back(amountproof.K1);
+          challenge_to_hash.push_back(amountproof.H1);
+          challenge_to_hash.push_back(rv.decryption_pubkey);
+          challenge_to_hash.push_back(sumPseudoOuts);
+          const key c=hash_to_scalar(challenge_to_hash);
+          //Calculate s_r
+          sc_muladd(amountproof.sr.bytes, r_r.bytes, c.bytes, PseudooutsMaskSums.bytes);
+          //Calculate s_a=r_a+c*a
+          amountproof.sa=r_a;
+          for (auto in_amount: inamounts){ //add (input amounts)*r
+            sc_muladd(amountproof.sa.bytes, amountproof.sa.bytes, c.bytes, d2h(in_amount).bytes);
+          }
+
+          //Calculate encrypted amount
+          //The encrypted amount will be later decrypted, using K2=r*K
+          //It will then be the basis for the new supply of Haven, following the Audit
+          rv.amount_encrypted=0;
+          for (auto in_amount: inamounts){ //add (input amounts)*r
+            rv.amount_encrypted += in_amount;
+            CHECK_AND_ASSERT_THROW_MES(rv.amount_encrypted>=in_amount, "Overflow occured, sum of inputs exceeds the maximum xmr amount");
+          }
+          xmr_amount encryption_key=0;
+          const key rS = scalarmultKey(S_ap,PseudooutsMaskSums);
+          for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
+            encryption_key*=256; //Shift 1 bytes
+            encryption_key+=rS.bytes[i];  //Add current byte
+          }
+          rv.amount_encrypted ^= encryption_key; //XOR using the encryption key
+          
+          //Post proof
+          rv.p.amountproofs.clear();
+          rv.p.amountproofs.push_back(amountproof);
+          LOG_PRINT_L2("Amount proof generated");
+        }
+
         key full_message = get_pre_mlsag_hash(rv,hwdev);
 
         for (i = 0 ; i < inamounts.size(); i++)
@@ -1524,6 +1627,8 @@ namespace rct {
                 rv.p.MGs[i] = proveRctMGSimple(full_message, rv.mixRing[i], inSk[i], a[i], pseudoOuts[i], index[i], hwdev);
             }
         }
+
+        
         return rv;
     }
 
@@ -1644,6 +1749,9 @@ namespace rct {
   //
   //ver RingCT simple
   //assumes only post-rct style inputs (at least for max anonymity)
+  //Tay8NWWFKpz9JT4NXU0w, 18.09.2024
+  //The complexity of this procedure has grown dramatically and it needs to be redesigned
+  //Most of the validation rules depend on HF_VERSION and tx type
   bool verRctSemanticsSimple2(
     const rctSig& rv, 
     const offshore::pricing_record& pr,
@@ -1654,11 +1762,13 @@ namespace rct {
     const std::string& strSource, 
     const std::string& strDest,
     uint64_t amount_burnt,
+    const uint64_t amount_minted,
     const std::vector<cryptonote::tx_out> &vout,
     const std::vector<cryptonote::txin_v> &vin,
     const uint8_t version,
     const uint64_t amount_collateral,
-    const uint64_t amount_slippage
+    const uint64_t amount_slippage,
+    const cryptonote::anonymity_pool tx_anon_pool
   ){
 
     try
@@ -1673,7 +1783,8 @@ namespace rct {
       std::vector<uint32_t> collateral_change_indices = {};
       //size_t max_non_bp_proofs = 0, offset = 0;
       using tt = cryptonote::transaction_type;
-      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
+      using anon = cryptonote::anonymity_pool;
+      CHECK_AND_ASSERT_MES(rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit, false, "verRctSemanticsSimple2 called on non-Haven2 rctSig");
 
       const bool bulletproof = is_rct_bulletproof(rv.type);
       const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -1684,20 +1795,114 @@ namespace rct {
         CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
       CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
       CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
+      CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == vin.size(), false, "Mismatched sizes of rv.p.pseudoOuts and vin");
       CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
       CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
       if (rv.type == RCTTypeHaven2) 
         CHECK_AND_ASSERT_MES(rv.maskSums.size() == 2, false, "maskSums size is not 2");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) != offshore::ASSET_TYPES.end(), false, "Invalid Source Asset!");
       CHECK_AND_ASSERT_MES(std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) != offshore::ASSET_TYPES.end(), false, "Invalid Dest Asset!");
-      CHECK_AND_ASSERT_MES(tx_type != tt::UNSET, false, "Invalid transaction type.");
-      if (strSource != strDest) {
+      CHECK_AND_ASSERT_MES(tx_type != tt::UNSET, false, "Transaction type is not set.");
+      //### Anonymity pool sanity checks #####
+      // These checks should ensure that the tx_anon_pool fits to the HF_VERSION
+      // They require that the tx_anon_pool value is correct
+      CHECK_AND_ASSERT_MES(tx_anon_pool != anon::UNSET, false, "Transaction anonymity pool type is not set.");
+      CHECK_AND_ASSERT_MES(tx_anon_pool != anon::MIXED, false, "Transaction has a mixed anonymity pool which is not permited.");
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_BURN || tx_anon_pool == anon::POOL_1 || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 1 or Pool 2 during the supply audit");
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_SUPPLY_AUDIT_END || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be only Pool 2 after the end of the supply audit");
+      //### Supply audit sanity checks #####
+      //This check ensures old funds can't be spent after the audit is over.
+      const bool is_before_supply_audit = (version < HF_VERSION_SUPPLY_AUDIT);
+      const bool is_during_supply_audit = (version >=HF_VERSION_SUPPLY_AUDIT && version < HF_VERSION_SUPPLY_AUDIT_END);
+      const bool is_after_supply_audit = (version >= HF_VERSION_SUPPLY_AUDIT_END);
+      const bool is_after_vbs_disabling = (version >= HF_VERSION_VBS_DISABLING);
+      const int num_epochs=(is_before_supply_audit ? 1 : 0)+(is_during_supply_audit ? 1 : 0)+(is_after_supply_audit ? 1 : 0);
+      CHECK_AND_ASSERT_MES(num_epochs==1, false, "Failed to determine if the current block is before, during, or after the supply audit");
+      
+      const bool is_audit_tx = (rv.type == RCTTypeSupplyAudit);
+      const bool is_conversion_type_tx = (tx_type == tt::ONSHORE || tx_type==tt::OFFSHORE || tx_type==tt::XASSET_TO_XUSD || tx_type == tt::XUSD_TO_XASSET);
+      const bool is_transfer_type_tx = (tx_type == tt::TRANSFER || tx_type==tt::OFFSHORE_TRANSFER || tx_type==tt::XASSET_TRANSFER);
+      CHECK_AND_ASSERT_MES(is_conversion_type_tx ^ is_transfer_type_tx, false, "The transaction type should either be a transfer or a conversion");
+      
+      const bool is_burn_tx = is_transfer_type_tx && (amount_burnt>0);
+
+      const uint64_t amount_burnt_orig=amount_burnt;
+
+      //### Block height related restrictions
+      if (version < HF_VERSION_BURN)
+        CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Burn transaction found before HF_VERSION_BURN! rejecting tx.. ");
+
+      //Rules what transactions are allowed during the audit, after the audit, and after VBS is disabled
+      if (is_before_supply_audit){ // Audit transactions not permited
+        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
+      }
+      if (is_during_supply_audit){ //Conversions disabled, Audit tx spends from Pool 1, non-Audit spends from Pool 2, burn not permited 
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeBulletproofPlus || is_audit_tx, false, "Only RCTTypeBulletproofPlus and Audit transactions permited after the supply Audit");
+        if (is_audit_tx) //Prevent double-counting of supply. An audit transaction spending from Pool 2 will mean funds are already have been counted earlier.
+          CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_1, false, "Supply audit transactions should have anonymity pool 1");
+        if (!is_audit_tx) //Make sure movement from Pool 1 to Pool 2 requires an audit, and that any non-audit transfer spends only from Pool 2
+          CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_2, false, "Regular transactions after the audit start should have anonymity pool 2");
+        CHECK_AND_ASSERT_MES(is_transfer_type_tx, false, "Only transfers allowed during the supply audit period");
+        CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Burn transaction not allowed during the supply audit period");
+      }
+
+      if (is_after_supply_audit){ // All transactions spent from Pool 2, audit tx not permited 
+        CHECK_AND_ASSERT_MES(tx_anon_pool == anon::POOL_2, false, "Transactions after the audit end should have anonymity pool 2");
+        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
+      }
+
+      if (! is_before_supply_audit && ! is_after_vbs_disabling) { 
+        //After the end of the supply audit, only re-enable coversions and burn tx after VBS is disabled
+        CHECK_AND_ASSERT_MES(!is_conversion_type_tx, false, "Conversions not allowed in the period between the audit start and VBS disabling");
+        CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Conversions not allowed in the period between the audit start and VBS disabling");
+      }
+
+      if (is_after_vbs_disabling){ //No collateral requirement after VSB disabling, only 1 source asset type
+        if (is_conversion_type_tx)
+          CHECK_AND_ASSERT_MES(amount_collateral == 0, false, "Non-zero collateral requirement after VBS removal, something went wrong! rejecting tx..");
+        
+        for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
+          if (boost::get<cryptonote::txin_haven_key>(vin[i]).asset_type != strSource) {
+            LOG_ERROR("Transaction inputs found which have different asset type than the source asset type");
+            return false;
+          }
+        }
+
+      }
+
+
+      //Supply audit transaction should have one amount proof, and only audit transactions should have an amount proof
+      if (is_audit_tx)
+        CHECK_AND_ASSERT_MES(rv.p.amountproofs.size()==1, false, "Supply audit transaction found without amount proofs");
+      if (!rv.p.amountproofs.empty())
+        CHECK_AND_ASSERT_MES(is_audit_tx, false, "Amount proof for non-audit transaction found");
+      
+      const bool source_dest_asset_types_match=(strSource == strDest);
+      
+      CHECK_AND_ASSERT_MES(source_dest_asset_types_match == is_transfer_type_tx, false, "Mismatch between source/dest assets and transaction type");
+      CHECK_AND_ASSERT_MES((!source_dest_asset_types_match) == is_conversion_type_tx, false, "Mismatch between source/dest assets and transaction type");
+      
+      if (is_conversion_type_tx) {
         CHECK_AND_ASSERT_MES(!pr.empty(), false, "Empty pricing record found for a conversion tx");
         CHECK_AND_ASSERT_MES(amount_burnt, false, "0 amount_burnt found for a conversion tx");
+        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Supply audit tx cannot be a conversion tx"); //redundant check
         if (rv.type >= RCTTypeHaven3) {
           CHECK_AND_ASSERT_MES(rv.maskSums.size() == 3, false, "maskSums size is not correct");
-          if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)
-            CHECK_AND_ASSERT_MES(amount_collateral, false, "0 collateral requirement something went wrong! rejecting tx..");
+          if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
+            CHECK_AND_ASSERT_MES(amount_collateral > 0  || is_after_vbs_disabling, false, "0 collateral requirement before VBS removal, something went wrong! rejecting tx..");
+          }
+        }
+      }
+
+      //Txn fee sanity check
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
+
+      if (is_transfer_type_tx) {
+        CHECK_AND_ASSERT_MES(pr.empty(), false, "Pricing record found for a transfer! rejecting tx..");
+        CHECK_AND_ASSERT_MES(amount_collateral==0, false, "Collateral found for a transfer! rejecting tx..");
+        CHECK_AND_ASSERT_MES(amount_slippage==0, false, "Slippage found for a transfer! rejecting tx..");
+        if (version < HF_VERSION_BURN) {
+          CHECK_AND_ASSERT_MES(amount_burnt==0, false, "amount_burnt found for a transfer tx! rejecting tx.. ");
         }
         CHECK_AND_ASSERT_MES(version < HF_VERSION_MAX_CONV_TRANSACTION_FEE || rv.txnFee < MAX_CONV_TRANSACTION_FEE, false, "Transaction fee too high! rejecting tx..");
       }
@@ -1716,7 +1921,23 @@ namespace rct {
       if ((tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) && version >= HF_VERSION_BURN && amount_burnt>0){
         amount_supply_burnt = amount_burnt;
       }
+
       
+      //TO-DO## Next release
+      if (version >= HF_VERSION_SUPPLY_AUDIT && !is_audit_tx){ //Another redundant paranoid check related to the pool split, but we really do not want old funds to be spendable
+        for (auto inp: vin) {
+          cryptonote::txin_haven_key inp_haven_key=boost::get<cryptonote::txin_haven_key>(inp);
+          CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets.size()>0, false, "Input without decoys found");
+          //TO-DO## Somehow get the first "new" output instead of 1
+          CHECK_AND_NO_ASSERT_MES(inp_haven_key.key_offsets[0]>1, false, "Input seems too old");
+        }
+      }
+
+      if (is_burn_tx){
+        amount_supply_burnt = amount_burnt;
+      }
+      
+
 
       // OUTPUTS SUMMED FOR EACH COLOUR
       key zerokey = rct::identity();
@@ -1726,6 +1947,10 @@ namespace rct {
       // Calculate sum of all C' and D'
       rct::keyV masks_C;
       rct::keyV masks_D;
+
+      //Be extremely careful if you change how masks_C and masks_D are calculated!
+      //Previous exploits made use of the fact that there are outputs not assigned to sumOutpks_C or sumOutpks_D, therefore escaping validation checks. 
+      uint64_t masks_pushed=0; //! Used to ensure we don't lose any outputs when pushing to mask_C and mask_D
       for (size_t i=0; i<vout.size(); i++) {
 
         bool is_collateral = false;
@@ -1735,6 +1960,9 @@ namespace rct {
           LOG_ERROR("Failed to get output collateral status");
           return false;
         }
+        //If we are before HF_VERSION_USE_COLLATERAL or after the VBS removal, there should be no collateral-related outputs
+        if(version < HF_VERSION_USE_COLLATERAL || is_after_vbs_disabling)
+          CHECK_AND_ASSERT_MES(!is_collateral && ! is_collateral_change, false, "No collateral expected after VBS is disabled"); 
         if (is_collateral) {
           collateral_indices.push_back(i);
         }
@@ -1749,6 +1977,12 @@ namespace rct {
           return false;
         }
         
+
+        if(is_after_vbs_disabling && output_asset_type != strSource){
+          CHECK_AND_ASSERT_MES(output_asset_type == strDest && is_conversion_type_tx, false, "Unexpected output asset type");  
+        }
+
+
         if (version >= HF_VERSION_ADDITIONAL_COLLATERAL_CHECKS && (is_collateral || is_collateral_change) && output_asset_type != "XHV"){
           LOG_ERROR("Collateral which is not XHV found");
           return false;  
@@ -1757,17 +1991,31 @@ namespace rct {
         // Don't exclude the onshore collateral ouputs from proof-of-value calculation
         if (output_asset_type == strSource) {
           masks_C.push_back(rv.outPk[i].mask);
+          masks_pushed++;
         } else if (output_asset_type == strDest) {
           masks_D.push_back(rv.outPk[i].mask);
+          masks_pushed++;
         } else {
           LOG_ERROR("Invalid output detected (wrong asset type)");
           return false;
         }
       }
+      CHECK_AND_ASSERT_MES(masks_pushed == vout.size(), false, "Some output masks were not considered for validation purposes");
+      CHECK_AND_ASSERT_MES(masks_C.size()+ masks_D.size() == vout.size(), false, "Some output masks were not clasified as either C or D color");
+      
 
+      //There should be no collateral outputs in the case of non on/offshore txs
+      if(tx_type != tt::OFFSHORE && tx_type != tt::ONSHORE)
+        CHECK_AND_ASSERT_MES((collateral_indices.size()==0) && (collateral_change_indices.size()==0), false, "No collateral expected - not an onshore of offshore tx");  
+      
       // Sanity check the collateral
       bool collateral_exploit = false;
-      if ((version >= HF_VERSION_USE_COLLATERAL) &&
+      if (is_after_vbs_disabling){
+        if (collateral_indices.size() != 0 || collateral_change_indices.size() != 0){
+          LOG_ERROR("Collateral output found, when one was not expected");
+          return false;
+        } 
+      } else if ((version >= HF_VERSION_USE_COLLATERAL) &&
           (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE)) {
         if (collateral_indices.size() != 1) {
           LOG_ERROR("Incorrect number of collateral outputs provided");
@@ -1785,11 +2033,18 @@ namespace rct {
         } else if (tx_type == tt::ONSHORE && collateral_indices[0] == collateral_change_indices[0]) {
           LOG_ERROR("Collateral output cannot also be collateral_change output");
           return false;
-        }
+        } 
+      } else if (collateral_indices.size() != 0 || collateral_change_indices.size() != 0){
+          LOG_ERROR("Collateral output found, when one was not expected");
+          return false;
       }
+
+      if(is_transfer_type_tx)
+        CHECK_AND_ASSERT_MES(masks_D.size() == 0,  false, "Commitments for transfer non-source asset type found for a transfer");
       
-      key sumOutpks_C = addKeys(masks_C);
-      key sumOutpks_D = addKeys(masks_D);
+      //Making sure nothing tampers with the sums of output PKs
+      const key sumOutpks_C = addKeys(masks_C);
+      const key sumOutpks_D = addKeys(masks_D);
       DP(sumOutpks_C);
       DP(sumOutpks_D);
 
@@ -1802,20 +2057,35 @@ namespace rct {
       key amount_supply_burntKey = scalarmultH(d2h(amount_supply_burnt));
 
       // Sum the consumed outputs in their respective asset types (sumColIns = inputs in D)
-      key sumPseudoOuts = zerokey;
+      bool has_input_collateral = false;
+
+      uint64_t pseudoouts_added = 0;
+      key sumPseudoOuts_temp = zerokey;
       key sumColIns = zerokey;
-      if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL) {
+      if (tx_type == tt::ONSHORE && version >= HF_VERSION_USE_COLLATERAL && !is_after_vbs_disabling) {
         for (size_t i = 0; i < rv.p.pseudoOuts.size(); ++i) {
           if (boost::get<cryptonote::txin_haven_key>(vin[i]).asset_type == "XHV") {
             sumColIns = addKeys(sumColIns, rv.p.pseudoOuts[i]);
+            has_input_collateral=true;
+            pseudoouts_added++;
           } else {
-            sumPseudoOuts = addKeys(sumPseudoOuts, rv.p.pseudoOuts[i]);
+            sumPseudoOuts_temp = addKeys(sumPseudoOuts_temp, rv.p.pseudoOuts[i]);
+            pseudoouts_added++;
           }
         }
       } else {
-        sumPseudoOuts = addKeys(rv.p.pseudoOuts);
+        sumPseudoOuts_temp = addKeys(rv.p.pseudoOuts);
+        pseudoouts_added+=rv.p.pseudoOuts.size();
       }
-      DP(sumPseudoOuts);
+      CHECK_AND_ASSERT_MES(pseudoouts_added == rv.p.pseudoOuts.size(), false, "Some transaction inputs commitments were not considered for validation purposes");
+      if(is_after_vbs_disabling)
+        CHECK_AND_ASSERT_MES(!has_input_collateral,  false, "No collateral transaction inputs expected - VBS is disabled");
+      if(is_after_vbs_disabling)
+        CHECK_AND_ASSERT_MES(equalKeys(sumColIns, zerokey),  false, "Commitments for transaction input collaterals are not zero after VBS disabling");
+         
+      DP(sumPseudoOuts_temp); 
+      //Making sure nothing tampers with the pseudoouts sum
+      const key sumPseudoOuts=sumPseudoOuts_temp;
 
       // C COLOUR
       key sumC;
@@ -1831,6 +2101,10 @@ namespace rct {
       //Remove burnt supply
       subKeys(sumC, sumC, amount_supply_burntKey);
 
+      uint64_t txnFeeInC = rv.txnFee; //!< Transaction fee in C color. Equal to txnFee for transfers, but requires conversion from XHV for conversions due to fees being in XHV
+      uint64_t txnOffshoreFeeInC = rv.txnOffshoreFee; //!< Transaction conversion fee in C color. Equal to txnOffshoreFee for transfers, but requires conversion from XHV for conversions due to fees being in XHV
+      
+
       if (version >= HF_VERSION_CONVERSION_FEES_IN_XHV) {
         // NEAC: Convert the fees for conversions to XHV
         if (tx_type == tt::TRANSFER || tx_type == tt::OFFSHORE || tx_type == tt::OFFSHORE_TRANSFER || tx_type == tt::XASSET_TRANSFER) {
@@ -1843,6 +2117,7 @@ namespace rct {
           boost::multiprecision::uint128_t tx_fee_128 = rv.txnFee; // Fee stored in XHV
           tx_fee_128 *= tx_fee_conversion_rate;
           tx_fee_128 /= COIN;
+          txnFeeInC = tx_fee_128.convert_to<uint64_t>();
           key txnFeeKeyInC = scalarmultH(d2h(tx_fee_128.convert_to<uint64_t>()));
 
           // Deduct the transaction fee from our sum of C terms
@@ -1859,7 +2134,7 @@ namespace rct {
             LOG_ERROR("Incorrect conversion fee: expected " << conversion_fee_128.convert_to<uint64_t>() << " but received " << rv.txnOffshoreFee << " - aborting");
             return false;
           }
-
+          txnOffshoreFeeInC=fee_128.convert_to<uint64_t>();
           // Deduct the conversion fee from our C terms
           key txnOffshoreFeeKeyInC = scalarmultH(d2h(fee_128.convert_to<uint64_t>()));
           subKeys(sumC, sumC, txnOffshoreFeeKeyInC);
@@ -1986,8 +2261,8 @@ namespace rct {
         }
       }
 
-      // validate the collateral
-      if ((version >= HF_VERSION_USE_COLLATERAL)) {
+      // validate the collateral - before HF_VERSION_USE_COLLATERAL and after version HF_VERSION_VBS_DISABLING no collateral is required
+      if ((version >= HF_VERSION_USE_COLLATERAL && version < HF_VERSION_VBS_DISABLING)) {
 
         if (tx_type == tt::OFFSHORE || tx_type == tt::ONSHORE) {
 
@@ -2021,7 +2296,66 @@ namespace rct {
             }
           }
         }
+      } else { //Just a paranoid check - if we have reached this point, then the sum of collateral outputs should be zero
+        CHECK_AND_NO_ASSERT_MES(equalKeys(sumColIns, zerokey), false, "Collateral inputs found for a transaction where no collateral is needed");
       }
+
+      //Additional conversions validations after VBS removal
+      //These fit into the category of reduntant, paranoid checks - the Proof of Value validation above should ensure they hold. Nevertheless we will do them.
+      //The goal is to validate that amount_minted is correct is correct using a PK, and also that the net C color change has a certain value using a PK.
+      //Due to not having collateral,we can use maskSums[2] to store the blinding factor for the non-color C outputs (which should be only D color)
+      //We assume completeness and correctness of sumOutpks_C, sumOutpks_D, and sumPseudoouts. Be extremely careful if you change how they are calculated.
+      //Previous exploits took advantage of the fact that there are outputs not assigned to sumOutpks_C or sumOutpks_D, therefore escaping validation checks.
+      //We can check that:
+      // maskSums[2]*G + amount_minted*H == sumOutpks_D
+      // 
+      // We also know that masksums[0] = maskSums[1]+maskSums[2] / (conv rate)
+      // Now, we can calculate amount_C_net = amount_burnt + fees (we should take into account fees in XHV and covert back to C color for conversions)
+      // and check that
+      // amount_C_net*H + masksums[2]/(conv rate)*G == sumPseudoOuts - sumOutpks_C
+      // This should be true because:
+      // amount_C_net is by defintion the difference between incoming and outgoing C amount
+      // for the G part, sumPseudoouts has a mask masksums[0] = maskSums[1]+maskSums[2] / (conv rate), and umOutpks_C has a mask maskSums[1]
+      // this will validate the net C color amount in the transaction - it should be positive, it should also be bigger than amount burnt
+      if (version>=HF_VERSION_VBS_DISABLING && is_conversion_type_tx){
+        key lhs;
+        key rhs;
+        uint64_t amount_C_net = amount_burnt_orig;
+        amount_C_net+=txnFeeInC;
+        CHECK_AND_NO_ASSERT_MES(amount_C_net>=txnFeeInC, false, "Overflow when adding txnFeeinC");
+        amount_C_net+=txnOffshoreFeeInC;
+        CHECK_AND_NO_ASSERT_MES(amount_C_net>=txnOffshoreFeeInC, false, "Overflow when adding txnOffshoreFeeInC");
+
+        LOG_PRINT_L2("net amount (spent - change) in C color " << amount_C_net);
+        
+        //Validate (1) maskSums[2]*G + amount_minted*H == sumOutpks_D
+        CHECK_AND_NO_ASSERT_MES(rv.maskSums.size()==3, false, "Less masks than expected");
+        genC(lhs, rv.maskSums[2], amount_minted);
+        rhs = sumOutpks_D;
+        CHECK_AND_NO_ASSERT_MES(equalKeys(lhs, rhs), false, "Validation of amount_minted failed");
+        //Validate (2) amount_C_net*H + masksums[2]/(conv rate)*G == sumPseudoOuts - sumOutpks_C
+
+        key mask_C_scaled;
+        const key conv_invert = invert(d2h(conversion_rate));
+        sc_mul(mask_C_scaled.bytes, rv.maskSums[2].bytes, d2h(COIN).bytes);
+        key mask_C_final;
+        sc_mul(mask_C_final.bytes, mask_C_scaled.bytes, conv_invert.bytes);
+        genC(lhs, mask_C_final, amount_C_net);
+        subKeys(rhs, sumPseudoOuts, sumOutpks_C);
+        CHECK_AND_NO_ASSERT_MES(equalKeys(lhs, rhs), false, "Validation of net amount (spent - change) in C color failed");
+        //At this point we have validated amount_minted and amount_C_net
+
+        CHECK_AND_NO_ASSERT_MES(amount_C_net >= amount_slippage, false, "Slippage exceeds (spent - change) in C color");
+        boost::multiprecision::uint128_t amount_C_after_slippage = amount_C_net - amount_slippage;
+        CHECK_AND_NO_ASSERT_MES(amount_C_after_slippage >= txnOffshoreFeeInC + txnFeeInC, false, "Fees will exceed converted amount minus slippage");
+        boost::multiprecision::uint128_t amount_C_after_slippage_and_fees = amount_C_after_slippage - txnOffshoreFeeInC - txnFeeInC;
+        
+        LOG_PRINT_L2("amount_burnt minus fees and slippage (net amount in C before conversion) " << amount_C_after_slippage_and_fees);
+        boost::multiprecision::uint128_t amount_D_estimated = (amount_C_after_slippage_and_fees * conversion_rate)/COIN;
+        LOG_PRINT_L2("net amount converted in D color " << amount_D_estimated);
+        CHECK_AND_NO_ASSERT_MES(amount_D_estimated >= amount_minted, false, "Validation of net amount (spent - change) failed, amount_burnt minus slippage and fees after conversion appears to be less than amount_minted");
+      }
+      
 
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
         proofs.push_back(&rv.p.bulletproofs[i]);
@@ -2032,6 +2366,15 @@ namespace rct {
         return false;
       }
       
+      //Supply proof check for Audit transactions
+      //It ensures the proof that the decryption key == rK, where r is exactly the masking factor in the pseudouts PK r*G+a*H
+      if(rv.type==RCTTypeSupplyAudit){
+        if(rv.p.amountproofs.empty() || ! verAmountproof(rv.p.amountproofs[0], rv.p.pseudoOuts, rv.decryption_pubkey)) {
+          LOG_PRINT_L1("Amount proof verified failed for an audit transaction");
+          return false;
+        }
+      }
+
       return true;
     }
     // we can get deep throws from ge_frombytes_vartime if input isn't valid
@@ -2426,7 +2769,7 @@ namespace rct {
       {
         PERF_TIMER(verRctNonSemanticsSimple);
 
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit,
             false, "verRctNonSemanticsSimple called on non simple rctSig");
         const bool bulletproof = is_rct_bulletproof(rv.type);
         const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -2498,7 +2841,7 @@ namespace rct {
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;
@@ -2522,14 +2865,14 @@ namespace rct {
     }
 
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key &mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeSupplyAudit,
             false, "decodeRct called on non simple rctSig");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeCLSAGN || rv.type == RCTTypeHaven2 || rv.type == RCTTypeHaven3 || rv.type == RCTTypeBulletproofPlus|| rv.type == RCTTypeSupplyAudit);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C;
@@ -2637,6 +2980,106 @@ namespace rct {
     }
 
     // Must have succeeded
+    return true;
+  }
+
+  //! This function proves that, for a fixed point K in the main subgroup, it holds that K2=r*K, where r is the random number in the output commitment rG+aH
+  bool verAmountproof(const rct::AmountProof & amountproof, const keyV & pseudoOuts, const key & decryption_pubkey){
+
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.G1), false, "Amount verification failed: G1 is not in the main group");
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.K1), false, "Amount verification failed: K1 is not in the main group");
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(amountproof.H1), false, "Amount verification failed: H1 is not in the main group");
+    CHECK_AND_ASSERT_MES(isInMainSubgroup(decryption_pubkey), false, "Amount verification failed: the decryption key is not in the main group");
+    CHECK_AND_ASSERT_MES(sc_check(amountproof.sa.bytes) == 0, false, "Amount verification failed: bad scalar s_a");
+    CHECK_AND_ASSERT_MES(sc_check(amountproof.sr.bytes) == 0, false, "Amount verification failed: bad scalar s_r");
+
+    const key zerokey = rct::identity();
+    const key init_G =  scalarmultBase(d2h(1));
+    const key init_H =  scalarmultH(d2h(1));
+
+    // Sum the consumed outputs
+    // We do not reuse the value from VerRctSemanticsSimple in order to reduce chances of errors
+    
+    key sumPseudoOuts = zerokey;
+    for (auto po: pseudoOuts) {
+      sumPseudoOuts = addKeys(sumPseudoOuts, po);
+    }
+
+    keyV challenge_to_hash;
+    challenge_to_hash.reserve(6);
+    key initKey;
+    sc_0(initKey.bytes);
+    CHECK_AND_ASSERT_MES(sizeof(initKey.bytes)>=sizeof(config::HASH_KEY_AMOUNTPROOF), false, "Amount proof hash init string is too long");
+    memcpy(initKey.bytes,config::HASH_KEY_AMOUNTPROOF,min(sizeof(config::HASH_KEY_AMOUNTPROOF)-1, sizeof(initKey.bytes)-1));
+    
+    challenge_to_hash.push_back(initKey);
+    challenge_to_hash.push_back(amountproof.G1); 
+    challenge_to_hash.push_back(amountproof.K1);
+    challenge_to_hash.push_back(amountproof.H1);
+    challenge_to_hash.push_back(decryption_pubkey);
+    challenge_to_hash.push_back(sumPseudoOuts);
+
+    //K2=decryption_pubkey
+    //Challenge c=H(init, G1, K1, H1,K2, C), which is in practise c=hash(r_r, r_r2, r2, r_a, r. a), see details below on notation 
+    const key c=hash_to_scalar(challenge_to_hash);
+    
+    //First check that sr*G+sa*H==G1+H1+c*C
+    //Assuming this holds, we can deduce the following:
+    //We know that G1 and H1 are in the main subgroup, and that G and H are generators.
+    //Therefore there exist r_r, r_a so that G1=r_r*G and H1=r_a*H
+    //From here we derive (using that the hardness of DLP and the fact that c=hash(r_r, r_r2, r2, r_a, r, a)) that:
+    //(1) s_r*G==r_r*G+c*r*G
+    //(2) s_a*H==r_a*H+c*a*H
+    //We can cancel G and H, and derive:
+    //(1) s_r==r_r+c*r
+    //(2) s_a==r_a+c*a
+
+
+
+    key saH = init_H;
+    key lhs = init_H;
+    key rhs = init_G;
+    key cC  = init_H;
+    
+    scalarmultBase(lhs, amountproof.sr); //lhs=s_r*G
+    saH=scalarmultH(amountproof.sa); //saH = s_a*H
+    addKeys(lhs, lhs, saH); //lhr=s_r*G+s_a*H
+
+    addKeys(rhs, amountproof.G1, amountproof.H1); //rhs=G1+H1
+    cC=scalarmultKey(sumPseudoOuts, c); // cC=c*C
+    addKeys(rhs, rhs, cC); //rhs=G1+H1+c+H
+
+    CHECK_AND_ASSERT_MES(!equalKeys(lhs, rhs), false, "First check of amount proof verification failed");
+
+    //Second, we check that s_r*K==K1+c*K2
+    //Assuming this holds:
+    //K1 is also in the main subgroup, so there exists r_r2 so that r_r2*K=K1
+    //K2 is also in the main subgroup, so there exists r2 so that r2*K=K2 
+    //we know from the first step that s_r==r_r+c*r, therefore
+    //r_r*K+c*r*K==K1+c*K2
+    //r_r*K+c*r*K==r_r2*K+c*r2*K, now we cancel K
+    //
+    //r_r+c*r==r_r2+c*r2
+    //c=hash(r_r, r_r2, r2, r_a, r, a) 
+    //One solution is r_r==r_r2 and r==r2
+    //If there is another solution, then we must have a hash collision, which is hard. 
+    // we can assume with negligible probability of the being false that
+    // 
+    //(3) r_r==r_r2
+    //(4) r==r2
+    //Therefore we have proven that:
+    // K2=r*K
+    // K1=r_r*K
+
+    lhs=init_H;
+    rhs=init_G;
+
+    lhs=scalarmultKey(K_ap, amountproof.sr); //lhs = s_r*K
+    rhs=scalarmultKey(decryption_pubkey, c); //rhs = c*K2
+    addKeys(rhs, rhs, amountproof.K1); //rhs = K1+c*K2
+    CHECK_AND_ASSERT_MES(!equalKeys(lhs, rhs), false, "Second check of amount proof verification failed");
+
+
     return true;
   }
 }

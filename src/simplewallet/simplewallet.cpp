@@ -231,6 +231,8 @@ namespace
   const char* USAGE_OFFSHORE_SWEEP_BELOW("offshore_sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_XASSET_SWEEP_ALL("xasset_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] [outputs=<N>] <address> <xAsset type> [<payment_id (obsolete)>]");
   const char* USAGE_XASSET_SWEEP_BELOW("xasset_sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> <xAsset type> [<payment_id (obsolete)>]");
+  const char* USAGE_AUDIT("audit <address>");
+  const char* USAGE_AUDIT_SUBADDRESS("audit_subaddress");
   const char* USAGE_GET_PRICE("get_price <xUSD amount> <ASSET_TYPE> [<ASSET_TYPE>...]");
   const char* USAGE_GET_PRICES("get_prices <xUSD amount>");
   const char* USAGE_GET_BLOCK_CAP("get_block_cap");
@@ -308,7 +310,11 @@ namespace
   const char* USAGE_MARK_OUTPUT_UNSPENT("mark_output_unspent <amount>/<offset>");
   const char* USAGE_IS_OUTPUT_SPENT("is_output_spent <amount>/<offset>");
   const char* USAGE_FREEZE("freeze <key_image>");
+  const char* USAGE_FREEZE_ALL_OLD("freeze_all_old");
+  const char* USAGE_FREEZE_ALL_NEW("freeze_all_new");
   const char* USAGE_THAW("thaw <key_image>");
+  const char* USAGE_THAW_ALL_OLD("thaw_all_old");
+  const char* USAGE_THAW_ALL_NEW("thaw_all_new");  
   const char* USAGE_FROZEN("frozen <key_image>");
   const char* USAGE_LOCK("lock");
   const char* USAGE_NET_STATS("net_stats");
@@ -2214,15 +2220,78 @@ bool simple_wallet::freeze_thaw(const std::vector<std::string> &args, bool freez
 
   return true;
 }
+//! This function freezes or thaws all unspent outputs which are either new or old, depending on the parameters passed
+bool simple_wallet::freeze_thaw_old_new(const std::vector<std::string> &args, bool freeze, bool old)
+{
+  if (!args.empty())
+  {
+    fail_msg_writer() << boost::format(tr("usage: %s_all_%s")) % (freeze ? "freeze" : "thaw") % (old ? "old" : "new");
+    return true;
+  }
+  try
+  {
+    size_t ntd = m_wallet->get_num_transfer_details();
+    bool header_message_shown=false;
+    for (size_t i = 0; i < ntd; ++i)
+    {
+      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(i);
+      if (!td.m_spent){ //Only change unspent outputs
+        bool is_output_frozen=td.m_frozen;
+        bool is_output_old = m_wallet->is_old_output(td);
+        if (is_output_old==old) //we need to do something
+          if(is_output_frozen != freeze) { //if the output does not have the same value as desired, in which case we don't need to do anything
+            if(freeze) {
+              if (!header_message_shown){
+                success_msg_writer("Freezing outputs which can no longer be spent after the end of the supply audit:");
+                header_message_shown=true;
+              }
+              m_wallet->freeze(td.m_key_image);
+              message_writer() << tr("Frozen: ") << td.m_key_image << " " << cryptonote::print_money(td.amount()) << " " << td.asset_type;
+            } else {
+              m_wallet->thaw(td.m_key_image);
+              message_writer() << tr("Thaw: ") << td.m_key_image << " " << cryptonote::print_money(td.amount()) << " " << td.asset_type;
+            }
+          }
+      }
+    }
+  }
+  catch (const std::exception &e)
+  {
+    fail_msg_writer() << e.what();
+    return true;
+  }
+
+  return true;
+}
 
 bool simple_wallet::freeze(const std::vector<std::string> &args)
 {
   return freeze_thaw(args, true);
 }
 
+bool simple_wallet::freeze_all_old(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, true, true);
+}
+
+bool simple_wallet::freeze_all_new(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, true, false);
+}
+
 bool simple_wallet::thaw(const std::vector<std::string> &args)
 {
   return freeze_thaw(args, false);
+}
+
+bool simple_wallet::thaw_all_old(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, false, true);
+}
+
+bool simple_wallet::thaw_all_new(const std::vector<std::string> &args)
+{
+  return freeze_thaw_old_new(args, false, false);
 }
 
 bool simple_wallet::frozen(const std::vector<std::string> &args)
@@ -3421,6 +3490,12 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::xasset_sweep_below, this, _1),
                            tr(USAGE_XASSET_SWEEP_BELOW),
                            tr("Send all unlocked xAsset outputs of the specified currency below the threshold to an address."));
+  m_cmd_binder.set_handler("audit", boost::bind(&simple_wallet::on_command, this, &simple_wallet::audit, _1),
+                           tr(USAGE_AUDIT),
+                           tr("Audit all old funds (this will make their total amount public) and send them to <address>"));
+  m_cmd_binder.set_handler("audit_subaddress", boost::bind(&simple_wallet::on_command, this, &simple_wallet::audit_subaddress, _1),
+                           tr(USAGE_AUDIT_SUBADDRESS),
+                           tr("Audit all old funds (this will make their total amount public) and send them their current accound and address"));
   m_cmd_binder.set_handler("get_prices",
                            boost::bind(&simple_wallet::get_prices, this, _1),
                            tr(USAGE_GET_PRICES),
@@ -3851,10 +3926,26 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze, _1),
                            tr(USAGE_FREEZE),
                            tr("Freeze a single output by key image so it will not be used"));
+  m_cmd_binder.set_handler("freeze_all_old",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze_all_old, _1),
+                           tr(USAGE_FREEZE_ALL_OLD),
+                           tr("Freeze all unspent outputs from before the supply audit start, so that they will not be used"));
+  m_cmd_binder.set_handler("freeze_all_new",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze_all_new, _1),
+                           tr(USAGE_FREEZE_ALL_NEW),
+                           tr("Freeze all unspent outputs from after the supply audit start, so that they will not be used"));                         
   m_cmd_binder.set_handler("thaw",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw, _1),
                            tr(USAGE_THAW),
                            tr("Thaw a single output by key image so it may be used again"));
+  m_cmd_binder.set_handler("thaw_all_old",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw_all_old, _1),
+                           tr(USAGE_THAW_ALL_OLD),
+                           tr("Thaw all unspent outputs from before the supply audit start, so that they may be used again"));
+  m_cmd_binder.set_handler("thaw_all_new",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::thaw_all_new, _1),
+                           tr(USAGE_THAW_ALL_NEW),
+                           tr("Thaw all unspent outputs from after the supply audit start, so that they may be used again"));
   m_cmd_binder.set_handler("frozen",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::frozen, _1),
                            tr(USAGE_FROZEN),
@@ -5677,6 +5768,20 @@ bool simple_wallet::check_daemon_rpc_prices(const std::string &daemon_url, uint3
 //----------------------------------------------------------------------------------------------------
 uint64_t simple_wallet::get_locked_blocks(cryptonote::transaction_type tx_type, uint32_t priority) {
   using tt = cryptonote::transaction_type;
+
+  if (m_wallet->use_fork_rules(HF_VERSION_VBS_DISABLING, 0)) {
+    switch (tx_type)
+    {
+      case tt::XUSD_TO_XASSET:
+      case tt::XASSET_TO_XUSD:
+        if (m_wallet->nettype() == cryptonote::TESTNET || m_wallet->nettype() == cryptonote::STAGENET) {
+          return HF27_XASSET_LOCK_BLOCKS_TESTNET;
+        }
+        return HF27_XASSET_LOCK_BLOCKS;
+      default:
+        return 0;  
+    }
+  }
   if (m_wallet->use_fork_rules(HF_VERSION_USE_COLLATERAL_V2, 0)) {
     switch (tx_type)
     {
@@ -6113,6 +6218,10 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     // Clear line "Height xxx of xxx"
     std::cout << "\r                                                                \r";
     success_msg_writer(true) << tr("Refresh done, blocks received: ") << fetched_blocks;
+    if ((start_height<SUPPLY_AUDIT_BLOCK_HEIGHT) && m_wallet->get_current_hard_fork()>=HF_VERSION_SUPPLY_AUDIT_END){
+      std::vector<std::string> args_dummy;
+      freeze_all_old(args_dummy);
+    }
     if (is_init)
       print_accounts();
     show_balance_unlocked();
@@ -8585,6 +8694,217 @@ bool simple_wallet::donate(const std::vector<std::string> &args_)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::audit(const std::vector<std::string> &args_){
+  return audit_main(false, args_); 
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::audit_subaddress(const std::vector<std::string> &args_){
+  return audit_main(true, args_);
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::audit_main(bool keep_subaddress, const std::vector<std::string> &args_)
+{
+  auto print_usage = [this, keep_subaddress]()
+  {
+    if (keep_subaddress)
+    {
+	      PRINT_USAGE(USAGE_AUDIT_SUBADDRESS);
+    } else {
+        PRINT_USAGE(USAGE_AUDIT);
+      }
+  };
+  
+  if (args_.size() == 0 && !keep_subaddress)
+  {
+    fail_msg_writer() << tr("No address given");
+    print_usage();
+    return true;
+  }
+
+  if (args_.size() > 0 && keep_subaddress)
+  {
+    fail_msg_writer() << tr("Unexpected parameter given");
+    print_usage();
+    return true;
+  }
+
+  if (args_.size() > 1 && !keep_subaddress)
+  {
+    fail_msg_writer() << tr("Unexpected parameter given");
+    print_usage();
+    return true;
+  }
+
+  if (!try_connect_to_daemon())
+    return true;
+
+  std::string err;
+  uint64_t bc_height = get_daemon_blockchain_height(err);
+  if (!err.empty())
+  {
+    fail_msg_writer() << tr("failed to get blockchain height: ") << err;
+    return true;
+  }
+
+  if(!(m_wallet->get_current_hard_fork() == HF_VERSION_SUPPLY_AUDIT)){
+    fail_msg_writer() << tr("Supply audit not currently active");
+    return true;
+  }
+
+  cryptonote::address_parse_info info;
+  info.address = m_wallet->get_subaddress({0,0});
+  info.is_subaddress=false;
+  info.has_payment_id=false;
+  
+  if (!keep_subaddress){
+    std::vector<std::string> local_args = args_;
+    if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), local_args[0], oa_prompter))
+    {
+      fail_msg_writer() << tr("failed to parse address");
+      print_usage();
+      return true;
+    }
+  }
+
+  uint32_t priority = 0;
+  priority = m_wallet->adjust_priority(priority);
+  uint64_t unlock_block = bc_height + HF25_AUDIT_LOCK_BLOCKS;
+
+
+  size_t fake_outs_count = m_wallet->get_min_ring_size() - 1;
+  uint64_t adjusted_fake_outs_count = m_wallet->adjust_mixin(fake_outs_count);
+
+  size_t outputs = 1;
+  std::vector<uint8_t> extra;
+  bool payment_id_seen = false;
+
+  SCOPED_WALLET_UNLOCK();
+
+  // determine the tx type
+
+  try
+  {
+    // figure out what tx will be necessary
+    auto ptx_vector = m_wallet->create_transactions_audit(info.address, info.is_subaddress, fake_outs_count, unlock_block /* unlock_time */, priority, extra, keep_subaddress);
+
+    if (ptx_vector.empty())
+    {
+      fail_msg_writer() << tr("No outputs found, or daemon is not ready");
+      return true;
+    }
+
+    if (!prompt_if_old(ptx_vector))
+    {
+      fail_msg_writer() << tr("transaction cancelled.");
+      return false;
+    }
+
+    // give user total and fee, and prompt to confirm
+    std::map<std::string, std::array<uint64_t, 3>> txns_summary;
+    for (const auto &p: ptx_vector){  
+      std::string asset_type;
+
+      asset_type=m_wallet->get_transfer_details(p.selected_transfers[0]).asset_type;
+      for (auto i: p.selected_transfers)
+        txns_summary[asset_type][1] += m_wallet->get_transfer_details(i).amount();
+
+      txns_summary[asset_type][0]++;
+      txns_summary[asset_type][2] += p.fee;
+    }
+    
+    std::ostringstream prompt;
+
+    for(const auto& asset_entry: txns_summary){
+      prompt << boost::format(tr("Auditing %s %s in %llu transactions for a total fee of %s %s.  ")) %
+        print_money(asset_entry.second[1]) %
+        asset_entry.first %
+        asset_entry.second[0] %
+        print_money(asset_entry.second[2]) %
+        asset_entry.first << ":\n";
+    }
+
+    std::string accepted = input_line(prompt.str(), true);
+    if (std::cin.eof())
+      return true;
+    if (!command_line::is_yes(accepted))
+    {
+      fail_msg_writer() << tr("transaction cancelled.");
+
+      return true;
+    }
+
+    // actually commit the transactions
+    if (m_wallet->multisig())
+    {
+      CHECK_MULTISIG_ENABLED();
+      bool r = m_wallet->save_multisig_tx(ptx_vector, "multisig_haven_tx");
+      if (!r)
+      {
+        fail_msg_writer() << tr("Failed to write transaction(s) to file");
+      }
+      else
+      {
+        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "multisig_haven_tx";
+      }
+    }
+    else if (m_wallet->get_account().get_device().has_tx_cold_sign())
+    {
+      try
+      {
+        tools::wallet2::signed_tx_set signed_tx;
+        std::vector<cryptonote::address_parse_info> dsts_info;
+        dsts_info.push_back(info);
+
+        if (!cold_sign_tx(ptx_vector, signed_tx, dsts_info, [&](const tools::wallet2::signed_tx_set &tx){ return accept_loaded_tx(tx); })){
+          fail_msg_writer() << tr("Failed to cold sign transaction with HW wallet");
+          return true;
+        }
+
+        commit_or_save(signed_tx.ptx, m_do_not_relay);
+      }
+      catch (const std::exception& e)
+      {
+        handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+      }
+      catch (...)
+      {
+        LOG_ERROR("Unknown error");
+        fail_msg_writer() << tr("unknown error");
+      }
+    }
+    else if (m_wallet->watch_only())
+    {
+      bool r = m_wallet->save_tx(ptx_vector, "unsigned_haven_tx");
+      if (!r)
+      {
+        fail_msg_writer() << tr("Failed to write transaction(s) to file");
+      }
+      else
+      {
+        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_haven_tx";
+      }
+    }
+    else
+    {
+      commit_or_save(ptx_vector, m_do_not_relay);
+    }
+  }
+  catch (const std::exception& e)
+  {
+    handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+  }
+  catch (...)
+  {
+    LOG_ERROR("unknown error");
+    fail_msg_writer() << tr("unknown error");
+  }
+
+  return true;
+}
+
+
+
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
 {
   // gather info to ask the user
@@ -10410,6 +10730,21 @@ void simple_wallet::print_accounts()
 
   if (num_untagged_accounts < m_wallet->get_num_subaddress_accounts())
     success_msg_writer() << tr("\nGrand total:\n  Balance: ") << print_money(m_wallet->balance_all(false, "XHV")) << tr(", unlocked balance: ") << print_money(m_wallet->unlocked_balance_all(false, "XHV"));
+  
+  std::vector<tools::wallet2::transfer_details> transfers;
+  m_wallet->get_transfers(transfers);
+  bool has_spendable_old_outputs = false;
+  
+  if(m_wallet->get_current_hard_fork()==HF_VERSION_SUPPLY_AUDIT){
+    for (auto td: transfers){
+      if (!td.m_spent && td.amount()>100000000 && m_wallet->is_old_output(td))
+        has_spendable_old_outputs=true;
+    }
+  }
+  if (has_spendable_old_outputs){
+    message_writer(console_color_red, true) << tr("WARNING: The wallet contains funds which need to undergo an audit. Please do so using the commands \"audit\" or \"audit_subaddress\". Funds which do not undergo audit will be permanently lost at the end of the supply audit.");  
+  }
+  
 }
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::print_accounts(const std::string& tag)

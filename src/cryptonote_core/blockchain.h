@@ -534,7 +534,20 @@ namespace cryptonote
      * @return the public key
      */
     crypto::public_key get_output_key(uint64_t amount, uint64_t global_index) const;
-
+    /**
+     * @brief gets outputs' data
+     *
+     * This function is a mirror of
+     * get_output_data(const uint64_t& amount, const uint64_t& index)
+     * but for a list of outputs rather than just one.
+     *
+     * @param amounts an output amount, or as many as offsets
+     * @param offsets a list of amount-specific output indices
+     * @param outputs return-by-reference a list of outputs' metadata
+     + @param allow_partial tbd
+    */
+    void get_output_key(const epee::span<const uint64_t> &amounts, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial=false) const;
+    
     /**
      * @brief gets specific outputs to mix with
      *
@@ -634,6 +647,7 @@ namespace cryptonote
     bool check_unlock_time(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change, const uint8_t hf_version) const;
     bool check_unlock_time_21(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const;
     bool check_unlock_time_23(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const;
+    bool check_unlock_time_27(const uint64_t output_unlock_time, const uint64_t tx_height, const cryptonote::transaction_type tx_type, const std::string& output_asset_type, const bool is_collateral, const bool is_collateral_change) const;
     
     /**
      * @brief get fee quantization mask
@@ -1122,6 +1136,13 @@ namespace cryptonote
      * @param nblocks number of blocks to be removed
      */
     void pop_blocks(uint64_t nblocks);
+        
+    /**
+     * @brief recalculate supply after the supply audit
+     *
+     * @param decrypt_private_key: Secret key for decryption of Audit transaction amounts
+     */
+    void recalculate_supply_after_audit(rct::key decrypt_secretkey);
 
     /**
      * @brief checks whether a given block height is included in the precompiled block hash area

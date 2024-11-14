@@ -34,6 +34,7 @@
 #include <memory>  // std::unique_ptr
 #include <cstring>  // memcpy
 
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "string_tools.h"
 #include "file_io_utils.h"
 #include "common/util.h"
@@ -989,6 +990,7 @@ read_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val idx)
 void write_circulating_supply_data(MDB_cursor *cur_circ_supply_tally, MDB_val idx, boost::multiprecision::int128_t tally)
 {
   // packing the Boost 128-bit signed integer into 2 uint64's + a sign bit
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   circ_supply_tally cst;
 
   // From the Boost docs, bitwise operations on negative values "Yields the value, but not the bit pattern, that would result from
@@ -1109,6 +1111,9 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
   bool is_burn_tx = (strSource == strDest) && tx.amount_burnt > 0;
   // NEAC : check for presence of offshore TX to see if we need to update circulating supply information
   // Tay8NWWFKpz9JT4NXU0w: Also burn transactions affect the supply
+  uint64_t fee_in_XHV=0;
+  uint64_t fee_in_strSource=0;
+  
   if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (is_mint_and_burn_tx || is_burn_tx)) {  
     // Offshore TX - update our records
     circ_supply cs;
@@ -1117,6 +1122,28 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
     cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
     cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
     cs.amount_burnt = tx.amount_burnt;
+    if(m_height>=SUPPLY_AUDIT_BLOCK_HEIGHT && is_mint_and_burn_tx){ //Fees are in XHV, so have to be removed from the supply. This is actually a bug from earlier, but only discovered during the supply audit.
+      fee_in_XHV=tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
+      crypto::hash pricing_block_hash=get_block_hash_from_height(tx.pricing_record_height);
+      block_header pricing_block=get_block_header(pricing_block_hash);
+      uint8_t hf_version = get_hard_fork_version(tx.pricing_record_height);
+      uint64_t conversion_rate = 0;
+      if (!cryptonote::get_conversion_rate(pricing_block.pricing_record, "XHV", strSource, conversion_rate, hf_version)){
+        LOG_PRINT_L2("Failed to get conversition rate for transaction " << tx.hash << " total supply will not account properly for fees in XHV");
+      } else {
+        if (strSource=="XHV")
+          conversion_rate=COIN;
+        boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
+        tx_fee_128 *= conversion_rate;
+        tx_fee_128 /= COIN;
+        boost::multiprecision::uint128_t conversion_fee_128 = tx.amount_burnt; // Fee stored in XHV
+        conversion_fee_128 *= 3;
+        conversion_fee_128 /= 200;
+        fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
+        fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
+        cs.amount_burnt+=fee_in_strSource;
+      }
+    }
     cs.amount_minted = tx.amount_minted;
     MDB_val_set(val_circ_supply, cs);
     result = mdb_cursor_put(m_cur_circ_supply, &val_tx_id, &val_circ_supply, MDB_APPEND);
@@ -1137,11 +1164,20 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
     }
     write_circulating_supply_data(m_cur_circ_supply_tally, source_idx, final_source_tally);
 
+
     // Get the current tally value for the dest currency type
     MDB_val_copy<uint64_t> dest_idx(cs.dest_currency_type);
     boost::multiprecision::int128_t dest_tally = read_circulating_supply_data(m_cur_circ_supply_tally, dest_idx);
     boost::multiprecision::int128_t final_dest_tally = dest_tally + cs.amount_minted;
     write_circulating_supply_data(m_cur_circ_supply_tally, dest_idx, final_dest_tally);
+
+    if(fee_in_XHV>0){
+      uint64_t source_idx_XHV = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), "XHV") - offshore::ASSET_TYPES.begin();
+      MDB_val_copy<uint64_t> dest_idx(source_idx_XHV);
+      boost::multiprecision::int128_t dest_tally_XHV = read_circulating_supply_data(m_cur_circ_supply_tally, dest_idx);
+      boost::multiprecision::int128_t final_dest_tally_XHV = dest_tally_XHV + fee_in_XHV;
+      write_circulating_supply_data(m_cur_circ_supply_tally, dest_idx, final_dest_tally_XHV);
+    }
 
     LOG_PRINT_L2("tx ID " << tx_id << "\nSource tally before burn =" << source_tally.str() << "\nSource tally after burn =" << final_source_tally.str() <<
                  "\nDest tally before mint =" << dest_tally.str() << "\nDest tally after mint =" << final_dest_tally.str());
@@ -1230,6 +1266,31 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
     cs.tx_hash = tx_hash;
     cs.pricing_record_height = tx.pricing_record_height;
     cs.amount_burnt = tx.amount_burnt;
+    uint64_t fee_in_XHV = 0;
+    uint64_t fee_in_strSource=0;
+  
+    if(m_height>=SUPPLY_AUDIT_BLOCK_HEIGHT && is_mint_and_burn_tx){ //Fees are in XHV, so have to be removed from the supply. This is actually a bug from earlier, but only discovered during the supply audit.
+      fee_in_XHV=tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
+      crypto::hash pricing_block_hash=get_block_hash_from_height(tx.pricing_record_height);
+      block_header pricing_block=get_block_header(pricing_block_hash);
+      uint8_t hf_version = get_hard_fork_version(tx.pricing_record_height);
+      uint64_t conversion_rate = 0;
+      if (!cryptonote::get_conversion_rate(pricing_block.pricing_record, "XHV", strSource, conversion_rate, hf_version)){
+        LOG_PRINT_L2("Failed to get conversition rate for transaction " << tx.hash << " total supply will not account properly for fees in XHV");
+      } else {
+          if (strSource=="XHV")
+            conversion_rate=COIN;
+          boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
+          tx_fee_128 *= conversion_rate;
+          tx_fee_128 /= COIN;
+          boost::multiprecision::uint128_t conversion_fee_128 = tx.amount_burnt; // Fee stored in XHV
+          conversion_fee_128 *= 3;
+          conversion_fee_128 /= 200;
+          fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
+          fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
+          cs.amount_burnt+=fee_in_strSource;
+      }
+    }
     cs.amount_minted = tx.amount_minted;
     cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
     cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
@@ -1251,6 +1312,19 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
       final_dest_tally = 0;
     }
     write_circulating_supply_data(m_cur_circ_supply_tally, dest_idx, final_dest_tally);
+
+    if(fee_in_XHV>0){
+      uint64_t source_idx_XHV = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), "XHV") - offshore::ASSET_TYPES.begin();
+      MDB_val_copy<uint64_t> dest_idx(source_idx_XHV);
+      boost::multiprecision::int128_t dest_tally_XHV = read_circulating_supply_data(m_cur_circ_supply_tally, dest_idx);
+      boost::multiprecision::int128_t final_dest_tally_XHV = dest_tally_XHV - fee_in_XHV;
+      if (coinbase+final_dest_tally_XHV<0){
+        LOG_ERROR(__func__ << " : mint/burn underflow detected for XHV: correcting supply tally by " << final_dest_tally_XHV);
+        final_dest_tally_XHV = 0;
+      }
+      write_circulating_supply_data(m_cur_circ_supply_tally, dest_idx, final_dest_tally_XHV);
+    }
+
 
     // Update the circ_supply table
     if ((result = mdb_cursor_get(m_cur_circ_supply, &val_tx_id, NULL, MDB_SET)))
@@ -3299,6 +3373,157 @@ std::vector<std::pair<std::string, std::string>> BlockchainLMDB::get_circulating
   return circulating_supply;
 }
 
+//! This function updates the circulating total supply, but it does not update the individual transaction supply. 
+//! It is meant as a temporary measure, due to the limitation of not being able to publish the private decryption key.
+//! It will be redesigned in the next Haven release
+void BlockchainLMDB::recalculate_supply_after_audit(const rct::key & decryption_secretkey)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+
+
+  check_open();
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+
+  block_wtxn_start();
+  int result = 0;
+
+  CURSOR(block_info)
+  CURSOR(blocks)
+  CURSOR(circ_supply)
+  CURSOR(circ_supply_tally)
+
+  const uint64_t bc_height = height();
+  const uint64_t start_height=1700000;
+  uint64_t height = start_height;
+
+  //Initialize new total supply at 0
+  std::map<uint64_t, boost::multiprecision::int128_t> total_new_supply;
+  uint64_t asset_id=0;
+  for (auto asset_type: offshore::ASSET_TYPES){
+    if (asset_type!="XCAD" && asset_type != "XNOK" && asset_type != "XNZD") //TO-DO## Next release
+      total_new_supply.insert(std::pair<uint64_t, boost::multiprecision::int128_t>(asset_id, 0));
+    asset_id++;
+  }
+
+  uint64_t coinbase_at_start_of_audit = 0;
+  const bool after_audit_start = get_hard_fork_version(bc_height - 1) >= HF_VERSION_SUPPLY_AUDIT;
+  bool audit_blocked_reached = false;
+  
+  std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > blocks;
+
+  while(height < bc_height && after_audit_start) {
+    block b = get_block_from_height(height);
+    if (!audit_blocked_reached)
+      audit_blocked_reached=(get_hard_fork_version(height) == HF_VERSION_SUPPLY_AUDIT);
+    if(audit_blocked_reached){
+      if (coinbase_at_start_of_audit == 0)  //All coins minted by mining prior to the audit will have to undergo audit, so have to be removed from the coinbase supply
+        coinbase_at_start_of_audit=get_block_already_generated_coins(height-1);
+        
+      for (auto &tx_hash: b.tx_hashes){
+        cryptonote::blobdata tx_blob;
+        if(!get_pruned_tx_blob(tx_hash, tx_blob))
+          throw1(TX_DNE("Cant get transaction from DB"));
+       
+
+        circ_supply cs;
+        transaction tx;
+        MDB_val_set(val_h, tx_hash);
+        if (!parse_and_validate_tx_base_from_blob(tx_blob, tx))
+          throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+        
+
+        if (mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &val_h, MDB_GET_BOTH))
+          throw1(TX_DNE("Attempting to remove transaction that isn't in the db"));
+        txindex *tip = (txindex *)val_h.mv_data;
+        MDB_val_set(val_tx_id, tip->data.tx_id);
+        bool is_miner_tx = (tx.vin[0].type() == typeid(cryptonote::txin_gen));
+        // get tx assets
+        std::string strSource;
+        std::string strDest;
+        if (!get_tx_asset_types(tx, tx_hash, strSource, strDest, is_miner_tx)) {
+          throw0(DB_ERROR("Failed to add tx circulating supply to db transaction: get_tx_asset_types fails."));
+        }
+
+        if(tx.rct_signatures.type==rct::RCTTypeSupplyAudit){
+          rct::xmr_amount amount_decrypted=tx.rct_signatures.amount_encrypted;
+          rct::xmr_amount encryption_key=0;
+            
+          rct::key decryption_pubkey=tx.rct_signatures.decryption_pubkey;
+            
+          const rct::key rS = scalarmultKey(decryption_pubkey,decryption_secretkey);
+          for (int i = 8; i < 16; i++){ //Use bytes 8 to 16 for the encryption
+            encryption_key*=256; //Shift 1 bytes
+            encryption_key+=rS.bytes[i];  //Add current byte
+          }
+          amount_decrypted ^= encryption_key; //XOR using the encryption key
+
+          MDEBUG("height: "<< height <<"audit of " << print_money(amount_decrypted) << strDest);
+          uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
+          total_new_supply[dest_currency_type] += amount_decrypted; //Sum of outgoing amounts
+        } else { 
+            bool is_mint_and_burn_tx = (strSource != strDest);
+            bool is_burn_tx = (strSource == strDest) && tx.amount_burnt > 0;
+            uint64_t fee_in_XHV=0;
+            uint64_t fee_in_strSource=0;
+            
+            if ((tx.version >= OFFSHORE_TRANSACTION_VERSION) && (is_mint_and_burn_tx || is_burn_tx)) {
+              // Offshore TX - update our records
+              circ_supply cs;
+              cs.tx_hash = tx_hash;
+              cs.pricing_record_height = tx.pricing_record_height;
+              cs.source_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) - offshore::ASSET_TYPES.begin();
+              cs.dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) - offshore::ASSET_TYPES.begin();
+              uint64_t XHV_currency_type_id = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), "XHV") - offshore::ASSET_TYPES.begin();
+              
+              cs.amount_burnt = tx.amount_burnt;
+              if(height>=SUPPLY_AUDIT_BLOCK_HEIGHT && is_mint_and_burn_tx){ //Fees are in XHV, so have to be removed from the supply. This is actually a bug from earlier, but only discovered during the supply audit.
+                fee_in_XHV=tx.rct_signatures.txnFee + tx.rct_signatures.txnOffshoreFee;
+                crypto::hash pricing_block_hash=get_block_hash_from_height(tx.pricing_record_height);
+                block_header pricing_block=get_block_header(pricing_block_hash);
+                uint8_t hf_version = get_hard_fork_version(tx.pricing_record_height);
+                uint64_t conversion_rate = 0;
+                if (!cryptonote::get_conversion_rate(pricing_block.pricing_record, "XHV", strSource , conversion_rate, hf_version)){
+                  LOG_PRINT_L2("Failed to get conversition rate for transaction " << tx.hash << " total supply will not account properly for fees in XHV");
+                } else {
+                  if (strSource=="XHV")
+                    conversion_rate = COIN;
+                  boost::multiprecision::uint128_t tx_fee_128 = tx.rct_signatures.txnFee; // Fee stored in XHV
+                  tx_fee_128 *= conversion_rate;
+                  tx_fee_128 /= COIN;
+                  boost::multiprecision::uint128_t conversion_fee_128 = tx.amount_burnt; // Fee stored in XHV
+                  conversion_fee_128 *= 3;
+                  conversion_fee_128 /= 200;
+                  fee_in_strSource += tx_fee_128.convert_to<uint64_t>();
+                  fee_in_strSource += conversion_fee_128.convert_to<uint64_t>();
+                  cs.amount_burnt+=fee_in_strSource;
+                  MDEBUG(print_money(tx.amount_burnt) << " " << print_money(tx_fee_128.convert_to<uint64_t>()) << " " <<  print_money(conversion_fee_128.convert_to<uint64_t>()));
+                }
+              }
+              
+              cs.amount_minted = tx.amount_minted;
+              MDEBUG("height: "<< height <<" Burnt: << " << print_money(cs.amount_burnt) << strSource << " minted " << print_money(cs.amount_minted) << strDest << " and " << print_money(fee_in_XHV) << "XHV");
+              total_new_supply[cs.source_currency_type] -= cs.amount_burnt;
+              total_new_supply[cs.dest_currency_type] += cs.amount_minted;
+              total_new_supply[XHV_currency_type_id] += fee_in_XHV;
+            }
+          }
+        
+      }
+    }
+    height++;
+  }
+  //remove old coinbase amount
+  uint64_t dest_currency_type = std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), "XHV") - offshore::ASSET_TYPES.begin();
+  total_new_supply[dest_currency_type]-=coinbase_at_start_of_audit;
+
+  if (after_audit_start) //write supply back to the DB only if the current height is above the start of the audit
+    for (auto &tally: total_new_supply) {
+      MDB_val_copy<uint64_t> currency_type(tally.first);
+      write_circulating_supply_data(m_cur_circ_supply_tally, currency_type, tally.second);
+    }
+  block_wtxn_stop();
+}
+
 uint64_t BlockchainLMDB::num_outputs() const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -3516,6 +3741,7 @@ bool BlockchainLMDB::get_pruned_tx_blobs_from(const crypto::hash& h, size_t coun
   return true;
 }
 
+//TO-DO## Potentially not working as expected? Next release
 bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata>>>>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -3785,6 +4011,12 @@ output_data_t BlockchainLMDB::get_output_key(const uint64_t& amount, const uint6
     memcpy(&ret, &okp->data, sizeof(pre_rct_output_data_t));
     if (include_commitmemt)
       ret.commitment = rct::zeroCommit(amount);
+  }
+
+  const uint64_t m_height = height(); //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
+  const uint8_t hf_version=get_hard_fork_version(m_height);
+  if(get_hard_fork_version(ret.height-1)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
+    ret.unlock_time=OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT;
   }
   TXN_POSTFIX_RDONLY();
   return ret;
@@ -4551,6 +4783,8 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
 
   RCURSOR(output_amounts);
 
+  const uint64_t m_height = height(); 
+  const uint8_t hf_version=get_hard_fork_version(m_height-1);
   for (size_t i = 0; i < offsets.size(); ++i)
   {
     const uint64_t amount = amounts.size() == 1 ? amounts[0] : amounts[i];
@@ -4582,6 +4816,11 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
       output_data_t &data = outputs.back();
       memcpy(&data, &okp->data, sizeof(pre_rct_output_data_t));
       data.commitment = rct::zeroCommit(amount);
+    }
+    //After the supply audit ends, old outputs should be locked. This is an extra safety measure.
+    output_data_t &data = outputs.back();
+    if(get_hard_fork_version(data.height)<HF_VERSION_SUPPLY_AUDIT && hf_version >= HF_VERSION_SUPPLY_AUDIT_END){
+      data.unlock_time=OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT;
     }
   }
 

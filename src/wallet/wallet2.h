@@ -1145,6 +1145,15 @@ private:
       const std::string &asset_type,
       const cryptonote::transaction_type tx_type
     );
+    std::vector<wallet2::pending_tx> create_transactions_audit(
+      const cryptonote::account_public_address &address,
+      bool is_subaddress,
+      const size_t fake_outs_count,
+      const uint64_t unlock_time,
+      uint32_t priority,
+      const std::vector<uint8_t>& extra,
+      const bool keep_subaddress
+    );
     std::vector<wallet2::pending_tx> create_transactions_single(
       const crypto::key_image &ki,
       const cryptonote::account_public_address &address,
@@ -1734,6 +1743,7 @@ private:
     void thaw(const crypto::key_image &ki);
     bool frozen(const crypto::key_image &ki) const;
     bool frozen(const transfer_details &td) const;
+    bool is_old_output(const transfer_details &td);
 
     bool save_to_file(const std::string& path_to_file, const std::string& binary, bool is_printable = false) const;
     static bool load_from_file(const std::string& path_to_file, std::string& target_str, size_t max_size = 1000000000);
@@ -1855,6 +1865,7 @@ private:
     hw::device& lookup_device(const std::string & device_descriptor);
 
     bool get_rct_distribution(const bool use_global_outs, const std::string rct_asset_type, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &num_spendable_global_outs);
+    bool get_rct_distribution_block_range(const uint64_t from_height, const uint64_t to_height, const std::string rct_asset_type, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &num_spendable_global_outs);
 
     uint64_t get_segregation_fork_height() const;
 
@@ -1980,6 +1991,10 @@ private:
     bool m_enable_multisig;
     bool m_enable_burn;
     bool m_allow_mismatched_daemon_version;
+    uint8_t m_max_audit_outputs_XHV;
+    uint8_t m_max_audit_outputs_XUSD;
+    uint8_t m_max_audit_outputs_XASSETS;
+    
 
     // Aux transaction data from device
     serializable_unordered_map<crypto::hash, std::string> m_tx_device;

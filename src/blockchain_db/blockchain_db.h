@@ -1177,6 +1177,13 @@ public:
    */
   virtual std::vector<std::pair<std::string, std::string>> get_circulating_supply() const = 0;
   
+  /**
+   * @brief Recalculate supply after the audit
+   *
+   * @param decryption_secretkey Decryption key for amount_encrypted
+   */
+  virtual void recalculate_supply_after_audit(const rct::key & decryption_secretkey) = 0;
+  
 
   /**
    * <!--

@@ -548,6 +548,7 @@ static void make_new_range_proofs(const int bp_version,
     sigs.bulletproofs.push_back(rct::bulletproof_PROVE(output_amounts, output_amount_masks));
     break;
   case 7:
+  case 8:
     sigs.bulletproofs_plus.push_back(rct::bulletproof_plus_PROVE(output_amounts, output_amount_masks));
     break;
   }
@@ -584,6 +585,7 @@ static bool try_reconstruct_range_proofs(const int bp_version,
     return rct::bulletproof_VERIFY(reconstructed_sigs.bulletproofs);
     break;
   case 7:
+  case 8:
     if (not try_reconstruct_range_proofs(original_sigs.bulletproofs_plus, reconstructed_sigs.bulletproofs_plus))
       return false;
     return rct::bulletproof_plus_VERIFY(reconstructed_sigs.bulletproofs_plus);
@@ -621,13 +623,16 @@ static bool set_tx_rct_signatures(
 
   // rct_signatures component of tx
   rct::rctSig rv{};
-
+  //TO-DO##
   // set misc. fields
   switch (rct_config.bp_version)
   {
+  case 8:
+    rv.type = rct::RCTTypeSupplyAudit;
+    break;
   case 0:
   case 7:
-    rv.type = rct::RCTTypeBulletproofPlus;
+    rv.type = rct::RCTTypeBulletproofPlus; // Can be overwritten below if we have a supply audit transaction
     break;
   case 6:
     rv.type = rct::RCTTypeHaven3;

@@ -947,6 +947,82 @@ namespace cryptonote
 	      continue;
       }
 
+      // Get the TX anonymity pool
+      const uint64_t current_height = m_blockchain_storage.get_current_blockchain_height();
+      anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
+      if (hf_version>=HF_VERSION_BURN) {
+        std::vector<std::vector<output_data_t>> tx_ring_outputs;
+        tx_ring_outputs.reserve(tx_info[n].tx->vin.size());
+        for (const txin_v& txin: tx_info[n].tx->vin){
+          std::vector<output_data_t> ring_outputs;
+          if (txin.type() == typeid(txin_haven_key)){
+            txin_haven_key tx_input=boost::get<txin_haven_key>(txin);
+            std::vector<uint64_t> absolute_offsets = relative_output_offsets_to_absolute(tx_input.key_offsets);
+
+            if (absolute_offsets.size()!=tx_input.key_offsets.size()){
+                MERROR_VER("Failed to obtain absolute ring offsets! amount = " << tx_input.amount);
+                set_semantics_failed(tx_info[n].tx_hash);
+                tx_info[n].tvc.m_verifivation_failed = true;
+                tx_info[n].result = false;
+                continue;  
+            }
+            try{
+              m_blockchain_storage.get_output_key(epee::span<const uint64_t>(&tx_input.amount, 1), absolute_offsets, ring_outputs, true);
+              if (absolute_offsets.size() != ring_outputs.size()){
+                MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+                set_semantics_failed(tx_info[n].tx_hash);
+                tx_info[n].tvc.m_verifivation_failed = true;
+                tx_info[n].result = false;
+                continue;
+              }
+            }
+            catch (...){
+              MERROR_VER("Output does not exist! amount = " << tx_input.amount);
+              set_semantics_failed(tx_info[n].tx_hash);
+              tx_info[n].tvc.m_verifivation_failed = true;
+              tx_info[n].result = false;
+              continue;
+            }
+            tx_ring_outputs.push_back(ring_outputs);
+          } else if (txin.type() == typeid(txin_gen)){
+            tx_ring_outputs.push_back(ring_outputs);
+          } else {
+            MERROR_VER("Unexpected input type for transaction" << tx_info[n].tx_hash);
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            continue;  
+          }
+        }
+
+        if (tx_ring_outputs.size()!=tx_info[n].tx->vin.size()){
+          MERROR_VER("Transaction has more inputs than number of ring member groups: " << tx_info[n].tx_hash);
+          set_semantics_failed(tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
+          continue;    
+        }
+
+        if(!get_anonymity_pool(*tx_info[n].tx, tx_ring_outputs, tx_anon_pool, m_blockchain_storage.get_nettype())){
+          MERROR("Failed to get the anonymity pool for transaction " << tx_info[n].tx_hash);
+          set_semantics_failed(tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
+          continue;
+        }
+
+        if(tx_anon_pool==anonymity_pool::UNSET){
+          MERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << tx_info[n].tx_hash);
+          set_semantics_failed(tx_info[n].tx_hash);
+          tx_info[n].tvc.m_verifivation_failed = true;
+          tx_info[n].result = false;
+          continue;
+        }
+      } else if (hf_version<HF_VERSION_BURN){
+        tx_anon_pool=anonymity_pool::NOTAPPLICABLE;
+      }
+      tx_info[n].tvc.m_tx_anon_pool=tx_anon_pool;
+
       // Get the pricing_record_height for any offshore TX
       if (tx_info[n].tvc.m_source_asset != tx_info[n].tvc.m_dest_asset) {
         // validate that tx uses a recent pr
@@ -1087,6 +1163,17 @@ namespace cryptonote
           }
           rvv.push_back(&rv); // delayed batch verification
           break;
+        case rct::RCTTypeSupplyAudit:
+          if (!is_canonical_bulletproof_plus_layout(rv.p.bulletproofs_plus))
+          {
+            MERROR_VER("SupplyAudit does not have canonical form");
+            set_semantics_failed(tx_info[n].tx_hash);
+            tx_info[n].tvc.m_verifivation_failed = true;
+            tx_info[n].result = false;
+            break;
+          }
+          rvv.push_back(&rv); // delayed batch verification
+          break;
         default:
           MERROR_VER("Unknown rct type: " << rv.type);
           set_semantics_failed(tx_info[n].tx_hash);
@@ -1109,10 +1196,11 @@ namespace cryptonote
             tx_info[n].tx->rct_signatures.type != rct::RCTTypeCLSAGN &&
             tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven2 &&
             tx_info[n].tx->rct_signatures.type != rct::RCTTypeHaven3 &&
-            tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproofPlus)
+            tx_info[n].tx->rct_signatures.type != rct::RCTTypeBulletproofPlus &&
+            tx_info[n].tx->rct_signatures.type != rct::RCTTypeSupplyAudit)
           continue;
 
-        if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven3 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeBulletproofPlus) {
+        if (tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven2 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeHaven3 || tx_info[n].tx->rct_signatures.type == rct::RCTTypeBulletproofPlus || tx_info[n].tx->rct_signatures.type == rct::RCTTypeSupplyAudit) {
 
           // NEAC: Get conversion rates for TX and for fees
           uint64_t conversion_rate = COIN;
@@ -1145,7 +1233,7 @@ namespace cryptonote
             }
           }
           
-          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage))
+          if (!rct::verRctSemanticsSimple2(tx_info[n].tx->rct_signatures, tx_info[n].tvc.pr, conversion_rate, fee_conversion_rate, tx_fee_conversion_rate, tx_info[n].tvc.m_type, tx_info[n].tvc.m_source_asset, tx_info[n].tvc.m_dest_asset, tx_info[n].tx->amount_burnt, tx_info[n].tx->amount_minted, tx_info[n].tx->vout, tx_info[n].tx->vin, hf_version, tx_info[n].tvc.m_collateral, tx_info[n].tvc.m_slippage, tx_info[n].tvc.m_tx_anon_pool))
             {
               // 2 tx that used reorged pricing reocord for callateral calculation.
               if (epee::string_tools::pod_to_hex(tx_info[n].tx_hash) != "e9c0753df108cb9de343d78c3bbdec0cebd56ee5c26c09ecf46dbf8af7838956"
@@ -2326,4 +2414,5 @@ namespace cryptonote
   {
     raise(SIGTERM);
   }
+  //-----------------------------------------------------------------------------------------------
 }
