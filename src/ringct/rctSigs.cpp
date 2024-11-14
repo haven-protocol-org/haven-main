@@ -1808,7 +1808,7 @@ namespace rct {
       // They require that the tx_anon_pool value is correct
       CHECK_AND_ASSERT_MES(tx_anon_pool != anon::UNSET, false, "Transaction anonymity pool type is not set.");
       CHECK_AND_ASSERT_MES(tx_anon_pool != anon::MIXED, false, "Transaction has a mixed anonymity pool which is not permited.");
-      CHECK_AND_ASSERT_MES(version < HF_VERSION_BURN || tx_anon_pool == anon::POOL_1 || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 1 or Pool 2 during the supply audit");
+      CHECK_AND_ASSERT_MES(version < HF_VERSION_SUPPLY_AUDIT || tx_anon_pool == anon::POOL_1 || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be either Pool 1 or Pool 2 during the supply audit");
       CHECK_AND_ASSERT_MES(version < HF_VERSION_SUPPLY_AUDIT_END || tx_anon_pool == anon::POOL_2, false, "Transaction anonymity pool should be only Pool 2 after the end of the supply audit");
       //### Supply audit sanity checks #####
       //This check ensures old funds can't be spent after the audit is over.

@@ -2196,10 +2196,11 @@ namespace cryptonote
     transaction tx=get_tx();
     bool ret = m_blockchain.check_tx_inputs(tx, max_used_block_height, max_used_block_id, tvc, kept_by_block);
     uint64_t hf_version=m_blockchain.get_current_hard_fork_version();
+    uint64_t current_height=m_blockchain.get_current_blockchain_height();
     // Get the TX anonymity pool
     anonymity_pool tx_anon_pool=anonymity_pool::UNSET;
 
-    if (hf_version>=HF_VERSION_BURN) {
+    if (hf_version>=HF_VERSION_BURN && current_height >= SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT) {
       std::vector<std::vector<output_data_t>> tx_ring_outputs;
       tx_ring_outputs.reserve(tx.vin.size());
       
@@ -2246,8 +2247,12 @@ namespace cryptonote
         LOG_ERROR("Failed to get the anonymity pool (has value UNSET) for transaction " << txid);
         ret=false;   
       }
-    } else if(hf_version<HF_VERSION_BURN){
+    } else if (hf_version<HF_VERSION_BURN || current_height <= SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT){
       tx_anon_pool=anonymity_pool::NOTAPPLICABLE;
+    } else {
+      //This should not happen
+      LOG_ERROR("Failed to assign the anonymity pool" << txid);
+      ret=false;   
     }
     tvc.m_tx_anon_pool=tx_anon_pool;
     
