@@ -82,7 +82,7 @@ TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XUSD)
     EXPECT_EQ(source, "XUSD");
     EXPECT_EQ(dest, "XUSD");
 }
-TEST(get_tx_asset_types, successful_on_1_input_type_1_output_typeXASSET)
+TEST(get_tx_asset_types, successful_on_1_input_type_1_output_type_XASSET)
 {
     cryptonote::transaction tx;
     tx.version = 7;
@@ -544,7 +544,7 @@ TEST(get_tx_asset_types, fail_single_input_single_output_types_are_not_equal)
 }
 
 // fail on single input types & 2 output types & none of the outputs matches inputs
-TEST(get_tx_asset_types, none_of_output_mathces_input)
+TEST(get_tx_asset_types, none_of_output_matches_input)
 {
     cryptonote::transaction tx;
     tx.version = 7;
@@ -572,7 +572,7 @@ TEST(get_tx_asset_types, none_of_output_mathces_input)
 
 // pass on single input types & 2 output types & 1 of the outputs matches inputs, other ddesn't but not allowed. xhv -> xasset
 // This case will expected to be caught by get_tx_type()
-TEST(get_tx_asset_types, succesfuul_on_logical_input_output_but_not_allowed)
+TEST(get_tx_asset_types, successful_on_logical_input_output_but_not_allowed)
 {
     cryptonote::transaction tx;
     tx.version = 7;
