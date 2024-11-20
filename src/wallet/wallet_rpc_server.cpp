@@ -1630,13 +1630,7 @@ namespace tools
     //set the tx type
     cryptonote::transaction_type tx_type;
     if (!req.asset_type.empty()) {
-      if (req.asset_type == "XHV") {
-        tx_type = cryptonote::transaction_type::TRANSFER;
-      } else if(req.asset_type == "XUSD") {
-        tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
-      } else {
-        tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
-      }
+      tx_type = cryptonote::asset_type_to_tx_type(req.asset_type);
     } else {
       er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
       er.message = "No asset type was specified.";
