@@ -35,6 +35,7 @@
  */
 
 // use boost bind placeholders for now
+#include <boost/multiprecision/cpp_int.hpp>
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS 1
 #include <boost/bind.hpp>
 
@@ -6304,11 +6305,11 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
   const std::string tag = m_wallet->get_account_tags().second[m_current_subaddress_account];
   success_msg_writer() << tr("Tag: ") << (tag.empty() ? std::string{tr("(No tag assigned)")} : tag);
   for (const auto& asset: offshore::ASSET_TYPES) {
-    uint64_t balance = m_wallet->balance(m_current_subaddress_account, asset, false);
+    boost::multiprecision::uint128_t balance = m_wallet->balance(m_current_subaddress_account, asset, false);
     if (balance == 0)
       continue;
     uint64_t blocks_to_unlock, time_to_unlock;
-    uint64_t unlocked_balance = m_wallet->unlocked_balance(m_current_subaddress_account, asset, false, &blocks_to_unlock, &time_to_unlock);
+    boost::multiprecision::uint128_t unlocked_balance = m_wallet->unlocked_balance(m_current_subaddress_account, asset, false, &blocks_to_unlock, &time_to_unlock);
     std::string unlock_time_message;
     if (blocks_to_unlock > 0 && time_to_unlock > 0)
       unlock_time_message = (boost::format(" (%lu block(s) and %s to unlock)") % blocks_to_unlock % get_human_readable_timespan(time_to_unlock)).str();
@@ -6319,8 +6320,8 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
     success_msg_writer() << tr("Balance: ") << print_money(balance) << ", "
       << tr("unlocked balance: ") << print_money(unlocked_balance) << "  " << asset << " " << unlock_time_message << extra;
   }
-  std::map<uint32_t, uint64_t> balance_per_subaddress = m_wallet->balance_per_subaddress(m_current_subaddress_account, "XHV", false);
-  std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = m_wallet->unlocked_balance_per_subaddress(m_current_subaddress_account, "XHV", false);
+  std::map<uint32_t, boost::multiprecision::uint128_t> balance_per_subaddress = m_wallet->balance_per_subaddress(m_current_subaddress_account, "XHV", false);
+  std::map<uint32_t, std::pair<boost::multiprecision::uint128_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = m_wallet->unlocked_balance_per_subaddress(m_current_subaddress_account, "XHV", false);
   if (!detailed || balance_per_subaddress.empty())
     return true;
   success_msg_writer() << tr("Balance per address:");
@@ -10767,7 +10768,7 @@ void simple_wallet::print_accounts(const std::string& tag)
   success_msg_writer() << boost::format("  %15s %21s %21s %21s %21s") % tr("Account") % tr("Balance") % tr("Unlocked balance") % tr("Asset") % tr("Label");
   std::map<std::string, std::pair<uint64_t, uint64_t>> total_balances;
   for (const auto& asset: offshore::ASSET_TYPES) {
-    uint64_t total_balance = 0, total_unlocked_balance = 0;
+    boost::multiprecision::uint128_t total_balance = 0, total_unlocked_balance = 0;
     for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
     {
       if (account_tags.second[account_index] != tag)

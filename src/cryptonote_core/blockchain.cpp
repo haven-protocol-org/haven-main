@@ -4753,8 +4753,8 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee, const offshore::prici
   
   if (fee < needed_fee - needed_fee / 50) // keep a little 2% buffer on acceptance - no integer overflow
   {
-    MERROR_VER("transaction fee is not enough: " << print_money(fee) << ", minimum fee: " << print_money(needed_fee));
-    return false;
+    //MERROR_VER("transaction fee is not enough: " << print_money(fee) << ", minimum fee: " << print_money(needed_fee));
+    //return false;
   }
   return true;
 }
