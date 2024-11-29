@@ -467,13 +467,15 @@ namespace tools
     {
       for (const auto& asset: assets) {
         wallet_rpc::COMMAND_RPC_GET_BALANCE::balance_info balance_info;
-        balance_info.balance = req.all_accounts ? m_wallet->balance_all(req.strict, asset) : m_wallet->balance(req.account_index, asset, req.strict);
-        if (!balance_info.balance)
+        boost::multiprecision::uint128_t balance_info_128 = req.all_accounts ? m_wallet->balance_all(req.strict, asset) : m_wallet->balance(req.account_index, asset, req.strict);
+        balance_info.balance = balance_info_128.str();
+        if (!balance_info_128)
           continue;
-        balance_info.unlocked_balance = req.all_accounts ? m_wallet->unlocked_balance_all(req.strict, asset, &balance_info.blocks_to_unlock, &balance_info.time_to_unlock) : m_wallet->unlocked_balance(req.account_index, "XHV", req.strict, &balance_info.blocks_to_unlock, &balance_info.time_to_unlock);
+        boost::multiprecision::uint128_t  unlocked_balance_128 = req.all_accounts ? m_wallet->unlocked_balance_all(req.strict, asset, &balance_info.blocks_to_unlock, &balance_info.time_to_unlock) : m_wallet->unlocked_balance(req.account_index, "XHV", req.strict, &balance_info.blocks_to_unlock, &balance_info.time_to_unlock);
+        balance_info.unlocked_balance = unlocked_balance_128.str();
         balance_info.multisig_import_needed = m_wallet->multisig() && m_wallet->has_multisig_partial_key_images();
-        std::map<uint32_t, std::map<uint32_t, uint64_t>> balance_per_subaddress_per_account;
-        std::map<uint32_t, std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>>> unlocked_balance_per_subaddress_per_account;
+        std::map<uint32_t, std::map<uint32_t, boost::multiprecision::uint128_t>> balance_per_subaddress_per_account;
+        std::map<uint32_t, std::map<uint32_t, std::pair<boost::multiprecision::uint128_t, std::pair<uint64_t, uint64_t>>>> unlocked_balance_per_subaddress_per_account;
         if (req.all_accounts)
         {
           for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
@@ -491,8 +493,8 @@ namespace tools
         for (const auto& p : balance_per_subaddress_per_account)
         {
           uint32_t account_index = p.first;
-          std::map<uint32_t, uint64_t> balance_per_subaddress = p.second;
-          std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = unlocked_balance_per_subaddress_per_account[account_index];
+          std::map<uint32_t, boost::multiprecision::uint128_t> balance_per_subaddress = p.second;
+          std::map<uint32_t, std::pair<boost::multiprecision::uint128_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = unlocked_balance_per_subaddress_per_account[account_index];
           std::set<uint32_t> address_indices;
           if (!req.all_accounts && !req.address_indices.empty())
           {
@@ -510,8 +512,8 @@ namespace tools
             info.address_index = i;
             cryptonote::subaddress_index index = {info.account_index, info.address_index};
             info.address = m_wallet->get_subaddress_as_str(index);
-            info.balance = balance_per_subaddress[i];
-            info.unlocked_balance = unlocked_balance_per_subaddress[i].first;
+            info.balance = balance_per_subaddress[i].str();
+            info.unlocked_balance = unlocked_balance_per_subaddress[i].first.str();
             info.blocks_to_unlock = unlocked_balance_per_subaddress[i].second.first;
             info.time_to_unlock = unlocked_balance_per_subaddress[i].second.second;
             info.label = m_wallet->get_subaddress_label(index);
@@ -649,8 +651,12 @@ namespace tools
     if (!m_wallet) return not_open(er);
     try
     {
-      res.total_balance = 0;
-      res.total_unlocked_balance = 0;
+
+      boost::multiprecision::uint128_t total_balance_128=0;
+      boost::multiprecision::uint128_t total_unlocked_balance_128=0;
+      res.total_balance = total_balance_128.str();
+      res.total_unlocked_balance = total_unlocked_balance_128.str();
+      
       cryptonote::subaddress_index subaddr_index = {0,0};
       const std::pair<std::map<std::string, std::string>, std::vector<std::string>> account_tags = m_wallet->get_account_tags();
       if (!req.tag.empty() && account_tags.first.count(req.tag) == 0 && !req.regexp)
@@ -666,15 +672,19 @@ namespace tools
         if (no_match)
           continue;
         wallet_rpc::COMMAND_RPC_GET_ACCOUNTS::subaddress_account_info info;
+        boost::multiprecision::uint128_t subaddr_balance_128 = m_wallet->balance(subaddr_index.major, "XHV", req.strict_balances);
+        boost::multiprecision::uint128_t subaddr_unlocked_balance_128 = m_wallet->unlocked_balance(subaddr_index.major, "XHV", req.strict_balances);
         info.account_index = subaddr_index.major;
         info.base_address = m_wallet->get_subaddress_as_str(subaddr_index);
-        info.balance = m_wallet->balance(subaddr_index.major, "XHV", req.strict_balances);
-        info.unlocked_balance = m_wallet->unlocked_balance(subaddr_index.major, "XHV", req.strict_balances);
+        info.balance = subaddr_balance_128.str();
+        info.unlocked_balance = subaddr_unlocked_balance_128.str();
         info.label = m_wallet->get_subaddress_label(subaddr_index);
         info.tag = account_tags.second[subaddr_index.major];
         res.subaddress_accounts.push_back(info);
-        res.total_balance += info.balance;
-        res.total_unlocked_balance += info.unlocked_balance;
+        total_balance_128 += subaddr_balance_128;
+        total_unlocked_balance_128 += subaddr_unlocked_balance_128;
+        res.total_balance = total_balance_128.str();
+        res.total_unlocked_balance = total_unlocked_balance_128.str();
       }
       if (res.subaddress_accounts.size() == 0 && req.regexp)
       {

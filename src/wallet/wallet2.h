@@ -1063,20 +1063,20 @@ private:
     hw::device::device_type get_device_type() const { return m_key_device_type; }
     bool reconnect_device();
     // all locked & unlocked balances of all subaddress accounts
-    std::map<std::string, uint64_t> balance_all(bool strict);
-    std::map<std::string, uint64_t> unlocked_balance_all(bool strict, std::map<std::string, uint64_t> *blocks_to_unlock = NULL, std::map<std::string, uint64_t> *time_to_unlock = NULL); 
+    std::map<std::string, boost::multiprecision::uint128_t> balance_all(bool strict);
+    std::map<std::string, boost::multiprecision::uint128_t> unlocked_balance_all(bool strict, std::map<std::string, uint64_t> *blocks_to_unlock = NULL, std::map<std::string, uint64_t> *time_to_unlock = NULL); 
     // locked & unlocked balance of given or current subaddress account
-    uint64_t balance(uint32_t subaddr_index_major, const std::string& asset, bool strict) const;
-    uint64_t unlocked_balance(uint32_t subaddr_index_major, const std::string& asset, bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
+    boost::multiprecision::uint128_t balance(uint32_t subaddr_index_major, const std::string& asset, bool strict) const;
+    boost::multiprecision::uint128_t unlocked_balance(uint32_t subaddr_index_major, const std::string& asset, bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
     // locked & unlocked balance of given or current subaddress account
-    std::map<uint32_t, std::map<std::string, uint64_t>> balance(uint32_t subaddr_index_major, bool strict);
-    std::map<uint32_t, std::map<std::string, uint64_t>> unlocked_balance(uint32_t subaddr_index_major, bool strict, std::map<std::string, uint64_t> *blocks_to_unlock = NULL, std::map<std::string, uint64_t> *time_to_unlock = NULL);
+    std::map<uint32_t, std::map<std::string, boost::multiprecision::uint128_t>> balance(uint32_t subaddr_index_major, bool strict);
+    std::map<uint32_t, std::map<std::string, boost::multiprecision::uint128_t>> unlocked_balance(uint32_t subaddr_index_major, bool strict, std::map<std::string, uint64_t> *blocks_to_unlock = NULL, std::map<std::string, uint64_t> *time_to_unlock = NULL);
     // locked & unlocked balance per subaddress of given or current subaddress account
-    std::map<uint32_t, uint64_t> balance_per_subaddress(uint32_t subaddr_index_major, const std::string& asset, bool strict) const;
-    std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress(uint32_t subaddr_index_major, const std::string& asset, bool strict);
+    std::map<uint32_t, boost::multiprecision::uint128_t> balance_per_subaddress(uint32_t subaddr_index_major, const std::string& asset, bool strict) const;
+    std::map<uint32_t, std::pair<boost::multiprecision::uint128_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress(uint32_t subaddr_index_major, const std::string& asset, bool strict);
     // all locked & unlocked balances of all subaddress accounts
-    uint64_t balance_all(bool strict, const std::string& asset) const;
-    uint64_t unlocked_balance_all(bool strict, const std::string& asset, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
+    boost::multiprecision::uint128_t balance_all(bool strict, const std::string& asset) const;
+    boost::multiprecision::uint128_t unlocked_balance_all(bool strict, const std::string& asset, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
     template<typename T>
     void transfer_selected(const std::vector<cryptonote::tx_destination_entry>& dsts, const std::vector<size_t>& selected_transfers, size_t fake_outputs_count,
       std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, std::unordered_set<crypto::public_key> &valid_public_keys_cache,
@@ -2005,8 +2005,8 @@ private:
     uint64_t m_light_wallet_blockchain_height;
     uint64_t m_light_wallet_per_kb_fee = FEE_PER_KB;
     bool m_light_wallet_connected;
-    uint64_t m_light_wallet_balance;
-    uint64_t m_light_wallet_unlocked_balance;
+    boost::multiprecision::uint128_t m_light_wallet_balance;
+    boost::multiprecision::uint128_t m_light_wallet_unlocked_balance;
     // Light wallet info needed to populate m_payment requires 2 separate api calls (get_address_txs and get_unspent_outs)
     // We save the info from the first call in m_light_wallet_address_txs for easier lookup.
     std::unordered_map<crypto::hash, address_tx> m_light_wallet_address_txs;
