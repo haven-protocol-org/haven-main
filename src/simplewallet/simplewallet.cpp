@@ -10766,7 +10766,7 @@ void simple_wallet::print_accounts(const std::string& tag)
     success_msg_writer() << tr("Tag's description: ") << account_tags.first.find(tag)->second;
   }
   success_msg_writer() << boost::format("  %15s %21s %21s %21s %21s") % tr("Account") % tr("Balance") % tr("Unlocked balance") % tr("Asset") % tr("Label");
-  std::map<std::string, std::pair<uint64_t, uint64_t>> total_balances;
+  std::map<std::string, std::pair<boost::multiprecision::uint128_t , boost::multiprecision::uint128_t >> total_balances;
   for (const auto& asset: offshore::ASSET_TYPES) {
     boost::multiprecision::uint128_t total_balance = 0, total_unlocked_balance = 0;
     for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
@@ -10790,7 +10790,7 @@ void simple_wallet::print_accounts(const std::string& tag)
       total_unlocked_balance += unlocked_balance;
     }
     if (total_balance > 0)
-      total_balances[asset] = std::pair<uint64_t, uint64_t>(total_balance, total_unlocked_balance);
+      total_balances[asset] = std::pair<boost::multiprecision::uint128_t, boost::multiprecision::uint128_t>(total_balance, total_unlocked_balance);
   }
   success_msg_writer() << tr("------------------------------------------------------------------------------------");
   for (const auto& it: total_balances)

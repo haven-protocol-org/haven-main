@@ -11210,6 +11210,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
   boost::multiprecision::uint128_t amount_so_far = 0;
   std::vector<size_t> non_dust_transfer_indeces;
   bool has_huge_transfer=false;
+  uint64_t huge_transfer_value=0;
 
   for (size_t i = 0; i < specific_transfers.size(); ++i)
   {
@@ -11226,8 +11227,9 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which is outside prescribed range [" << print_money(m_ignore_outputs_below) << ", " << print_money(m_ignore_outputs_above) << "]");
         continue;
       }
-      if (td.amount()>=uint64_max/2){
+      if (!has_huge_transfer && td.amount()>=uint64_max/2){
         has_huge_transfer=true;
+        huge_transfer_value=td.amount();
       }
     }
   }
@@ -11236,6 +11238,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
 
 
 
+  bool huge_transfer_applied = false;
+
   for (size_t i = 0; i < specific_transfers.size(); ++i)
   {
     const transfer_details& td = *specific_transfers[i];
@@ -11252,16 +11256,35 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
         continue;
       }
 
-      if (has_huge_transfer && td.amount()<uint64_max/2)
-      {
-        MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which is less than " << uint64_max/2);
-        continue;
+
+      //Skip the output if it will overflow the wallet
+      if ((boost::multiprecision::uint128_t) td.amount() + amount_so_far > (boost::multiprecision::uint128_t) uint64_max){
+        MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which will lead to overflow");
+        continue;  
+      }
+      //If the output is not huge, we have a huge output, and we have not yet added the huge output, we should 
+      //limit the maximum amount to uint64_max - amount_so_far - huge_transfer_value
+      if (has_huge_transfer && !huge_transfer_applied && (td.amount() < uint64_max/2) &&
+         ((boost::multiprecision::uint128_t) td.amount() + amount_so_far + (boost::multiprecision::uint128_t) huge_transfer_value > (boost::multiprecision::uint128_t) uint64_max))  {
+        MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which will lead to overflow when the huge transfer is added");
+        continue;  
       }
 
-      if (amount_so_far >= uint64_max/2)
-      {
-        MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << ", we have already collected enough transfers");
-        continue;
+      //If the transfer is huge, and we have already applied a huge transfer, ignore the output
+      if (huge_transfer_applied && td.amount() >= uint64_max/2) {
+        MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which will lead to overflow, being a second huge transfer");
+        continue;  
+      }
+
+      //If the transfer is huge, it should match huge_transfer_value or else it should be ignored
+      if (td.amount() >= uint64_max/2 && td.amount() != huge_transfer_value) {
+        MDEBUG("Ignoring output " << i << " of amount " << print_money(td.amount()) << " which is huge, but not the expected one");
+        continue;  
+      }
+
+      //If the transfer is huge and with the expected value, indicate we have applied it
+      if (td.amount() == huge_transfer_value) {
+        huge_transfer_applied = true;
       }
 
       amount_so_far+=td.amount();
@@ -11295,6 +11318,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(
       }
     }
   }
+
+  THROW_WALLET_EXCEPTION_IF(amount_so_far > (boost::multiprecision::uint128_t) uint64_max, error::wallet_internal_error, "Sum of transfers exceeds 18 million");
 
   // sort output indices
   {
