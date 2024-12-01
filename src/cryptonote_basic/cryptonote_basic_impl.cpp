@@ -93,6 +93,7 @@ namespace cryptonote {
       return true;
     }
 #endif
+
     uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> emission_speed_factor;
     if (base_reward < FINAL_SUBSIDY_PER_MINUTE*target_minutes)
     {
