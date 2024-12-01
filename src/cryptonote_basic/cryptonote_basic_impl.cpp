@@ -108,7 +108,6 @@ namespace cryptonote {
 
     if (current_block_weight <= median_weight) {
       reward = base_reward;
-      reward = HAVEN_MAX_TX_VALUE;
       return true;
     }
 
@@ -132,7 +131,6 @@ namespace cryptonote {
     assert(reward_lo < base_reward);
 
     reward = reward_lo;
-    reward = HAVEN_MAX_TX_VALUE;
     return true;
   }
   //------------------------------------------------------------------------------------
