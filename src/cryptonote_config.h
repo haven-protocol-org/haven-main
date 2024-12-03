@@ -151,7 +151,6 @@
 
 #define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    86400  //seconds, one day
 #define CRYPTONOTE_MEMPOOL_TX_CONVERSION_LIVETIME         3600   //seconds, one hour
-#define CRYPTONOTE_MEMPOOL_TX_AUDIT_LIVETIME         3600   //seconds, one hour
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
 
 
