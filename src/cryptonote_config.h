@@ -84,7 +84,7 @@
 
 // HF25 Unlock times
 #define HF25_AUDIT_LOCK_BLOCKS                          1440      // 2 days unlock time
-#define HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS             30      // 1 hour for the transaction to go through after being submitted
+#define HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS             60        // 2 hours for the transaction to go through after being submitted
 
 // HF27 Unlock times
 #define HF27_SHORING_LOCK_BLOCKS                        10     // 20 minute unlock time
@@ -151,6 +151,7 @@
 
 #define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    86400  //seconds, one day
 #define CRYPTONOTE_MEMPOOL_TX_CONVERSION_LIVETIME         3600   //seconds, one hour
+#define CRYPTONOTE_MEMPOOL_TX_AUDIT_LIVETIME         3600   //seconds, one hour
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
 
 
