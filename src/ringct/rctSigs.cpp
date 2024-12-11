@@ -1779,6 +1779,7 @@ namespace rct {
       tools::threadpool::waiter waiter(tpool);
       std::deque<bool> results;
       std::vector<const Bulletproof*> proofs;
+      std::vector<const BulletproofPlus*> proofs_plus;
       std::vector<uint32_t> collateral_indices = {};
       std::vector<uint32_t> collateral_change_indices = {};
       //size_t max_non_bp_proofs = 0, offset = 0;
@@ -2357,14 +2358,39 @@ namespace rct {
       }
       
 
+      bool range_proof_checked = false;
+
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
         proofs.push_back(&rv.p.bulletproofs[i]);
-    
-      if (!proofs.empty() && !verBulletproof(proofs))
+
+      for (size_t i = 0; i < rv.p.bulletproofs_plus.size(); i++)
+        proofs_plus.push_back(&rv.p.bulletproofs_plus[i]);
+
+      if (!proofs.empty())
       {
-        LOG_PRINT_L1("Aggregate range proof verified failed");
+        if (!verBulletproof(proofs)) {
+        LOG_PRINT_L1("Aggregate range proof verified failed for type BP");
         return false;
+        } else {
+          range_proof_checked = true;
+        }
       }
+
+      if (!proofs_plus.empty())
+      {
+        if (!verBulletproofPlus(proofs_plus)) {
+        LOG_PRINT_L1("Aggregate range proof verified failed for type BPP");
+        return false;
+        } else {
+          range_proof_checked = true;
+        }
+      }
+
+      CHECK_AND_NO_ASSERT_MES(range_proof_checked, false, "Range proofs not validated");
+      if (bulletproof)
+        CHECK_AND_NO_ASSERT_MES(!proofs.empty(), false, "No proofs found for a BP transaction");
+      if (bulletproof_plus)
+        CHECK_AND_NO_ASSERT_MES(!proofs_plus.empty(), false, "No proofs found for a BPP transaction");
       
       //Supply proof check for Audit transactions
       //It ensures the proof that the decryption key == rK, where r is exactly the masking factor in the pseudouts PK r*G+a*H
