@@ -4044,7 +4044,7 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   } else if (hf_version >= HF_VERSION_BULLETPROOF_PLUS) {
     // only accept rct::RCTTypeHaven3 txs after Haven3 fork.
-    if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus) {
+    if (tx.rct_signatures.type != rct::RCTTypeBulletproofPlus && tx.rct_signatures.type != rct::RCTTypeSupplyAudit) {
       tvc.m_verifivation_failed = true;
       return false;
     }

@@ -1834,9 +1834,9 @@ namespace rct {
         CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Burn transaction found before HF_VERSION_BURN! rejecting tx.. ");
 
       //Rules what transactions are allowed during the audit, after the audit, and after VBS is disabled
-      if (is_before_supply_audit){ // Audit transactions not permited
-        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
-      }
+      //if (is_before_supply_audit){ // Audit transactions not permited
+      //  CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
+      //}
       if (is_during_supply_audit){ //Conversions disabled, Audit tx spends from Pool 1, non-Audit spends from Pool 2, burn not permited 
         CHECK_AND_ASSERT_MES(rv.type == RCTTypeBulletproofPlus || is_audit_tx, false, "Only RCTTypeBulletproofPlus and Audit transactions permited after the supply Audit");
         if (is_audit_tx) //Prevent double-counting of supply. An audit transaction spending from Pool 2 will mean funds are already have been counted earlier.
