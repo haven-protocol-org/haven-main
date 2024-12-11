@@ -84,7 +84,7 @@
 
 // HF25 Unlock times
 #define HF25_AUDIT_LOCK_BLOCKS                          1440      // 2 days unlock time
-#define HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS             30      // 1 hour for the transaction to go through after being submitted
+#define HF25_AUDIT_LOCK_GRACE_PERIOD_BLOCKS             60        // 2 hours for the transaction to go through after being submitted
 
 // HF27 Unlock times
 #define HF27_SHORING_LOCK_BLOCKS                        10     // 20 minute unlock time
@@ -277,7 +277,7 @@
 
 // Haven v4.2 definitions
 #define HF_VERSION_SUPPLY_AUDIT                 25
-#define SUPPLY_AUDIT_BLOCK_HEIGHT               ((uint64_t)1752270)
+#define SUPPLY_AUDIT_BLOCK_HEIGHT               ((uint64_t)1787460)
 #define SUPPLY_AUDIT_ANON_POOL_CHECK_HEIGHT     ((uint64_t)1748800) 
 #define SUPPLY_AUDIT_BLOCK_HEIGHT_TESTNET       ((uint64_t)410)
 #define OLD_OUTPUT_LOCK_BLOCK_AFTER_AUDIT       ((uint64_t)20000000)  //After the supply audit ends, all old outputs will be locked to this block, to avoid spending them

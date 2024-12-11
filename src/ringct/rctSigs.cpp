@@ -1779,6 +1779,7 @@ namespace rct {
       tools::threadpool::waiter waiter(tpool);
       std::deque<bool> results;
       std::vector<const Bulletproof*> proofs;
+      std::vector<const BulletproofPlus*> proofs_plus;
       std::vector<uint32_t> collateral_indices = {};
       std::vector<uint32_t> collateral_change_indices = {};
       //size_t max_non_bp_proofs = 0, offset = 0;
@@ -1833,9 +1834,9 @@ namespace rct {
         CHECK_AND_ASSERT_MES(!is_burn_tx, false, "Burn transaction found before HF_VERSION_BURN! rejecting tx.. ");
 
       //Rules what transactions are allowed during the audit, after the audit, and after VBS is disabled
-      if (is_before_supply_audit){ // Audit transactions not permited
-        CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
-      }
+      //if (is_before_supply_audit){ // Audit transactions not permited
+      //  CHECK_AND_ASSERT_MES(!is_audit_tx, false, "Audit transactions permited only during the audit period");  
+      //}
       if (is_during_supply_audit){ //Conversions disabled, Audit tx spends from Pool 1, non-Audit spends from Pool 2, burn not permited 
         CHECK_AND_ASSERT_MES(rv.type == RCTTypeBulletproofPlus || is_audit_tx, false, "Only RCTTypeBulletproofPlus and Audit transactions permited after the supply Audit");
         if (is_audit_tx) //Prevent double-counting of supply. An audit transaction spending from Pool 2 will mean funds are already have been counted earlier.
@@ -2357,14 +2358,39 @@ namespace rct {
       }
       
 
+      bool range_proof_checked = false;
+
       for (size_t i = 0; i < rv.p.bulletproofs.size(); i++)
         proofs.push_back(&rv.p.bulletproofs[i]);
-    
-      if (!proofs.empty() && !verBulletproof(proofs))
+
+      for (size_t i = 0; i < rv.p.bulletproofs_plus.size(); i++)
+        proofs_plus.push_back(&rv.p.bulletproofs_plus[i]);
+
+      if (!proofs.empty())
       {
-        LOG_PRINT_L1("Aggregate range proof verified failed");
+        if (!verBulletproof(proofs)) {
+        LOG_PRINT_L1("Aggregate range proof verified failed for type BP");
         return false;
+        } else {
+          range_proof_checked = true;
+        }
       }
+
+      if (!proofs_plus.empty())
+      {
+        if (!verBulletproofPlus(proofs_plus)) {
+        LOG_PRINT_L1("Aggregate range proof verified failed for type BPP");
+        return false;
+        } else {
+          range_proof_checked = true;
+        }
+      }
+
+      CHECK_AND_NO_ASSERT_MES(range_proof_checked, false, "Range proofs not validated");
+      if (bulletproof)
+        CHECK_AND_NO_ASSERT_MES(!proofs.empty(), false, "No proofs found for a BP transaction");
+      if (bulletproof_plus)
+        CHECK_AND_NO_ASSERT_MES(!proofs_plus.empty(), false, "No proofs found for a BPP transaction");
       
       //Supply proof check for Audit transactions
       //It ensures the proof that the decryption key == rK, where r is exactly the masking factor in the pseudouts PK r*G+a*H
