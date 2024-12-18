@@ -705,6 +705,21 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
+  cryptonote::transaction_type asset_type_to_tx_type(std::string asset_type)
+  {
+    cryptonote::transaction_type tx_type;
+
+    if (asset_type == "XHV") {
+      tx_type = cryptonote::transaction_type::TRANSFER;
+    } else if (asset_type == "XUSD") {
+      tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
+    } else {
+      tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
+    }
+
+    return tx_type;
+  }
+  //---------------------------------------------------------------
   bool get_slippage(const transaction_type &tx_type, const std::string &source_asset, const std::string &dest_asset, const uint64_t amount, uint64_t &slippage, const offshore::pricing_record &pr, const std::vector<std::pair<std::string, std::string>> &amounts, const uint8_t hf_version)
   {
     using namespace boost::multiprecision;

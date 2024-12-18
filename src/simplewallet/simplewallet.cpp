@@ -8108,14 +8108,7 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
   SCOPED_WALLET_UNLOCK();
 
   // determine the tx type
-  cryptonote::transaction_type tx_type;
-  if (asset_type == "XHV") {
-    tx_type = cryptonote::transaction_type::TRANSFER;
-  } else if (asset_type == "XUSD") {
-    tx_type = cryptonote::transaction_type::OFFSHORE_TRANSFER;
-  } else {
-    tx_type = cryptonote::transaction_type::XASSET_TRANSFER;
-  }
+  cryptonote::transaction_type tx_type = asset_type_to_tx_type(asset_type);
 
   try
   {
